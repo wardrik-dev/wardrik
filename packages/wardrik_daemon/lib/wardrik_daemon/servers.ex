@@ -4,7 +4,7 @@ defmodule WardrikDaemon.Servers do
 
       wardrik server add crm --url https://crm.example.com/mcp --secret CRM_KEY --org acme
 
-    * Each runs in `WardrikMCP` as `owner:name`, on every node.
+    * Each runs in `Wardrik.MCP` as `owner:name`, on every node.
     * An org's server reaches its agents and its people's. A person's reaches theirs alone.
       The nearest of a name wins. See `WardrikDaemon.Resolver`.
     * Agents sign in with nothing (`%{"none" => %{}}`), a secret sealed for `header`
@@ -24,13 +24,13 @@ defmodule WardrikDaemon.Servers do
   @typedoc "The Wardrik's `:wardrik` name, the daemon's `:store`, and `:config`."
   @type daemon() :: %{
           required(:wardrik) => atom(),
-          required(:store) => WardrikStore.t(),
+          required(:store) => Wardrik.Store.t(),
           required(:config) => WardrikDaemon.Config.t(),
           optional(atom()) => term()
         }
 
   @doc """
-  Returns the `WardrikMCP` name of `owner`'s server `name`.
+  Returns the `Wardrik.MCP` name of `owner`'s server `name`.
 
       WardrikDaemon.Servers.key("acme", "github")
       #=> "acme:github"
@@ -48,7 +48,7 @@ defmodule WardrikDaemon.Servers do
     |> Owned.nearest()
   end
 
-  @doc "Returns the servers `owner`'s agents reach by name, as their `WardrikMCP` names."
+  @doc "Returns the servers `owner`'s agents reach by name, as their `Wardrik.MCP` names."
   @spec reached(daemon(), String.t()) :: [{String.t(), String.t()}]
   def reached(%{store: store, config: config}, owner) do
     added =
@@ -103,12 +103,12 @@ defmodule WardrikDaemon.Servers do
          opts = options(owner, input, reached),
          :ok <- started(running, key, opts),
          {:ok, _vsn} <-
-           WardrikStore.put(
+           Wardrik.Store.put(
              store,
              Owned.path(@kind, owner, name),
              record(owner, input, auth, opts)
            ) do
-      :ok = :erpc.multicast(Node.list(), WardrikMCP, :add, [Wardrik.mcp(running), key, opts])
+      :ok = :erpc.multicast(Node.list(), Wardrik.MCP, :add, [Wardrik.mcp(running), key, opts])
       changed(running, "server.added", {owner, name, %{"url" => input["url"]}}, actor)
       answered(running, owner, reached[:credential_name], name)
     end
@@ -121,15 +121,15 @@ defmodule WardrikDaemon.Servers do
     running = Wardrik.Instance.fetch!(wardrik)
     key = key(owner, name)
 
-    case WardrikStore.get(store, Owned.path(@kind, owner, name)) do
+    case Wardrik.Store.get(store, Owned.path(@kind, owner, name)) do
       nil ->
         not_removed(daemon, owner, name)
 
       record ->
-        _stopped = WardrikMCP.remove(Wardrik.mcp(running), key)
-        :ok = :erpc.multicast(Node.list(), WardrikMCP, :remove, [Wardrik.mcp(running), key])
+        _stopped = Wardrik.MCP.remove(Wardrik.mcp(running), key)
+        :ok = :erpc.multicast(Node.list(), Wardrik.MCP, :remove, [Wardrik.mcp(running), key])
         forget_sign_ins({daemon, running}, {owner, key}, record)
-        :ok = WardrikStore.delete(store, Owned.path(@kind, owner, name))
+        :ok = Wardrik.Store.delete(store, Owned.path(@kind, owner, name))
         changed(running, "server.removed", {owner, name, %{}}, actor)
         {:ok, listed(record)}
     end
@@ -138,18 +138,18 @@ defmodule WardrikDaemon.Servers do
   @doc """
   Starts each stored server that isn't running, and stops each running one no longer stored.
   """
-  @spec start(atom(), WardrikStore.t()) :: :ok
+  @spec start(atom(), Wardrik.Store.t()) :: :ok
   def start(wardrik, store) do
     mcp = Wardrik.mcp(wardrik)
     kept = Map.new(Owned.all(store, @kind), &{key(&1.owner, &1.name), &1.opts})
-    running = WardrikMCP.servers(mcp)
+    running = Wardrik.MCP.servers(mcp)
 
-    for {key, opts} <- kept, key not in running, do: _started = WardrikMCP.add(mcp, key, opts)
+    for {key, opts} <- kept, key not in running, do: _started = Wardrik.MCP.add(mcp, key, opts)
 
     for key <- running,
         String.contains?(key, ":"),
         not Map.has_key?(kept, key),
-        do: _stopped = WardrikMCP.remove(mcp, key)
+        do: _stopped = Wardrik.MCP.remove(mcp, key)
 
     :ok
   end
@@ -161,7 +161,7 @@ defmodule WardrikDaemon.Servers do
   end
 
   defp unused(store, owner, name) do
-    if WardrikStore.get(store, Owned.path(@kind, owner, name)) == nil,
+    if Wardrik.Store.get(store, Owned.path(@kind, owner, name)) == nil,
       do: :ok,
       else: {:error, Error.new(:conflict, "#{owner} has a server #{name} already.")}
   end
@@ -222,7 +222,7 @@ defmodule WardrikDaemon.Servers do
   defp sent(scheme, name), do: [scheme <> " ", {:secret, name}]
 
   defp holds?(running, owner, name, kind),
-    do: {owner, name, kind} in WardrikVault.list(Wardrik.vault(running))
+    do: {owner, name, kind} in Wardrik.Vault.list(Wardrik.vault(running))
 
   defp options(owner, %{"name" => name, "url" => url} = input, reached) do
     {headers, reached} = Keyword.pop(reached, :headers)
@@ -237,7 +237,7 @@ defmodule WardrikDaemon.Servers do
   end
 
   defp started(running, key, opts) do
-    case WardrikMCP.add(Wardrik.mcp(running), key, opts) do
+    case Wardrik.MCP.add(Wardrik.mcp(running), key, opts) do
       :ok -> :ok
       {:error, why} -> {:error, Error.new(:invalid_request, "The server doesn't read: #{why}")}
     end
@@ -275,7 +275,7 @@ defmodule WardrikDaemon.Servers do
   end
 
   defp held(running, owner),
-    do: WardrikVault.names(Wardrik.vault(running), %Principal{id: owner})
+    do: Wardrik.Vault.names(Wardrik.vault(running), %Principal{id: owner})
 
   defp authorizing(running, {owner, credential}, name) do
     case Wardrik.sign_in(running, credential, %Principal{id: owner}) do
@@ -292,8 +292,8 @@ defmodule WardrikDaemon.Servers do
   defp forget_sign_ins({daemon, running}, {owner, key}, %{auth: "oauth", provider: nil}) do
     vault = Wardrik.vault(running)
 
-    for {id, ^key, _kind} <- WardrikVault.list(vault),
-        do: WardrikVault.delete(vault, %Principal{id: id}, key)
+    for {id, ^key, _kind} <- Wardrik.Vault.list(vault),
+        do: Wardrik.Vault.delete(vault, %Principal{id: id}, key)
 
     _forgotten = OAuthApps.forget(daemon, {owner, key})
     :ok
@@ -305,7 +305,7 @@ defmodule WardrikDaemon.Servers do
     change =
       {type, "servers/" <> name, %{"server" => Map.put(data, "name", name), "owner" => owner}}
 
-    :ok = WardrikEvents.record(Wardrik.events(running), change, actor: actor)
+    :ok = Wardrik.EventLog.record(Wardrik.events(running), change, actor: actor)
   end
 
   defp put(map, _key, nil), do: map

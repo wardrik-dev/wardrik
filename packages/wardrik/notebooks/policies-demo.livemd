@@ -57,7 +57,7 @@ scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 ## Two policies
 
 ```elixir
-deployment = WardrikPolicy.new!([deny: ["shell/*"]], name: "deployment")
+deployment = Wardrik.Policy.new!([deny: ["shell/*"]], name: "deployment")
 
 books_rules = [
   allow: ["list_bills", "shell/*"],
@@ -65,13 +65,13 @@ books_rules = [
   deny: %{"pay_bill(amount >= 10000)" => "Bills of $10,000 or more go through finance."}
 ]
 
-books = WardrikPolicy.new!(books_rules, name: "books")
+books = Wardrik.Policy.new!(books_rules, name: "books")
 policies = [deployment, books]
 
-WardrikPolicy.decide(policies, "pay_bill", arguments: %{"vendor" => "Initech", "amount" => 9400})
+Wardrik.Policy.decide(policies, "pay_bill", arguments: %{"vendor" => "Initech", "amount" => 9400})
 ```
 
-`WardrikPolicy.explain/3` also says which rule and policy decided.
+`Wardrik.Policy.explain/3` also says which rule and policy decided.
 
 ## Try a call
 
@@ -91,7 +91,7 @@ show = fn %{tool: tool, arguments: json, gated: gated, outside: outside} ->
           labels: if(outside, do: ["outside"], else: [])
         ]
 
-        decision = WardrikPolicy.explain(policies, tool, opts)
+        decision = Wardrik.Policy.explain(policies, tool, opts)
         by = if decision.rule, do: "`#{decision.rule}` in #{decision.policy}", else: "the default"
 
         Kino.Markdown.new("### #{decision.effect}\n\n#{decision.message}\n\nDecided by #{by}.")
@@ -135,7 +135,7 @@ calls = [
 
 calls
 |> Enum.map(fn {tool, arguments} ->
-  decision = WardrikPolicy.explain(policies, tool, arguments: arguments)
+  decision = Wardrik.Policy.explain(policies, tool, arguments: arguments)
   %{call: "#{tool} #{JSON.encode!(arguments)}", effect: decision.effect, policy: decision.policy}
 end)
 |> Kino.DataTable.new(keys: [:call, :effect, :policy], name: "Decisions")
@@ -146,7 +146,7 @@ end)
 `books` alone allows the call. With the deployment's policy, it's denied:
 
 ```elixir
-{WardrikPolicy.decide(books, "shell__exec"), WardrikPolicy.decide(policies, "shell__exec")}
+{Wardrik.Policy.decide(books, "shell__exec"), Wardrik.Policy.decide(policies, "shell__exec")}
 ```
 
 ## Content from outside
@@ -155,13 +155,13 @@ Once a run reads outside content, every gated call asks. `allow_after` keeps a t
 
 ```elixir
 triage =
-  WardrikPolicy.new!(
+  Wardrik.Policy.new!(
     [allow: ["linear/*"], allow_after: %{"outside" => ["github/add_labels"]}],
     name: "triage"
   )
 
 for tool <- ["linear__create_issue", "github__add_labels"] do
-  {tool, WardrikPolicy.decide(triage, tool, annotations: %{gated: true}, labels: ["outside"])}
+  {tool, Wardrik.Policy.decide(triage, tool, annotations: %{gated: true}, labels: ["outside"])}
 end
 ```
 
@@ -210,5 +210,5 @@ page.events
 ## Where next
 
 - [Policies guide](https://hexdocs.pm/wardrik/policies.html)
-- [WardrikPolicy](https://hexdocs.pm/wardrik_policy)
+- `Wardrik.Policy`
 - [A person in the loop](approvals-demo.livemd)

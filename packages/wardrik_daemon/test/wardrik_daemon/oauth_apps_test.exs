@@ -4,14 +4,14 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   import WardrikDaemon.Test
 
+  alias Wardrik.OAuth.Resolver.Request
+  alias Wardrik.OAuth.Token
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Credentials
   alias WardrikCore.Principal
   alias WardrikDaemon.Client
   alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Tokens
-  alias WardrikOAuth.Resolver.Request
-  alias WardrikOAuth.Token
-  alias WardrikVault.Secret
 
   setup :set_mimic_global
 
@@ -85,7 +85,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   defp seal(context, {owner, name}, value, kind) do
     secret = %Secret{principal: %Principal{id: owner}, name: name, value: value}
-    {:ok, _vsn} = WardrikVault.put(Wardrik.vault(context.running), secret, kind: kind)
+    {:ok, _vsn} = Wardrik.Vault.put(Wardrik.vault(context.running), secret, kind: kind)
   end
 
   # A grant the app `key` issued, expired, which only that app may refresh.
@@ -103,7 +103,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   defp credential(context, id, name) do
     request = %Credentials.Request{name: name, principal: %Principal{id: id}}
-    WardrikVault.resolve(request, Wardrik.vault(context.running))
+    Wardrik.Vault.resolve(request, Wardrik.vault(context.running))
   end
 
   test "signs a principal in only with an app its chain reaches", context do
@@ -237,10 +237,10 @@ defmodule WardrikDaemon.OAuthAppsTest do
     assert {:ok, listed} = list(admin, "growth")
     refute JSON.encode!(listed) =~ "sk-"
     refute JSON.encode!(listed) =~ "deployment-secret"
-    refute :erlang.term_to_binary(WardrikStore.entries(context.daemon_store, "")) =~ "sk-"
+    refute :erlang.term_to_binary(Wardrik.Store.entries(context.daemon_store, "")) =~ "sk-"
 
     :ok =
-      WardrikVault.delete(Wardrik.vault(context.running), %Principal{id: "growth"}, "CRM_SECRET")
+      Wardrik.Vault.delete(Wardrik.vault(context.running), %Principal{id: "growth"}, "CRM_SECRET")
 
     assert {:error, "crm's client secret CRM_SECRET isn't sealed for growth"} =
              resolve(context, "growth/@cy", "crm")
@@ -301,10 +301,10 @@ defmodule WardrikDaemon.OAuthAppsTest do
     vault = Wardrik.vault(context.running)
 
     assert {:ok, "ana's grant"} =
-             WardrikVault.fetch(vault, %Principal{id: "payments/@ana"}, "crm")
+             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@ana"}, "crm")
 
     assert {:error, :not_found} =
-             WardrikVault.fetch(vault, %Principal{id: "payments/@bo"}, "docs")
+             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@bo"}, "docs")
 
     assert {:error, "not_found", _message} =
              Client.run(ana, "connections.connect", %{"provider" => "nope"})
@@ -317,7 +317,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
              Client.run(agent, "connections.disconnect", %{"provider" => "crm"})
 
     assert {:ok, "ana's grant"} =
-             WardrikVault.fetch(vault, %Principal{id: "payments/@ana"}, "crm")
+             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@ana"}, "crm")
   end
 
   # Removing is its own verb, as Kubernetes' delete: adding doesn't allow it.

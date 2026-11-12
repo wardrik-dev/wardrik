@@ -18,7 +18,7 @@ defmodule Wardrik.Test.Wardrik do
         deployment: "test"
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     %{wardrik: wardrik, store: store}
@@ -32,22 +32,22 @@ defmodule Wardrik.Test.Wardrik do
   """
   def seal(wardrik, {owner, name}, value, kind \\ :secret) do
     wardrik = Wardrik.Instance.fetch!(wardrik)
-    secret = %WardrikVault.Secret{principal: %Principal{id: owner}, name: name, value: value}
-    {:ok, _vsn} = WardrikVault.put(Wardrik.vault(wardrik), secret, kind: kind)
-    :ok = WardrikMCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
+    secret = %Wardrik.Vault.Secret{principal: %Principal{id: owner}, name: name, value: value}
+    {:ok, _vsn} = Wardrik.Vault.put(Wardrik.vault(wardrik), secret, kind: kind)
+    :ok = Wardrik.MCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
   end
 
   @doc "Removes `owner`'s secret `name`, as a host does, and reconnects the servers that read it."
   def unseal(wardrik, {owner, name}) do
     wardrik = Wardrik.Instance.fetch!(wardrik)
-    :ok = WardrikVault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, name)
-    :ok = WardrikMCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
+    :ok = Wardrik.Vault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, name)
+    :ok = Wardrik.MCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
   end
 
   @doc "Returns `owner`'s secret `name`, unsealed."
   def unsealed(wardrik, {owner, name}) do
     wardrik = Wardrik.Instance.fetch!(wardrik)
-    WardrikVault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name)
+    Wardrik.Vault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name)
   end
 
   def owner(wardrik), do: Wardrik.as(wardrik, maria())
@@ -128,8 +128,8 @@ defmodule Wardrik.Test.Wardrik do
 
   def until(type) do
     receive do
-      {WardrikEvents, _log, %{"type" => ^type} = event} -> event
-      {WardrikEvents, _log, _event} -> until(type)
+      {Wardrik.EventLog, _log, %{"type" => ^type} = event} -> event
+      {Wardrik.EventLog, _log, _event} -> until(type)
     after
       1_000 -> flunk("No #{type} came.")
     end

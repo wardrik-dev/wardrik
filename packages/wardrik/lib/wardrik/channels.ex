@@ -45,7 +45,7 @@ defmodule Wardrik.Channels do
   """
   @spec install_url(atom(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def install_url(instance, args) do
-    install = %WardrikChannel.Install{
+    install = %Wardrik.Chat.Install{
       owner: Keyword.fetch!(args, :owner),
       return_to: args[:return_to]
     }
@@ -59,7 +59,7 @@ defmodule Wardrik.Channels do
   @spec installed(atom(), channel: String.t(), owner: String.t(), query: map()) ::
           {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
   def installed(instance, args) do
-    install = %WardrikChannel.Install{
+    install = %Wardrik.Chat.Install{
       owner: Keyword.fetch!(args, :owner),
       query: Keyword.fetch!(args, :query)
     }
@@ -83,8 +83,8 @@ defmodule Wardrik.Channels do
   def owned(instance, args) do
     case fetched(instance, Keyword.fetch!(args, :channel)) do
       {:ok, {adapter, opts}} ->
-        WardrikChannel.Channel.owned(
-          WardrikChannel.channel(adapter, opts),
+        Wardrik.Chat.Channel.owned(
+          Wardrik.Chat.channel(adapter, opts),
           Keyword.fetch!(args, :owner)
         )
 
@@ -96,7 +96,7 @@ defmodule Wardrik.Channels do
   defp adapted(instance, name, callback, arguments) do
     with {:ok, {adapter, opts}} <- fetched(instance, name),
          :ok <- supports(adapter, callback, name) do
-      apply(adapter, callback, arguments ++ [WardrikChannel.channel(adapter, opts)])
+      apply(adapter, callback, arguments ++ [Wardrik.Chat.channel(adapter, opts)])
     end
   end
 

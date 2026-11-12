@@ -118,7 +118,8 @@ defmodule WardrikDaemon.CeilingTest do
     assert {:ok, %Wardrik.Reply{}} = reply(context, "payments", "first")
     second = agent(context, "payments", "second")
 
-    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+    :ok =
+      Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
     {:ok, _asked} =
       Wardrik.run(context.admin, "agent.ask", %{"agent" => second, "content" => "Go"})
@@ -142,8 +143,8 @@ defmodule WardrikDaemon.CeilingTest do
 
   defp until(type) do
     receive do
-      {WardrikEvents, _log, %{"type" => ^type} = event} -> event
-      {WardrikEvents, _log, _event} -> until(type)
+      {Wardrik.EventLog, _log, %{"type" => ^type} = event} -> event
+      {Wardrik.EventLog, _log, _event} -> until(type)
     after
       5_000 -> flunk("No #{type} came.")
     end

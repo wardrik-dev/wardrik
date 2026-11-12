@@ -290,7 +290,7 @@ defmodule WardrikDaemon.Config do
             wardrik: [],
             warnings: []
 
-  @typedoc "Where everything is kept: Postgres's URL, an S3 bucket's `WardrikStore.S3` options, or `nil` for the node's disk."
+  @typedoc "Where everything is kept: Postgres's URL, an S3 bucket's `Wardrik.Store.S3` options, or `nil` for the node's disk."
   @type storage() :: {:postgres, String.t()} | {:s3, keyword()} | nil
 
   @type t() :: %__MODULE__{

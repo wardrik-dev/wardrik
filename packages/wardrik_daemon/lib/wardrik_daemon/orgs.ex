@@ -12,7 +12,7 @@ defmodule WardrikDaemon.Orgs do
   alias WardrikDaemon.Ceiling
 
   @typedoc "An org's policies, held to in turn, and the ceilings its agents share."
-  @type settings() :: %{policy: [WardrikPolicy.t()], ceilings: [Ceiling.t()]}
+  @type settings() :: %{policy: [Wardrik.Policy.t()], ceilings: [Ceiling.t()]}
 
   @doc "Returns `:ok` if the daemon runs `org`, or else a `not_found` error."
   @spec known(String.t(), map()) :: :ok | {:error, Error.t()}
@@ -70,7 +70,7 @@ defmodule WardrikDaemon.Orgs do
     end)
   end
 
-  defp pooled(name, %WardrikPolicy{budget: %WardrikPolicy.Budget{per: per} = budget} = policy)
+  defp pooled(name, %Wardrik.Policy{budget: %Wardrik.Policy.Budget{per: per} = budget} = policy)
        when per != :turn,
        do: {name, %{policy | budget: nil}, budget}
 

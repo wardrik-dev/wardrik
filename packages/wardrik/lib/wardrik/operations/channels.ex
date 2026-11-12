@@ -38,7 +38,7 @@ defmodule Wardrik.Operations.Channels do
   @spec options(Wardrik.t(), String.t(), keyword()) :: keyword()
   def options(wardrik, name, opts),
     do:
-      Wardrik.Sealed.resolved(wardrik, "the channel #{name}", opts) ++
+      Wardrik.Vault.Lookup.resolved(wardrik, "the channel #{name}", opts) ++
         [
           server: Wardrik,
           wardrik: wardrik.name,

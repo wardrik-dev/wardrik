@@ -1,0 +1,109 @@
+defmodule Wardrik.EventLog.Tail do
+  @moduledoc false
+
+  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Reader
+  alias Wardrik.EventLog.Subscribers
+
+  @page 500
+
+  @doc """
+  Streams `{event, cursor}` after the cursor `:after`, of the `:types` given or `:all`. With `nil`
+  for `:after`, starts at what's written next.
+
+      Wardrik.EventLog.Tail.stream(settings, ["agt_1"], after: nil, types: :all)
+  """
+  @spec stream(map(), Wardrik.EventLog.resources(),
+          after: Cursor.t() | nil,
+          types: [String.t()] | :all
+        ) ::
+          Enumerable.t()
+  def stream(settings, resources, args) do
+    cursor = Keyword.fetch!(args, :after)
+    types = Keyword.fetch!(args, :types)
+
+    fn -> open(settings, resources, cursor) end
+    |> Stream.resource(&next/1, &close/1)
+    |> Stream.filter(fn {event, _cursor} -> takes?(types, event["type"]) end)
+  end
+
+  defp open(settings, resources, cursor) do
+    :ok = Subscribers.subscribe(settings.group, resources)
+    {replay, positions} = start(settings.store, resources, cursor)
+
+    %{
+      settings: settings,
+      resources: resources,
+      replay: replay,
+      positions: positions
+    }
+  end
+
+  defp start(store, resources, nil), do: {[], Reader.head(store, resources)}
+  defp start(store, resources, cursor), do: {Reader.covered(store, resources), cursor}
+
+  defp next(%{replay: [log | logs]} = tail) do
+    case read(tail, log) do
+      {[], tail} -> next(%{tail | replay: logs})
+      read -> read
+    end
+  end
+
+  defp next(%{replay: []} = tail) do
+    receive do
+      {Wardrik.EventLog, log, event} -> arrived(tail, log, event)
+    end
+  end
+
+  defp arrived(tail, log, %{"sequence" => sequence}) do
+    if String.to_integer(sequence) > Map.get(tail.positions, log, 0),
+      do: caught_up(tail, log, []),
+      else: {[], tail}
+  end
+
+  defp arrived(tail, _log, live), do: {[{live, tail.positions}], tail}
+
+  defp caught_up(tail, log, taken) do
+    case read(tail, log) do
+      {[], tail} -> {taken, tail}
+      {read, tail} -> caught_up(tail, log, taken ++ read)
+    end
+  end
+
+  defp read(tail, log) do
+    tail.settings
+    |> Reader.entries(log, after: Map.get(tail.positions, log, 0), limit: @page)
+    |> Enum.map_reduce(tail, &passed/2)
+  end
+
+  defp passed({_log, _sequence, event} = entry, tail) do
+    positions = Reader.advanced(tail.positions, [entry])
+    {{event, positions}, %{tail | positions: positions}}
+  end
+
+  defp close(tail) do
+    :ok = unsubscribe(tail)
+    flush()
+  end
+
+  # Events that have stopped took their subscribers with them.
+  defp unsubscribe(tail) do
+    Subscribers.unsubscribe(tail.settings.group, tail.resources)
+  rescue
+    ArgumentError -> :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp flush do
+    receive do
+      {Wardrik.EventLog, _log, _event} -> flush()
+    after
+      0 -> :ok
+    end
+  end
+
+  defp takes?(_types, "wardrik.events.dropped"), do: true
+  defp takes?(:all, _type), do: true
+  defp takes?(types, type), do: type in types
+end

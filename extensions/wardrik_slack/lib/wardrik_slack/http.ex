@@ -11,7 +11,7 @@ defmodule WardrikSlack.HTTP do
     * Slack gets `200` within two seconds. A message Slack resends is asked only once.
   """
 
-  alias WardrikChannel.Channel
+  alias Wardrik.Chat.Channel
   alias WardrikSlack.Dispatch
 
   @window 300

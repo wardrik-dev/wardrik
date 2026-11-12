@@ -594,7 +594,7 @@ defmodule WardrikDaemon.CLITest do
       vault = context.wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()
 
       assert {:ok, "ghp_1"} =
-               WardrikVault.fetch(vault, %WardrikCore.Principal{id: "acme"}, "GITHUB_TOKEN")
+               Wardrik.Vault.fetch(vault, %WardrikCore.Principal{id: "acme"}, "GITHUB_TOKEN")
 
       assert {0, "Sealed MINE.\n"} =
                wardrik(context, ~w(vault put MINE --user jon --for api_key), "x\n")

@@ -1,6 +1,7 @@
 defmodule Wardrik.Operations.Agents do
   @moduledoc false
 
+  alias Wardrik.EventLog.Cursor
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Lifecycle
@@ -8,7 +9,6 @@ defmodule Wardrik.Operations.Agents do
   alias Wardrik.Operations.Snapshot
   alias Wardrik.Operations.Visible
   alias Wardrik.Scope
-  alias WardrikEvents.Cursor
 
   @doc "Lists the agents, and their conversations."
   @spec list(Scope.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
@@ -65,7 +65,7 @@ defmodule Wardrik.Operations.Agents do
     interrupts =
       for {agent, conversation} = key <- Visible.keys(scope, input),
           interrupt <-
-            Snapshot.interrupts(WardrikEvents.activity(Wardrik.events(scope.wardrik), key)),
+            Snapshot.interrupts(Wardrik.EventLog.activity(Wardrik.events(scope.wardrik), key)),
           do:
             Snapshot.conversation(
               %{"agent" => %{"id" => agent}, "interrupt" => interrupt},
@@ -94,7 +94,7 @@ defmodule Wardrik.Operations.Agents do
   @doc "Returns the cursor at the end of the agents' logs."
   @spec head(Scope.t(), map()) :: {:ok, map()}
   def head(scope, input) do
-    cursor = WardrikEvents.head(Wardrik.events(scope.wardrik), Visible.logs(input))
+    cursor = Wardrik.EventLog.head(Wardrik.events(scope.wardrik), Visible.logs(input))
     {:ok, %{"cursor" => visible_cursor(scope, input, cursor)}}
   end
 

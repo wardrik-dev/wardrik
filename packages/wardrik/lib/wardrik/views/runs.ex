@@ -22,7 +22,7 @@ defmodule Wardrik.Views.Runs do
       set.
   """
 
-  alias WardrikEvents.Runs
+  alias Wardrik.EventLog.Runs
 
   @type t() :: Runs.t()
 

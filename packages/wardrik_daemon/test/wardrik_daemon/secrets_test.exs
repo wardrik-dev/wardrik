@@ -127,7 +127,7 @@ defmodule WardrikDaemon.SecretsTest do
     assert key.("MCP_TOKEN") == {:error, :not_found}
 
     assert {:ok, "sk-MCP_TOKEN"} =
-             WardrikVault.fetch(vault(context), %Principal{id: "growth"}, "MCP_TOKEN",
+             Wardrik.Vault.fetch(vault(context), %Principal{id: "growth"}, "MCP_TOKEN",
                kind: :header
              )
   end
@@ -136,7 +136,7 @@ defmodule WardrikDaemon.SecretsTest do
        context do
     test = self()
 
-    stub(WardrikMCP, :reconnect, fn _mcp, changed ->
+    stub(Wardrik.MCP, :reconnect, fn _mcp, changed ->
       send(test, {:reconnect, changed})
       :ok
     end)

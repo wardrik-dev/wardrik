@@ -3,7 +3,7 @@ defmodule Wardrik.Server do
   A behaviour for what runs Wardrik's operations. `Wardrik` implements it.
 
   `Wardrik.Agent` and the other operation modules call the server in their `Wardrik.Scope`. So
-  packages call them without depending on `wardrik`. `WardrikTesting.Server` implements it for tests.
+  packages call them without depending on `wardrik`. `Wardrik.Testing.Server` implements it for tests.
   """
 
   @doc "Runs the request's operation."

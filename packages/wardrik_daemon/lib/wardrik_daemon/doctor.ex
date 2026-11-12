@@ -160,7 +160,7 @@ defmodule WardrikDaemon.Doctor do
   end
 
   defp sealing(from, keys) do
-    if length(WardrikVault.Sealed.decode_keys(keys)) == length(keys),
+    if length(Wardrik.Vault.Sealed.decode_keys(keys)) == length(keys),
       do: {:ok, "vault", "#{counted(length(keys), "key")} from #{from}, which seals"},
       else: {:fail, "vault", "a key from #{from} isn't 32 bytes of base64"}
   end

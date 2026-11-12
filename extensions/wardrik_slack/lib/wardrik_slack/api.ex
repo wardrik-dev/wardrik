@@ -35,20 +35,20 @@ defmodule WardrikSlack.API do
     do: [auth: {:bearer, Keyword.fetch!(args, :token)}] ++ Keyword.get(args, :req_options, [])
 
   @doc "Like `post/2`, with the bot token and `:req_options` of `workspace`."
-  @spec post_in(WardrikChannel.Workspace.t(), String.t(), map()) ::
+  @spec post_in(Wardrik.Chat.Workspace.t(), String.t(), map()) ::
           {:ok, map()} | {:error, term()}
   def post_in(
-        %WardrikChannel.Workspace{channel: channel, installation: installation},
+        %Wardrik.Chat.Workspace{channel: channel, installation: installation},
         method,
         body
       ),
       do: post(method, token: installation.token, body: body, req_options: req_options(channel))
 
   @doc "Like `read/2`, with the bot token and `:req_options` of `workspace`."
-  @spec read_in(WardrikChannel.Workspace.t(), String.t(), map()) ::
+  @spec read_in(Wardrik.Chat.Workspace.t(), String.t(), map()) ::
           {:ok, map()} | {:error, term()}
   def read_in(
-        %WardrikChannel.Workspace{channel: channel, installation: installation},
+        %Wardrik.Chat.Workspace{channel: channel, installation: installation},
         method,
         params
       ),
@@ -56,8 +56,8 @@ defmodule WardrikSlack.API do
         read(method, token: installation.token, params: params, req_options: req_options(channel))
 
   @doc "Returns the channel's `:req_options`. `[]` unless set."
-  @spec req_options(WardrikChannel.Channel.t()) :: keyword()
-  def req_options(%WardrikChannel.Channel{options: options}),
+  @spec req_options(Wardrik.Chat.Channel.t()) :: keyword()
+  def req_options(%Wardrik.Chat.Channel{options: options}),
     do: Keyword.get(options, :req_options, [])
 
   @doc """

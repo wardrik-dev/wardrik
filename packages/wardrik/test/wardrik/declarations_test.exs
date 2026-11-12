@@ -23,7 +23,7 @@ defmodule Wardrik.DeclarationsTest do
     store = Wardrik.Test.Store.new(:"store #{context.test}")
     name = :"wardrik #{context.test}"
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
       {Wardrik,

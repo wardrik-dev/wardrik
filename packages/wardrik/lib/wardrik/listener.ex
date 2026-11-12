@@ -40,6 +40,7 @@ defmodule Wardrik.Listener do
     * `:after` - the cursor to start after, without `c:cursor/1`.
   """
 
+  alias Wardrik.EventLog.Follower
   alias Wardrik.Instance
 
   @enforce_keys [:wardrik, :cursor, :options]
@@ -78,37 +79,13 @@ defmodule Wardrik.Listener do
   @doc "Starts `module` as a listener."
   @spec start_link(module(), keyword()) :: {:ok, pid()}
   def start_link(module, opts) do
-    instance = Keyword.fetch!(opts, :wardrik)
-    events = instance |> Instance.fetch!() |> Wardrik.events()
-    resources = Keyword.fetch!(opts, :agents)
-    started = WardrikEvents.head(events, resources)
+    wardrik = Keyword.fetch!(opts, :wardrik)
+    listener = %__MODULE__{wardrik: wardrik, cursor: nil, options: Keyword.delete(opts, :wardrik)}
 
-    options = [events: events, listener: module, started: started, resources: resources] ++ opts
-    WardrikEvents.Listener.start_link(Wardrik.Listener.Events, options)
-  end
-end
-
-defmodule Wardrik.Listener.Events do
-  @moduledoc false
-
-  use WardrikEvents.Listener
-
-  @impl WardrikEvents.Listener
-  def handle(event, listener),
-    do: module(listener).handle(Wardrik.Event.from_json(event), ours(listener))
-
-  @impl WardrikEvents.Listener
-  def cursor(listener), do: module(listener).cursor(ours(listener)) || listener.options[:started]
-
-  defp module(listener), do: Keyword.fetch!(listener.options, :listener)
-
-  defp ours(listener) do
-    options = Keyword.drop(listener.options, [:events, :listener, :wardrik, :started, :resources])
-
-    %Wardrik.Listener{
-      wardrik: listener.options[:wardrik],
-      cursor: listener.cursor,
-      options: options
-    }
+    Follower.start_link(module, listener,
+      events: wardrik |> Instance.fetch!() |> Wardrik.events(),
+      logs: Keyword.fetch!(opts, :agents),
+      types: Keyword.get(opts, :types, :all)
+    )
   end
 end

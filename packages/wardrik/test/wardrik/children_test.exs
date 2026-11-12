@@ -3,6 +3,8 @@ defmodule Wardrik.ChildrenTest do
 
   import Wardrik.Test.Wardrik, only: [seal: 4]
 
+  alias Wardrik.Vault.Lookup
+
   test "keeps agents in memory unless told where", %{test: test} do
     wardrik =
       Wardrik.new(
@@ -13,7 +15,7 @@ defmodule Wardrik.ChildrenTest do
 
     start_supervised!({Wardrik, wardrik}, id: :own)
 
-    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.ETS}} = wardrik
+    assert %Wardrik{store: %Wardrik.Store{adapter: Wardrik.Store.ETS}} = wardrik
 
     assert {:ok, _agent} =
              Wardrik.start_agent(wardrik,
@@ -29,12 +31,12 @@ defmodule Wardrik.ChildrenTest do
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"disk #{test}"},
         name: :"disk #{test}",
-        store: {WardrikStore.EKV, data_dir: tmp_dir}
+        store: {Wardrik.Store.EKV, data_dir: tmp_dir}
       )
 
     start_supervised!({Wardrik, wardrik}, id: :disk)
 
-    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.EKV}} = wardrik
+    assert %Wardrik{store: %Wardrik.Store{adapter: Wardrik.Store.EKV}} = wardrik
 
     assert {:ok, _agent} =
              Wardrik.start_agent(wardrik,
@@ -44,8 +46,8 @@ defmodule Wardrik.ChildrenTest do
   end
 
   test "runs alongside a store the host runs", %{test: test} do
-    store = WardrikStore.ETS.new(name: :"store #{test}")
-    start_supervised!({WardrikStore, store}, id: :store)
+    store = Wardrik.Store.ETS.new(name: :"store #{test}")
+    start_supervised!({Wardrik.Store, store}, id: :store)
 
     wardrik =
       Wardrik.new(
@@ -65,7 +67,7 @@ defmodule Wardrik.ChildrenTest do
   end
 
   test "starts a store it's given built, where nothing else has", %{test: test} do
-    store = WardrikStore.ETS.new(name: :"unstarted #{test}")
+    store = Wardrik.Store.ETS.new(name: :"unstarted #{test}")
 
     wardrik =
       Wardrik.new(
@@ -77,7 +79,7 @@ defmodule Wardrik.ChildrenTest do
 
     start_supervised!({Wardrik, wardrik}, id: :given)
 
-    assert {:ok, _vsn} = WardrikStore.put(store, "here", true)
+    assert {:ok, _vsn} = Wardrik.Store.put(store, "here", true)
   end
 
   test "hands its agents' limits and idle hibernation to the supervisor that runs them", %{
@@ -118,7 +120,7 @@ defmodule Wardrik.ChildrenTest do
 
     assert Process.whereis(Wardrik.mcp(wardrik))
 
-    assert WardrikMCP.tools(nil, name: Wardrik.mcp(wardrik), servers: :down) == []
+    assert Wardrik.MCP.tools(nil, name: Wardrik.mcp(wardrik), servers: :down) == []
   end
 
   test "keeps no secret without keys to seal it with", %{test: test} do
@@ -131,10 +133,15 @@ defmodule Wardrik.ChildrenTest do
     )
 
     assert {:error, :no_keys} =
-             Wardrik.Sealed.fetch(:"keyless #{test}", owner: "acme", name: "HOOK")
+             Lookup.fetch(:"keyless #{test}", owner: "acme", name: "HOOK")
 
-    assert Wardrik.Sealed.list(:"keyless #{test}") == []
-    refute Wardrik.Sealed.holds?(:"keyless #{test}", owner: "acme", name: "HOOK", kind: :secret)
+    assert Lookup.list(:"keyless #{test}") == []
+
+    refute Lookup.holds?(:"keyless #{test}",
+             owner: "acme",
+             name: "HOOK",
+             kind: :secret
+           )
   end
 
   defp linear(url),
@@ -151,7 +158,7 @@ defmodule Wardrik.ChildrenTest do
       authorizer: {Wardrik.Test.Allow, []},
       resolver: {Wardrik.Test.Owned, :"keyed #{test}"},
       name: :"keyed #{test}",
-      vault_keys: [WardrikVault.generate_key()],
+      vault_keys: [Wardrik.Vault.generate_key()],
       mcp: mcp
     )
   end
@@ -165,7 +172,7 @@ defmodule Wardrik.ChildrenTest do
 
     wardrik = %{wardrik | mcp: linear("https://mcp.linear.test/mcp")}
 
-    %{start: {WardrikMCP, :start_link, [opts]}} = Wardrik.Children.mcp_spec(wardrik)
+    %{start: {Wardrik.MCP, :start_link, [opts]}} = Wardrik.Children.mcp_spec(wardrik)
     assert [linear: server] = opts[:servers]
     assert server[:owner] == "deployment"
     assert {:streamable_http, transport} = server[:transport]

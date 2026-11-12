@@ -39,7 +39,7 @@ defmodule WardrikDaemon.Authorizer do
   @deciding ~w(decide approve deny)
 
   @typedoc "The roles and bindings `config.yaml` declares, and where agents' records are kept."
-  @type opts() :: %{access: Access.t(), store: WardrikStore.t()}
+  @type opts() :: %{access: Access.t(), store: Wardrik.Store.t()}
 
   @impl Wardrik.Authorizer
   @spec authorize(Request.t(), opts()) :: :ok | {:error, :forbidden | :not_found}

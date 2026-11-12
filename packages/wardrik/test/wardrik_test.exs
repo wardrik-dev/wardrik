@@ -13,7 +13,7 @@ defmodule WardrikTest do
     assert WardrikCore.list(Wardrik.agents(wardrik)) == [{"acme/triage", nil}]
 
     assert {:ok, %{events: [%{"type" => "wardrik.agent.started"}]}} =
-             WardrikEvents.page(Wardrik.events(wardrik), ["acme/triage"])
+             Wardrik.EventLog.page(Wardrik.events(wardrik), ["acme/triage"])
   end
 
   test "makes a scope of who acts, for whom", %{wardrik: wardrik} do
@@ -81,7 +81,7 @@ defmodule WardrikTest do
   end
 
   test "describes itself, with its agents kept in its store unless told otherwise" do
-    store = WardrikStore.ETS.new(name: MyApp.Store)
+    store = Wardrik.Store.ETS.new(name: MyApp.Store)
 
     wardrik =
       Wardrik.new(
@@ -96,7 +96,7 @@ defmodule WardrikTest do
              retention: 30,
              authorizer: {Wardrik.Test.Allow, []},
              resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
-             backend: {WardrikStore.Durable, store: ^store}
+             backend: {Wardrik.Store.Durable, store: ^store}
            } = wardrik
 
     assert Wardrik.agents(wardrik) == MyApp.AgentRuntime.Agents

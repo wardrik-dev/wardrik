@@ -16,7 +16,7 @@ defmodule WardrikCore.Credo.Code do
 
   @doc """
   The module a remote call reaches, as written in source (`"Task"`,
-  `"WardrikStore"`, `":inet"`), with its function and where it is; or
+  `"Wardrik.Store"`, `":inet"`), with its function and where it is; or
   `:error` for anything else.
   """
   @spec remote(Macro.t(), aliases()) :: {:ok, String.t(), atom(), keyword()} | :error

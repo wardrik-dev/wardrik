@@ -27,11 +27,13 @@ defmodule Wardrik.HTTP.EventStreamTest do
 
   test "resumes after the Last-Event-ID", context do
     answers([answer("Hello.")])
-    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+
+    :ok =
+      Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
     conn = request(context, "POST", "/v1/agents/acme%2Ftriage/messages", %{"content" => "Hi"})
     %{"message" => %{"cursor" => cursor}} = body(conn)
-    assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.completed"}}
+    assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.completed"}}
 
     stream = open(context, "/v1/events?agents=acme/triage", [{"last-event-id", cursor}])
     assert until(stream, "wardrik.run.completed")

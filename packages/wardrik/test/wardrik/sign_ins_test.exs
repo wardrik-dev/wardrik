@@ -18,7 +18,7 @@ defmodule Wardrik.SignInsTest do
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
-        vault_keys: [WardrikVault.generate_key()],
+        vault_keys: [Wardrik.Vault.generate_key()],
         egress: &Wardrik.Egress.any/1,
         oauth: [
           page: "https://agents.test/oauth",
@@ -37,7 +37,7 @@ defmodule Wardrik.SignInsTest do
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -138,7 +138,7 @@ defmodule Wardrik.SignInsTest do
     nobody = {Wardrik.HTTP, :nobody, []}
 
     assert Wardrik.sign_in_pages(wardrik, nobody) ==
-             {WardrikOAuth.Plug, %{oauth: Wardrik.oauth(wardrik), principal: nobody}}
+             {Wardrik.OAuth.Plug, %{oauth: Wardrik.oauth(wardrik), principal: nobody}}
 
     assert Wardrik.sign_in_pages(
              Wardrik.new(
@@ -198,7 +198,7 @@ defmodule Wardrik.OAuthResolverTest do
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
-        vault_keys: [WardrikVault.generate_key()],
+        vault_keys: [Wardrik.Vault.generate_key()],
         oauth: [page: "https://agents.test/oauth", resolver: {__MODULE__, "maria-mail"}]
       )
 
@@ -211,7 +211,7 @@ defmodule Wardrik.OAuthResolverTest do
 
   def provider(%{name: name}, client_id) do
     {:ok,
-     WardrikOAuth.Provider.new(name,
+     Wardrik.OAuth.Provider.new(name,
        key: client_id,
        authorization_endpoint: "https://mail.test/authorize",
        token_endpoint: "https://mail.test/token",

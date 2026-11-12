@@ -30,7 +30,7 @@ defmodule Wardrik.ChannelsTest do
     name = :"wardrik #{context.test}"
     channels = [slack: {Wardrik.Test.Echo, test: self()}]
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
       {Wardrik,
@@ -92,7 +92,7 @@ defmodule Wardrik.ChannelsTest do
 
     events = name |> Wardrik.Instance.fetch!() |> Wardrik.events()
 
-    assert WardrikEvents.record(events, {"room.bound", "channels/slack/C1", data},
+    assert Wardrik.EventLog.record(events, {"room.bound", "channels/slack/C1", data},
              actor: scope.principal
            ) == :ok
 

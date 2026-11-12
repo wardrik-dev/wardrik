@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Requires `wardrik` in place of `wardrik_channel`, which it took in. The chat kit is
+  `Wardrik.Chat`.
+
 ## 0.1.0-rc.4 (2026-11-06)
 
 - A member carries the email address Slack holds for them, unless they're from another

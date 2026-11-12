@@ -5,7 +5,7 @@ defmodule WardrikDaemon.CLIToken do
   alias WardrikDaemon.Tokens
 
   @doc "Revokes the token at `path`, makes a new one in `store`, and writes it to `path` with `url`."
-  @spec issue(WardrikStore.t(), Path.t(), String.t()) :: :ok
+  @spec issue(Wardrik.Store.t(), Path.t(), String.t()) :: :ok
   def issue(store, path, url) do
     revoked(store, path)
 

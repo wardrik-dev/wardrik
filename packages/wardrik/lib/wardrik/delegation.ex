@@ -46,7 +46,7 @@ defmodule Wardrik.Delegation do
     asker = %{"agent" => agent, "conversation" => conversation}
     wardrik = Wardrik.Instance.fetch!(instance)
     key = key("asked", log, Keyword.fetch!(args, :message))
-    {:ok, _vsn} = WardrikStore.put(store(wardrik), key, asker)
+    {:ok, _vsn} = Wardrik.Store.put(store(wardrik), key, asker)
     :ok
   end
 
@@ -55,13 +55,13 @@ defmodule Wardrik.Delegation do
 
   @impl GenServer
   def handle_continue(:subscribe, wardrik) do
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     Enum.each(pending(wardrik), &caught_up(wardrik, &1))
     {:noreply, wardrik}
   end
 
   @impl GenServer
-  def handle_info({WardrikEvents, log, event}, wardrik) do
+  def handle_info({Wardrik.EventLog, log, event}, wardrik) do
     seen(wardrik, log, event)
     {:noreply, wardrik}
   end
@@ -85,7 +85,7 @@ defmodule Wardrik.Delegation do
     store = store(wardrik)
 
     for prefix <- ["delegation/asked/", "delegation/runs/"],
-        key <- WardrikStore.keys(store, prefix),
+        key <- Wardrik.Store.keys(store, prefix),
         uniq: true,
         do: key |> String.replace_prefix(prefix, "") |> logged()
   end
@@ -107,7 +107,7 @@ defmodule Wardrik.Delegation do
 
   defp caught_up(wardrik, log, cursor \\ nil) do
     {:ok, %{events: events, next: next}} =
-      WardrikEvents.page(Wardrik.events(wardrik), [log], after: cursor, limit: 500)
+      Wardrik.EventLog.page(Wardrik.events(wardrik), [log], after: cursor, limit: 500)
 
     Enum.each(events, &seen(wardrik, log, &1))
     if events != [], do: caught_up(wardrik, log, next)
@@ -116,11 +116,11 @@ defmodule Wardrik.Delegation do
   defp taken(wardrik, log, run, id) do
     store = store(wardrik)
 
-    with %{} = asker <- WardrikStore.get(store, key("asked", log, id)) do
+    with %{} = asker <- Wardrik.Store.get(store, key("asked", log, id)) do
       {:ok, _vsn} =
-        WardrikStore.put(store, key("runs", log, run), %{"asker" => asker, "message" => id})
+        Wardrik.Store.put(store, key("runs", log, run), %{"asker" => asker, "message" => id})
 
-      :ok = WardrikStore.delete(store, key("asked", log, id))
+      :ok = Wardrik.Store.delete(store, key("asked", log, id))
     end
   end
 
@@ -128,7 +128,7 @@ defmodule Wardrik.Delegation do
     store = store(wardrik)
     key = key("runs", log, run)
 
-    with %{"asker" => asker, "message" => id} <- WardrikStore.get(store, key) do
+    with %{"asker" => asker, "message" => id} <- Wardrik.Store.get(store, key) do
       {from, _conversation} = log
       text = "From agent #{from}:\nIn answer to your message #{id}:\n#{said}"
 
@@ -142,7 +142,7 @@ defmodule Wardrik.Delegation do
         )
       end
 
-      :ok = WardrikStore.delete(store, key)
+      :ok = Wardrik.Store.delete(store, key)
     end
   end
 
@@ -165,5 +165,5 @@ defmodule Wardrik.Delegation do
     end
   end
 
-  defp store(%Wardrik{store: store}), do: WardrikStore.scope(store, "wardrik")
+  defp store(%Wardrik{store: store}), do: Wardrik.Store.scope(store, "wardrik")
 end

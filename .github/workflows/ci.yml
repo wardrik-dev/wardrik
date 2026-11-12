@@ -51,6 +51,12 @@ jobs:
       - run: mix deps.get
       - run: mix precommit
 
+  modules:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: scripts/check-modules.sh
+
   sdk:
     runs-on: ubuntu-24.04
     defaults:

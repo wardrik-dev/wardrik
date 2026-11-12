@@ -28,11 +28,11 @@ defmodule Wardrik.DefinitionsTest do
         model_options: Map.get(context, :model_options, [])
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -276,7 +276,7 @@ defmodule Wardrik.DefinitionsTest do
       answers([calling([call("call_1", "echo", %{})]), answer("Done.")])
 
       policy =
-        WardrikPolicy.new!(
+        Wardrik.Policy.new!(
           ask: %{"echo" => "Echo needs a person."},
           default: [read_only: :allow, else: :deny],
           budget: [usd: 5.00, per: :week]
@@ -292,7 +292,7 @@ defmodule Wardrik.DefinitionsTest do
       assert {:ok, %Definition{policy: json}, []} =
                Wardrik.Agent.definition(scope, "acme/triage")
 
-      assert {:ok, ^policy} = WardrikPolicy.decode(json)
+      assert {:ok, ^policy} = Wardrik.Policy.decode(json)
 
       Wardrik.Agent.ask(scope, "acme/triage", "Echo")
       until("wardrik.run.interrupted")
@@ -372,7 +372,7 @@ defmodule Wardrik.DefinitionsTest do
           defaults: %{model: @model, idle_timeout: 60}
         )
 
-      start_supervised!({WardrikStore, store}, id: :defaults_store)
+      start_supervised!({Wardrik.Store, store}, id: :defaults_store)
 
       assert {:ok, opts} =
                Wardrik.Resolution.resolve(wardrik, "acme/worker", %{"instructions" => "Work."})
@@ -521,7 +521,8 @@ defmodule Wardrik.DefinitionsTest do
         "content" => "Hi"
       })
 
-      assert_receive {WardrikEvents, {"acme/triage", "C1"}, %{"type" => "wardrik.agent.stopped"}}
+      assert_receive {Wardrik.EventLog, {"acme/triage", "C1"},
+                      %{"type" => "wardrik.agent.stopped"}}
     end
   end
 
@@ -705,12 +706,12 @@ defmodule Wardrik.DefinitionsTest do
 
   describe "triggers" do
     defp trigger_due(wardrik, id, name) do
-      store = WardrikStore.scope(wardrik.store, "wardrik_triggers")
+      store = Wardrik.Store.scope(wardrik.store, "wardrik_triggers")
       key = "triggers/" <> URI.encode_www_form(id) <> "/" <> name
-      {record, _vsn} = WardrikStore.lookup(store, key)
+      {record, _vsn} = Wardrik.Store.lookup(store, key)
       past = DateTime.utc_now() |> DateTime.add(-5) |> DateTime.to_iso8601()
-      {:ok, _vsn} = WardrikStore.put(store, key, %{record | "next_at" => past})
-      :ok = WardrikTriggers.reconcile(Wardrik.triggers(wardrik))
+      {:ok, _vsn} = Wardrik.Store.put(store, key, %{record | "next_at" => past})
+      :ok = Wardrik.Triggers.reconcile(Wardrik.triggers(wardrik))
     end
 
     test "gives a defined agent its triggers, and asks it when one comes due, asleep or not", %{
@@ -724,8 +725,8 @@ defmodule Wardrik.DefinitionsTest do
         "triggers" => [%{"every" => "0 9 * * *", "prompt" => "Write it."}]
       })
 
-      assert [{%WardrikTriggers.Trigger{name: "trigger-1"}, %DateTime{}}] =
-               WardrikTriggers.list(Wardrik.triggers(wardrik), "acme/digest")
+      assert [{%Wardrik.Triggers.Trigger{name: "trigger-1"}, %DateTime{}}] =
+               Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest")
 
       run!(scope, "agent.stop", %{"agent" => "acme/digest"})
       until("wardrik.agent.stopped")
@@ -761,7 +762,7 @@ defmodule Wardrik.DefinitionsTest do
 
       trigger_due(wardrik, "acme/digest", "weekly")
       fired("asked")
-      assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.interrupted"}}
+      assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.interrupted"}}
 
       trigger_due(wardrik, "acme/digest", "weekly")
       fired("asked")
@@ -794,14 +795,14 @@ defmodule Wardrik.DefinitionsTest do
 
       trigger_due(wardrik, "acme/digest", "weekly")
       fired("asked")
-      assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.interrupted"}}
+      assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.interrupted"}}
 
       trigger_due(wardrik, "acme/digest", "weekly")
       fired("busy")
     end
 
     defp fired(status) do
-      assert_receive {WardrikEvents, _log,
+      assert_receive {Wardrik.EventLog, _log,
                       %{"type" => "wardrik.trigger.fired", "data" => %{"status" => ^status}}}
     end
 
@@ -852,7 +853,7 @@ defmodule Wardrik.DefinitionsTest do
                  "trigger" => "daily"
                })
 
-      assert WardrikTriggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+      assert Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
 
       assert refused(scope, "agent.trigger_remove", %{
                "agent" => "acme/digest",
@@ -889,7 +890,7 @@ defmodule Wardrik.DefinitionsTest do
 
       run!(scope, "agent.forget", %{"agent" => "acme/digest"})
 
-      assert WardrikTriggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+      assert Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
     end
 
     test "turns away a webhook request it can't prove", %{scope: scope} do

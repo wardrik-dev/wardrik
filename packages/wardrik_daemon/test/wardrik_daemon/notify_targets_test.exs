@@ -6,10 +6,10 @@ defmodule WardrikDaemon.NotifyTargetsTest do
 
   alias Wardrik.Notice
   alias Wardrik.Resolver.Request
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
   alias WardrikDaemon.Client
   alias WardrikDaemon.Tokens
-  alias WardrikVault.Secret
 
   setup :set_mimic_global
 
@@ -95,7 +95,7 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     secret = %Secret{principal: %Principal{id: owner}, name: name, value: value}
 
     {:ok, _vsn} =
-      WardrikVault.put(Wardrik.vault(context.running), secret, kind: :signing_secret)
+      Wardrik.Vault.put(Wardrik.vault(context.running), secret, kind: :signing_secret)
   end
 
   defp notify(context, id) do
@@ -176,7 +176,7 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     refute JSON.encode!(added) =~ "shh"
     assert {:ok, answer} = list(admin, "growth")
     refute JSON.encode!(answer) =~ "shh"
-    refute :erlang.term_to_binary(WardrikStore.entries(context.daemon_store, "")) =~ "shh"
+    refute :erlang.term_to_binary(Wardrik.Store.entries(context.daemon_store, "")) =~ "shh"
 
     assert :ok = deliver(context, "growth/leads", "signed")
     assert_receive {:hooked, "/signed", headers, body}
@@ -188,7 +188,11 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     assert headers["x-wardrik-signature"] == Wardrik.Notify.Webhook.sign("rotated-shh", body)
 
     :ok =
-      WardrikVault.delete(Wardrik.vault(context.running), %Principal{id: "growth"}, "HOOK_SECRET")
+      Wardrik.Vault.delete(
+        Wardrik.vault(context.running),
+        %Principal{id: "growth"},
+        "HOOK_SECRET"
+      )
 
     assert deliver(context, "growth/leads", "signed") ==
              {:skip, "but growth holds no secret HOOK_SECRET to sign it with"}

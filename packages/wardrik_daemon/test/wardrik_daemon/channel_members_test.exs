@@ -3,9 +3,9 @@ defmodule WardrikDaemon.ChannelMembersTest do
 
   import WardrikDaemon.Test
 
-  alias WardrikChannel.Identities.Request
-  alias WardrikChannel.Member
-  alias WardrikChannel.Workspace
+  alias Wardrik.Chat.Identities.Request
+  alias Wardrik.Chat.Member
+  alias Wardrik.Chat.Workspace
   alias WardrikCore.Principal
   alias WardrikDaemon.ChannelMembers
 
@@ -34,7 +34,7 @@ defmodule WardrikDaemon.ChannelMembersTest do
 
   defp workspace(context, name) do
     {:ok, {adapter, opts}} = Wardrik.Operations.Channels.fetch(context.wardrik, name)
-    {:ok, workspace} = WardrikChannel.workspace(WardrikChannel.channel(adapter, opts), "T1")
+    {:ok, workspace} = Wardrik.Chat.workspace(Wardrik.Chat.channel(adapter, opts), "T1")
     workspace
   end
 
@@ -76,6 +76,6 @@ defmodule WardrikDaemon.ChannelMembersTest do
 
     assert {:error, why} = Workspace.member_scope(slack, @stranger)
     assert why =~ "Ask an admin"
-    assert WardrikChannel.Workspace.offered(slack, @stranger) == []
+    assert Wardrik.Chat.Workspace.offered(slack, @stranger) == []
   end
 end

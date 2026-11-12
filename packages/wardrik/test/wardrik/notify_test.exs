@@ -76,21 +76,21 @@ defmodule Wardrik.NotifyTest do
            {:"wardrik #{context.test}", channels: Map.get(context, :channels, %{"board" => "W1"})}},
         name: :"wardrik #{context.test}",
         store: store,
-        vault_keys: [WardrikVault.generate_key()],
+        vault_keys: [Wardrik.Vault.generate_key()],
         capabilities: [tools: Wardrik.Test.Tools],
         channels: [board: {Wardrik.Test.Board, test: self()}],
         notify: [targets: targets, retries: [attempts: 2, max_wait: 0]],
         defaults: Map.get(context, :defaults, %{})
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     :ok =
       seal(wardrik, {"deployment", "HOOK_SECRET"}, "shh", :signing_secret)
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 

@@ -1,0 +1,450 @@
+defmodule Wardrik.EventLog.ViewsTest do
+  use ExUnit.Case, async: true
+
+  alias Wardrik.EventLog.Activity
+  alias Wardrik.EventLog.Heads
+  alias Wardrik.EventLog.Runs
+  alias Wardrik.EventLog.Timeline
+  alias Wardrik.EventLog.View
+
+  @run "0af7651916cd43dd8448eb211c80319c"
+  @at "2026-10-22T09:00:00Z"
+
+  defp event(type, data, time \\ @at) do
+    %{
+      "type" => "wardrik." <> type,
+      "data" => data,
+      "time" => time,
+      "traceparent" => "00-#{@run}-b7ad6b7169203331-01"
+    }
+  end
+
+  defp tool(id, extra \\ %{}),
+    do: %{"tool" => %{"name" => "search", "call" => Map.put(extra, "id", id)}}
+
+  defp run, do: %{"run" => %{"id" => @run, "message_ids" => ["msg_1"]}}
+
+  defp doing(activity),
+    do:
+      Enum.map(
+        activity["doing"],
+        &(&1["type"] <> " " <> (get_in(&1, ["tool", "call", "id"]) || ""))
+      )
+
+  describe "activity" do
+    test "is every tool call running, oldest first, then the last to settle" do
+      activity =
+        View.fold(
+          [
+            event("run.started", run()),
+            event("tool_call.started", tool("a")),
+            event("tool_call.started", tool("b"), "2026-10-22T09:00:05.000000Z")
+          ],
+          Activity
+        )
+
+      assert doing(activity) == ["wardrik.tool_call.started a", "wardrik.tool_call.started b"]
+
+      assert [%{"since" => @at}, %{"since" => later}] = activity["doing"]
+      assert later == "2026-10-22T09:00:05.000000Z"
+
+      activity = Activity.handle_event(event("tool_call.completed", tool("a")), activity)
+      assert doing(activity) == ["wardrik.tool_call.started b"]
+
+      activity = Activity.handle_event(event("tool_call.denied", tool("b")), activity)
+      assert doing(activity) == ["wardrik.tool_call.denied b"]
+
+      activity = Activity.handle_event(event("tool_call.completed", tool("c")), activity)
+      assert doing(activity) == ["wardrik.tool_call.completed c"]
+    end
+
+    test "keeps a tool call that runs again as one call" do
+      activity =
+        View.fold(
+          [
+            event("run.started", run()),
+            event("tool_call.started", tool("a")),
+            event("tool_call.started", tool("b")),
+            event("tool_call.retrying", tool("a")),
+            event("tool_call.started", tool("a"))
+          ],
+          Activity
+        )
+
+      assert doing(activity) == ["wardrik.tool_call.started b", "wardrik.tool_call.started a"]
+    end
+
+    test "counts the messages waiting, and goes idle when a run ends" do
+      activity =
+        View.fold(
+          [
+            event("message.created", %{"message" => %{"id" => "msg_1"}}),
+            event("message.created", %{"message" => %{"id" => "msg_2"}}),
+            event("run.started", run(), "2026-10-22T09:00:01Z"),
+            event("run.interrupted", %{"interrupts" => [%{"id" => "model"}]})
+          ],
+          Activity,
+          since: ~U[2026-10-22 08:00:00Z]
+        )
+
+      assert %{"pending" => 1, "doing" => [%{"interrupts" => [%{"id" => "model"}]}]} = activity
+
+      activity =
+        Activity.handle_event(
+          event("run.cancelled", %{"dropped" => 3}, "2026-10-22T09:00:02Z"),
+          activity
+        )
+
+      assert activity == %{"doing" => [], "pending" => 0, "since" => "2026-10-22T09:00:02Z"}
+      assert Activity.handle_event(%{"type" => "wardrik.message.delta"}, activity) == activity
+    end
+
+    test "keeps its time when nothing it does changes" do
+      activity = View.fold([event("step.started", %{"step" => %{"name" => "plan"}})], Activity)
+
+      assert Activity.handle_event(event("message.delta", %{}, "later"), activity) == activity
+    end
+  end
+
+  describe "timeline" do
+    test "starts again where the conversation was cleared, and says so" do
+      timeline =
+        View.fold(
+          [
+            event("run.started", run()),
+            event("run.completed", run()),
+            event("conversation.cleared", %{"messages_before" => 2})
+          ],
+          Timeline
+        )
+
+      assert Timeline.items(timeline) == []
+      assert Timeline.touched(timeline) == :reset
+      assert Timeline.current_run(timeline) == nil
+    end
+
+    test "names the latest run, whether it goes on, and the calls it waits on" do
+      timeline = View.fold([event("run.started", run())], Timeline)
+
+      assert %{id: "run-" <> @run} = Timeline.current_run(timeline)
+      assert Timeline.item(timeline, "run-" <> @run) == Timeline.current_run(timeline)
+      assert Timeline.running?(timeline)
+
+      timeline =
+        Timeline.handle_event(
+          event("run.interrupted", %{"interrupts" => [%{"id" => "a"}]}),
+          timeline
+        )
+
+      refute Timeline.running?(timeline)
+      assert Timeline.interrupts(timeline) == [%{"id" => "a"}]
+    end
+
+    test "folds what delegates say and do into a step of each, not the agent's answer" do
+      main = "b7ad6b7169203331"
+
+      on_span = fn event, span ->
+        event
+        |> Map.put("traceparent", "00-#{@run}-#{span}-01")
+        |> Map.put("parentspanid", main)
+      end
+
+      inside = fn event, span, parent ->
+        event
+        |> Map.put("traceparent", "00-#{@run}-#{span}-01")
+        |> Map.put("parentspanid", parent)
+      end
+
+      spec = "a000000000000001"
+      adoption = "b000000000000001"
+
+      started =
+        &on_span.(event("subagent.started", %{"prompt" => &1, "agent" => %{"name" => &2}}), &3)
+
+      timeline =
+        View.fold(
+          [
+            event("run.started", run()),
+            event("tool_call.started", tool("c1")),
+            started.("Find the spec", "spec", spec),
+            started.("Find adopters", "adoption", adoption),
+            inside.(
+              event("message.delta", %{"message" => %{"id" => "d"}, "delta" => "Hmm"}),
+              "c000000000000001",
+              spec
+            ),
+            inside.(
+              event("tool_call.started", tool("d1")),
+              "c000000000000002",
+              "c000000000000001"
+            ),
+            on_span.(event("subagent.progress", %{"tool_calls" => 1}), spec),
+            on_span.(
+              event("subagent.completed", %{
+                "message" => %{"parts" => [%{"type" => "text", "content" => "Component model."}]},
+                "tool_calls" => 2,
+                "cost" => %{"micro_usd" => 1_200}
+              }),
+              spec
+            ),
+            on_span.(
+              event("subagent.failed", %{"error" => %{"message" => "timed out"}}),
+              adoption
+            ),
+            event("tool_call.completed", Map.put(tool("c1"), "status", "ok")),
+            event("message.completed", %{
+              "message" => %{
+                "id" => "m",
+                "parts" => [%{"type" => "text", "content" => "Found it."}]
+              },
+              "cost" => %{"micro_usd" => 500}
+            }),
+            event("run.completed", run())
+          ],
+          Timeline
+        )
+
+      assert [run] = Timeline.items(timeline)
+
+      assert [
+               %{type: :tool, id: "tool-c1", status: :ok},
+               %{
+                 type: :subagent,
+                 name: "spec",
+                 prompt: "Find the spec",
+                 status: :ok,
+                 tools: 2,
+                 answer: "Component model."
+               },
+               %{type: :subagent, name: "adoption", status: :error, error: "timed out", tools: 0},
+               %{type: :text, text: "Found it."}
+             ] = run.steps
+
+      assert run.cost_micro_usd == 1_700
+    end
+
+    test "reads a run's thinking, answer and tool calls in order" do
+      timeline =
+        View.fold(
+          [
+            event("message.created", %{
+              "message" => %{
+                "id" => "msg_1",
+                "role" => "user",
+                "parts" => [%{"type" => "text", "content" => "Hi"}]
+              },
+              "sender" => %{"id" => "u1", "name" => "Ada"}
+            }),
+            event("run.started", run()),
+            event("message.started", %{"request" => %{"model" => "haiku"}}),
+            event("reasoning.delta", %{"message" => %{"id" => "m"}, "delta" => "Hm"}),
+            event("message.delta", %{"message" => %{"id" => "m"}, "delta" => "Lo"}),
+            event("tool_call.started", tool("a", %{"arguments" => %{"q" => "x"}})),
+            event(
+              "tool_call.completed",
+              Map.merge(tool("a", %{"result" => "y"}), %{"status" => "ok"})
+            ),
+            event(
+              "tool_call.completed",
+              Map.merge(tool("b"), %{"status" => "error", "error" => %{"message" => "no"}})
+            ),
+            event("tool_call.denied", Map.put(tool("c"), "reason", "not allowed")),
+            event("message.completed", %{
+              "message" => %{"id" => "m", "parts" => [%{"type" => "text", "content" => "Hello"}]},
+              "cost" => %{"micro_usd" => 7}
+            }),
+            event("run.completed", run())
+          ],
+          Timeline
+        )
+
+      assert [%{kind: :user, text: "Hi", sender: "Ada"}, run] = Timeline.items(timeline)
+      assert %{status: :completed, model: "haiku", cost_micro_usd: 7, finished_at: @at} = run
+
+      assert [
+               %{type: :thinking, text: "Hm", live: false},
+               %{type: :text, text: "Hello", live: false},
+               %{type: :tool, status: :ok, result: "y", arguments: %{"q" => "x"}},
+               %{type: :tool, status: :error, error: "no"},
+               %{type: :tool, status: :denied, error: "not allowed"}
+             ] = run.steps
+
+      assert Timeline.touched(timeline) == ["run-" <> @run]
+    end
+
+    test "waits on a person, and runs on once they answer" do
+      timeline =
+        View.fold(
+          [
+            event("run.started", run()),
+            event("run.interrupted", %{"interrupts" => [%{"id" => "a"}, %{"id" => "b"}]}),
+            event("interrupt.resolved", %{"interrupt" => %{"id" => "a"}}),
+            event("interrupt.resolved", %{"interrupt" => %{"id" => "z"}})
+          ],
+          Timeline
+        )
+
+      assert [%{status: :waiting, interrupts: [%{"id" => "b"}]}] = Timeline.items(timeline)
+
+      timeline = Timeline.handle_event(event("run.resumed", %{}), timeline)
+      assert [%{status: :running, interrupts: []}] = Timeline.items(timeline)
+    end
+
+    test "says why a run failed, briefly" do
+      long = String.duplicate("x", 400)
+
+      timeline =
+        View.fold(
+          [
+            event("run.started", run()),
+            event("message.delta", %{"message" => %{"id" => "m"}, "delta" => "Lo"}),
+            event("message.completed", %{
+              "message" => %{"id" => "m", "parts" => []},
+              "error" => %{"type" => "timeout"}
+            }),
+            event("run.failed", %{"error" => %{"message" => long}}),
+            Map.delete(event("tool_call.started", tool("x")), "traceparent"),
+            %{"type" => "not an event"}
+          ],
+          Timeline
+        )
+
+      assert [%{status: :failed, error: error, steps: [%{text: "Lo", live: false}]}] =
+               Timeline.items(timeline)
+
+      assert String.length(error) == 301
+      assert Timeline.touched(timeline) == []
+    end
+  end
+
+  describe "runs" do
+    test "sums each run, and says who started it" do
+      runs =
+        View.fold(
+          [
+            event("message.created", %{
+              "message" => %{"id" => "msg_1"},
+              "sender" => %{"id" => "u1", "name" => "Ada"}
+            }),
+            event("run.started", run(), "2026-10-22T09:00:00Z"),
+            event("message.started", %{"request" => %{"model" => "haiku"}}),
+            event("message.completed", %{
+              "usage" => %{"input_tokens" => 10, "output_tokens" => 5},
+              "cost" => %{"micro_usd" => 3}
+            }),
+            event("tool_call.started", tool("a")),
+            event("tool_call.completed", Map.put(tool("a"), "status", "error")),
+            event("tool_call.denied", tool("b")),
+            event("run.interrupted", %{}),
+            event("run.resumed", %{}),
+            event("run.failed", %{"error" => %{"message" => "boom"}}, "2026-10-22T09:00:02Z"),
+            %{"not" => "an event"}
+          ],
+          Runs
+        )
+
+      assert [run] = Runs.runs(runs)
+
+      assert %{
+               source: "Ada",
+               model: "haiku",
+               status: :failed,
+               error: "boom",
+               tool_calls: 1,
+               tool_errors: 2,
+               input_tokens: 10,
+               output_tokens: 5,
+               cost_micro_usd: 3
+             } = run
+
+      assert Runs.duration_ms(run) == 2_000
+
+      assert Runs.totals(runs) == %{
+               runs: 1,
+               failed: 1,
+               tool_calls: 1,
+               input_tokens: 10,
+               output_tokens: 5,
+               cost_micro_usd: 3,
+               last_at: "2026-10-22T09:00:00Z"
+             }
+    end
+
+    test "counts what a run's subagents did and spent as the run's" do
+      runs =
+        View.fold(
+          [
+            event("run.started", run()),
+            event("message.completed", %{"cost" => %{"micro_usd" => 3}}),
+            event("subagent.progress", %{"tool_calls" => 1}),
+            event("subagent.completed", %{
+              "tool_calls" => 2,
+              "usage" => %{"input_tokens" => 40, "output_tokens" => 8},
+              "cost" => %{"micro_usd" => 20}
+            }),
+            event("subagent.failed", %{"tool_calls" => 1, "cost" => nil}),
+            event("run.completed", %{})
+          ],
+          Runs
+        )
+
+      assert [%{tool_calls: 3, input_tokens: 40, output_tokens: 8, cost_micro_usd: 23}] =
+               Runs.runs(runs)
+    end
+
+    test "keeps each run's events where asked, and adds totals up" do
+      events = [event("run.started", run()), event("tool_call.started", tool("a"))]
+
+      assert [%{events: ^events}] = events |> View.fold(Runs, events: true) |> Runs.runs()
+      refute events |> View.fold(Runs) |> Runs.runs() |> hd() |> Map.has_key?(:events)
+
+      totals = events |> View.fold(Runs) |> Runs.totals()
+      none = Runs.totals(Runs.init([]))
+
+      assert Runs.sum([totals, totals, none]) == %{
+               runs: 2,
+               failed: 0,
+               tool_calls: 2,
+               input_tokens: 0,
+               output_tokens: 0,
+               cost_micro_usd: 0,
+               last_at: @at
+             }
+    end
+
+    test "has nothing to say before a run, or of a run going on" do
+      runs = View.fold([event("message.delta", %{}), event("run.started", run())], Runs)
+
+      assert [%{status: :running} = run] = Runs.runs(runs)
+      assert Runs.duration_ms(run) == nil
+
+      assert Runs.totals(Runs.init([])) == %{
+               runs: 0,
+               failed: 0,
+               tool_calls: 0,
+               input_tokens: 0,
+               output_tokens: 0,
+               cost_micro_usd: 0,
+               last_at: nil
+             }
+    end
+  end
+
+  describe "an update in the heads table" do
+    setup context do
+      table = :"heads #{context.test}"
+      start_supervised!({Heads, %{heads: table}})
+      %{table: table}
+    end
+
+    test "applies again when another update came in between", %{table: table} do
+      interleaved = fn count ->
+        if count == 0, do: Heads.update(table, :key, initial: 0, with: &(&1 + 10))
+        count + 1
+      end
+
+      assert Heads.update(table, :key, initial: 0, with: interleaved) == {10, 11}
+      assert Heads.update(table, :key, initial: 0, with: &(&1 * 2)) == {11, 22}
+    end
+  end
+end

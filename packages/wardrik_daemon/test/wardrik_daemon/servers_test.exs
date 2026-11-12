@@ -5,12 +5,12 @@ defmodule WardrikDaemon.ServersTest do
   import WardrikDaemon.Test
 
   alias Wardrik.Resolver.Request
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
   alias WardrikDaemon.Client
   alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
-  alias WardrikVault.Secret
 
   setup :set_mimic_global
 
@@ -74,7 +74,7 @@ defmodule WardrikDaemon.ServersTest do
 
   defp seal(context, owner, name, kind) do
     secret = %Secret{principal: %Principal{id: owner}, name: name, value: "sk-" <> name}
-    {:ok, _vsn} = WardrikVault.put(Wardrik.vault(context.running), secret, kind: kind)
+    {:ok, _vsn} = Wardrik.Vault.put(Wardrik.vault(context.running), secret, kind: kind)
   end
 
   test "an owner's server reaches only the agents the resolver gives it to", context do
@@ -120,8 +120,8 @@ defmodule WardrikDaemon.ServersTest do
       assert {:error, "not_found", _message} = remove(ana, owner, "crm")
     end
 
-    assert "growth:crm" in WardrikMCP.servers(mcp(context))
-    refute "growth:mine" in WardrikMCP.servers(mcp(context))
+    assert "growth:crm" in Wardrik.MCP.servers(mcp(context))
+    refute "growth:mine" in Wardrik.MCP.servers(mcp(context))
 
     cy = client(context, "user:growth/@cy")
     assert {:ok, _added} = add(cy, "growth/@cy", server("notes"))
@@ -142,8 +142,8 @@ defmodule WardrikDaemon.ServersTest do
     seal(context, "growth", "CRM_KEY", :header)
     assert {:ok, %{"connected" => true}} = add(admin, "growth", input)
 
-    assert %WardrikMCP.Server{transport: {:streamable_http, http}, owner: "growth"} =
-             WardrikMCP.Servers.all(mcp(context))["growth:crm"]
+    assert %Wardrik.MCP.Server{transport: {:streamable_http, http}, owner: "growth"} =
+             Wardrik.MCP.Servers.all(mcp(context))["growth:crm"]
 
     assert http[:headers] == %{"authorization" => ["Token ", {:secret, "CRM_KEY"}]}
 
@@ -151,9 +151,11 @@ defmodule WardrikDaemon.ServersTest do
     assert %{"name" => "crm", "auth" => "secret"} = hd(listed)
     refute JSON.encode!(answer) =~ "sk-"
 
-    stored = :erlang.term_to_binary(WardrikStore.entries(context.daemon_store, "servers/"))
+    stored = :erlang.term_to_binary(Wardrik.Store.entries(context.daemon_store, "servers/"))
     refute stored =~ "sk-CRM_KEY"
-    refute :erlang.term_to_binary(WardrikStore.entries(context.running.store, "")) =~ "sk-CRM_KEY"
+
+    refute :erlang.term_to_binary(Wardrik.Store.entries(context.running.store, "")) =~
+             "sk-CRM_KEY"
   end
 
   test "refuses a URL the egress check refuses, and a server it doesn't read", context do
@@ -167,7 +169,7 @@ defmodule WardrikDaemon.ServersTest do
 
     assert {:error, "invalid_request", message} = add(admin, "growth", inside)
     assert message == "The server can't be reached: 169.254.169.254 is a private address."
-    refute "growth:inside" in WardrikMCP.servers(mcp(context))
+    refute "growth:inside" in Wardrik.MCP.servers(mcp(context))
 
     for input <- [
           Map.delete(server("x"), "auth"),
@@ -235,8 +237,8 @@ defmodule WardrikDaemon.ServersTest do
             %{"connected" => false, "authorization" => %{"url" => "https://google.test" <> _}}} =
              add(admin, "growth/@cy", ads)
 
-    assert %WardrikMCP.Server{credential_name: "google"} =
-             WardrikMCP.Servers.all(mcp(context))["growth/@cy:ads"]
+    assert %Wardrik.MCP.Server{credential_name: "google"} =
+             Wardrik.MCP.Servers.all(mcp(context))["growth/@cy:ads"]
 
     assert {:error, "invalid_request", "payments has no OAuth app google."} =
              add(admin, "payments", ads)
@@ -253,32 +255,32 @@ defmodule WardrikDaemon.ServersTest do
     {:ok, _added} = add(admin, "growth", server("crm"))
     {:ok, _added} = add(admin, "payments", server("docs"))
 
-    # Another node: its own WardrikMCP over the same store.
+    # Another node: its own Wardrik.MCP over the same store.
     other = :"other #{context.test}"
 
     start_supervised!(
-      {WardrikMCP, name: other, store: context.running.store, reconcile: :infinity}
+      {Wardrik.MCP, name: other, store: context.running.store, reconcile: :infinity}
     )
 
-    :ok = WardrikMCP.reconcile(other)
-    assert WardrikMCP.servers(other) == ["growth:crm", "payments:docs"]
+    :ok = Wardrik.MCP.reconcile(other)
+    assert Wardrik.MCP.servers(other) == ["growth:crm", "payments:docs"]
 
     assert {:ok, %{"name" => "crm"}} = remove(admin, "growth", "crm")
-    refute "growth:crm" in WardrikMCP.servers(mcp(context))
-    :ok = WardrikMCP.reconcile(other)
-    assert WardrikMCP.servers(other) == ["payments:docs"]
+    refute "growth:crm" in Wardrik.MCP.servers(mcp(context))
+    :ok = Wardrik.MCP.reconcile(other)
+    assert Wardrik.MCP.servers(other) == ["payments:docs"]
 
     assert {:ok, %{"events" => events}} = Wardrik.run(context.admin, "audit.list", %{})
 
     assert for(%{"subject" => "servers/crm"} = event <- events, do: event["type"]) ==
              ["wardrik.server.added", "wardrik.server.removed"]
 
-    # The daemon's own record is what starts: one WardrikMCP lost is started again, and one it
+    # The daemon's own record is what starts: one Wardrik.MCP lost is started again, and one it
     # kept that the daemon doesn't is stopped.
-    :ok = WardrikMCP.remove(mcp(context), "payments:docs")
+    :ok = Wardrik.MCP.remove(mcp(context), "payments:docs")
 
     :ok =
-      WardrikMCP.add(mcp(context), "growth:stray",
+      Wardrik.MCP.add(mcp(context), "growth:stray",
         transport: {:streamable_http, url: "http://127.0.0.1:1/stray"}
       )
 
@@ -291,19 +293,19 @@ defmodule WardrikDaemon.ServersTest do
     end)
 
     running = Wardrik.Instance.fetch!(context.wardrik)
-    assert "payments:docs" in WardrikMCP.servers(Wardrik.mcp(running))
-    refute "growth:stray" in WardrikMCP.servers(Wardrik.mcp(running))
-    refute "growth:crm" in WardrikMCP.servers(Wardrik.mcp(running))
+    assert "payments:docs" in Wardrik.MCP.servers(Wardrik.mcp(running))
+    refute "growth:stray" in Wardrik.MCP.servers(Wardrik.mcp(running))
+    refute "growth:crm" in Wardrik.MCP.servers(Wardrik.mcp(running))
   end
 
   test "starts what the store keeps and stops what it doesn't, each time it's asked", context do
     admin = client(context, "user:admin")
     {:ok, _added} = add(admin, "growth", server("crm"))
-    :ok = WardrikMCP.remove(mcp(context), "growth:crm")
+    :ok = Wardrik.MCP.remove(mcp(context), "growth:crm")
 
     assert :ok = Servers.start(context.wardrik, context.daemon_store)
-    assert "growth:crm" in WardrikMCP.servers(mcp(context))
-    assert "search" in WardrikMCP.servers(mcp(context))
+    assert "growth:crm" in Wardrik.MCP.servers(mcp(context))
+    assert "search" in Wardrik.MCP.servers(mcp(context))
   end
 
   # Removing is its own verb, as Kubernetes' delete: adding doesn't allow it.

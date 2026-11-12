@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.OAuthApps do
   @moduledoc """
-  The OAuth apps people sign in with. It's the daemon's `WardrikOAuth.Resolver`, served at
+  The OAuth apps people sign in with. It's the daemon's `Wardrik.OAuth.Resolver`, served at
   `/v1/owners/{owner}/providers`.
 
       wardrik provider add linear --issuer https://linear.app --client-id ID --secret LINEAR_SECRET
@@ -14,14 +14,14 @@ defmodule WardrikDaemon.OAuthApps do
     * Adding or removing one records `provider.added` or `provider.removed` in the audit.
   """
 
-  @behaviour WardrikOAuth.Resolver
+  @behaviour Wardrik.OAuth.Resolver
 
   alias Wardrik.Error
+  alias Wardrik.OAuth.Provider
   alias WardrikCore.Principal
   alias WardrikDaemon.Owned
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Servers
-  alias WardrikOAuth.Provider
 
   @kind "providers"
   @urls ~w(issuer resource authorization_endpoint token_endpoint)
@@ -39,8 +39,8 @@ defmodule WardrikDaemon.OAuthApps do
     "flow" => {:flow, %{"browser" => :browser, "device" => :device}}
   }
 
-  @impl WardrikOAuth.Resolver
-  def provider(%WardrikOAuth.Resolver.Request{name: name, principal: %Principal{id: id}}, daemon) do
+  @impl Wardrik.OAuth.Resolver
+  def provider(%Wardrik.OAuth.Resolver.Request{name: name, principal: %Principal{id: id}}, daemon) do
     case nearest(daemon, id, name) do
       nil -> {:error, :not_found}
       app -> resolved(daemon, app)
@@ -94,7 +94,7 @@ defmodule WardrikDaemon.OAuthApps do
          {:ok, secret} <- client_secret(daemon, owner, input["client_secret"]),
          {:ok, opts} <- options(app, input) do
       app = Map.merge(app, %{opts: opts, secret: secret})
-      {:ok, _vsn} = WardrikStore.put(store, Owned.path(@kind, owner, name), app)
+      {:ok, _vsn} = Wardrik.Store.put(store, Owned.path(@kind, owner, name), app)
       {:ok, app}
     end
   end
@@ -118,12 +118,12 @@ defmodule WardrikDaemon.OAuthApps do
   """
   @spec forget(Servers.daemon(), {String.t(), String.t()}) :: {:ok, map()} | :error
   def forget(%{wardrik: wardrik, store: store}, {owner, name}) do
-    case WardrikStore.get(store, Owned.path(@kind, owner, name)) do
+    case Wardrik.Store.get(store, Owned.path(@kind, owner, name)) do
       nil ->
         :error
 
       app ->
-        :ok = WardrikStore.delete(store, Owned.path(@kind, owner, name))
+        :ok = Wardrik.Store.delete(store, Owned.path(@kind, owner, name))
         :ok = forget_client(Wardrik.Instance.fetch!(wardrik), app)
         {:ok, app}
     end
@@ -148,7 +148,7 @@ defmodule WardrikDaemon.OAuthApps do
   defp app(daemon, owner, name), do: added(daemon, owner, name)
 
   defp added(%{store: store}, owner, name),
-    do: WardrikStore.get(store, Owned.path(@kind, owner, name))
+    do: Wardrik.Store.get(store, Owned.path(@kind, owner, name))
 
   defp owned(daemon, "deployment"),
     do: all_configured(daemon) ++ Owned.own(daemon.store, @kind, "deployment")
@@ -177,7 +177,7 @@ defmodule WardrikDaemon.OAuthApps do
   defp read_secret(%{wardrik: wardrik}, %{owner: owner, name: name, secret: secret}) do
     vault = wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()
 
-    case WardrikVault.fetch(vault, %Principal{id: owner}, secret, kind: :client_secret) do
+    case Wardrik.Vault.fetch(vault, %Principal{id: owner}, secret, kind: :client_secret) do
       {:ok, value} -> {:ok, value}
       {:error, _reason} -> {:error, "#{name}'s client secret #{secret} isn't sealed for #{owner}"}
     end
@@ -213,7 +213,7 @@ defmodule WardrikDaemon.OAuthApps do
   defp client_secret(%{wardrik: wardrik}, owner, %{"name" => name}) do
     vault = wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()
 
-    if {owner, name, :client_secret} in WardrikVault.list(vault),
+    if {owner, name, :client_secret} in Wardrik.Vault.list(vault),
       do: {:ok, name},
       else:
         {:error,
@@ -275,6 +275,6 @@ defmodule WardrikDaemon.OAuthApps do
   defp changed(%{wardrik: wardrik}, type, {owner, name}, actor) do
     change = {type, "providers/" <> name, %{"provider" => %{"name" => name}, "owner" => owner}}
     events = wardrik |> Wardrik.Instance.fetch!() |> Wardrik.events()
-    :ok = WardrikEvents.record(events, change, actor: actor)
+    :ok = Wardrik.EventLog.record(events, change, actor: actor)
   end
 end

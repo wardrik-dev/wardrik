@@ -253,14 +253,14 @@ defmodule WardrikDaemon.ServerTest do
   end
 
   test "finds the deployment's secrets in the vault before it opens", context do
-    store = WardrikStore.ETS.new(name: :"sealed #{context.test}")
-    start_supervised!({WardrikStore, store})
-    key = WardrikVault.generate_key()
+    store = Wardrik.Store.ETS.new(name: :"sealed #{context.test}")
+    start_supervised!({Wardrik.Store, store})
+    key = Wardrik.Vault.generate_key()
     vault = :"vault #{context.test}"
-    start_supervised!({WardrikVault, name: vault, store: store, keys: [key]})
+    start_supervised!({Wardrik.Vault, name: vault, store: store, keys: [key]})
 
     {:ok, _vsn} =
-      WardrikVault.put(vault, %WardrikVault.Secret{
+      Wardrik.Vault.put(vault, %Wardrik.Vault.Secret{
         principal: %WardrikCore.Principal{id: "deployment"},
         name: "MODEL",
         value: "m"

@@ -33,7 +33,7 @@ Start `iex`, then paste this with your key:
 ```elixir
 Mix.install([
   {:wardrik_acp, "~> 0.1.0-rc.2"},
-  {:wardrik_policy, "~> 0.1.0-rc.3"}
+  {:wardrik, "~> 0.1.0-rc.10"}
 ])
 
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
@@ -79,7 +79,7 @@ end, nil)
 ## 5. Start an agent
 
 ```elixir
-policy = WardrikPolicy.new!(deny: ["claude/delete"], default: [read_only: :allow, else: :ask])
+policy = Wardrik.Policy.new!(deny: ["claude/delete"], default: [read_only: :allow, else: :ask])
 
 {:ok, agent} =
   WardrikCore.start_agent(
@@ -87,7 +87,7 @@ policy = WardrikPolicy.new!(deny: ["claude/delete"], default: [read_only: :allow
     model: "anthropic:claude-haiku-4-5",
     instructions: "You send coding work to the claude tool, then say what it did.",
     capabilities: [{WardrikACP, name: :acp, harnesses: [:claude]}],
-    middleware: [{WardrikPolicy.Middleware, policy}]
+    middleware: [{Wardrik.Policy.Middleware, policy}]
   )
 ```
 
@@ -176,5 +176,5 @@ day.
 ## Next
 
 - `WardrikACP.Harness` for every harness option, and `WardrikACP.Checkout` for `base` and `fetch`.
-- [WardrikPolicy](https://hexdocs.pm/wardrik_policy) for rules that match a request's arguments,
+- `Wardrik.Policy` for rules that match a request's arguments,
   such as `"claude/execute(command = mix test)"`.

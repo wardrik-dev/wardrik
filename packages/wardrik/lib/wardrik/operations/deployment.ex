@@ -10,7 +10,7 @@ defmodule Wardrik.Operations.Deployment do
   @spec audit(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def audit(scope, input) do
     opts = [after: input["starting_after"] || 0, limit: input["limit"] || 100]
-    %{events: events, next: next} = WardrikEvents.audit(Wardrik.events(scope.wardrik), opts)
+    %{events: events, next: next} = Wardrik.EventLog.audit(Wardrik.events(scope.wardrik), opts)
     {:ok, %{"events" => events, "next" => next}}
   end
 
@@ -25,8 +25,8 @@ defmodule Wardrik.Operations.Deployment do
 
     _failed = Wardrik.Resolution.refresh(wardrik, named || :all)
 
-    :ok = WardrikMCP.reconcile(Wardrik.mcp(wardrik))
-    :ok = WardrikTriggers.reconcile(Wardrik.triggers(wardrik))
+    :ok = Wardrik.MCP.reconcile(Wardrik.mcp(wardrik))
+    :ok = Wardrik.Triggers.reconcile(Wardrik.triggers(wardrik))
 
     here = to_string(node())
 
@@ -58,7 +58,7 @@ defmodule Wardrik.Operations.Deployment do
     states =
       agents
       |> WardrikCore.running()
-      |> Enum.map(fn {key, _pid} -> Snapshot.status(WardrikEvents.activity(events, key)) end)
+      |> Enum.map(fn {key, _pid} -> Snapshot.status(Wardrik.EventLog.activity(events, key)) end)
       |> Enum.frequencies()
 
     {:ok,

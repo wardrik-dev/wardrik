@@ -120,10 +120,10 @@ config :my_app, MyApp.AgentRuntime,
   ]
 ```
 
-See [WardrikChannel](https://hexdocs.pm/wardrik_channel) for `identities`, rooms, threads and
+See `Wardrik.Chat` for `identities`, rooms, threads and
 approvals, and `WardrikSlack` for every option.
 
-Phoenix endpoint and router fragments: implement `MyAppWeb.WardrikSession` as a `WardrikHTTP.Authenticator`.
+Phoenix endpoint and router fragments: implement `MyAppWeb.WardrikSession` as a `Wardrik.HTTP.Authenticator`.
 Slack verifies the raw request body. Configure the endpoint parser before mounting the router:
 
 ```elixir

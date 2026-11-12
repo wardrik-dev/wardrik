@@ -21,7 +21,7 @@ defmodule Wardrik.FilesTest do
         store: store
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     scope = owner(wardrik)

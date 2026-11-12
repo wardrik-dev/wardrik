@@ -5,8 +5,8 @@ defmodule WardrikDaemon.AgentRecordsTest do
   alias WardrikDaemon.ULID
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"records #{context.test}")
-    start_supervised!({WardrikStore, store})
+    store = Wardrik.Store.ETS.new(name: :"records #{context.test}")
+    start_supervised!({Wardrik.Store, store})
     %{store: store}
   end
 
@@ -70,20 +70,20 @@ defmodule WardrikDaemon.AgentRecordsTest do
              AgentRecords.create(store, owner: "acme", name: "notes", source: :file)
 
     assert AgentRecords.file?(notes)
-    assert WardrikStore.keys(store, "agents/") == ["agents/" <> URI.encode_www_form(notes.id)]
+    assert Wardrik.Store.keys(store, "agents/") == ["agents/" <> URI.encode_www_form(notes.id)]
   end
 
   test "reads who holds a name from its claim, before that record reaches this node", %{
     store: store
   } do
     holder = %{id: "agt_elsewhere", org: "acme", owner: "acme", name: "notes", source: :file}
-    {:ok, _vsn} = WardrikStore.put(store, "agent_names/acme/notes", holder, if_vsn: nil)
+    {:ok, _vsn} = Wardrik.Store.put(store, "agent_names/acme/notes", holder, if_vsn: nil)
 
     assert {:error, {:taken, ^holder}} =
              AgentRecords.create(store, owner: "acme", name: "notes", source: :file)
 
     assert AgentRecords.named(store, "acme", "notes") == {:ok, holder}
-    assert WardrikStore.keys(store, "agents/") == []
+    assert Wardrik.Store.keys(store, "agents/") == []
   end
 
   test "names a definition's shared workspaces by the IDs of its org's agents", %{store: store} do

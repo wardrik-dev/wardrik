@@ -19,7 +19,7 @@ defmodule Wardrik.StoreFailuresTest do
         store: store
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
     %{store: store, scope: owner(wardrik)}
   end

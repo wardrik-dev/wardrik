@@ -46,7 +46,7 @@ defmodule WardrikSlack do
 
   ## Options
 
-  Takes `WardrikChannel`'s options, with the bot token (`xoxb-...`) as `:token`, and these:
+  Takes `Wardrik.Chat`'s options, with the bot token (`xoxb-...`) as `:token`, and these:
 
   #{NimbleOptions.docs(@schema)}
 
@@ -56,25 +56,25 @@ defmodule WardrikSlack do
     * A message the agent takes gets :eyes:, then :white_check_mark: once answered.
   """
 
-  use WardrikChannel
+  use Wardrik.Chat
 
-  alias WardrikChannel.Channel
-  alias WardrikChannel.Install
-  alias WardrikChannel.Outbound
-  alias WardrikChannel.Workspace
+  alias Wardrik.Chat.Channel
+  alias Wardrik.Chat.Install
+  alias Wardrik.Chat.Outbound
+  alias Wardrik.Chat.Workspace
   alias WardrikSlack.API
   alias WardrikSlack.Blocks
   alias WardrikSlack.Messages
 
-  @doc "Returns the options it takes beyond `WardrikChannel`'s, as a `NimbleOptions` schema."
+  @doc "Returns the options it takes beyond `Wardrik.Chat`'s, as a `NimbleOptions` schema."
   @spec schema() :: NimbleOptions.t()
   def schema, do: @schema
 
   @impl Wardrik.Channel
   def request(request, opts),
-    do: __MODULE__ |> WardrikChannel.channel(opts) |> WardrikSlack.HTTP.request(request)
+    do: __MODULE__ |> Wardrik.Chat.channel(opts) |> WardrikSlack.HTTP.request(request)
 
-  @impl WardrikChannel
+  @impl Wardrik.Chat
   def children(%Channel{options: options} = channel) do
     NimbleOptions.validate!(options, @schema)
 
@@ -128,12 +128,12 @@ defmodule WardrikSlack do
     do: Module.concat([wardrik, "Channels", name, "Tasks"])
 
   @doc "Returns the URL where someone acting for `owner` adds the app. See `WardrikSlack.Install.url/3`."
-  @impl WardrikChannel
+  @impl Wardrik.Chat
   def install_url(%Install{owner: owner, return_to: return_to}, channel),
     do: WardrikSlack.Install.url(channel, owner, return_to: return_to)
 
   @doc "Adds the app to a workspace once Slack sends someone back. See `WardrikSlack.Install.installed/3`."
-  @impl WardrikChannel
+  @impl Wardrik.Chat
   def installed(%Install{owner: owner, query: query}, channel),
     do: WardrikSlack.Install.installed(channel, owner, query)
 
@@ -142,7 +142,7 @@ defmodule WardrikSlack do
 
   The workspace is forgotten even if Slack refuses. Slack confirms with an `app_uninstalled` event.
   """
-  @impl WardrikChannel
+  @impl Wardrik.Chat
   def uninstall(workspace, channel) do
     with {:ok, installation} <- Channel.installation(channel, workspace) do
       credentials = %{
@@ -161,7 +161,7 @@ defmodule WardrikSlack do
     Channel.uninstall(channel, workspace)
   end
 
-  @impl WardrikChannel
+  @impl Wardrik.Chat
   def deliver(%Outbound{installation: installation} = outbound, channel) do
     workspace = %Workspace{channel: channel, installation: installation}
 

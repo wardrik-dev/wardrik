@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Takes in `wardrik_store`, `wardrik_events`, `wardrik_policy`, `wardrik_vault`, `wardrik_oauth`,
+  `wardrik_mcp`, `wardrik_triggers`, `wardrik_workspace`, `wardrik_http`, `wardrik_channel` and
+  `wardrik_testing`. Their modules are renamed: `WardrikStore` is `Wardrik.Store`, and the same
+  for `Policy`, `Vault`, `OAuth`, `MCP`, `Triggers` and `Workspace`. `WardrikEvents` is
+  `Wardrik.EventLog`, `WardrikChannel` is `Wardrik.Chat`, `WardrikHTTP` is
+  `Wardrik.HTTP.Endpoint`, and `WardrikTesting` is `Wardrik.Testing`. Telemetry events and
+  stored data are unchanged.
+- `Wardrik.Workspaces` is `Wardrik.Workspace.Agents`.
+- One `Wardrik.Sink` and one `Wardrik.Listener`, both given `%Wardrik.Event{}`. The event log's
+  own `Sink` and `Listener` are gone.
+- Exceptions end in `Error`: `Wardrik.MCP.UnavailableError`, `Wardrik.Workers.UnavailableError`
+  and `Wardrik.Workers.LostError`.
+
 ## 0.1.0-rc.10 (2026-11-11)
 
 - Requires `wardrik_core` 0.1.0-rc.6 and `wardrik_protocol` 0.1.0-rc.7.

@@ -9,7 +9,7 @@ Runs agents with tool policies, approval checks, spending limits, and event logs
 
 | Directory | What it holds |
 | --- | --- |
-| `packages/` | Wardrik itself: `wardrik`, `wardrik_core`, `wardrik_protocol`, `wardrik_daemon`, `wardrik_testing`, and the packages `wardrik` builds on. |
+| `packages/` | Wardrik itself: `wardrik`, `wardrik_core`, `wardrik_protocol` and `wardrik_daemon`. |
 | `extensions/` | Packages that add to Wardrik: channels, tools, harnesses, the gateway, the web dashboard. |
 | `sdk/typescript` | The TypeScript SDK, `@wardrik/sdk` on npm. |
 | `docs/` | The source of [docs.wardrik.dev](https://docs.wardrik.dev). |

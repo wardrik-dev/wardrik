@@ -1,7 +1,7 @@
 defmodule WardrikDaemon.Authenticator do
   @moduledoc """
   Says who sent each HTTP request, from its `Authorization: Bearer` token. It's the daemon's
-  `WardrikHTTP.Authenticator`.
+  `Wardrik.HTTP.Authenticator`.
 
       {Wardrik.HTTP, wardrik: name, authenticator: {WardrikDaemon.Authenticator, store}}
 
@@ -12,17 +12,17 @@ defmodule WardrikDaemon.Authenticator do
   See `WardrikDaemon.Tokens`.
   """
 
-  @behaviour WardrikHTTP.Authenticator
+  @behaviour Wardrik.HTTP.Authenticator
 
   alias Wardrik.Error
+  alias Wardrik.HTTP.Authenticator.Request
   alias WardrikCore.Principal
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Tokens
   alias WardrikDaemon.Tokens.Token
-  alias WardrikHTTP.Authenticator.Request
 
-  @impl WardrikHTTP.Authenticator
-  @spec authenticate(Request.t(), WardrikStore.t()) ::
+  @impl Wardrik.HTTP.Authenticator
+  @spec authenticate(Request.t(), Wardrik.Store.t()) ::
           {:ok, Wardrik.Scope.t()} | {:error, Error.t()}
   def authenticate(%Request{conn: conn, wardrik: wardrik}, store) do
     with ["Bearer " <> secret] <- Plug.Conn.get_req_header(conn, "authorization"),
@@ -35,7 +35,7 @@ defmodule WardrikDaemon.Authenticator do
   end
 
   @doc "Returns the scope for a token `secret`. The dashboard stores this secret in its session."
-  @spec for_secret(WardrikStore.t(), atom(), String.t()) :: {:ok, Wardrik.Scope.t()} | :error
+  @spec for_secret(Wardrik.Store.t(), atom(), String.t()) :: {:ok, Wardrik.Scope.t()} | :error
   def for_secret(store, wardrik, secret) do
     with {:ok, token} <- Tokens.verify(store, secret),
          {:ok, scope} <- scope(store, wardrik, token) do

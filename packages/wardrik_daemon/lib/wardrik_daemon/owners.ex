@@ -18,7 +18,7 @@ defmodule WardrikDaemon.Owners do
       WardrikDaemon.Owners.owner(store, "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN")
       #=> {:ok, "acme/@jon"}
   """
-  @spec owner(WardrikStore.t(), String.t()) :: {:ok, String.t()} | :error
+  @spec owner(Wardrik.Store.t(), String.t()) :: {:ok, String.t()} | :error
   def owner(store, id) do
     with {:ok, record} <- AgentRecords.fetch(store, id), do: {:ok, record.owner}
   end
@@ -87,7 +87,7 @@ defmodule WardrikDaemon.Owners do
       WardrikDaemon.Owners.org_of(store, {:agent, "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN"})
       #=> "acme"
   """
-  @spec org_of(WardrikStore.t(), Wardrik.Authorizer.Request.resource()) :: String.t() | nil
+  @spec org_of(Wardrik.Store.t(), Wardrik.Authorizer.Request.resource()) :: String.t() | nil
   def org_of(store, {:agent, id}) do
     case AgentRecords.fetch(store, id) do
       {:ok, record} -> record.org

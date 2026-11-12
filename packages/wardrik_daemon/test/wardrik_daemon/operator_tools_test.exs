@@ -4,11 +4,11 @@ defmodule WardrikDaemon.OperatorToolsTest do
 
   import WardrikDaemon.Test
 
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
   alias WardrikDaemon.HelpTools
   alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.Secrets
-  alias WardrikVault.Secret
 
   setup :set_mimic_global
 

@@ -6,10 +6,10 @@ defmodule Wardrik.Test.HTTP do
   import Plug.Test
 
   def start_wardrik(context) do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     name = :"wardrik #{context.test}"
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
       {Wardrik,
@@ -20,7 +20,7 @@ defmodule Wardrik.Test.HTTP do
            resolver: {Wardrik.Test.Owned, name},
            store: store,
            deployment: "test",
-           vault_keys: [WardrikVault.generate_key()],
+           vault_keys: [Wardrik.Vault.generate_key()],
            channels: Map.get(context, :channels, [])
          ] ++ Keyword.take(Map.to_list(context), [:oauth])
        )}
@@ -74,7 +74,7 @@ end
 defmodule Wardrik.Test.HTTP.Authenticator do
   @moduledoc "Takes the secrets a test signs principals in with, as `Authorization: Bearer`, until one is revoked."
 
-  @behaviour WardrikHTTP.Authenticator
+  @behaviour Wardrik.HTTP.Authenticator
 
   import Plug.Conn, only: [get_req_header: 2]
 
@@ -100,7 +100,7 @@ defmodule Wardrik.Test.HTTP.Authenticator do
   @doc "Signs out whoever sends `secret`."
   def revoke(name, secret), do: Agent.update(signed_in(name), &Map.delete(&1, secret))
 
-  @impl WardrikHTTP.Authenticator
+  @impl Wardrik.HTTP.Authenticator
   def authenticate(%{conn: conn, wardrik: wardrik}, _opts) do
     with ["Bearer " <> secret] <- get_req_header(conn, "authorization"),
          principal when is_binary(principal) <-

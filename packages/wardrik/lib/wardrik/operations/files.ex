@@ -8,9 +8,10 @@ defmodule Wardrik.Operations.Files do
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Snapshot
   alias Wardrik.Scope
-  alias WardrikWorkspace.File
-  alias WardrikWorkspace.Files
-  alias WardrikWorkspace.Path
+  alias Wardrik.Workspace.Agents
+  alias Wardrik.Workspace.File
+  alias Wardrik.Workspace.Files
+  alias Wardrik.Workspace.Path
 
   @max_listed 500
   @max_bytes 4 * 1024 * 1024
@@ -23,7 +24,7 @@ defmodule Wardrik.Operations.Files do
     with :ok <- Snapshot.known(wardrik, {id, nil}) do
       files =
         wardrik.store
-        |> Files.list(Wardrik.Workspaces.tree(id))
+        |> Files.list(Agents.tree(id))
         |> Enum.filter(fn {path, _file, _version} -> Path.match?(glob, path) end)
         |> Enum.sort_by(fn {_path, file, _version} -> file.at end, {:desc, DateTime})
         |> Enum.take(@max_listed)
@@ -84,7 +85,7 @@ defmodule Wardrik.Operations.Files do
   defp sized(_content), do: {:error, Error.new(:invalid_request, "A file is at most 4 MiB.")}
 
   defp found(wardrik, id, path) do
-    case Files.read(wardrik.store, tree: Wardrik.Workspaces.tree(id), path: path) do
+    case Files.read(wardrik.store, tree: Agents.tree(id), path: path) do
       {:ok, file, version} -> {:ok, file, version}
       :none -> {:error, Error.new(:not_found, "#{id} has no file #{path}.")}
     end
@@ -95,7 +96,7 @@ defmodule Wardrik.Operations.Files do
     do: written(wardrik, id, path, file, {:ok, current(wardrik, id, path)})
 
   defp written(wardrik, id, path, file, {:ok, version}) do
-    tree = Wardrik.Workspaces.tree(id)
+    tree = Agents.tree(id)
 
     case Files.write(wardrik.store, tree: tree, path: path, file: file, version: version) do
       {:ok, version} -> {:ok, version}
@@ -104,14 +105,14 @@ defmodule Wardrik.Operations.Files do
   end
 
   defp current(wardrik, id, path) do
-    case Files.read(wardrik.store, tree: Wardrik.Workspaces.tree(id), path: path) do
+    case Files.read(wardrik.store, tree: Agents.tree(id), path: path) do
       {:ok, _file, version} -> version
       :none -> nil
     end
   end
 
   defp deleted(wardrik, id, path, version) do
-    tree = Wardrik.Workspaces.tree(id)
+    tree = Agents.tree(id)
 
     case Files.delete(wardrik.store, tree: tree, path: path, version: version) do
       :ok -> :ok

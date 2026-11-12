@@ -54,7 +54,7 @@ defmodule WardrikDaemon.Agents do
 
     gone = Enum.uniq(Map.values(last)) -- Map.values(declared)
 
-    {:ok, _vsn} = WardrikStore.put(opts[:store], @key, declared)
+    {:ok, _vsn} = Wardrik.Store.put(opts[:store], @key, declared)
     problems = Enum.map(read, &defined(opts, &1)) ++ Enum.map(gone, &forgotten(opts, &1))
     for problem <- problems, problem != :ok, do: logged(problem)
   end
@@ -70,7 +70,7 @@ defmodule WardrikDaemon.Agents do
 
   defp files(opts), do: opts[:dir] |> Path.join("*.md") |> Path.wildcard() |> Enum.sort()
 
-  defp declared(opts), do: WardrikStore.get(opts[:store], @key) || %{}
+  defp declared(opts), do: Wardrik.Store.get(opts[:store], @key) || %{}
 
   # The file's agent keeps the ID a file gave it. A new one gets a new ID, unless another agent
   # has its name.

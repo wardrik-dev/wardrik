@@ -23,17 +23,20 @@ defmodule Wardrik.Sink do
   @callback handle_event(Wardrik.Event.t(), opts :: keyword()) :: any()
 
   @doc false
-  @spec entry(module() | {module(), keyword()}) :: {module(), keyword()}
-  def entry({module, opts}), do: {module, opts}
-  def entry(module), do: {module, []}
-end
+  @spec deliver([module() | {module(), keyword()}], Wardrik.EventLog.CloudEvent.t()) :: :ok
+  def deliver([], _event), do: :ok
 
-defmodule Wardrik.Sink.Events do
-  @moduledoc false
+  def deliver(sinks, event) do
+    event = Wardrik.Event.from_json(event)
 
-  @behaviour WardrikEvents.Sink
+    for sink <- sinks do
+      {module, opts} = entry(sink)
+      module.handle_event(event, opts)
+    end
 
-  @impl WardrikEvents.Sink
-  def handle_event(event, {module, opts}),
-    do: module.handle_event(Wardrik.Event.from_json(event), opts)
+    :ok
+  end
+
+  defp entry({module, opts}), do: {module, opts}
+  defp entry(module), do: {module, []}
 end

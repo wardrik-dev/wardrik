@@ -193,7 +193,7 @@ defmodule Wardrik.Notify do
       module.deliver(
         notice,
         [wardrik: wardrik.name, target: name] ++
-          Wardrik.Sealed.resolved(wardrik, "the target #{name}", opts)
+          Wardrik.Vault.Lookup.resolved(wardrik, "the target #{name}", opts)
       )
 
   # Your app's own target holds its secrets itself: the deployment's aren't read for it.

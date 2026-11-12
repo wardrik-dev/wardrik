@@ -19,8 +19,8 @@ defmodule WardrikDaemon.Secrets do
   reconnects the MCP servers whose headers read it.
   """
 
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
-  alias WardrikVault.Secret
 
   @purposes %{
     "api_key" => :api_key,
@@ -40,7 +40,7 @@ defmodule WardrikDaemon.Secrets do
   @spec list(atom(), String.t()) :: [%{String.t() => String.t()}]
   def list(wardrik, owner) do
     secrets =
-      for {^owner, name, kind} <- WardrikVault.list(vault(wardrik)),
+      for {^owner, name, kind} <- Wardrik.Vault.list(vault(wardrik)),
           do: %{"name" => name, "purpose" => Atom.to_string(kind)}
 
     Enum.sort_by(secrets, & &1["name"])
@@ -53,14 +53,14 @@ defmodule WardrikDaemon.Secrets do
   def put(wardrik, %Secret{principal: %Principal{id: owner}, name: name} = secret, opts) do
     kind = Map.fetch!(@purposes, Keyword.fetch!(opts, :purpose))
 
-    with {:ok, _vsn} <- WardrikVault.put(vault(wardrik), secret, kind: kind),
+    with {:ok, _vsn} <- Wardrik.Vault.put(vault(wardrik), secret, kind: kind),
          do: changed(wardrik, "secret.stored", {owner, name}, opts[:actor])
   end
 
   @doc "Removes `owner`'s secret `name`, as `actor`. Succeeds if there's none."
   @spec delete(atom(), {String.t(), String.t()}, Principal.t() | nil) :: :ok | {:error, term()}
   def delete(wardrik, {owner, name} = secret, actor) do
-    with :ok <- WardrikVault.delete(vault(wardrik), %Principal{id: owner}, name),
+    with :ok <- Wardrik.Vault.delete(vault(wardrik), %Principal{id: owner}, name),
          do: changed(wardrik, "secret.removed", secret, actor)
   end
 
@@ -70,11 +70,11 @@ defmodule WardrikDaemon.Secrets do
     running = Wardrik.Instance.fetch!(wardrik)
     mcp = Wardrik.mcp(running)
     reconnected = [owner: owner, secret: name]
-    :ok = WardrikMCP.reconnect(mcp, reconnected)
-    :ok = :erpc.multicast(Node.list(), WardrikMCP, :reconnect, [mcp, reconnected])
+    :ok = Wardrik.MCP.reconnect(mcp, reconnected)
+    :ok = :erpc.multicast(Node.list(), Wardrik.MCP, :reconnect, [mcp, reconnected])
 
     change = {type, "secrets/" <> name, %{"secret" => %{"name" => name}, "owner" => owner}}
-    WardrikEvents.record(Wardrik.events(running), change, actor: actor)
+    Wardrik.EventLog.record(Wardrik.events(running), change, actor: actor)
   end
 
   defp vault(wardrik), do: wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()

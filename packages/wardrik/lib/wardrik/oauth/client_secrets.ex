@@ -1,0 +1,50 @@
+defmodule Wardrik.OAuth.ClientSecrets do
+  @moduledoc """
+  Seals the secrets of clients Wardrik registers in the vault, under a principal no agent acts as.
+  """
+
+  alias Wardrik.Vault.Secret
+  alias WardrikCore.Principal
+
+  @owner %Principal{id: "wardrik_oauth"}
+
+  @doc """
+  Seals the `:secret` under `:name`. Does nothing if `:secret` is `nil`.
+
+      :ok = ClientSecrets.seal(settings, name: "linear/app_1", secret: secret)
+  """
+  @spec seal(map(), name: String.t(), secret: String.t() | nil) :: :ok | {:error, term()}
+  def seal(settings, args) do
+    name = Keyword.fetch!(args, :name)
+
+    case Keyword.fetch!(args, :secret) do
+      nil -> :ok
+      secret -> sealed(settings, name, secret)
+    end
+  end
+
+  defp sealed(settings, name, secret) do
+    sealed = %Secret{principal: @owner, name: name, value: secret}
+
+    case Wardrik.Vault.put(settings.vault, sealed, kind: :client_secret) do
+      {:ok, _vsn} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Returns the secret under `name`, or `nil`."
+  @spec unseal(map(), String.t()) :: String.t() | nil
+  def unseal(settings, name) do
+    case Wardrik.Vault.fetch(settings.vault, @owner, name, kind: :client_secret) do
+      {:ok, secret} -> secret
+      {:error, _none} -> nil
+    end
+  end
+
+  @doc "Deletes the secret under `name`."
+  @spec forget(map(), String.t()) :: :ok
+  def forget(settings, name) do
+    Wardrik.Vault.delete(settings.vault, @owner, name)
+    :ok
+  end
+end

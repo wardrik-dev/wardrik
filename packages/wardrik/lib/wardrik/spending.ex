@@ -41,7 +41,7 @@ defmodule Wardrik.Spending do
   @spec by_agent(Wardrik.t(), [String.t()]) :: %{String.t() => %{String.t() => number()}}
   def by_agent(wardrik, ids) do
     today = today()
-    found = WardrikStore.lookup_many(store(wardrik), Enum.map(ids, &key/1))
+    found = Wardrik.Store.lookup_many(store(wardrik), Enum.map(ids, &key/1))
 
     Map.new(ids, fn id ->
       case found[key(id)] do
@@ -66,10 +66,10 @@ defmodule Wardrik.Spending do
   end
 
   defp add(store, key, tokens, usd) do
-    {spent, vsn} = current(WardrikStore.lookup(store, key))
+    {spent, vsn} = current(Wardrik.Store.lookup(store, key))
     added = %{spent | "tokens" => spent["tokens"] + tokens, "usd" => spent["usd"] + usd}
 
-    case WardrikStore.put(store, key, added, if_vsn: vsn) do
+    case Wardrik.Store.put(store, key, added, if_vsn: vsn) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> add(store, key, tokens, usd)
     end
@@ -86,5 +86,5 @@ defmodule Wardrik.Spending do
   defp today, do: Date.to_iso8601(Date.utc_today())
 
   defp key(id), do: "spending/" <> id
-  defp store(%Wardrik{store: store}), do: WardrikStore.scope(store, "wardrik")
+  defp store(%Wardrik{store: store}), do: Wardrik.Store.scope(store, "wardrik")
 end

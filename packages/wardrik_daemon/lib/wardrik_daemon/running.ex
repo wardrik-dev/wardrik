@@ -40,7 +40,7 @@ defmodule WardrikDaemon.Running do
     {config, policies} = started = WardrikDaemon.ok!(read.())
     running = self()
     orgs = %{org: config.org, orgs: config.orgs, policies: policies}
-    daemon = WardrikStore.scope(store, "wardrik_daemon")
+    daemon = Wardrik.Store.scope(store, "wardrik_daemon")
     gateway = gateway(name)
     web = if config.web, do: WardrikDaemon.Web.key(keys)
 
@@ -150,10 +150,10 @@ defmodule WardrikDaemon.Running do
   defp shared(_cluster), do: [retry: :timer.seconds(5)]
 
   @doc "Returns a `t:WardrikDaemon.Config.vault/0` that reads the deployment's secrets from `store` with `keys`."
-  @spec sealed(WardrikStore.t(), [String.t()]) :: Config.vault()
+  @spec sealed(Wardrik.Store.t(), [String.t()]) :: Config.vault()
   def sealed(store, keys) do
     fn name ->
-      case WardrikVault.read(store, %Principal{id: "deployment"}, name, keys: keys) do
+      case Wardrik.Vault.read(store, %Principal{id: "deployment"}, name, keys: keys) do
         {:ok, value} -> {:ok, value}
         {:error, _reason} -> :error
       end

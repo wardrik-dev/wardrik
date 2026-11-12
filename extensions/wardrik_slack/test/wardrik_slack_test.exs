@@ -28,7 +28,7 @@ defmodule WardrikSlackTest do
     end
   end
 
-  test "gives the options it takes beyond WardrikChannel's" do
+  test "gives the options it takes beyond Wardrik.Chat's" do
     assert {:ok, [req_options: [], app_token: "xapp-1"]} =
              NimbleOptions.validate([app_token: "xapp-1"], WardrikSlack.schema())
   end
@@ -313,11 +313,11 @@ defmodule WardrikSlackTest do
 
     test "posts no notice of a turn in one of its threads, which shows it", context do
       {:ok, workspace} =
-        WardrikChannel.workspace(WardrikChannel.channel(WardrikSlack, context.options), "T1")
+        Wardrik.Chat.workspace(Wardrik.Chat.channel(WardrikSlack, context.options), "T1")
 
       notice = %Wardrik.Notice{
         agent: "agt_digest",
-        conversation: WardrikChannel.Workspace.conversation(workspace, room: "C1", thread: "1.1"),
+        conversation: Wardrik.Chat.Workspace.conversation(workspace, room: "C1", thread: "1.1"),
         kind: :finished,
         at: DateTime.utc_now(),
         text: "Three things happened."

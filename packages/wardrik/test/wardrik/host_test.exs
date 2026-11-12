@@ -7,20 +7,20 @@ defmodule Wardrik.HostTest do
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
         name: MyApp.AgentRuntime,
-        store: {WardrikStore.Ecto, url: "postgres://localhost/x"},
+        store: {Wardrik.Store.Ecto, url: "postgres://localhost/x"},
         discovery_interval_ms: 5_000
       )
 
-    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto}} = wardrik
-    assert {WardrikStore.Durable, opts} = wardrik.backend
+    assert %Wardrik{store: %Wardrik.Store{adapter: Wardrik.Store.Ecto}} = wardrik
+    assert {Wardrik.Store.Durable, opts} = wardrik.backend
     assert opts[:discovery_interval_ms] == 5_000
 
-    assert %Wardrik{store: %WardrikStore{adapter: WardrikStore.Ecto, config: MyApp.Repo}} =
+    assert %Wardrik{store: %Wardrik.Store{adapter: Wardrik.Store.Ecto, config: MyApp.Repo}} =
              Wardrik.new(
                authorizer: {Wardrik.Test.Allow, []},
                resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
                name: MyApp.AgentRuntime,
-               store: {WardrikStore.Ecto, repo: MyApp.Repo}
+               store: {Wardrik.Store.Ecto, repo: MyApp.Repo}
              )
   end
 
@@ -47,6 +47,6 @@ defmodule Wardrik.HostTest do
   end
 
   test "gives Plug.Parsers the body reader that keeps a webhook's body as it came" do
-    assert Wardrik.HTTP.body_reader() == {WardrikHTTP.BodyReader, :read_body, []}
+    assert Wardrik.HTTP.body_reader() == {Wardrik.HTTP.BodyReader, :read_body, []}
   end
 end

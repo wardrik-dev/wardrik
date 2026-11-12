@@ -21,11 +21,11 @@ defmodule Wardrik.SpendingTest do
         capabilities: [priced: Wardrik.Test.Priced, delegating: Wardrik.Test.Delegating]
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 

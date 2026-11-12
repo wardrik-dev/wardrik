@@ -20,13 +20,16 @@ defmodule Wardrik.SealedOptionsTest do
   test "reads a channel's {:secret, name} from the deployment's secrets as it starts and answers",
        context do
     store = Wardrik.Test.Store.new(:"sealed store #{context.test}")
-    key = WardrikVault.generate_key()
-    start_supervised!({WardrikStore, store})
-    start_supervised!({WardrikVault, name: :"sealing #{context.test}", store: store, keys: [key]})
+    key = Wardrik.Vault.generate_key()
+    start_supervised!({Wardrik.Store, store})
+
+    start_supervised!(
+      {Wardrik.Vault, name: :"sealing #{context.test}", store: store, keys: [key]}
+    )
 
     {:ok, _vsn} =
-      WardrikVault.put(:"sealing #{context.test}", %WardrikVault.Secret{
-        principal: WardrikVault.deployment(),
+      Wardrik.Vault.put(:"sealing #{context.test}", %Wardrik.Vault.Secret{
+        principal: Wardrik.Vault.deployment(),
         name: "SIGNING",
         value: "first"
       })

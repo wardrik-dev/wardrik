@@ -19,7 +19,7 @@ defmodule Wardrik do
   Each place overrides the one before it:
 
       # 1. config/runtime.exs
-      config :my_app, MyApp.AgentRuntime, store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
+      config :my_app, MyApp.AgentRuntime, store: {Wardrik.Store.EKV, data_dir: "/var/lib/my_app"}
 
       # 2. The supervision tree
       children = [{MyApp.AgentRuntime, deployment: "production"}]
@@ -56,7 +56,7 @@ defmodule Wardrik do
   @schema NimbleOptions.new!(
             name: [type: :atom, required: true, doc: "What Wardrik is reached by."],
             store: [
-              type: {:or, [{:struct, WardrikStore}, {:tuple, [:atom, :keyword_list]}]},
+              type: {:or, [{:struct, Wardrik.Store}, {:tuple, [:atom, :keyword_list]}]},
               doc: "Where agents and events are kept, as `{adapter, opts}`. In memory unless set."
             ],
             deployment: [
@@ -65,7 +65,7 @@ defmodule Wardrik do
               doc: "The deployment's name in each event's `source`."
             ],
             policy: [
-              type: {:or, [{:struct, WardrikPolicy}, :keyword_list, {:map, :any, :any}]},
+              type: {:or, [{:struct, Wardrik.Policy}, :keyword_list, {:map, :any, :any}]},
               doc: "The policy every agent is held to, as `[deny: [\"shell/*\"]]`."
             ],
             vault_keys: [
@@ -85,7 +85,7 @@ defmodule Wardrik do
             grants: [
               type: {:tuple, [:atom, :any]},
               doc:
-                "Where OAuth grants come from, a `WardrikVault.Grants`. `WardrikOAuth` unless set."
+                "Where OAuth grants come from, a `Wardrik.Vault.Grants`. `Wardrik.OAuth` unless set."
             ],
             oauth: [
               type: :keyword_list,
@@ -99,7 +99,7 @@ defmodule Wardrik do
                 resolver: [
                   type: :mod_arg,
                   required: true,
-                  doc: "The `WardrikOAuth.Resolver` that gives each person's providers."
+                  doc: "The `Wardrik.OAuth.Resolver` that gives each person's providers."
                 ],
                 client_name: [
                   type: :string,
@@ -115,7 +115,7 @@ defmodule Wardrik do
             mcp: [
               type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
               default: [],
-              doc: "MCP servers to start, as `[github: [transport: ...]]`. See `WardrikMCP`."
+              doc: "MCP servers to start, as `[github: [transport: ...]]`. See `Wardrik.MCP`."
             ],
             capabilities: [
               type: @named,
@@ -161,7 +161,7 @@ defmodule Wardrik do
             triggers: [
               type: :keyword_list,
               default: [],
-              doc: "Options for `WardrikTriggers`.",
+              doc: "Options for `Wardrik.Triggers`.",
               keys: [
                 req_options: [type: :keyword_list, doc: "`Req` options for reading feeds."],
                 reconcile: [
@@ -289,7 +289,7 @@ defmodule Wardrik do
 
   @type t() :: %__MODULE__{
           name: atom(),
-          store: WardrikStore.t(),
+          store: Wardrik.Store.t(),
           vault_keys: [String.t()],
           credentials: WardrikCore.Context.entry() | nil,
           key_source: WardrikCore.Context.entry() | nil,
@@ -308,9 +308,9 @@ defmodule Wardrik do
           authorizer: {module(), term()},
           retention: pos_integer() | :infinity,
           backend: {module(), keyword()},
-          policy: WardrikPolicy.t() | nil,
+          policy: Wardrik.Policy.t() | nil,
           capabilities: %{String.t() => WardrikCore.Context.entry()},
-          policies: %{String.t() => WardrikPolicy.t()},
+          policies: %{String.t() => Wardrik.Policy.t()},
           middleware: [WardrikCore.Context.entry()],
           idle_timeout: number() | :infinity,
           trusted_workers: boolean(),
@@ -337,7 +337,7 @@ defmodule Wardrik do
         name: MyApp.AgentRuntime,
         authorizer: {MyApp.Authorizer, []},
         resolver: {MyApp.Agents, []},
-        store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"},
+        store: {Wardrik.Store.EKV, data_dir: "/var/lib/my_app"},
         vault_keys: [System.fetch_env!("WARDRIK_KEY")],
         policy: [deny: ["shell/*"]],
         prices: %{"zai_coding_plan:glm-5.1" => [priced_as: "zai:glm-5.1", markup: 0.1]}
@@ -345,9 +345,9 @@ defmodule Wardrik do
 
   Stores:
 
-      store: {WardrikStore.EKV, data_dir: "/var/lib/my_app"}
-      store: {WardrikStore.Ecto, repo: MyApp.Repo}
-      store: {WardrikStore.Ecto, url: "postgres://user:pass@db.example.com/my_app"}
+      store: {Wardrik.Store.EKV, data_dir: "/var/lib/my_app"}
+      store: {Wardrik.Store.Ecto, repo: MyApp.Repo}
+      store: {Wardrik.Store.Ecto, url: "postgres://user:pass@db.example.com/my_app"}
 
   ## Options
 
@@ -389,13 +389,13 @@ defmodule Wardrik do
 
       Wardrik.cursor(%{{"agt_01JF8X5RQ2", nil} => 41, {"agt_01JF8X5RQ2", "C1"} => 3})
   """
-  @spec cursor(%{WardrikEvents.log() => non_neg_integer()}) :: String.t()
-  def cursor(positions), do: WardrikEvents.Cursor.encode(positions)
+  @spec cursor(%{Wardrik.EventLog.log() => non_neg_integer()}) :: String.t()
+  def cursor(positions), do: Wardrik.EventLog.Cursor.encode(positions)
 
   @doc "Returns the positions in `cursor`, or `:error`. The reverse of `cursor/1`."
-  @spec positions(String.t()) :: {:ok, %{WardrikEvents.log() => non_neg_integer()}} | :error
+  @spec positions(String.t()) :: {:ok, %{Wardrik.EventLog.log() => non_neg_integer()}} | :error
   def positions(cursor) do
-    case WardrikEvents.Cursor.decode(cursor) do
+    case Wardrik.EventLog.Cursor.decode(cursor) do
       {:ok, positions} -> {:ok, positions}
       {:error, _reason} -> :error
     end
@@ -409,7 +409,7 @@ defmodule Wardrik do
   """
   @spec check_policy(map()) :: :ok | {:error, String.t()}
   def check_policy(policy) do
-    case WardrikPolicy.decode(policy) do
+    case Wardrik.Policy.decode(policy) do
       {:ok, _policy} -> :ok
       {:error, message} -> {:error, message}
     end
@@ -530,7 +530,7 @@ defmodule Wardrik do
   @spec sign_in(atom() | t(), String.t(), Principal.t()) ::
           {:ok, %{required(:url) => String.t(), optional(:code) => String.t()}} | {:error, term()}
   def sign_in(instance, provider, %Principal{} = principal),
-    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.authorize(provider, principal)
+    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.authorize(provider, principal)
 
   @doc """
   Returns whether `principal`'s sign-in to `provider` is under way.
@@ -542,7 +542,7 @@ defmodule Wardrik do
   """
   @spec signing_in?(atom() | t(), String.t(), Principal.t()) :: boolean()
   def signing_in?(instance, provider, %Principal{} = principal),
-    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.signing_in?(provider, principal)
+    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.signing_in?(provider, principal)
 
   @doc """
   Forgets the client Wardrik registered for the OAuth app `key`. Call it when you delete that app.
@@ -551,7 +551,7 @@ defmodule Wardrik do
   """
   @spec forget_client(atom() | t(), String.t()) :: :ok | {:error, term()}
   def forget_client(instance, key),
-    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.forget_client(key)
+    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.forget_client(key)
 
   @doc """
   Returns the sign-in pages' plug, to mount at `:oauth`'s `page`. `nil` without `:oauth`.
@@ -575,17 +575,17 @@ defmodule Wardrik do
   @spec finish_sign_in(atom() | t(), map(), keyword()) ::
           {:ok, %{provider: String.t(), principal: Principal.t()}} | {:error, term()}
   def finish_sign_in(instance, params, opts),
-    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.finish(params, opts)
+    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.finish(params, opts)
 
   @doc "Returns Wardrik's OAuth Client ID Metadata Document. The sign-in pages serve it at `/client`."
   @spec client_document(atom() | t()) :: map()
   def client_document(instance),
-    do: instance |> Instance.fetch!() |> oauth() |> WardrikOAuth.client_document()
+    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.client_document()
 
   defp pages(%__MODULE__{oauth: nil}, _principal), do: nil
 
   defp pages(wardrik, principal),
-    do: {WardrikOAuth.Plug, WardrikOAuth.Plug.init(oauth: oauth(wardrik), principal: principal)}
+    do: {Wardrik.OAuth.Plug, Wardrik.OAuth.Plug.init(oauth: oauth(wardrik), principal: principal)}
 
   @doc false
   @spec agents(t()) :: atom()
@@ -604,9 +604,9 @@ defmodule Wardrik do
   def oauth(%__MODULE__{name: name}), do: Module.concat(name, OAuth)
 
   @doc """
-  Returns the name of the instance's `WardrikMCP`.
+  Returns the name of the instance's `Wardrik.MCP`.
 
-      WardrikMCP.add(Wardrik.mcp(MyApp.AgentRuntime), "acme:linear", opts)
+      Wardrik.MCP.add(Wardrik.mcp(MyApp.AgentRuntime), "acme:linear", opts)
   """
   @spec mcp(atom() | t()) :: atom()
   def mcp(%__MODULE__{name: name}), do: mcp(name)

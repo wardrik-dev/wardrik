@@ -5,8 +5,8 @@ defmodule WardrikDaemon.HarnessesTest do
   alias WardrikDaemon.Config
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
-    start_supervised!({WardrikStore, store})
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
+    start_supervised!({Wardrik.Store, store})
     wardrik = Module.concat(__MODULE__, "W#{System.unique_integer([:positive])}")
     dir = Path.join(System.tmp_dir!(), "harnesses_#{System.unique_integer([:positive])}")
     on_exit(fn -> File.rm_rf!(dir) end)

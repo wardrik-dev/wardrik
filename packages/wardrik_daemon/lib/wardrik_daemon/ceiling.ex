@@ -14,10 +14,10 @@ defmodule WardrikDaemon.Ceiling do
 
   @behaviour WardrikCore.Middleware
 
+  alias Wardrik.Policy.Budget
   alias WardrikCore.Context
   alias WardrikCore.Resume
   alias WardrikDaemon.Ceiling.Reached
-  alias WardrikPolicy.Budget
 
   @enforce_keys [:name, :budget, :on_exhausted]
   defstruct @enforce_keys
@@ -53,10 +53,10 @@ defmodule WardrikDaemon.Ceiling do
 
   `:starts_over` is `nil` for `per: :total`.
   """
-  @spec spent(WardrikStore.t(), String.t(), t()) :: map()
+  @spec spent(Wardrik.Store.t(), String.t(), t()) :: map()
   def spent(store, org, %__MODULE__{budget: budget} = ceiling) do
     period = Budget.period(budget, DateTime.utc_now())
-    {spent, _vsn} = current(WardrikStore.lookup(store, key(org, ceiling)), period)
+    {spent, _vsn} = current(Wardrik.Store.lookup(store, key(org, ceiling)), period)
 
     %{
       limit: %{usd: budget.usd, tokens: budget.tokens},
@@ -69,7 +69,7 @@ defmodule WardrikDaemon.Ceiling do
   end
 
   @doc "Returns `spent/3` as JSON, as `GET /v1/owners/{org}/ceilings` answers it."
-  @spec json(WardrikStore.t(), String.t(), t()) :: map()
+  @spec json(Wardrik.Store.t(), String.t(), t()) :: map()
   def json(store, org, ceiling) do
     spend = spent(store, org, ceiling)
 
@@ -90,7 +90,7 @@ defmodule WardrikDaemon.Ceiling do
 
   Returns `invalid_request` if `owner` is a user rather than an org.
   """
-  @spec list(%{store: WardrikStore.t(), orgs: map()}, String.t()) ::
+  @spec list(%{store: Wardrik.Store.t(), orgs: map()}, String.t()) ::
           {:ok, [map()]} | {:error, Wardrik.Error.t()}
   def list(%{store: store, orgs: orgs}, owner) do
     org = WardrikDaemon.Owners.org(owner)
@@ -268,17 +268,17 @@ defmodule WardrikDaemon.Ceiling do
 
   defp read(store, org, ceiling) do
     period = Budget.period(ceiling.budget, DateTime.utc_now())
-    {spent, _vsn} = current(WardrikStore.lookup(store, key(org, ceiling)), period)
+    {spent, _vsn} = current(Wardrik.Store.lookup(store, key(org, ceiling)), period)
     spent
   end
 
   defp update(store, org, ceiling, change) do
     key = key(org, ceiling)
     period = Budget.period(ceiling.budget, DateTime.utc_now())
-    {spent, vsn} = current(WardrikStore.lookup(store, key), period)
+    {spent, vsn} = current(Wardrik.Store.lookup(store, key), period)
     changed = change.(spent)
 
-    case WardrikStore.put(store, key, stored(changed, period), if_vsn: vsn) do
+    case Wardrik.Store.put(store, key, stored(changed, period), if_vsn: vsn) do
       {:ok, _vsn} -> {spent, changed}
       {:error, :conflict} -> update(store, org, ceiling, change)
     end

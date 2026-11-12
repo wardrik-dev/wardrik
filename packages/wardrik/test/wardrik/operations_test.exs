@@ -5,15 +5,15 @@ defmodule Wardrik.OperationsTest do
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
+  alias Wardrik.EventLog.Cursor
   alias Wardrik.Operations.Visible
-  alias WardrikEvents.Cursor
 
   setup :set_mimic_global
   setup :start_wardrik
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{scope: owner(wardrik)}
   end
 
@@ -466,7 +466,7 @@ defmodule Wardrik.OperationsTest do
 
   test "reads the audit", %{wardrik: wardrik, scope: scope} do
     change = {"agent.forgotten", "agents/acme%2Ftriage", %{"agent" => %{"id" => "acme/triage"}}}
-    :ok = WardrikEvents.record(Wardrik.events(wardrik), change, actor: maria())
+    :ok = Wardrik.EventLog.record(Wardrik.events(wardrik), change, actor: maria())
 
     assert %{"events" => [%{"type" => "wardrik.agent.forgotten"}], "next" => next} =
              run!(scope, "audit.list", %{"limit" => 10})

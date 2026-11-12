@@ -5,7 +5,7 @@ defmodule Wardrik.Children do
   @spec children(Wardrik.t()) :: [Supervisor.child_spec() | {module(), term()}]
   def children(wardrik),
     do:
-      [{WardrikStore, wardrik.store}] ++
+      [{Wardrik.Store, wardrik.store}] ++
         vault(wardrik) ++
         oauth(wardrik) ++
         mcp(wardrik) ++
@@ -25,7 +25,7 @@ defmodule Wardrik.Children do
 
   defp vault(wardrik) do
     [
-      {WardrikVault,
+      {Wardrik.Vault,
        name: Wardrik.vault(wardrik),
        store: wardrik.store,
        keys: wardrik.vault_keys,
@@ -44,7 +44,7 @@ defmodule Wardrik.Children do
       check: wardrik.egress
     ]
 
-    [{WardrikOAuth, options ++ wardrik.oauth}]
+    [{Wardrik.OAuth, options ++ wardrik.oauth}]
   end
 
   defp mcp(wardrik), do: [mcp_spec(wardrik)]
@@ -56,12 +56,12 @@ defmodule Wardrik.Children do
       for {name, opts} <- wardrik.mcp,
           do: {name, Keyword.put(opts, :owner, "deployment")}
 
-    WardrikMCP.child_spec(
+    Wardrik.MCP.child_spec(
       name: Wardrik.mcp(wardrik),
       servers: servers,
       store: wardrik.store,
       check: wardrik.egress,
-      secret: &Wardrik.Sealed.fetch(wardrik, owner: &1, name: &2, kind: :header)
+      secret: &Wardrik.Vault.Lookup.fetch(wardrik, owner: &1, name: &2, kind: :header)
     )
   end
 
@@ -74,23 +74,22 @@ defmodule Wardrik.Children do
   defp started(spec, build), do: %{spec | start: {__MODULE__, :start_built, [build]}}
 
   defp events(wardrik) do
-    {WardrikEvents,
+    {Wardrik.EventLog,
      name: Wardrik.events(wardrik),
      store: wardrik.store,
      deployment: wardrik.deployment,
      retention: wardrik.retention,
      sinks: [
-       {Wardrik.Notify.Sink, Wardrik.Notify.Server.name(wardrik.name)}
-       | Enum.map(wardrik.sinks, &{Wardrik.Sink.Events, Wardrik.Sink.entry(&1)})
+       {Wardrik.Notify.Sink, server: Wardrik.Notify.Server.name(wardrik.name)} | wardrik.sinks
      ]}
   end
 
   defp triggers(wardrik) do
-    {WardrikTriggers,
+    {Wardrik.Triggers,
      [
        name: Wardrik.triggers(wardrik),
        store: wardrik.store,
-       target: {Wardrik.TriggerTarget, wardrik}
+       target: {Wardrik.Triggers.Agents, wardrik}
      ] ++
        wardrik.triggers}
   end

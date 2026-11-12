@@ -57,19 +57,19 @@ defmodule WardrikDaemon.Server do
 
     Supervisor.init(
       Cluster.children(boot.cluster, node()) ++
-        [{WardrikStore, store}, {WardrikDaemon.Running, running}],
+        [{Wardrik.Store, store}, {WardrikDaemon.Running, running}],
       strategy: :rest_for_one
     )
   end
 
   defp store(nil, cluster, name, dirs),
     do:
-      WardrikStore.EKV.new(
+      Wardrik.Store.EKV.new(
         [name: Module.concat(name, Store), data_dir: dirs.data] ++ Cluster.store_options(cluster)
       )
 
-  defp store({:postgres, url}, _cluster, _name, _dirs), do: WardrikStore.Ecto.new(url: url)
-  defp store({:s3, opts}, _cluster, _name, _dirs), do: WardrikStore.S3.new(opts)
+  defp store({:postgres, url}, _cluster, _name, _dirs), do: Wardrik.Store.Ecto.new(url: url)
+  defp store({:s3, opts}, _cluster, _name, _dirs), do: Wardrik.Store.S3.new(opts)
 
   defp keys([_ | _] = keys, _dirs, _env), do: keys
   defp keys([], _dirs, %{"WARDRIK_VAULT_KEY" => key}), do: [key]
@@ -81,7 +81,7 @@ defmodule WardrikDaemon.Server do
         String.trim(key)
 
       {:error, :enoent} ->
-        key = WardrikVault.generate_key()
+        key = Wardrik.Vault.generate_key()
         File.mkdir_p!(Path.dirname(path))
         File.write!(path, key)
         File.chmod!(path, 0o600)

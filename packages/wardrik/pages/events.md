@@ -157,3 +157,54 @@ Wardrik.Audit.list(scope, limit: 50)
 ```
 
 Pass `next` as `starting_after:` to read on.
+
+## The event log on its own
+
+`Wardrik.EventLog` keeps the logs Wardrik reads. It runs without Wardrik too, over any
+`Wardrik.Store`:
+
+```elixir
+store = Wardrik.Store.ETS.new(name: MyApp.Store)
+
+children = [
+  {Wardrik.Store, store},
+  {Wardrik.EventLog, name: MyApp.Events, store: store, deployment: "acme-prod", sinks: [MyApp.Shipper]}
+]
+
+{:ok, _} = Supervisor.start_link(children, strategy: :one_for_one)
+```
+
+- Give it to each `WardrikCore` agent as `events: {Wardrik.EventLog, MyApp.Events}`.
+- `Wardrik.Store.ETS` keeps events in memory. `Wardrik.Store.EKV` keeps them on disk.
+- See `Wardrik.EventLog.start_link/1` for the options.
+
+Read, follow and write a log:
+
+```elixir
+{:ok, %{events: events, next: next}} = Wardrik.EventLog.page(MyApp.Events, ["agt_1"], limit: 100)
+
+{:ok, stream} = Wardrik.EventLog.stream(MyApp.Events, [{"agt_1", "C1"}], after: next)
+
+data = %{"trigger" => %{"name" => "daily"}, "status" => "asked"}
+:ok = Wardrik.EventLog.append(MyApp.Events, "agt_1", {"trigger.fired", "triggers/daily", data})
+
+change = {"agent.forgotten", "agents/agt_1", %{"agent" => %{"id" => "agt_1"}}}
+:ok = Wardrik.EventLog.record(MyApp.Events, change, actor: %WardrikCore.Principal{id: "user_42"})
+```
+
+- Events here are CloudEvent maps with string keys, as they're kept.
+- `"agt_1"` reads the agent and all its conversations. `{"agt_1", "C1"}` reads one.
+- The stream also carries live events, like `wardrik.message.delta`, which are never kept. No kept
+  event is missed or repeated as it moves from the log to live delivery.
+- `append/4` writes to an agent's log. `record/3` writes to the audit.
+- `subscribe(MyApp.Events, :all)` sends every agent's events, live ones too, to the calling
+  process.
+
+What an agent is doing now:
+
+```elixir
+Wardrik.EventLog.activity(MyApp.Events, "agt_1")
+#=> %{"doing" => [%{"type" => "wardrik.tool_call.started", ...}], "since" => "...", "pending" => 1}
+```
+
+Write your own view with `Wardrik.EventLog.View`.

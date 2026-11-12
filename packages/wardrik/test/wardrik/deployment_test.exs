@@ -23,7 +23,7 @@ defmodule Wardrik.DeploymentTest do
         policies: [careful: [ask: ["echo"]]]
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
@@ -118,8 +118,11 @@ defmodule Wardrik.DeploymentTest do
       groups = node["process_groups"]
       assert Enum.sum_by(groups, & &1["processes"]) > 0
 
-      assert %{"application" => "wardrik_core", "processes" => 1} =
+      # Other tests' agents run on this node too.
+      assert %{"application" => "wardrik_core", "processes" => agents} =
                Enum.find(groups, &(&1["module"] == "WardrikCore.Agent"))
+
+      assert agents >= 1
 
       assert Enum.find(groups, &(&1["module"] == ":application_controller"))
 

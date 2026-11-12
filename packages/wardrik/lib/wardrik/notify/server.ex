@@ -28,10 +28,8 @@ defmodule Wardrik.Notify.Server do
   end
 
   @impl GenServer
-  def handle_cast({:event, json}, state) do
-    event = Wardrik.Event.from_json(json)
-    {:noreply, taken(state, agent(event), event)}
-  end
+  def handle_cast({:event, %Wardrik.Event{} = event}, state),
+    do: {:noreply, taken(state, agent(event), event)}
 
   defp taken(state, agent, %{type: "wardrik.run.interrupted", data: data} = event) do
     ids = Enum.map(data["interrupts"], & &1["id"])
@@ -71,7 +69,7 @@ defmodule Wardrik.Notify.Server do
   defp interrupts(wardrik, agent) do
     wardrik
     |> Wardrik.events()
-    |> WardrikEvents.activity(agent)
+    |> Wardrik.EventLog.activity(agent)
     |> Snapshot.interrupts()
     |> Enum.map(&Wardrik.Interrupt.from_json/1)
   end

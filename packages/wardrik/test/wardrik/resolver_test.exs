@@ -50,11 +50,11 @@ defmodule Wardrik.ResolverTest do
         notify: [targets: [audit: {Wardrik.Test.Heard, test: self()}]]
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, resolved: resolved, scope: owner(wardrik)}
   end
 
@@ -78,7 +78,7 @@ defmodule Wardrik.ResolverTest do
        %{scope: scope, resolved: resolved} do
     test = self()
 
-    stub(WardrikMCP, :tools, fn _context, opts ->
+    stub(Wardrik.MCP, :tools, fn _context, opts ->
       send(test, {:servers, opts[:servers]})
       []
     end)
@@ -183,7 +183,7 @@ defmodule Wardrik.ResolverTest do
 
     {:ok, _agent} = define(scope, %{"tools" => ["priced"], "policy" => %{"default" => "allow"}})
 
-    policy = [%{"default" => "allow"}, WardrikPolicy.new!(deny: ["search"])]
+    policy = [%{"default" => "allow"}, Wardrik.Policy.new!(deny: ["search"])]
     set(resolved, @scout, {:ok, %Resolved{policy: policy, policies: %{careful: [ask: ["*"]]}}})
     assert Wardrik.refresh(wardrik, agents: [@scout]) == []
 

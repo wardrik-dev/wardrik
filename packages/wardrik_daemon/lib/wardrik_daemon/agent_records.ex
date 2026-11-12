@@ -43,27 +43,27 @@ defmodule WardrikDaemon.AgentRecords do
   def file?(_record), do: false
 
   @doc "Returns the record of the agent `id`, or `:error` if the daemon made none."
-  @spec fetch(WardrikStore.t(), String.t()) :: {:ok, t()} | :error
+  @spec fetch(Wardrik.Store.t(), String.t()) :: {:ok, t()} | :error
   def fetch(store, id) do
-    case WardrikStore.get(store, record_key(id)) do
+    case Wardrik.Store.get(store, record_key(id)) do
       %{id: ^id} = record -> {:ok, record}
       nil -> :error
     end
   end
 
   @doc "Returns the record of the agent called `name` in `org`, or `:error` if there's none."
-  @spec named(WardrikStore.t(), String.t(), String.t()) :: {:ok, t()} | :error
+  @spec named(Wardrik.Store.t(), String.t(), String.t()) :: {:ok, t()} | :error
   def named(store, org, name) do
-    case WardrikStore.get(store, name_key(org, name)) do
+    case Wardrik.Store.get(store, name_key(org, name)) do
       %{} = record -> {:ok, record}
       nil -> :error
     end
   end
 
   @doc "Returns the records of `org`'s agents, by name."
-  @spec in_org(WardrikStore.t(), String.t()) :: [t()]
+  @spec in_org(Wardrik.Store.t(), String.t()) :: [t()]
   def in_org(store, org),
-    do: for({_key, record, _vsn} <- WardrikStore.entries(store, name_key(org, "")), do: record)
+    do: for({_key, record, _vsn} <- Wardrik.Store.entries(store, name_key(org, "")), do: record)
 
   @doc """
   Mints an ID for agent `:name`, owned by `:owner`, from `:source`, and records it.
@@ -71,7 +71,7 @@ defmodule WardrikDaemon.AgentRecords do
   Returns `{:error, {:taken, record}}` if the name is taken in the org, unless `:replaces`
   returns `true` for that record.
   """
-  @spec create(WardrikStore.t(),
+  @spec create(Wardrik.Store.t(),
           owner: String.t(),
           name: String.t(),
           source: :file | :api,
@@ -91,7 +91,7 @@ defmodule WardrikDaemon.AgentRecords do
     }
 
     with :ok <- claimed(store, name_key(record.org, name), record, replaces) do
-      {:ok, _vsn} = WardrikStore.put(store, record_key(record.id), record)
+      {:ok, _vsn} = Wardrik.Store.put(store, record_key(record.id), record)
       {:ok, record}
     end
   end
@@ -100,14 +100,14 @@ defmodule WardrikDaemon.AgentRecords do
   # the claim itself, even where the record by ID hasn't reached this node yet. Taking a name over
   # writes only over the version read, so two can't both take it.
   defp claimed(store, key, record, replaces) do
-    case WardrikStore.put(store, key, record, if_vsn: nil) do
+    case Wardrik.Store.put(store, key, record, if_vsn: nil) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> held(store, key, record, replaces)
     end
   end
 
   defp held(store, key, record, replaces) do
-    case WardrikStore.lookup(store, key) do
+    case Wardrik.Store.lookup(store, key) do
       nil -> claimed(store, key, record, replaces)
       {holder, vsn} -> held(store, {key, vsn}, record, replaces, holder)
     end
@@ -115,7 +115,7 @@ defmodule WardrikDaemon.AgentRecords do
 
   defp held(store, {key, vsn}, record, replaces, holder) do
     if replaces.(holder) do
-      case WardrikStore.put(store, key, record, if_vsn: vsn) do
+      case Wardrik.Store.put(store, key, record, if_vsn: vsn) do
         {:ok, _vsn} -> dropped(store, holder)
         {:error, :conflict} -> claimed(store, key, record, replaces)
       end
@@ -124,7 +124,7 @@ defmodule WardrikDaemon.AgentRecords do
     end
   end
 
-  defp dropped(store, record), do: WardrikStore.delete(store, record_key(record.id))
+  defp dropped(store, record), do: Wardrik.Store.delete(store, record_key(record.id))
 
   @doc """
   Returns `definition` with the agents its `workspace.shared` names, as `agent:NAME` in `org`,
@@ -133,7 +133,7 @@ defmodule WardrikDaemon.AgentRecords do
       AgentRecords.identified(store, "acme", %{"workspace" => %{"shared" => %{"books" => "agent:runbooks"}}})
       #=> {:ok, %{"workspace" => %{"shared" => %{"books" => "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN"}}}}
   """
-  @spec identified(WardrikStore.t(), String.t(), map()) :: {:ok, map()} | {:error, String.t()}
+  @spec identified(Wardrik.Store.t(), String.t(), map()) :: {:ok, map()} | {:error, String.t()}
   def identified(store, org, %{"workspace" => %{"shared" => %{} = shared}} = definition) do
     mounts = for {mount, agent} <- shared, do: {mount, mounted(store, org, agent)}
 
@@ -162,16 +162,16 @@ defmodule WardrikDaemon.AgentRecords do
   defp mounted(_store, _org, _other), do: :error
 
   @doc "Removes `record`, freeing its name."
-  @spec delete(WardrikStore.t(), t()) :: :ok
+  @spec delete(Wardrik.Store.t(), t()) :: :ok
   def delete(store, %{id: id} = record) do
     key = name_key(record.org, record.name)
 
-    case WardrikStore.lookup(store, key) do
-      {%{id: ^id}, vsn} -> _deleted = WardrikStore.delete(store, key, if_vsn: vsn)
+    case Wardrik.Store.lookup(store, key) do
+      {%{id: ^id}, vsn} -> _deleted = Wardrik.Store.delete(store, key, if_vsn: vsn)
       _other -> :ok
     end
 
-    WardrikStore.delete(store, record_key(id))
+    Wardrik.Store.delete(store, record_key(id))
   end
 
   defp record_key(id), do: "agents/" <> URI.encode_www_form(id)

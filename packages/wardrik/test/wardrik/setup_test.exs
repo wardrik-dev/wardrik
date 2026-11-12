@@ -1,6 +1,8 @@
 defmodule Wardrik.SetupTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.Store.ETS
+
   describe "new/1's oauth" do
     test "needs a resolver" do
       assert_raise NimbleOptions.ValidationError, ~r/required :resolver/, fn ->
@@ -36,8 +38,8 @@ defmodule Wardrik.SetupTest do
           name: MyApp.AgentRuntime
         )
 
-      assert wardrik.store == WardrikStore.ETS.new(name: MyApp.AgentRuntime.Store)
-      assert wardrik.backend == {WardrikStore.Durable, store: wardrik.store}
+      assert wardrik.store == ETS.new(name: MyApp.AgentRuntime.Store)
+      assert wardrik.backend == {Wardrik.Store.Durable, store: wardrik.store}
     end
 
     test "is built from an adapter and its options" do
@@ -46,10 +48,10 @@ defmodule Wardrik.SetupTest do
           authorizer: {Wardrik.Test.Allow, []},
           resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
-          store: {WardrikStore.EKV, data_dir: "/tmp/wardrik"}
+          store: {Wardrik.Store.EKV, data_dir: "/tmp/wardrik"}
         )
 
-      assert %WardrikStore{adapter: WardrikStore.EKV, config: %{name: MyApp.AgentRuntime.Store}} =
+      assert %Wardrik.Store{adapter: Wardrik.Store.EKV, config: %{name: MyApp.AgentRuntime.Store}} =
                wardrik.store
 
       assert wardrik.store.config.options[:data_dir] == "/tmp/wardrik"
@@ -61,14 +63,14 @@ defmodule Wardrik.SetupTest do
           authorizer: {Wardrik.Test.Allow, []},
           resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
           name: MyApp.AgentRuntime,
-          store: {WardrikStore.ETS, name: MyApp.Store}
+          store: {Wardrik.Store.ETS, name: MyApp.Store}
         )
 
-      assert wardrik.store == WardrikStore.ETS.new(name: MyApp.Store)
+      assert wardrik.store == ETS.new(name: MyApp.Store)
     end
 
     test "is used as given when built" do
-      store = WardrikStore.ETS.new(name: MyApp.Store)
+      store = ETS.new(name: MyApp.Store)
 
       wardrik =
         Wardrik.new(
@@ -79,7 +81,7 @@ defmodule Wardrik.SetupTest do
         )
 
       assert wardrik.store == store
-      assert wardrik.backend == {WardrikStore.Durable, store: store}
+      assert wardrik.backend == {Wardrik.Store.Durable, store: store}
     end
 
     test "says which adapter isn't compiled" do
@@ -117,7 +119,7 @@ defmodule Wardrik.SetupTest do
   end
 
   describe "new/1's seams" do
-    test "are the vault and WardrikOAuth unless set, and no key source" do
+    test "are the vault and Wardrik.OAuth unless set, and no key source" do
       wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
@@ -130,10 +132,10 @@ defmodule Wardrik.SetupTest do
           ]
         )
 
-      assert wardrik.credentials == {WardrikVault, MyApp.AgentRuntime.Vault}
+      assert wardrik.credentials == {Wardrik.Vault, MyApp.AgentRuntime.Vault}
 
       assert wardrik.key_source == nil
-      assert wardrik.grants == {WardrikOAuth, MyApp.AgentRuntime.OAuth}
+      assert wardrik.grants == {Wardrik.OAuth, MyApp.AgentRuntime.OAuth}
     end
 
     test "are none without keys or oauth" do

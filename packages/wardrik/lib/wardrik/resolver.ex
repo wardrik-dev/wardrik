@@ -149,17 +149,17 @@ defmodule Wardrik.Resolver do
     end
   end
 
-  defp policy(_what, %WardrikPolicy{} = policy, _unread), do: {:ok, policy}
+  defp policy(_what, %Wardrik.Policy{} = policy, _unread), do: {:ok, policy}
 
   defp policy(what, rules, unread) when is_map(rules) do
-    case WardrikPolicy.decode(rules) do
+    case Wardrik.Policy.decode(rules) do
       {:ok, policy} -> {:ok, policy}
       {:error, why} -> {:error, unread.("its #{what}: #{why}")}
     end
   end
 
   defp policy(what, rules, unread) do
-    {:ok, WardrikPolicy.new!(rules)}
+    {:ok, Wardrik.Policy.new!(rules)}
   rescue
     error in ArgumentError -> {:error, unread.("its #{what}: #{Exception.message(error)}")}
   end

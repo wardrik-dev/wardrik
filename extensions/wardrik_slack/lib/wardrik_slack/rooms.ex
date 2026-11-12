@@ -1,6 +1,6 @@
 defmodule WardrikSlack.Rooms do
   @moduledoc """
-  Binds agents to Slack channels with `WardrikChannel.Rooms`, and shows the binding there.
+  Binds agents to Slack channels with `Wardrik.Chat.Rooms`, and shows the binding there.
 
   When the bot is invited, it offers the agents the inviter may read:
 
@@ -12,9 +12,10 @@ defmodule WardrikSlack.Rooms do
   Removing the bot unbinds the room.
   """
 
-  alias WardrikChannel.Binding
-  alias WardrikChannel.Offer
-  alias WardrikChannel.Workspace
+  alias Wardrik.Chat
+  alias Wardrik.Chat.Binding
+  alias Wardrik.Chat.Offer
+  alias Wardrik.Chat.Workspace
   alias WardrikSlack.API
   alias WardrikSlack.Blocks
   alias WardrikSlack.Messages
@@ -32,14 +33,14 @@ defmodule WardrikSlack.Rooms do
     by = person(workspace, event["inviter"])
 
     workspace
-    |> WardrikChannel.Rooms.joined(room, by)
+    |> Chat.Rooms.joined(room, by)
     |> message(workspace, bot)
     |> post(workspace, room)
   end
 
   def event(workspace, %{"type" => type, "channel" => room} = event, _bot)
       when type in ["channel_left", "group_left"],
-      do: WardrikChannel.Rooms.left(workspace, room, person(workspace, event["actor_id"]))
+      do: Chat.Rooms.left(workspace, room, person(workspace, event["actor_id"]))
 
   def event(_workspace, _event, _bot), do: :ignored
 
@@ -65,25 +66,25 @@ defmodule WardrikSlack.Rooms do
   def answer(_workspace, _payload), do: :ignored
 
   defp act("agent", agent, workspace, room, by) do
-    case WardrikChannel.Rooms.chose(workspace, room: room, agent: agent, by: by) do
+    case Chat.Rooms.chose(workspace, room: room, agent: agent, by: by) do
       {:ok, binding, offer} -> {:bound, binding, offer}
       {:error, :not_offered} -> {:error, "That agent isn't offered here anymore."}
     end
   end
 
   defp act("answers", answers, workspace, room, by) do
-    case WardrikChannel.Rooms.answers(workspace, room, answers(answers), by) do
+    case Chat.Rooms.answers(workspace, room, answers(answers), by) do
       {:ok, binding} -> {:bound, binding, offer(workspace, binding.agent, by)}
-      {:error, :not_bound} -> WardrikChannel.Rooms.choices(workspace, by)
+      {:error, :not_bound} -> Chat.Rooms.choices(workspace, by)
     end
   end
 
   defp act("more", "stop", workspace, room, by) do
-    :ok = WardrikChannel.Rooms.left(workspace, room, by)
+    :ok = Chat.Rooms.left(workspace, room, by)
     :stopped
   end
 
-  defp act("more", _choose, workspace, _room, by), do: WardrikChannel.Rooms.choices(workspace, by)
+  defp act("more", _choose, workspace, _room, by), do: Chat.Rooms.choices(workspace, by)
 
   defp answers("everything"), do: :everything
   defp answers(_mentions), do: :mentions
@@ -96,7 +97,7 @@ defmodule WardrikSlack.Rooms do
   defp value(_pressed), do: nil
 
   @doc "Returns the message that shows a room's binding."
-  @spec message(WardrikChannel.Rooms.shown() | :stopped, Workspace.t(), String.t() | nil) ::
+  @spec message(Chat.Rooms.shown() | :stopped, Workspace.t(), String.t() | nil) ::
           %{text: String.t(), blocks: [map()]}
   def message({:bound, %Binding{answers: answers}, offer}, _workspace, bot) do
     text = ":wave: *#{shown(offer)}* answers here now."

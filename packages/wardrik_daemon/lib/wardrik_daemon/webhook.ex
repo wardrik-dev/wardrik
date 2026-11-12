@@ -52,7 +52,7 @@ defmodule WardrikDaemon.Webhook do
   defp signing(running, owner, name) do
     vault = Wardrik.vault(running)
 
-    case WardrikVault.fetch(vault, %Principal{id: owner}, name, kind: :signing_secret) do
+    case Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :signing_secret) do
       {:ok, secret} -> {:ok, secret}
       {:error, _reason} -> {:skip, "but #{owner} holds no secret #{name} to sign it with"}
     end

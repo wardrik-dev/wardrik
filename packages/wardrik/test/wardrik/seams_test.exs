@@ -1,7 +1,8 @@
 defmodule Wardrik.SeamsTest do
   use ExUnit.Case, async: true
 
-  @pipelines []
+  # A storage adapter's callbacks take its own config first, then the path.
+  @pipelines [{Wardrik.Store.Adapter, :put, 4}, {Wardrik.Store.Adapter, :delete, 3}]
 
   test "every behaviour's callbacks take one request, then their options" do
     {:ok, modules} = :application.get_key(:wardrik, :modules)
