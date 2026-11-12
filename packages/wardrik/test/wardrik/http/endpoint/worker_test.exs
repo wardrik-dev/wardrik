@@ -107,7 +107,7 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
   defp connect(context) do
     {:ok, worker} = Worker.start(context.url, "wrk_shop", self())
 
-    assert_receive {:worker, %{"method" => "initialize", "id" => id}}
+    assert_receive {:worker, %{"method" => "initialize", "id" => id}}, 1_000
 
     Worker.send_message(worker, %{
       "jsonrpc" => "2.0",

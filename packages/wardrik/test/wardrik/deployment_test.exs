@@ -118,8 +118,11 @@ defmodule Wardrik.DeploymentTest do
       groups = node["process_groups"]
       assert Enum.sum_by(groups, & &1["processes"]) > 0
 
-      assert %{"application" => "wardrik_core", "processes" => 1} =
+      # Other tests' agents run on this node too.
+      assert %{"application" => "wardrik_core", "processes" => agents} =
                Enum.find(groups, &(&1["module"] == "WardrikCore.Agent"))
+
+      assert agents >= 1
 
       assert Enum.find(groups, &(&1["module"] == ":application_controller"))
 
