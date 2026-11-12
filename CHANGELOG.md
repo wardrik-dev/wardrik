@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.6 (2026-11-11)
 
+- `AgentDefinition` has `digest`.
 - `agent.files()`, `file()`, `filePut()` and `fileDelete()` list, read, write and delete an
   agent's files.
 - `agent.runtime`, `agent.resolved` and `deployment.runtime`, regenerated from wardrik_protocol,

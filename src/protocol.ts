@@ -356,6 +356,10 @@ export interface AgentDefinition {
    */
   idle_timeout?: number | "infinity";
   /**
+   * Whether the agent writes a digest of each conversation to digests/ in its workspace before it sleeps. A later conversation finds it with search_files. It needs the files tool, and counts towards the agent's budget. Defaults to true.
+   */
+  digest?: boolean;
+  /**
    * The maximum number of tool-call rounds in one turn.
    */
   max_iterations?: number | "infinity";
