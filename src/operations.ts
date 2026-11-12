@@ -6,6 +6,8 @@ import type { CallOptions, Runner, StreamOptions } from "./runner.ts";
 import type {
   AgentAnswer,
   AgentDefinition,
+  AgentResolved,
+  AgentRuntime,
   AgentSnapshot,
   Agents,
   Approve,
@@ -27,6 +29,7 @@ import type {
   Nodes,
   Reloaded,
   Runs,
+  Runtime,
   Timeline,
   TriggerDefinition,
 } from "./protocol.ts";
@@ -227,6 +230,20 @@ export const operations = {
     body: false,
     unwrap: "calls",
   },
+  "agent.runtime": {
+    method: "GET",
+    path: "/v1/agents/{agent}/runtime",
+    path_params: ["agent"],
+    query: [],
+    body: false,
+  },
+  "agent.resolved": {
+    method: "GET",
+    path: "/v1/agents/{agent}/resolved",
+    path_params: ["agent"],
+    query: [],
+    body: false,
+  },
   "agent.kill": {
     method: "DELETE",
     path: "/v1/agents/{agent}/calls/{call}",
@@ -263,6 +280,13 @@ export const operations = {
     query: [],
     body: false,
   },
+  "deployment.runtime": {
+    method: "GET",
+    path: "/v1/deployment/runtime",
+    path_params: [],
+    query: ["limit"],
+    body: false,
+  },
   "agent.move": {
     method: "POST",
     path: "/v1/agents/{agent}/move",
@@ -280,178 +304,190 @@ export type OperationId = keyof typeof operations;
 /** What each operation takes: its path and query parameters and its body, as one object. */
 export interface Inputs {
   "agents.list": {
-    /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+    /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
     agents?: string[] | undefined;
-    /** The cursor to read after: a page's next. */
+    /** Return results after this cursor. Use the next value from the previous page. */
     after?: string | undefined;
-    /** How many to read. Every agent unless set. */
+    /** The maximum number to return. Defaults to all. */
     limit?: number | undefined;
   };
   "agents.forget": {
-    /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+    /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
     agents?: string[] | undefined;
   };
   "interrupts.list": {
-    /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+    /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
     agents?: string[] | undefined;
   };
   "events.list": {
-    /** The agents to read, by ID, given once for each. Each covers its conversations too. */
+    /** Agent IDs to read, each listed once. Each includes its conversations. */
     agents: string[];
-    /** The event types to read, as wardrik.run.completed, given once for each. Every type where left out. A wardrik.events.dropped comes whatever the types. */
+    /** The event types to return, for example wardrik.run.completed. List each type once. Defaults to all types. wardrik.events.dropped is always returned. */
     types?: string[] | undefined;
-    /** The cursor to read after: a page's next, the id of an event a stream gave, or a snapshot's cursor. */
+    /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
     after?: string | undefined;
-    /** How many to read, 100 unless set. */
+    /** The maximum number to return. Defaults to 100. */
     limit?: number | undefined;
   };
   "events.head": {
-    /** The agents to read, by ID, given once for each. Each covers its conversations too. */
+    /** Agent IDs to read, each listed once. Each includes its conversations. */
     agents: string[];
   };
   "agent.read": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.define": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
   } & AgentDefinition;
   "agent.forget": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
   };
   "agent.ask": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   } & Ask;
   "agent.decide": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   } & Decisions;
   "agent.authorization": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
-    /** The id of the call the agent waits on. */
+    /** The ID of the pending tool call. */
     interrupt: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.cancel": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.events": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
-    /** The event types to read, as wardrik.run.completed, given once for each. Every type where left out. A wardrik.events.dropped comes whatever the types. */
+    /** The event types to return, for example wardrik.run.completed. List each type once. Defaults to all types. wardrik.events.dropped is always returned. */
     types?: string[] | undefined;
-    /** The cursor to read after: a page's next, the id of an event a stream gave, or a snapshot's cursor. */
+    /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
     after?: string | undefined;
-    /** How many to read, 100 unless set. */
+    /** The maximum number to return. Defaults to 100. */
     limit?: number | undefined;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.timeline": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.runs": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "audit.list": {
-    /** The sequence to read after, a page's next. */
+    /** Return events after this sequence number. Use the next value from the previous page. */
     starting_after?: number | undefined;
-    /** How many to read, 100 unless set. */
+    /** The maximum number to return. Defaults to 100. */
     limit?: number | undefined;
   };
   "agent.approve": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
-    /** The id of the call the agent waits on. */
+    /** The ID of the pending tool call. */
     interrupt: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   } & Approve;
   "agent.deny": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
-    /** The id of the call the agent waits on. */
+    /** The ID of the pending tool call. */
     interrupt: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   } & Deny;
   "agents.cancel": {
-    /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+    /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
     agents?: string[] | undefined;
   };
   "agent.definition": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
   };
   "agent.spawn": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
   };
   "agent.stop": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.clear": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.calls": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
-  "agent.kill": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+  "agent.runtime": {
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
-    /** The id of the tool call. */
+  };
+  "agent.resolved": {
+    /** The agent ID, URL-encoded as one path segment. */
+    agent: string;
+  };
+  "agent.kill": {
+    /** The agent ID, URL-encoded as one path segment. */
+    agent: string;
+    /** The tool call ID. */
     call: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   };
   "agent.trigger_set": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
-    /** The trigger's name. */
+    /** The trigger name. */
     trigger: string;
   } & TriggerDefinition;
   "agent.trigger_remove": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
-    /** The trigger's name. */
+    /** The trigger name. */
     trigger: string;
   };
   "deployment.reload": {
-    /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+    /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
     agents?: string[] | undefined;
   };
   "deployment.nodes": {};
+  "deployment.runtime": {
+    /** The number of agents to return. Defaults to 20. */
+    limit?: number | undefined;
+  };
   "agent.move": {
-    /** The agent's ID, as your app chose it, in one URL-encoded path segment. */
+    /** The agent ID, URL-encoded as one path segment. */
     agent: string;
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
@@ -484,11 +520,14 @@ export interface Outputs {
   "agent.stop": AgentAnswer["agent"];
   "agent.clear": AgentSnapshot;
   "agent.calls": Calls["calls"];
+  "agent.runtime": AgentRuntime;
+  "agent.resolved": AgentResolved;
   "agent.kill": void;
   "agent.trigger_set": TriggerDefinition;
   "agent.trigger_remove": TriggerDefinition;
   "deployment.reload": Reloaded;
   "deployment.nodes": Nodes;
+  "deployment.runtime": Runtime;
   "agent.move": AgentAnswer["agent"];
 }
 
@@ -508,7 +547,7 @@ export class AgentOperations {
   }
 
   /**
-   * Read what an agent is doing now.
+   * Read an agent's current status.
    */
   read(options: CallOptions = {}): Promise<Outputs["agent.read"]> {
     return this.#runner.call(
@@ -521,7 +560,7 @@ export class AgentOperations {
   /**
    * Define an agent.
    *
-   * Starts the agent the definition describes, or brings the one running to it from its next turn. A definition put again replaces the last. A key nothing here supports yet answers not_supported, naming it.
+   * Creates the agent from this definition, or updates a running agent from its next turn. Each call replaces the whole definition. An unsupported key returns not_supported with the key's name.
    *
    * Acts on the agent, never a conversation.
    */
@@ -530,7 +569,7 @@ export class AgentOperations {
   }
 
   /**
-   * Forget an agent.
+   * Delete an agent.
    *
    * Acts on the agent, never a conversation.
    */
@@ -539,7 +578,7 @@ export class AgentOperations {
   }
 
   /**
-   * Send an agent a message.
+   * Send a message to an agent.
    */
   ask(input: Ask, options: CallOptions = {}): Promise<Outputs["agent.ask"]> {
     return this.#runner.call(
@@ -550,9 +589,9 @@ export class AgentOperations {
   }
 
   /**
-   * Approve or reject the calls an agent waits on.
+   * Approve or reject pending tool calls.
    *
-   * The decisions are taken together and recorded as the caller's. A rejection's reason is what the model is told in place of the call's answer. An approval's note is what it reads beside the answer.
+   * All decisions are applied together and recorded under the caller. A rejection's reason is sent to the model instead of the tool's result. An approval's note is sent with the result.
    */
   decide(input: Decisions, options: CallOptions = {}): Promise<Outputs["agent.decide"]> {
     return this.#runner.call(
@@ -563,7 +602,7 @@ export class AgentOperations {
   }
 
   /**
-   * Read where a person authorizes a call.
+   * Read the authorization URL for a pending call.
    */
   authorization(
     interrupt: string,
@@ -577,7 +616,7 @@ export class AgentOperations {
   }
 
   /**
-   * Stop what an agent is doing.
+   * Cancel an agent's current turn.
    */
   cancel(options: CallOptions = {}): Promise<Outputs["agent.cancel"]> {
     return this.#runner.call(
@@ -588,15 +627,15 @@ export class AgentOperations {
   }
 
   /**
-   * Read an agent's log.
+   * Read an agent's events.
    */
   events(
     input: {
-      /** The event types to read, as wardrik.run.completed, given once for each. Every type where left out. A wardrik.events.dropped comes whatever the types. */
+      /** The event types to return, for example wardrik.run.completed. List each type once. Defaults to all types. wardrik.events.dropped is always returned. */
       types?: string[] | undefined;
-      /** The cursor to read after: a page's next, the id of an event a stream gave, or a snapshot's cursor. */
+      /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
-      /** How many to read, 100 unless set. */
+      /** The maximum number to return. Defaults to 100. */
       limit?: number | undefined;
     } = {},
     options: CallOptions = {},
@@ -614,9 +653,9 @@ export class AgentOperations {
    */
   streamEvents(
     input: {
-      /** The event types to read, as wardrik.run.completed, given once for each. Every type where left out. A wardrik.events.dropped comes whatever the types. */
+      /** The event types to return, for example wardrik.run.completed. List each type once. Defaults to all types. wardrik.events.dropped is always returned. */
       types?: string[] | undefined;
-      /** The cursor to read after: a page's next, the id of an event a stream gave, or a snapshot's cursor. */
+      /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
     } = {},
     options: StreamOptions = {},
@@ -629,7 +668,7 @@ export class AgentOperations {
   }
 
   /**
-   * Read an agent's conversation as a person reads it.
+   * Read an agent's conversation.
    */
   timeline(options: CallOptions = {}): Promise<Outputs["agent.timeline"]> {
     return this.#runner.call(
@@ -640,7 +679,7 @@ export class AgentOperations {
   }
 
   /**
-   * Read what an agent's runs did and cost.
+   * Read an agent's runs and their cost.
    */
   runs(options: CallOptions = {}): Promise<Outputs["agent.runs"]> {
     return this.#runner.call(
@@ -651,9 +690,9 @@ export class AgentOperations {
   }
 
   /**
-   * Approve a call an agent waits on.
+   * Approve a pending tool call.
    *
-   * agent.decide with one approval. Recorded as the caller's.
+   * Same as agent.decide with one approval. Recorded under the caller.
    */
   approve(
     interrupt: string,
@@ -668,9 +707,9 @@ export class AgentOperations {
   }
 
   /**
-   * Reject a call an agent waits on.
+   * Reject a pending tool call.
    *
-   * agent.decide with one rejection. Recorded as the caller's.
+   * Same as agent.decide with one rejection. Recorded under the caller.
    */
   deny(
     interrupt: string,
@@ -716,7 +755,7 @@ export class AgentOperations {
   /**
    * Clear an agent's history.
    *
-   * Empties its history. The agent, its definition and its other conversations stay. Answers conflict while it runs a turn or waits on a person.
+   * Deletes the agent's history. The agent, its definition and its other conversations are kept. Returns conflict while the agent is running a turn or waiting for an approval.
    */
   clear(options: CallOptions = {}): Promise<Outputs["agent.clear"]> {
     return this.#runner.call(
@@ -727,9 +766,9 @@ export class AgentOperations {
   }
 
   /**
-   * List the tool calls an agent is running.
+   * List an agent's running tool calls.
    *
-   * Answers not_found while the agent sleeps.
+   * Returns not_found while the agent is asleep.
    */
   calls(options: CallOptions = {}): Promise<Outputs["agent.calls"]> {
     return this.#runner.call(
@@ -740,7 +779,29 @@ export class AgentOperations {
   }
 
   /**
-   * Stop one tool call.
+   * Read an agent's resource use.
+   *
+   * Returns the memory, mailbox size and work of a running agent's processes. Returns not_found while the agent is asleep.
+   *
+   * Acts on the agent, never a conversation.
+   */
+  runtime(options: CallOptions = {}): Promise<Outputs["agent.runtime"]> {
+    return this.#runner.call("agent.runtime", { agent: this.agent }, options);
+  }
+
+  /**
+   * Read what an agent gets.
+   *
+   * Returns what the app gives the agent: who it works for, its policies, MCP servers and their tools, notify targets, channels and workspaces.
+   *
+   * Acts on the agent, never a conversation.
+   */
+  resolved(options: CallOptions = {}): Promise<Outputs["agent.resolved"]> {
+    return this.#runner.call("agent.resolved", { agent: this.agent }, options);
+  }
+
+  /**
+   * Stop a tool call.
    */
   kill(call: string, options: CallOptions = {}): Promise<Outputs["agent.kill"]> {
     return this.#runner.call(
@@ -751,9 +812,9 @@ export class AgentOperations {
   }
 
   /**
-   * Set one of an agent's triggers.
+   * Create or update an agent's trigger.
    *
-   * Sets or changes one trigger of an agent with a definition, which keeps it; not_found where it has none. A trigger whose every and timezone stay keeps its next run.
+   * Creates or updates one trigger and saves it in the agent's definition. Returns not_found if the agent has no definition. If every and timezone don't change, the next run time is kept.
    *
    * Acts on the agent, never a conversation.
    */
@@ -770,7 +831,7 @@ export class AgentOperations {
   }
 
   /**
-   * Remove one of an agent's triggers.
+   * Remove an agent's trigger.
    *
    * Acts on the agent, never a conversation.
    */
@@ -784,7 +845,7 @@ export class AgentOperations {
   /**
    * Move an agent to another node.
    *
-   * Starts the agent again on node, as it was. A turn it's taking ends, and what it waits on is abandoned, so ask it again once it's moved.
+   * Restarts the agent on the given node, with its state. A turn in progress is stopped, and pending approvals are dropped. Send the request again after the move.
    */
   move(input: Node, options: CallOptions = {}): Promise<Outputs["agent.move"]> {
     return this.#runner.call(
@@ -805,15 +866,15 @@ export class AgentsOperations {
   }
 
   /**
-   * List the agents.
+   * List agents.
    */
   list(
     input: {
-      /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+      /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
       agents?: string[] | undefined;
-      /** The cursor to read after: a page's next. */
+      /** Return results after this cursor. Use the next value from the previous page. */
       after?: string | undefined;
-      /** How many to read. Every agent unless set. */
+      /** The maximum number to return. Defaults to all. */
       limit?: number | undefined;
     } = {},
     options: CallOptions = {},
@@ -822,13 +883,13 @@ export class AgentsOperations {
   }
 
   /**
-   * Forget the agents.
+   * Delete agents.
    *
-   * Each agent goes as agent.forget takes it: stopped, with its conversation, definition and triggers deleted.
+   * Removes each agent in the same way as agent.forget. The agent is stopped, and its conversations, definition and triggers are deleted.
    */
   forget(
     input: {
-      /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+      /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
       agents?: string[] | undefined;
     } = {},
     options: CallOptions = {},
@@ -837,11 +898,11 @@ export class AgentsOperations {
   }
 
   /**
-   * Stop what the agents are doing.
+   * Cancel the current turn of several agents.
    */
   cancel(
     input: {
-      /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+      /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
       agents?: string[] | undefined;
     } = {},
     options: CallOptions = {},
@@ -860,11 +921,11 @@ export class InterruptsOperations {
   }
 
   /**
-   * List the calls agents wait on a person for.
+   * List pending approvals.
    */
   list(
     input: {
-      /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+      /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
       agents?: string[] | undefined;
     } = {},
     options: CallOptions = {},
@@ -883,19 +944,19 @@ export class EventsOperations {
   }
 
   /**
-   * Read the agents' events.
+   * Read events for several agents.
    *
-   * A page reads after the cursor, from the start without one. A stream reads after the cursor, from what's written next without one. Where a log was trimmed past the cursor, a wardrik.events.dropped says so, and the log is read on from the oldest event it holds.
+   * A page returns the events after the cursor, or from the start without one. A stream returns the events after the cursor, or only new events without one. If older events were deleted past the cursor, a wardrik.events.dropped event comes first and reading continues from the oldest event kept.
    */
   list(
     input: {
-      /** The agents to read, by ID, given once for each. Each covers its conversations too. */
+      /** Agent IDs to read, each listed once. Each includes its conversations. */
       agents: string[];
-      /** The event types to read, as wardrik.run.completed, given once for each. Every type where left out. A wardrik.events.dropped comes whatever the types. */
+      /** The event types to return, for example wardrik.run.completed. List each type once. Defaults to all types. wardrik.events.dropped is always returned. */
       types?: string[] | undefined;
-      /** The cursor to read after: a page's next, the id of an event a stream gave, or a snapshot's cursor. */
+      /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
-      /** How many to read, 100 unless set. */
+      /** The maximum number to return. Defaults to 100. */
       limit?: number | undefined;
     },
     options: CallOptions = {},
@@ -909,11 +970,11 @@ export class EventsOperations {
    */
   streamList(
     input: {
-      /** The agents to read, by ID, given once for each. Each covers its conversations too. */
+      /** Agent IDs to read, each listed once. Each includes its conversations. */
       agents: string[];
-      /** The event types to read, as wardrik.run.completed, given once for each. Every type where left out. A wardrik.events.dropped comes whatever the types. */
+      /** The event types to return, for example wardrik.run.completed. List each type once. Defaults to all types. wardrik.events.dropped is always returned. */
       types?: string[] | undefined;
-      /** The cursor to read after: a page's next, the id of an event a stream gave, or a snapshot's cursor. */
+      /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
     },
     options: StreamOptions = {},
@@ -922,11 +983,11 @@ export class EventsOperations {
   }
 
   /**
-   * Read where the agents' logs stand.
+   * Read the latest event cursor for agents.
    */
   head(
     input: {
-      /** The agents to read, by ID, given once for each. Each covers its conversations too. */
+      /** Agent IDs to read, each listed once. Each includes its conversations. */
       agents: string[];
     },
     options: CallOptions = {},
@@ -945,13 +1006,13 @@ export class AuditOperations {
   }
 
   /**
-   * Read a page of what people changed.
+   * List audit events.
    */
   list(
     input: {
-      /** The sequence to read after, a page's next. */
+      /** Return events after this sequence number. Use the next value from the previous page. */
       starting_after?: number | undefined;
-      /** How many to read, 100 unless set. */
+      /** The maximum number to return. Defaults to 100. */
       limit?: number | undefined;
     } = {},
     options: CallOptions = {},
@@ -970,13 +1031,13 @@ export class DeploymentOperations {
   }
 
   /**
-   * Read every agent's definition again.
+   * Reload agent definitions.
    *
-   * Each awake agent takes its definition as it reads now from its next turn, and each sleeping one as it wakes. With agents, only those agents are brought to theirs. The node that answers reads its declarations, servers and triggers again too.
+   * Running agents use their current definition from their next turn. Sleeping agents use it when they wake. If you set agents, only those agents are updated. The node that handles the request also reloads its agent declarations, MCP servers and triggers.
    */
   reload(
     input: {
-      /** The agents to cover, by ID, given once for each. Each covers its conversations too. Every agent you may see unless set. */
+      /** Agent IDs, each listed once. Each includes its conversations. Defaults to every agent you can access. */
       agents?: string[] | undefined;
     } = {},
     options: CallOptions = {},
@@ -985,10 +1046,25 @@ export class DeploymentOperations {
   }
 
   /**
-   * List the deployment's nodes.
+   * List nodes.
    */
   nodes(options: CallOptions = {}): Promise<Outputs["deployment.nodes"]> {
     return this.#runner.call("deployment.nodes", {}, options);
+  }
+
+  /**
+   * Read resource use.
+   *
+   * Returns memory, CPU and process figures for each node, and the running agents that use the most memory. Measuring scheduler use takes 250 ms.
+   */
+  runtime(
+    input: {
+      /** The number of agents to return. Defaults to 20. */
+      limit?: number | undefined;
+    } = {},
+    options: CallOptions = {},
+  ): Promise<Outputs["deployment.runtime"]> {
+    return this.#runner.call("deployment.runtime", { ...input }, options);
   }
 }
 

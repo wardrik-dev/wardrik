@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `agent.runtime`, `agent.resolved` and `deployment.runtime`, regenerated from wardrik_protocol,
+  with its rewritten operation descriptions.
 - `version` matches `package.json`. 0.1.0-rc.5 still said 0.1.0-rc.4. A test now checks it.
 
 ## 0.1.0-rc.5 (2026-11-06)

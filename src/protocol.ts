@@ -15,7 +15,7 @@ export type Owner = string;
  */
 export type Source = "config" | "runtime";
 /**
- * An agent's ID, as your app chose it. Wardrik never reads it.
+ * An agent ID. Wardrik treats it as an opaque string.
  */
 export type AgentId = string;
 /**
@@ -23,7 +23,7 @@ export type AgentId = string;
  */
 export type ConversationId = string;
 /**
- * What agent.ask takes: its text as content, or as text parts, under an id of the caller's, or one it's given. A message sent again under the same id is taken once.
+ * The message, as content or as parts, with an optional ID. If you send a message again with the same ID, it is ignored. This makes retries safe.
  */
 export type Ask = Ask1 & Ask2;
 export type Ask1 = {
@@ -43,24 +43,24 @@ export interface Message {
   parts: Part[];
 }
 /**
- * One part of a message, tagged by type, as OpenTelemetry's GenAI conventions define them.
+ * One part of a message, with a type as defined by the OpenTelemetry GenAI conventions.
  */
 export interface Part {
   /**
-   * text, reasoning, tool_call, tool_call_response, uri, file or blob.
+   * One of text, reasoning, tool_call, tool_call_response, uri, file or blob.
    */
   type: string;
   content?: string;
   id?: string;
   name?: string;
   /**
-   * Any JSON value. Stored as a flattened field.
+   * Any JSON value. It is stored as a flattened field.
    */
   arguments?: {
     [k: string]: unknown;
   };
   /**
-   * Any JSON value. Stored as a flattened field.
+   * Any JSON value. It is stored as a flattened field.
    */
   response?: {
     [k: string]: unknown;
@@ -156,13 +156,13 @@ export interface Tool {
   call: {
     id: string;
     /**
-     * Any JSON value. Stored as a flattened field.
+     * Any JSON value. It is stored as a flattened field.
      */
     arguments?: {
       [k: string]: unknown;
     };
     /**
-     * Any JSON value. Stored as a flattened field.
+     * Any JSON value. It is stored as a flattened field.
      */
     result?: {
       [k: string]: unknown;
@@ -298,11 +298,11 @@ export interface AgentAnswer {
   agent: AgentSummary;
 }
 /**
- * What agent.define takes, and agent.definition answers: what an agent is, and what it may do.
+ * An agent's definition. It holds the agent's model, instructions, tools and other settings. agent.definition returns a definition in the same format.
  */
 export interface AgentDefinition {
   /**
-   * What a person calls the agent; its name unless given.
+   * The name shown to people. Defaults to the agent's name.
    */
   display_name?: string;
   /**
@@ -318,15 +318,15 @@ export interface AgentDefinition {
    */
   model?: string;
   /**
-   * What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; self/* for its operations on itself; agents/* for its operations on other agents; or * for all of them.
+   * The tools the agent can call. Each entry is one of these: the name of a built-in tool. files, for the file tools. server/*, for all tools of the MCP server named server. workers/*, for all tools from connected tool workers. self/*, for operations on the agent itself. agents/*, for operations on other agents. *, for all tools.
    */
   tools?: string[];
   /**
-   * Other agents' workspaces the agent mounts. Only those its resolver shares, and tools names files to reach them.
+   * Other agents' workspaces to mount. Only workspaces the resolver shares are mounted, and the agent's tools must include files.
    */
   workspace?: {
     /**
-     * Other agents' workspaces the agent mounts, by the name each is seen under at shared/<name>/: an agent's ID, or an ID and a mode. The resolver gives each with read or write access; mode read mounts a write share read only.
+     * Other agents' workspaces to mount. Each key is the name of the mount, at shared/<name>/. Each value is an agent ID, or an agent ID and a mode. The resolver decides whether the agent can read or write. Set mode to read to mount a writable workspace as read-only.
      */
     shared?: {
       [k: string]:
@@ -338,7 +338,7 @@ export interface AgentDefinition {
     };
   };
   /**
-   * The files read into each turn, at most 20, in the agent's tree or one it shares, up to 16 KB of them unless max_bytes says. tools names files to read them with.
+   * Files to add to each turn. The files can come from the agent's workspace or a shared workspace. You can list up to 20 files. Their total size is limited to 16 KB. Set max_bytes to change the limit. The agent's tools must include files.
    */
   context?:
     | string[]
@@ -348,69 +348,69 @@ export interface AgentDefinition {
       };
   policy?: string | {};
   /**
-   * How many seconds a turn may take.
+   * The maximum length of a turn, in seconds.
    */
   timeout?: number;
   /**
-   * How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent.
+   * Seconds without work before the agent sleeps. It wakes on the next message or trigger. Defaults to the server's setting.
    */
   idle_timeout?: number | "infinity";
   /**
-   * How many rounds of tool calls a turn may make.
+   * The maximum number of tool-call rounds in one turn.
    */
   max_iterations?: number | "infinity";
   /**
-   * How a turn tries a failed model call again, after a random wait of up to a second that doubles each time, or as long as the provider's Retry-After says, up to max_wait. A 4xx answer other than 408, 425 and 429 is not tried again. The host's defaults hold where this is absent.
+   * How a turn retries a failed model call. Each retry waits a random delay of up to one second, doubling each time, or the provider's Retry-After, capped at max_wait. 4xx responses other than 408, 425 and 429 are not retried. The server's defaults apply if this is not set.
    */
   retries?: {
     /**
-     * How many times a failed model call is tried again: 6 unless set. 0 never tries again.
+     * Retries for a failed model call. Defaults to 6. 0 disables retries.
      */
     attempts?: number;
     /**
-     * The longest wait between tries, in seconds: 60 unless set.
+     * The maximum wait between retries, in seconds. Defaults to 60.
      */
     max_wait?: number;
     /**
-     * What happens once the tries are spent: ask a person whether to try again, or fail the turn. ask unless set.
+     * What happens when all retries fail. ask asks a person whether to retry. fail fails the turn. Defaults to ask.
      */
     on_exhausted?: "ask" | "fail";
   };
   /**
-   * How the agent calls its model. Only these keys: the host sets any other option a model call takes.
+   * Options for the agent's model calls. Only these keys are accepted. The server sets all other model options.
    */
   model_options?: {
     /**
-     * How random the model's answers are.
+     * The sampling temperature.
      */
     temperature?: number;
     /**
-     * The share of likely tokens the model samples from.
+     * Top-p sampling. The model samples from the most likely tokens whose probabilities add up to this value.
      */
     top_p?: number;
     /**
-     * The most tokens one model answer may hold.
+     * The maximum number of tokens in one model response.
      */
     max_tokens?: number;
     /**
-     * How hard a reasoning model thinks.
+     * The reasoning effort for models that support it.
      */
     reasoning_effort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "default";
     /**
-     * How many seconds a model call waits for an answer: 300 unless set.
+     * Seconds a model call waits for a response. Defaults to 300.
      */
     receive_timeout?: number;
     /**
-     * How many seconds a model's stream may go quiet: 300 unless set.
+     * Seconds a model's stream may be idle. Defaults to 300.
      */
     stream_idle_timeout?: number;
     /**
-     * How many seconds one model call may take in all. The turn's timeout bounds it unless set.
+     * The maximum length of one model call, in seconds. Defaults to the turn's timeout.
      */
     total_timeout?: number;
   };
   /**
-   * When the agent summarises its older history, as shares of the model's window; false never does.
+   * When the agent summarizes older history. The values are fractions of the model's context window. Set to false to turn off summarizing.
    */
   compaction?:
     | false
@@ -420,80 +420,177 @@ export interface AgentDefinition {
         window?: number;
       };
   /**
-   * The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every, and a timezone a cron expression is read in; a webhook has webhook in its place, holding its secret and how a request is verified, and is sent requests at POST /v1/hooks/{key}/{trigger}.
+   * Triggers that run the agent. Each trigger has a prompt or a prompt_file. Defining the agent again replaces all its triggers. To change one trigger, use PUT or DELETE /v1/agents/{key}/triggers/{trigger}. A scheduled trigger has every and an optional timezone. A feed trigger has feed. A webhook trigger has webhook, with its secret and verification method. It receives requests at POST /v1/hooks/{key}/{trigger}.
    */
   triggers?: {
     /**
-     * The trigger's name, trigger-1, trigger-2 and so on by its place in the list where it is left out.
+     * The trigger name. Defaults to trigger-1, trigger-2 and so on, by position in the list.
      */
     name?: string;
     /**
-     * A cron expression, or a duration such as 30m.
+     * A cron expression, or an interval such as 30m.
      */
     every?: string;
     /**
-     * The time zone a cron expression in every is read in, by its IANA name, as Europe/Berlin; Etc/UTC where it is left out. A duration counts elapsed time and takes none.
+     * The IANA time zone for a cron expression in every, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval.
      */
     timezone?: string;
     /**
-     * What the agent is asked each time.
+     * The prompt sent to the agent on each run.
      */
     prompt?: string;
     /**
-     * In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with.
+     * Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files.
      */
     prompt_file?: string;
     /**
-     * What a firing does while the agent is busy: skip it, queue its prompt, or settle: where the agent waits on an answer nobody gave, cancel that turn and ask, and otherwise skip.
+     * What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run.
      */
     overlap?: "skip" | "queue" | "settle";
     /**
-     * What a trigger does about the firings it missed while down.
+     * What to do about runs missed while the server was down.
      */
     missed?: "run_once" | "skip";
     /**
-     * Up to this many seconds of delay, chosen at random each time.
+     * A random delay of up to this many seconds before each run.
      */
     jitter?: number;
     /**
-     * An RSS or Atom feed's URL, or a list of them: the agent is asked only when one has new entries, with them under the prompt. The first run only notes what a feed holds.
+     * An RSS or Atom feed URL, or a list of them. The agent runs only when a feed has new entries, which are added below the prompt. The first check records the current entries without running the agent.
      */
     feed?: string | string[];
     /**
-     * In place of every: a service sends the trigger requests, each asked about once.
+     * Use instead of every. An external service sends requests to the trigger. Each request runs the agent once.
      */
     webhook?: {
       /**
-       * The secret the service holds, as ${NAME}.
+       * The shared secret, as a reference, for example ${NAME}.
        */
       secret: string;
       /**
-       * shared, where a request presents the secret as a bearer token or at the end of its path, or standard, where it is signed as Standard Webhooks says; shared unless set.
+       * How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared.
        */
       verify?: "shared" | "standard";
     };
     [k: string]: unknown;
   }[];
   /**
-   * Who hears when the agent parks, fails or answers: a target its resolver names or a room in a channel, as slack:#updates; a list of them; or to and on. A room is posted in the workspace its resolver gives the channel.
+   * Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to and on. Chat rooms are in the workspace that the resolver sets for the channel.
    */
   notify?:
     | string
     | string[]
     | {
         /**
-         * The targets, as its resolver names them, and rooms in channels, as slack:#updates.
+         * Notification targets defined by the resolver, or chat rooms such as slack:#updates.
          */
         to: string | string[];
         /**
-         * What is sent: parked and failed turns unless set, and finished for what a turn answered.
+         * The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed.
          */
         on?: ("parked" | "failed" | "finished")[];
       };
   /**
-   * The chat channels, by name, it may be chosen to answer in.
+   * Names of the chat channels the agent can reply in.
    */
   channels?: string[];
+}
+/**
+ * What an agent gets from the app that runs it: who it works for, its policies, MCP servers, notify targets, channels and workspaces. The app decides this each time the agent runs.
+ */
+export interface AgentResolved {
+  agent: AgentId;
+  principal?: Principal;
+  /**
+   * The MCP servers the agent can use.
+   */
+  servers: {
+    /**
+     * The name the agent's tools use for the server.
+     */
+    name: string;
+    /**
+     * The server's name in the app.
+     */
+    server: string;
+    /**
+     * The names of the tools the server offers now. Empty when the server is down or hasn't listed its tools yet.
+     */
+    tools: string[];
+  }[];
+  /**
+   * The app's policies for the agent, in the same format as a policy file. Each tool call is checked against all of them.
+   */
+  policy: {}[];
+  /**
+   * Named policies the agent's definition can use, by name.
+   */
+  policies: {
+    [k: string]: {};
+  };
+  /**
+   * Settings the agent gets where its definition doesn't set them, such as model.
+   */
+  defaults: {};
+  /**
+   * The notify targets the agent can send to.
+   */
+  notify: {
+    /**
+     * The name the agent's definition uses for the target.
+     */
+    name: string;
+    /**
+     * The target's name in the app. Missing when the app sends the notices itself.
+     */
+    target?: string;
+  }[];
+  /**
+   * The workspace each channel posts the agent's notices in, by channel name.
+   */
+  channels: {
+    [k: string]: string;
+  };
+  /**
+   * Other agents' workspaces the agent can mount, by agent ID.
+   */
+  workspaces: {
+    [k: string]: "read" | "write";
+  };
+}
+/**
+ * Resource use of a running agent. The numbers cover the agent's process, its current turn and its running tool calls.
+ */
+export interface AgentRuntime {
+  agent: AgentId;
+  /**
+   * The conversation ID, for an agent that runs one process per conversation.
+   */
+  conversation?: string;
+  /**
+   * The node the agent runs on.
+   */
+  node: string;
+  /**
+   * The memory used by the agent's processes, in bytes.
+   */
+  memory_bytes: number;
+  /**
+   * The size of the shared binaries the agent's processes reference, in bytes. Large message and tool results are usually stored this way.
+   */
+  binary_bytes?: number;
+  /**
+   * The number of processes: the agent, plus one for a running turn and one for each running tool call.
+   */
+  processes: number;
+  /**
+   * The number of messages waiting in the agent process's mailbox. A number that keeps growing means the agent can't keep up.
+   */
+  message_queue: number;
+  /**
+   * The work the agent's processes have done, in BEAM reductions. Compare it between agents, or between two reads, to see which agents use the most CPU.
+   */
+  reductions: number;
 }
 /**
  * What agent.read answers: what the agent or conversation is doing now, and where its log stands. Read and follow the log after cursor.
@@ -538,7 +635,7 @@ export interface Agents {
   next?: string | null;
 }
 /**
- * What agent.approve takes: a note the agent reads beside the call's answer, if any. The call runs as the model wrote it.
+ * Approves the call as the model requested it, with an optional note sent to the agent alongside the result.
  */
 export interface Approve {
   note?: string;
@@ -635,15 +732,15 @@ export interface Cancelled {
   cancelled: string[];
 }
 /**
- * What channel.deliver takes: the request a chat app sent, as its raw body and its headers by lowercase name. Over HTTP, a chat app sends the request itself, and Wardrik reads this from it.
+ * A request from a chat app. It holds the raw body and the headers, with lowercase header names. Over HTTP, the chat app sends its request directly. Wardrik builds this input from it.
  */
 export interface ChannelRequest {
   /**
-   * The request's body, as it was sent.
+   * The raw request body.
    */
   body: string;
   /**
-   * The request's headers, by lowercase name.
+   * The request headers, with lowercase names.
    */
   headers: {
     [k: string]: string;
@@ -678,7 +775,7 @@ export interface DecidedBody {
   }[];
 }
 /**
- * What agent.decide takes: what a person decides of the calls an agent waits on, taken together.
+ * Decisions for an agent's pending tool calls, applied together.
  */
 export interface Decisions {
   /**
@@ -686,16 +783,16 @@ export interface Decisions {
    */
   decisions: {
     /**
-     * The id of a call the agent waits on, an interrupt's.
+     * The ID of a pending tool call, from its interrupt.
      */
     id: string;
     decision: "approve" | "reject";
     /**
-     * For an approval, what the agent is told with it.
+     * For an approval, a note sent to the agent.
      */
     note?: string;
     /**
-     * For a rejection, why, which the agent is told.
+     * For a rejection, the reason sent to the agent.
      */
     reason?: string;
   }[];
@@ -717,7 +814,7 @@ export interface DefinitionRead {
   };
 }
 /**
- * What agent.deny takes: why, which the agent is told in place of the call's answer.
+ * Rejects the call, with an optional reason sent to the agent instead of the tool's result.
  */
 export interface Deny {
   reason?: string;
@@ -767,15 +864,15 @@ export interface Forgotten {
   }[];
 }
 /**
- * What hook.deliver takes: the request a service sent, as its raw body and its headers by lowercase name. Over HTTP, a service sends the request itself, and Wardrik reads this from it.
+ * A webhook request. It holds the raw body and the headers, with lowercase header names. Over HTTP, the service sends its request directly. Wardrik builds this input from it.
  */
 export interface HookRequest {
   /**
-   * The request's body, as it was sent.
+   * The raw request body.
    */
   body: string;
   /**
-   * The request's headers, by lowercase name.
+   * The request headers, with lowercase names.
    */
   headers: {
     [k: string]: string;
@@ -794,16 +891,16 @@ export interface Interrupts {
   }[];
 }
 /**
- * What agent.move takes: the node to start the agent again on, by its name.
+ * The node to restart the agent on.
  */
 export interface Node {
   /**
-   * A node's name, as wardrik@box1.
+   * The node's name, such as wardrik@box1.
    */
   node: string;
 }
 /**
- * What deployment.nodes answers: the deployment's nodes, each with how many agents run on it, and how many sleep on none.
+ * What deployment.nodes answers: the deployment's nodes, each with how many agents run on it, how many of those work, wait or wait on a person, and how many sleep on none.
  */
 export interface Nodes {
   nodes: {
@@ -816,6 +913,18 @@ export interface Nodes {
      */
     agents: number;
   }[];
+  /**
+   * How many agents on the nodes answer a message now.
+   */
+  running: number;
+  /**
+   * How many agents on the nodes wait for a message.
+   */
+  idle: number;
+  /**
+   * How many agents on the nodes wait on a person to decide.
+   */
+  parked: number;
   /**
    * How many agents sleep, on no node, until something asks them.
    */
@@ -863,6 +972,278 @@ export interface Runs {
     last_at: string | null;
   };
   cursor: string;
+}
+/**
+ * What deployment.runtime returns: resource use for each node, and the running agents that use the most memory.
+ */
+export interface Runtime {
+  /**
+   * Each node in the cluster.
+   */
+  nodes: {
+    /**
+     * The node's name.
+     */
+    name: string;
+    /**
+     * The number of agents running on the node.
+     */
+    agents: number;
+    /**
+     * How long the node has been running, in milliseconds.
+     */
+    uptime_ms: number;
+    /**
+     * The Erlang/OTP release, for example 28.
+     */
+    otp_release: string;
+    /**
+     * The version of the Erlang runtime system.
+     */
+    erts_version: string;
+    /**
+     * The Elixir version.
+     */
+    elixir_version: string;
+    /**
+     * The CPU architecture and operating system the runtime was built for.
+     */
+    architecture?: string;
+    /**
+     * The number of CPU cores the operating system reports.
+     */
+    logical_processors?: number;
+    /**
+     * The number of scheduler threads. Each one runs BEAM processes on one core.
+     */
+    schedulers: number;
+    /**
+     * The number of scheduler threads in use.
+     */
+    schedulers_online: number;
+    /**
+     * The number of scheduler threads for long-running native code.
+     */
+    dirty_cpu_schedulers?: number;
+    /**
+     * The number of scheduler threads for blocking I/O in native code.
+     */
+    dirty_io_schedulers?: number;
+    /**
+     * How busy the schedulers were, from 0 to 1, measured over 250 ms. A value near 1 means the node is short of CPU.
+     */
+    scheduler_utilization: number;
+    /**
+     * The number of processes waiting for a scheduler. A number that stays high means the node is short of CPU.
+     */
+    run_queue: number;
+    /**
+     * The node's memory use in bytes. All but resident come from the BEAM's own allocators.
+     */
+    memory: {
+      /**
+       * All memory the BEAM has allocated.
+       */
+      total: number;
+      /**
+       * Memory allocated for processes, including agents.
+       */
+      processes: number;
+      /**
+       * The part of processes that is in use.
+       */
+      processes_used?: number;
+      /**
+       * Memory not allocated for processes: binaries, code, ETS, persistent terms and the runtime itself.
+       */
+      system: number;
+      /**
+       * Memory allocated for atoms.
+       */
+      atom: number;
+      /**
+       * The part of atom that is in use.
+       */
+      atom_used?: number;
+      /**
+       * Memory used by shared binaries.
+       */
+      binary: number;
+      /**
+       * Memory used by loaded code.
+       */
+      code: number;
+      /**
+       * Memory used by ETS tables.
+       */
+      ets: number;
+      /**
+       * Memory used by persistent terms. Part of system.
+       */
+      persistent_term?: number;
+      /**
+       * Memory the operating system has given the node, as top shows it. It's more than total, because the allocators keep memory free for reuse. Absent where the node can't read it.
+       */
+      resident?: number;
+    };
+    /**
+     * The node's processes, counted by the module that runs them. A supervisor counts under its callback module. Sorted by process count, most first.
+     */
+    process_groups: {
+      /**
+       * The module, as Elixir writes it, such as Phoenix.PubSub or :supervisor.
+       */
+      module: string;
+      /**
+       * The application the module belongs to. Absent when the module belongs to none.
+       */
+      application?: string;
+      /**
+       * How many processes run the module.
+       */
+      processes: number;
+      /**
+       * Memory those processes use, in bytes.
+       */
+      memory_bytes: number;
+    }[];
+    /**
+     * The number of processes and the most the node allows.
+     */
+    processes: {
+      /**
+       * The number of processes.
+       */
+      count: number;
+      /**
+       * The most processes the node allows.
+       */
+      limit: number;
+    };
+    /**
+     * The number of ports, such as open files and sockets and the most the node allows.
+     */
+    ports: {
+      /**
+       * The number of ports, such as open files and sockets.
+       */
+      count: number;
+      /**
+       * The most ports, such as open files and sockets the node allows.
+       */
+      limit: number;
+    };
+    /**
+     * The number of atoms and the most the node allows.
+     */
+    atoms: {
+      /**
+       * The number of atoms.
+       */
+      count: number;
+      /**
+       * The most atoms the node allows.
+       */
+      limit: number;
+    };
+    /**
+     * The number of ETS tables and the most the node allows.
+     */
+    ets_tables: {
+      /**
+       * The number of ETS tables.
+       */
+      count: number;
+      /**
+       * The most ETS tables the node allows.
+       */
+      limit: number;
+    };
+    /**
+     * The work the node has done since it started, in BEAM reductions.
+     */
+    reductions: number;
+    /**
+     * Garbage collection since the node started.
+     */
+    garbage_collections: {
+      /**
+       * The number of garbage collections.
+       */
+      count: number;
+      /**
+       * The memory reclaimed, in machine words.
+       */
+      words_reclaimed: number;
+    };
+    /**
+     * Bytes read and written through ports, such as sockets and files, since the node started.
+     */
+    io: {
+      /**
+       * Bytes read.
+       */
+      input_bytes: number;
+      /**
+       * Bytes written.
+       */
+      output_bytes: number;
+    };
+    /**
+     * The number of times schedulers switched between processes since the node started.
+     */
+    context_switches?: number;
+    /**
+     * The other nodes this node is connected to.
+     */
+    connected_nodes?: string[];
+    /**
+     * Operating system figures. Present only when the os_mon application runs on the node.
+     */
+    os?: {
+      /**
+       * The average number of processes waiting to run over the last minute, as the uptime command shows it.
+       */
+      load_1?: number;
+      /**
+       * The same average over the last 5 minutes.
+       */
+      load_5?: number;
+      /**
+       * The same average over the last 15 minutes.
+       */
+      load_15?: number;
+      /**
+       * The machine's total memory.
+       */
+      memory_total_bytes?: number;
+      /**
+       * The memory available to start new programs.
+       */
+      memory_available_bytes?: number;
+      /**
+       * Each mounted disk.
+       */
+      disks?: {
+        /**
+         * Where the disk is mounted.
+         */
+        path: string;
+        /**
+         * The disk's size.
+         */
+        total_bytes: number;
+        /**
+         * How full the disk is, in percent.
+         */
+        used_percent: number;
+      }[];
+    };
+  }[];
+  /**
+   * The running agents, sorted by memory use, largest first.
+   */
+  agents: AgentRuntime[];
 }
 /**
  * What agent.timeline answers: the agent's conversation as a person reads it, oldest first.
@@ -927,55 +1308,55 @@ export interface Timeline {
   cursor: string;
 }
 /**
- * What agent.trigger_set takes, with a prompt or a prompt_file, and what it and agent.trigger_remove answer, with its name. A trigger on a clock has every, and a cron expression a timezone where it is not UTC; overlap is settle, missed is run_once and jitter is 0 where they are left out. feed watches an RSS or Atom feed, or a list of them. A webhook has webhook in place of every, holding its secret, as ${NAME}, and verify, shared or standard; it is sent requests at POST /v1/hooks/{agent}/{trigger}, and its overlap is queue where it says none.
+ * A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. Add timezone for cron expressions outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for webhooks), missed run_once and jitter 0.
  */
 export interface TriggerDefinition {
   /**
-   * The trigger's name, which the path gives.
+   * The trigger name, taken from the path.
    */
   name?: string;
   /**
-   * A cron expression, or a duration such as 30m.
+   * A cron expression, or an interval such as 30m.
    */
   every?: string;
   /**
-   * The time zone a cron expression in every is read in, by its IANA name, as Europe/Berlin; Etc/UTC where it is left out. A duration counts elapsed time and takes none.
+   * The IANA time zone for a cron expression in every, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval.
    */
   timezone?: string;
   /**
-   * What the agent is asked each time.
+   * The prompt sent to the agent on each run.
    */
   prompt?: string;
   /**
-   * In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with.
+   * Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files.
    */
   prompt_file?: string;
   /**
-   * What a firing does while the agent is busy: skip it, queue its prompt, or settle: where the agent waits on an answer nobody gave, cancel that turn and ask, and otherwise skip.
+   * What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run.
    */
   overlap?: "skip" | "queue" | "settle";
   /**
-   * What a trigger does about the firings it missed while down.
+   * What to do about runs missed while the server was down.
    */
   missed?: "run_once" | "skip";
   /**
-   * Up to this many seconds of delay, chosen at random each time.
+   * A random delay of up to this many seconds before each run.
    */
   jitter?: number;
   /**
-   * An RSS or Atom feed's URL, or a list of them: the agent is asked only when one has new entries, with them under the prompt. The first run only notes what a feed holds.
+   * An RSS or Atom feed URL, or a list of them. The agent runs only when a feed has new entries, which are added below the prompt. The first check records the current entries without running the agent.
    */
   feed?: string | string[];
   /**
-   * In place of every: a service sends the trigger requests, each asked about once.
+   * Use instead of every. An external service sends requests to the trigger. Each request runs the agent once.
    */
   webhook?: {
     /**
-     * The secret the service holds, as ${NAME}.
+     * The shared secret, as a reference, for example ${NAME}.
      */
     secret: string;
     /**
-     * shared, where a request presents the secret as a bearer token or at the end of its path, or standard, where it is signed as Standard Webhooks says; shared unless set.
+     * How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared.
      */
     verify?: "shared" | "standard";
   };
