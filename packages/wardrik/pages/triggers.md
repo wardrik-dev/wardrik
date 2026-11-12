@@ -121,7 +121,7 @@ Wardrik.Agent.trigger_remove(scope, agent: "agt_digest", trigger: "daily")
 
 `Wardrik.Triggers` runs without Wardrik, for `WardrikCore` agents. Your app gives it a
 `Wardrik.Triggers.Target`, which asks the agent, decides what to do when it's busy, and finds
-webhook secrets. Wardrik's own is `Wardrik.Triggers.Agents`.
+webhook secrets.
 
 ```elixir
 children = [

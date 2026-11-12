@@ -85,17 +85,11 @@ defmodule Wardrik.MixProject do
         "pages/servers.md",
         "pages/credentials.md",
         "pages/events.md",
-        "pages/subsystems/store.md",
-        "pages/subsystems/event_log.md",
-        "pages/subsystems/policy.md",
-        "pages/subsystems/vault.md",
-        "pages/subsystems/oauth.md",
-        "pages/subsystems/mcp.md",
-        "pages/subsystems/triggers.md",
-        "pages/subsystems/workspace.md",
-        "pages/subsystems/http.md",
-        "pages/subsystems/chat.md",
-        "pages/subsystems/testing.md",
+        "pages/storage.md",
+        "pages/files.md",
+        "pages/http.md",
+        "pages/chat.md",
+        "pages/testing.md",
         "CHANGELOG.md"
       ],
       groups_for_modules: [
@@ -113,7 +107,6 @@ defmodule Wardrik.MixProject do
       ],
       groups_for_extras: [
         "See it in action": ~r"notebooks/",
-        Subsystems: ~r"pages/subsystems/",
         Guides: ~r"pages/"
       ]
     ]
