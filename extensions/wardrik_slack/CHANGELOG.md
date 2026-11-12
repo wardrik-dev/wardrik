@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.5 (2026-11-12)
 
-- Requires `wardrik` in place of `wardrik_channel`, which it took in. The chat kit is
+- Requires `wardrik` 0.1.0-rc.11 in place of `wardrik_channel`, which it took in. The chat kit is
   `Wardrik.Chat`.
 
 ## 0.1.0-rc.4 (2026-11-06)

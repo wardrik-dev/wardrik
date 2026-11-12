@@ -4,7 +4,7 @@ defmodule Wardrik.MixProject do
   def project do
     [
       app: :wardrik,
-      version: "0.1.0-rc.10",
+      version: "0.1.0-rc.11",
       elixir: "~> 1.20",
       description:
         "Agents, governed: rules the model can't rewrite, approvals, budgets, and a record of what they did.",

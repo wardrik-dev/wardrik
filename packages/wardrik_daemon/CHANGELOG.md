@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.12 (2026-11-12)
+
+- Requires `wardrik` 0.1.0-rc.11 and `wardrik_slack` 0.1.0-rc.5.
+- Releases are in wardrik-dev/wardrik, tagged `wardrik_daemon-v<version>`. `install.sh` reads
+  them there.
+
 ## 0.1.0-rc.11 (2026-11-11)
 
 - Requires `wardrik` 0.1.0-rc.10 and `wardrik_brave` 0.1.0-rc.3.
