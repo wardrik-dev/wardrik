@@ -25,7 +25,8 @@ context: [MEMORY.md]
 - Paths are relative, such as `notes/2026-10-01.md`. Directories are created as needed.
 - Overwriting a file requires the version from `read_file`. A stale version is rejected.
 - Files are text, up to 4 MiB.
-- An agent's conversations share its workspace.
+- An agent's conversations share its workspace, digests included. What one conversation writes,
+  another can read. Give each audience, such as a private and a public channel, its own agent.
 
 ## Context
 
