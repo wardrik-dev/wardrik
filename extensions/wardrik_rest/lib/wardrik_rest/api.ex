@@ -141,6 +141,10 @@ defmodule WardrikRest.API do
           req_options: keyword()
         }
 
+  @doc "Returns the options `load/2` takes, to check them before loading."
+  @spec schema() :: NimbleOptions.t()
+  def schema, do: @schema
+
   @doc """
   Reads `source` with `WardrikRest.Reader` and keeps the operations `opts` offer.
 

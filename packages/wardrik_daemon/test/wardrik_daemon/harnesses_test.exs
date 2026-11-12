@@ -51,5 +51,5 @@ defmodule WardrikDaemon.HarnessesTest do
     assert offered.("growth") == []
   end
 
-  defp entry, do: %{mcp: [], harnesses: [], channels: [], notify: [], policy: nil}
+  defp entry, do: %{mcp: [], harnesses: [], rest: [], channels: [], notify: [], policy: nil}
 end

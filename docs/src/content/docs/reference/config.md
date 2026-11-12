@@ -69,6 +69,7 @@ notify:
 | [`models`](#models) | `{}` | prices, call options and the gateway for models |
 | [`mcp`](#mcp) | `{}` | MCP servers |
 | [`harnesses`](#harnesses) | `{}` | coding agents over ACP |
+| [`rest`](#rest) | `{}` | HTTP APIs, from their descriptions |
 | [`checkouts`](#checkouts) | `{}` | git repositories coding agents work in |
 | [`oauth`](#oauth) | none | OAuth providers |
 | [`channels`](#channels) | `{}` | chat apps |
@@ -105,12 +106,13 @@ orgs:
 | --- | --- |
 | `mcp` | servers from [`mcp`](#mcp) available to its agents |
 | `harnesses` | coding agents from [`harnesses`](#harnesses) available to its agents |
+| `rest` | APIs from [`rest`](#rest) available to its agents |
 | `channels` | channels from [`channels`](#channels) available to its agents |
 | `notify` | targets from [`notify`](#notify) available to its agents |
 | `policy` | a policy in `policies/` applied to all its agents |
 
 - `"*"` matches every org. Its servers, channels, targets and policy apply to all orgs.
-- A server, harness, channel or target no org lists belongs to the deployment's org.
+- A server, harness, API, channel or target no org lists belongs to the deployment's org.
 - A channel belongs to one org, or to every org if `"*"` lists it.
 
 ## roles and bindings
@@ -258,6 +260,42 @@ checkouts:
 
 Worktrees go in `worktrees/` in `WARDRIK_DATA_HOME`. A daily sweep removes each one whose work is
 in `base`.
+
+## rest
+
+```yaml
+rest:
+  ga4:
+    discovery: https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta
+    base_url: https://analyticsdata.googleapis.com/
+    auth: {oauth2: {credential: google}}
+    only: [properties_runReport, properties_getMetadata]
+    read_only: [properties_runReport]
+```
+
+| Key | Description |
+| --- | --- |
+| `discovery` | a Google Discovery document: its URL, or its path from the config directory |
+| `base_url` | where calls go; secrets are sent only here |
+| `auth` | a source for each scheme the description names: `{credential: NAME}` or `{key: NAME}` |
+| `headers` | headers every call sends, each a source or a string |
+| `only` | operations to offer, by name or glob; default: all it can sign in to |
+| `read_only` | operations that change nothing, beyond `GET`s |
+| `idempotent` | operations safe to repeat, beyond `GET`, `PUT` and `DELETE` |
+| `timeout` | a call's limit in seconds; default `30` |
+| `trusted` | `true` disables the `outside` label on its results |
+
+Each API is a tool group of the same name: an agent file lists `tools: [ga4]` and gets one tool
+per operation, as `ga4__properties_runReport`. Each tool definition goes into every model call, so
+list only the operations agents need.
+
+- `{credential: NAME}` is the signed-in account of the person the agent acts for, from the
+  [`oauth`](#oauth) provider `NAME` or an app added for it. Until they sign in, the call waits.
+- `{key: NAME}` is a key in the vault, sealed with `wardrik vault put NAME --for api_key` for the
+  agent's owner, its org or the deployment.
+- Operations that aren't read-only need approval unless a policy allows them.
+- A description that can't be read is logged and read again each minute. Until then, its API
+  offers no tools.
 
 ## oauth
 

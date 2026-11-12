@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `rest` in `config.yaml`: HTTP APIs from their Google Discovery documents, each a tool group of
+  its name, with sign-in from `oauth` and keys from the vault. Orgs list them as `rest`.
+
 ## 0.1.0-rc.12 (2026-11-12)
 
 - Requires `wardrik` 0.1.0-rc.11 and `wardrik_slack` 0.1.0-rc.5.
