@@ -25,7 +25,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-ENV MIX_ENV=prod LANG=C.UTF-8
+# Wardrik's own packages from Hex, at the versions mix.exs names.
+ENV MIX_ENV=prod LANG=C.UTF-8 WARDRIK_HEX=1
 
 RUN mix local.hex --force && mix local.rebar --force
 

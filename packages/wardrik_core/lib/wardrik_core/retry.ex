@@ -3,7 +3,7 @@ defmodule WardrikCore.Retry do
   Retries model calls and tool calls that a retry may fix.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik_core#readme) for complete setup.
+  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_core#readme) for complete setup.
 
       WardrikCore.start_agent(
         agent_id: "triage",

@@ -7,7 +7,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { compile, type JSONSchema } from "json-schema-to-typescript";
 import { format } from "prettier";
 
-const schemas = new URL(process.env.WARDRIK_PROTOCOL ?? "../../wardrik_protocol/priv/v1/", import.meta.url);
+const schemas = new URL(process.env.WARDRIK_PROTOCOL ?? "../../../packages/wardrik_protocol/priv/v1/", import.meta.url);
 const urn = "urn:wardrik:schema:v1:";
 const defsRef = urn + "defs#/$defs/";
 

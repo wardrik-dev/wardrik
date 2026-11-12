@@ -3,7 +3,7 @@ defmodule WardrikVault do
   Keeps credentials sealed in a `WardrikStore`, and gives them to WardrikCore agents' tools.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik_vault#readme) for complete setup.
+  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_vault#readme) for complete setup.
 
       children = [
         {WardrikStore, store},

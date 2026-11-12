@@ -177,7 +177,7 @@ A refused request throws a `WardrikError` with `status`, `type` (like `not_found
 
 Run these commands from a repository checkout:
 
-`src/protocol.ts` and `src/operations.ts` are generated from `../wardrik_protocol/priv/v1`, or `WARDRIK_PROTOCOL`.
+`src/protocol.ts` and `src/operations.ts` are generated from `../../packages/wardrik_protocol/priv/v1`, or `WARDRIK_PROTOCOL`.
 
 ```sh
 npm ci

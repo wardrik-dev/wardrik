@@ -36,7 +36,7 @@ defmodule WardrikBrave.MixProject do
   defp package do
     [
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik_brave"},
+      links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik/tree/main/extensions/wardrik_brave"},
       files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end

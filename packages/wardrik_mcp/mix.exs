@@ -36,7 +36,7 @@ defmodule WardrikMCP.MixProject do
   defp package do
     [
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik_mcp"},
+      links: %{"GitHub" => "https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_mcp"},
       files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end

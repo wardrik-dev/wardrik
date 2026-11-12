@@ -3,7 +3,7 @@ defmodule WardrikResearch do
   Deep research for agents, as the `deep_research` tool.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik_research#readme) for complete setup.
+  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/extensions/wardrik_research#readme) for complete setup.
 
       WardrikCore.start_agent(
         agent_id: "agt_analyst",

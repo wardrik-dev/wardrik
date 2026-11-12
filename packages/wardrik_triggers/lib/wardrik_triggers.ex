@@ -4,7 +4,7 @@ defmodule WardrikTriggers do
   webhook.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik_triggers#readme) for complete setup.
+  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_triggers#readme) for complete setup.
 
       children = [
         {WardrikTriggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}

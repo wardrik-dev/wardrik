@@ -33,7 +33,7 @@ defmodule WardrikHTTP do
   `:sign_in`:
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik_http#readme) for complete setup.
+  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_http#readme) for complete setup.
 
       children = [
         MyApp.AgentRuntime,

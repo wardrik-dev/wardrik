@@ -15,7 +15,7 @@
 #                          pre-releases included
 #   WARDRIK_INSTALL_DIR    where the releases go
 #   WARDRIK_BIN_DIR        where wardrik goes
-#   WARDRIK_REPO           the GitHub repository the releases are in, wardrik-dev/wardrik_daemon
+#   WARDRIK_REPO           the GitHub repository the releases are in, wardrik-dev/wardrik
 #   WARDRIK_DOWNLOAD_URL   where the tarball and its SHA256SUMS are, in place of the
 #                          release's; file:// works, with WARDRIK_VERSION beside it
 #
@@ -25,7 +25,7 @@
 # 22.04 or later, or Debian 12 or later. Elsewhere, the Docker image runs.
 set -eu
 
-repo=${WARDRIK_REPO:-wardrik-dev/wardrik_daemon}
+repo=${WARDRIK_REPO:-wardrik-dev/wardrik}
 image=ghcr.io/wardrik-dev/wardrik
 
 say() { printf '==> %s\n' "$*"; }
@@ -68,14 +68,14 @@ platform() {
   echo "linux-$arch"
 }
 
-# The version of the newest release, pre-releases included, which GitHub's
-# releases/latest passes over.
+# The version of the newest daemon release, pre-releases included, which
+# GitHub's releases/latest passes over.
 latest() {
   releases=$(curl -fsSL --proto '=https' -H 'Accept: application/vnd.github+json' \
-    "https://api.github.com/repos/$repo/releases?per_page=1" 2> /dev/null) ||
+    "https://api.github.com/repos/$repo/releases?per_page=30" 2> /dev/null) ||
     die "cannot find the newest release of $repo; set WARDRIK_VERSION to the one to install"
 
-  tag=$(printf '%s\n' "$releases" | sed -n 's/^ *"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)
+  tag=$(printf '%s\n' "$releases" | sed -n 's/^ *"tag_name": *"wardrik_daemon-v\([^"]*\)".*/\1/p' | head -n 1)
   [ -n "$tag" ] || die "$repo has no release yet; set WARDRIK_VERSION, or give a tarball"
   echo "$tag"
 }
@@ -168,7 +168,7 @@ main() {
       version=$(latest)
     fi
     name="wardrik-$version-$target.tar.gz"
-    base=${WARDRIK_DOWNLOAD_URL:-https://github.com/$repo/releases/download/v$version}
+    base=${WARDRIK_DOWNLOAD_URL:-https://github.com/$repo/releases/download/wardrik_daemon-v$version}
     base=${base%/}
 
     say "Downloading wardrik $version"
