@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- The assistant `init` writes checks how things run every 6 hours, not each hour, and names the
+  five reads it uses in place of `ops/read`. Each check is a model call with its tools.
+- `secret_request` says what each purpose is for: `header` for an MCP server's token. The
+  assistant asks for a secret before adding what uses it.
+- `web_search`'s help names `wardrik vault put BRAVE_API_KEY --for api_key`. A key in the
+  environment counts only when `config.yaml` names it.
+- `wardrik doctor` says a key sealed in the vault works for `web_search`, which it can't see.
+- The assistant says how to change an agent a file declares, and names `wardrik approval approve`.
+- The assistant's `observer` role lists the deployment's secrets by name, so it sees a key
+  sealed for the deployment before saying one is missing.
+
+## Unreleased
+
 - The `help` tools answer how Wardrik works and where this deployment keeps things:
   `wardrik_about` for the version, URLs and files, `docs_search` and `docs_read` for the
   documentation, and `wardrik_doctor` for the doctor's checks. See `WardrikDaemon.HelpTools`.

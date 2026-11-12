@@ -203,7 +203,8 @@ defmodule WardrikDaemon.DoctorTest do
 
     assert [{:fail, "#{env_file} can be read by others; chmod 600 it"}] == found(checks, "env")
     assert [{:fail, "a key from config.yaml isn't 32 bytes of base64"}] = found(checks, "vault")
-    assert [{:warn, "web_search has no key; give it brave.api_key"}] = found(checks, "brave")
+    assert [{:warn, "config.yaml gives web_search no key." <> rest}] = found(checks, "brave")
+    assert rest =~ "wardrik vault put BRAVE_API_KEY --for api_key"
 
     assert [{:fail, "runs no-such-program-here, which isn't on this machine's PATH"}] =
              found(checks, "mcp notes")
@@ -271,7 +272,8 @@ defmodule WardrikDaemon.DoctorTest do
     )
 
     assert [{:warn, found}] = context.env |> run() |> found("assistant")
-    assert found =~ "doesn't give ops/read, settings, help, web_search, run_lua"
+    assert found =~ "doesn't give ops/agent.runs, ops/agent.timeline"
+    assert found =~ "settings, help, web_search, run_lua"
 
     tools = Enum.join(WardrikDaemon.CLI.Init.assistant_tools(), ", ")
     write(context, "agents/assistant.md", "---\ntools: [#{tools}]\n---\nHi.\n")

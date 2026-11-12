@@ -398,8 +398,12 @@ defmodule WardrikDaemon.CLI.Init do
           - {verbs: [create, define, read, ask, events], kinds: [agent]}
           - {verbs: [read, add], kinds: [mcp_server, notify_target, provider]}
           - {verbs: [read], kinds: [secret]}
-      # It reads the deployment's nodes, resource use and audit, to say how things run.
-      observer: {rules: [{verbs: [nodes, runtime, audit], kinds: [deployment]}]}
+      # It reads the deployment's nodes, resource use and audit, to say how things run, and lists
+      # the deployment's secrets by name.
+      observer:
+        rules:
+          - {verbs: [nodes, runtime, audit], kinds: [deployment]}
+          - {verbs: [read], kinds: [secret]}
     bindings:
       - {org: #{org}, role: workers, subjects: [agent:assistant]}
       - {org: deployment, role: observer, subjects: [agent:assistant]}
@@ -422,22 +426,25 @@ defmodule WardrikDaemon.CLI.Init do
   defp brave(false) do
     """
     # web_search searches the web through Brave. To turn it on, seal a key with
-    # `wardrik vault put BRAVE_API_KEY --for api_key`, or set BRAVE_API_KEY in env. Until then, the
-    # assistant says how.
+    # `wardrik vault put BRAVE_API_KEY --for api_key`, or set BRAVE_API_KEY in env and uncomment
+    # these lines. Until then, the assistant says how.
     # brave:
     #   api_key: ${BRAVE_API_KEY}
     """
   end
 
-  @tools ~w(self/* agents/* agent_create ops/read settings help files web_search run_lua)
+  # Named reads in place of ops/read: each tool goes into every model call.
+  @tools ~w(self/* agents/* agent_create ops/agent.runs ops/agent.timeline ops/agent.resolved
+            ops/interrupts.list ops/deployment.runtime settings help files web_search run_lua)
   @listed Enum.join(@tools, ", ")
 
   @doc "Returns the tools the assistant `init` writes has. The doctor names any a file leaves out."
   @spec assistant_tools() :: [String.t()]
   def assistant_tools, do: @tools
 
-  # Each hour it checks how things run, and proposes what needs a person as the call that does it,
-  # so it shows in approvals.
+  # Every 6 hours it checks how things run, and proposes what needs a person as the call that does
+  # it, so it shows in approvals. Each check is a model call with its tools, tens of thousands of
+  # tokens.
   defp assistant do
     """
     ---
@@ -448,7 +455,7 @@ defmodule WardrikDaemon.CLI.Init do
     idle_timeout: infinity
     triggers:
       - name: check
-        every: 1h
+        every: 6h
         prompt: >-
           Check how things run: the runs of the workers you set up, calls that wait on a person,
           the doctor's checks, and each node's memory. For each problem a call of yours can fix,

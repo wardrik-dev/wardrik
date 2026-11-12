@@ -4,8 +4,11 @@ defmodule WardrikDaemon.OperatorToolsTest do
 
   import WardrikDaemon.Test
 
+  alias WardrikCore.Principal
   alias WardrikDaemon.HelpTools
   alias WardrikDaemon.NotifyTargets
+  alias WardrikDaemon.Secrets
+  alias WardrikVault.Secret
 
   setup :set_mimic_global
 
@@ -23,7 +26,10 @@ defmodule WardrikDaemon.OperatorToolsTest do
           - {verbs: [read, events], kinds: [agent]}
           - {verbs: [read, add], kinds: [mcp_server, notify_target, provider]}
           - {verbs: [read], kinds: [secret]}
-      observer: {rules: [{verbs: [nodes, runtime, audit], kinds: [deployment]}]}
+      observer:
+        rules:
+          - {verbs: [nodes, runtime, audit], kinds: [deployment]}
+          - {verbs: [read], kinds: [secret]}
     bindings:
       - {org: acme, role: workers, subjects: [agent:assistant]}
       - {org: deployment, role: observer, subjects: [agent:assistant]}
@@ -127,6 +133,24 @@ defmodule WardrikDaemon.OperatorToolsTest do
     sent = results()
     assert sent =~ "You may not do this to the notify targets of deployment."
     assert sent =~ "secrets"
+  end
+
+  test "lists the deployment's secrets by name, never by value", context do
+    aide = id(context, "acme", "assistant")
+    secret = %Secret{principal: %Principal{id: "deployment"}, name: "BRAVE_API_KEY", value: "bsk"}
+    :ok = Secrets.put(daemon().wardrik, secret, purpose: "api_key")
+
+    answers([
+      calling([{"c1", "settings_list", %{"kind" => "secrets", "owner" => "deployment"}}]),
+      answer("Done.")
+    ])
+
+    {:ok, _reply} = Wardrik.Agent.reply(context.admin, aide, "Is there a Brave key?")
+
+    sent = results()
+    assert sent =~ "BRAVE_API_KEY"
+    assert sent =~ "api_key"
+    refute sent =~ "bsk"
   end
 
   describe "help" do

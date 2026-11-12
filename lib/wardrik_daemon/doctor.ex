@@ -189,7 +189,9 @@ defmodule WardrikDaemon.Doctor do
   end
 
   defp brave(%Config{brave: nil}),
-    do: {:warn, "brave", "web_search has no key; give it brave.api_key"}
+    do:
+      {:warn, "brave",
+       "config.yaml gives web_search no key. A key sealed with `wardrik vault put BRAVE_API_KEY --for api_key` works too, and this check can't see the vault"}
 
   defp brave(_config), do: {:ok, "brave", "web_search has a key"}
 

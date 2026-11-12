@@ -29,9 +29,10 @@ defmodule WardrikDaemon.SettingsTools do
   alias WardrikDaemon.Settings
 
   @adds [
-    {"server_add", "servers", "Add an MCP server that agents can use."},
+    {"server_add", "servers",
+     "Add an MCP server that agents can use. One that authenticates with a token needs it sealed first: call secret_request with purpose header, and add the server once settings_list shows the secret."},
     {"notify_target_add", "notify_targets",
-     "Add a notify target: a webhook that gets a notice when an agent parks, fails or finishes."},
+     "Add a notify target: a webhook that gets a notice when an agent parks, fails or finishes. Notices are signed only when secret names a secret sealed for signing_secret."},
     {"oauth_app_add", "oauth_apps",
      "Add an OAuth app, such as Google or GitHub, that people connect their accounts with."}
   ]
@@ -95,7 +96,11 @@ defmodule WardrikDaemon.SettingsTools do
         "required" => ["name", "purpose"],
         "properties" => %{
           "name" => %{"type" => "string", "description" => "The secret's name, as GITHUB_TOKEN"},
-          "purpose" => %{"enum" => Enum.sort(Secrets.purposes())},
+          "purpose" => %{
+            "enum" => Enum.sort(Secrets.purposes()),
+            "description" =>
+              "What it's read for, and only that: header for an MCP server's token, api_key for a model's or a tool's key such as BRAVE_API_KEY, client_secret for an OAuth app, signing_secret for signing notices or webhooks."
+          },
           "owner" => @owner
         }
       },

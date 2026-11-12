@@ -6,6 +6,7 @@ defmodule WardrikDaemon.CLITest do
   import WardrikDaemon.Test
 
   alias WardrikDaemon.CLI
+  alias WardrikDaemon.CLI.Init
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Test.Screen
 
@@ -173,7 +174,7 @@ defmodule WardrikDaemon.CLITest do
     assert File.read!(config) =~ "# brave:\n#   api_key: ${BRAVE_API_KEY}"
 
     assert File.read!(assistant) =~
-             "tools: [self/*, agents/*, agent_create, ops/read, settings, help, files, web_search, run_lua]"
+             "tools: [#{Enum.join(Init.assistant_tools(), ", ")}]"
 
     File.rm!(config)
     File.rm!(assistant)
@@ -183,7 +184,7 @@ defmodule WardrikDaemon.CLITest do
     assert File.read!(config) =~ ~r/^brave:\n  api_key: \$\{BRAVE_API_KEY\}/m
 
     assert File.read!(assistant) =~
-             "tools: [self/*, agents/*, agent_create, ops/read, settings, help, files, web_search, run_lua]"
+             "tools: [#{Enum.join(Init.assistant_tools(), ", ")}]"
   end
 
   test "writes an assistant that the daemon defines, and that makes workers", context do
@@ -199,7 +200,10 @@ defmodule WardrikDaemon.CLITest do
              Wardrik.Agent.definition(context.admin, id(context, "acme", "assistant"))
 
     assert front.tools ==
-             ~w(self/* agents/* agent_create ops/read settings help files web_search run_lua)
+             Init.assistant_tools()
+
+    assert [%{"name" => "check", "every" => "6h"}] =
+             Enum.map(front.triggers, &Map.take(Wardrik.Type.json(&1), ["name", "every"]))
 
     assert front.context == ["MEMORY.md"]
     assert front.idle_timeout == :infinity

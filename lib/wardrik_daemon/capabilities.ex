@@ -36,7 +36,7 @@ defmodule WardrikDaemon.Capabilities do
   @spec brave_help() :: String.t()
   def brave_help,
     do:
-      "To turn it on, a person seals a Brave Search API key with `wardrik vault put BRAVE_API_KEY --for api_key`, or sets BRAVE_API_KEY in the daemon's env file and restarts it. Keys are at https://brave.com/search/api/."
+      "To turn it on, a person seals a Brave Search API key with `wardrik vault put BRAVE_API_KEY --for api_key`. It works at once. Keys are at https://brave.com/search/api/."
 
   @doc "Returns the name `WardrikBrave` runs under for `wardrik`, as `MyWardrik.Brave`."
   @spec brave(atom()) :: atom()
