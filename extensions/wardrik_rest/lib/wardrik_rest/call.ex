@@ -8,6 +8,7 @@ defmodule WardrikRest.Call do
       made once more with a fresh one.
     * A `429`, a `5xx` or no answer raises `WardrikRest.Unavailable`, so the tool runner retries.
     * Any other status is an error naming it, with the API's message.
+    * An answer longer than the API's `:max_result_bytes` is cut, as JSON text.
   """
 
   alias WardrikCore.Context
@@ -131,9 +132,9 @@ defmodule WardrikRest.Call do
   defp header({{:header, name}, value}), do: [{name, value}]
   defp header({{:query, _name}, _value}), do: []
 
-  defp answered({:ok, %Req.Response{status: status, body: body}}, _call, _how)
+  defp answered({:ok, %Req.Response{status: status, body: body}}, call, _how)
        when status in 200..299,
-       do: {:ok, if(body == "", do: %{}, else: body)}
+       do: {:ok, sized(body, call.api.max_result_bytes)}
 
   defp answered({:ok, %Req.Response{status: 401}}, call, {:first, [_ | _] = names}) do
     Enum.each(names, &Credentials.refused(call.context, &1))
@@ -157,6 +158,20 @@ defmodule WardrikRest.Call do
 
   defp unavailable(call, status),
     do: raise(WardrikRest.Unavailable, "#{call.api.name} answered #{status}.")
+
+  defp sized("", _limit), do: %{}
+
+  defp sized(body, limit) do
+    text = if is_binary(body), do: body, else: JSON.encode!(body)
+    if byte_size(text) <= limit, do: body, else: cut(text, limit)
+  end
+
+  defp cut(text, limit) do
+    kept = text |> binary_part(0, limit) |> String.replace_invalid("")
+
+    kept <>
+      "\n[Cut to #{limit} of #{byte_size(text)} bytes. Ask for less, such as fewer rows or fields.]"
+  end
 
   defp message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
   defp message(%{"message" => message}) when is_binary(message), do: message

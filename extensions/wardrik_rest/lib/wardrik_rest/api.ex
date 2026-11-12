@@ -56,6 +56,12 @@ defmodule WardrikRest.API do
               default: 30_000,
               doc: "How long a call may take, in milliseconds."
             ],
+            max_result_bytes: [
+              type: :pos_integer,
+              default: 128 * 1024,
+              doc:
+                "Bytes of an answer the model gets, as JSON. A longer one is cut, with a note to ask for less."
+            ],
             egress: [
               type: {:fun, 1},
               default: &__MODULE__.https/1,
@@ -122,6 +128,7 @@ defmodule WardrikRest.API do
     :idempotent,
     trusted: false,
     timeout: 30_000,
+    max_result_bytes: 128 * 1024,
     req_options: []
   ]
 
@@ -138,6 +145,7 @@ defmodule WardrikRest.API do
           idempotent: [String.t()],
           trusted: boolean(),
           timeout: pos_integer(),
+          max_result_bytes: pos_integer(),
           req_options: keyword()
         }
 
@@ -172,6 +180,7 @@ defmodule WardrikRest.API do
          idempotent: opts[:idempotent],
          trusted: opts[:trusted],
          timeout: opts[:timeout],
+         max_result_bytes: opts[:max_result_bytes],
          req_options: opts[:req_options]
        }}
     end

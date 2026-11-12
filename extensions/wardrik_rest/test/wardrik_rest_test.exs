@@ -245,6 +245,33 @@ defmodule WardrikRestTest do
       assert tool.run.(%{"id" => "x"}, context()) == {:error, "notes has no NOTES_KEY key yet."}
     end
 
+    test "cuts an answer longer than max_result_bytes, and says how to get less", %{test: test} do
+      tools =
+        tools(
+          auth: %{"oauth2" => {:credential, "google"}},
+          only: ["properties_getMetadata"],
+          max_result_bytes: 40,
+          req_options: [plug: {Req.Test, test}]
+        )
+
+      metadata = tools["ga4__properties_getMetadata"]
+      rows = %{"rows" => Enum.map(1..10, &%{"value" => &1})}
+
+      Req.Test.stub(test, &Req.Test.json(&1, %{"ok" => true}))
+      assert metadata.run.(%{"name" => "n"}, context()) == {:ok, %{"ok" => true}}
+
+      Req.Test.stub(test, &Req.Test.json(&1, rows))
+      {:ok, cut} = metadata.run.(%{"name" => "n"}, context())
+
+      assert cut ==
+               binary_part(JSON.encode!(rows), 0, 40) <>
+                 "\n[Cut to 40 of #{byte_size(JSON.encode!(rows))} bytes. Ask for less, such as fewer rows or fields.]"
+
+      Req.Test.stub(test, &Plug.Conn.send_resp(&1, 200, String.duplicate("é", 30)))
+      {:ok, text} = metadata.run.(%{"name" => "n"}, context())
+      assert String.valid?(text) and String.starts_with?(text, String.duplicate("é", 20) <> "\n")
+    end
+
     test "tells credentials a refused token, then calls once more", %{tools: tools, test: test} do
       Req.Test.stub(test, fn conn ->
         case Plug.Conn.get_req_header(conn, "authorization") do
