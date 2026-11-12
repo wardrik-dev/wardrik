@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  precommit:
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.2"
+          elixir-version: "1.20.2"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            priv/plts
+          key: ${{ runner.os }}-mix-${{ hashFiles('mix.lock') }}
+
+      - run: mix deps.get
+      - run: mix precommit
