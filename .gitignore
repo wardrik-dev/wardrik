@@ -1,0 +1,24 @@
+# Elixir, in each package
+_build/
+deps/
+cover/
+doc/
+tmp/
+**/priv/plts/
+erl_crash.dump
+*.ez
+*.tar
+.elixir_ls/
+
+# Node: the SDK and the docs site
+node_modules/
+dist/
+npm-debug.log*
+.env
+.env.production
+
+# The docs site's build, and the SDK reference it writes
+docs/.astro/
+docs/src/content/docs/sdk/
+
+.DS_Store
