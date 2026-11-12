@@ -1,11 +1,11 @@
-defmodule WardrikEvents.ViewsTest do
+defmodule Wardrik.EventLog.ViewsTest do
   use ExUnit.Case, async: true
 
-  alias WardrikEvents.Activity
-  alias WardrikEvents.Heads
-  alias WardrikEvents.Runs
-  alias WardrikEvents.Timeline
-  alias WardrikEvents.View
+  alias Wardrik.EventLog.Activity
+  alias Wardrik.EventLog.Heads
+  alias Wardrik.EventLog.Runs
+  alias Wardrik.EventLog.Timeline
+  alias Wardrik.EventLog.View
 
   @run "0af7651916cd43dd8448eb211c80319c"
   @at "2026-10-22T09:00:00Z"

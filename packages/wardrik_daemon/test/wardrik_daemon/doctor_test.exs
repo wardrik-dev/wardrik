@@ -44,7 +44,7 @@ defmodule WardrikDaemon.DoctorTest do
     write(context, "config.yaml", """
     org: acme
     defaults: {model: #{model()}}
-    vault: {keys: ["#{WardrikVault.generate_key()}"]}
+    vault: {keys: ["#{Wardrik.Vault.generate_key()}"]}
     mcp:
       notes: {command: sh}
       github: {url: "http://127.0.0.1:#{listening()}/mcp"}
@@ -256,7 +256,7 @@ defmodule WardrikDaemon.DoctorTest do
     assert [{:ok, "no key yet" <> _}] = found(checks, "vault")
 
     assert found(
-             run(Map.put(context.env, "WARDRIK_VAULT_KEY", WardrikVault.generate_key())),
+             run(Map.put(context.env, "WARDRIK_VAULT_KEY", Wardrik.Vault.generate_key())),
              "vault"
            ) ==
              [{:ok, "1 key from WARDRIK_VAULT_KEY, which seals"}]

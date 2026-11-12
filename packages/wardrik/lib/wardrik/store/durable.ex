@@ -1,15 +1,15 @@
 if Code.ensure_loaded?(DurableServer.StorageBackend) do
-  defmodule WardrikStore.Durable do
+  defmodule Wardrik.Store.Durable do
     @moduledoc """
     A `DurableServer` backend that keeps WardrikCore's agents in a store.
 
-        {WardrikCore, backend: {WardrikStore.Durable, store: store}}
+        {WardrikCore, backend: {Wardrik.Store.Durable, store: store}}
 
     Agents are kept under the store's `durable` scope.
 
     ## Options
 
-      * `:store` - required. The `WardrikStore` to keep agents in.
+      * `:store` - required. The `Wardrik.Store` to keep agents in.
       * `:heartbeat_interval_ms` - `10_000` unless set.
       * `:discovery_interval_ms` - `30_000` unless set.
     """
@@ -30,7 +30,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
       {:ok,
        %{
-         state: WardrikStore.scope(Keyword.fetch!(opts, :store), "durable"),
+         state: Wardrik.Store.scope(Keyword.fetch!(opts, :store), "durable"),
          defaults: %{
            heartbeat_tracking_mode: :poll,
            discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 30_000),
@@ -46,7 +46,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     @impl DurableServer.StorageBackend
     def get_object(store, key, _opts) do
-      with {value, vsn} <- WardrikStore.lookup(store, key),
+      with {value, vsn} <- Wardrik.Store.lookup(store, key),
            {:ok, body} <- body(value) do
         {:ok, %{body: body, etag: etag(vsn)}}
       else
@@ -65,7 +65,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     @impl DurableServer.StorageBackend
     def put_object(store, key, data, opts) do
       with {:ok, put_opts} <- condition(opts),
-           {:ok, vsn} <- WardrikStore.put(store, key, stored(data), put_opts) do
+           {:ok, vsn} <- Wardrik.Store.put(store, key, stored(data), put_opts) do
         {:ok, %{body: data, etag: etag(vsn)}}
       end
     end
@@ -75,9 +75,9 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     @impl DurableServer.StorageBackend
     def delete_object(store, key, opts) do
-      with {_value, current} <- WardrikStore.lookup(store, key),
+      with {_value, current} <- Wardrik.Store.lookup(store, key),
            {:ok, vsn} <- expected(opts, current) do
-        store |> WardrikStore.delete(key, if_vsn: vsn) |> deleted(store, key)
+        store |> Wardrik.Store.delete(key, if_vsn: vsn) |> deleted(store, key)
       else
         nil -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
@@ -86,7 +86,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     @impl DurableServer.StorageBackend
     def try_claim(store, key, body) do
-      case WardrikStore.put(store, key, stored(body), if_vsn: nil) do
+      case Wardrik.Store.put(store, key, stored(body), if_vsn: nil) do
         {:ok, vsn} -> {:ok, {:claimed, etag(vsn)}}
         {:error, :conflict} -> claim_unreadable(store, key, body)
         {:error, reason} -> {:error, reason}
@@ -104,14 +104,14 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     def decode(_store, data), do: body(data)
 
     defp listed(store, prefix, true, error_handler) do
-      for {key, value, vsn} <- WardrikStore.entries(store, prefix),
+      for {key, value, vsn} <- Wardrik.Store.entries(store, prefix),
           listed <- listed_with_body(key, value, vsn, error_handler),
           do: listed
     end
 
     defp listed(store, prefix, false, _error_handler),
       do:
-        for({key, vsn} <- WardrikStore.versions(store, prefix), do: %{key: key, etag: etag(vsn)})
+        for({key, vsn} <- Wardrik.Store.versions(store, prefix), do: %{key: key, etag: etag(vsn)})
 
     defp listed_with_body(key, value, vsn, error_handler) do
       case body(value) do
@@ -125,9 +125,9 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     end
 
     defp claim_unreadable(store, key, body) do
-      with {value, vsn} <- WardrikStore.lookup(store, key),
+      with {value, vsn} <- Wardrik.Store.lookup(store, key),
            {:error, :unreadable} <- body(value),
-           {:ok, vsn} <- WardrikStore.put(store, key, stored(body), if_vsn: vsn) do
+           {:ok, vsn} <- Wardrik.Store.put(store, key, stored(body), if_vsn: vsn) do
         Logger.warning("#{key} held a state this release can't read, so it was claimed as new")
         {:ok, {:claimed, etag(vsn)}}
       else
@@ -165,7 +165,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     defp deleted(:ok, _store, _key), do: :ok
 
     defp deleted({:error, :conflict}, store, key) do
-      if WardrikStore.lookup(store, key) == nil,
+      if Wardrik.Store.lookup(store, key) == nil,
         do: {:error, :not_found},
         else: {:error, :conflict}
     end

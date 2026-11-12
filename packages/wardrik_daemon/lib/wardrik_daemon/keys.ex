@@ -51,7 +51,7 @@ defmodule WardrikDaemon.Keys do
     do: if(Owners.valid?(id), do: Enum.uniq(Owners.chain(id)), else: [id, "deployment"])
 
   defp held(vault, owner, name) do
-    case WardrikVault.fetch(vault, %Principal{id: owner}, name, kind: :api_key) do
+    case Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :api_key) do
       {:ok, key} -> {:ok, key}
       _none -> nil
     end

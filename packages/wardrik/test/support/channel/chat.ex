@@ -1,12 +1,12 @@
 defmodule Wardrik.Test.Channel.Chat do
   @moduledoc "A chat app that sends the test what it's asked to post."
 
-  use WardrikChannel
+  use Wardrik.Chat
 
   @impl Wardrik.Channel
   def request(%{body: body}, _opts), do: %{status: 200, headers: %{}, body: body}
 
-  @impl WardrikChannel
+  @impl Wardrik.Chat
   def deliver(%{body: {:reply, _text, _answering}} = outbound, channel) do
     refusals = channel.options[:refusals]
 
@@ -30,10 +30,10 @@ end
 defmodule Wardrik.Test.Channel.Members do
   @moduledoc "Knows the chat members of `:members` as their users, by member ID, as a host would."
 
-  @behaviour WardrikChannel.Identities
+  @behaviour Wardrik.Chat.Identities
 
-  @impl WardrikChannel.Identities
-  def identify(%WardrikChannel.Identities.Request{member: member, name: name}, opts) do
+  @impl Wardrik.Chat.Identities
+  def identify(%Wardrik.Chat.Identities.Request{member: member, name: name}, opts) do
     case Map.fetch(Keyword.fetch!(opts, :members), member) do
       {:ok, user} -> {:ok, %WardrikCore.Principal{id: user, attributes: %{name: name}}}
       :error -> {:error, "Nobody here knows you yet."}
@@ -64,7 +64,7 @@ defmodule Wardrik.Test.Channel do
   @doc "Returns the channel the Wardrik `wardrik` runs as `name`, as the Wardrik builds it."
   def fetch(wardrik, name) do
     with {:ok, {adapter, opts}} <- Wardrik.Operations.Channels.fetch(wardrik, name),
-         do: {:ok, WardrikChannel.channel(adapter, opts)}
+         do: {:ok, Wardrik.Chat.channel(adapter, opts)}
   end
 
   import ExUnit.Callbacks, only: [start_supervised!: 1]
@@ -77,7 +77,7 @@ defmodule Wardrik.Test.Channel do
   def members, do: @members
 
   def start_wardrik(context) do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     name = :"wardrik #{context.test}"
     refusals = :counters.new(1, [])
 
@@ -89,7 +89,7 @@ defmodule Wardrik.Test.Channel do
       refusals: refusals
     ]
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
       {Wardrik,
@@ -107,7 +107,7 @@ defmodule Wardrik.Test.Channel do
 
     {:ok, channel} = fetch(name, "chat")
 
-    {:ok, workspace} = WardrikChannel.workspace(channel, "T1")
+    {:ok, workspace} = Wardrik.Chat.workspace(channel, "T1")
     owner = Wardrik.as(name, "acme/@maria")
 
     %{

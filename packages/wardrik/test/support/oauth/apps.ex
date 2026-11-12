@@ -1,12 +1,12 @@
-defmodule WardrikOAuth.Test.Fixed do
+defmodule Wardrik.OAuth.Test.Fixed do
   @moduledoc "Resolves the same providers for every principal, each keyed `fixed/name`."
-  @behaviour WardrikOAuth.Resolver
+  @behaviour Wardrik.OAuth.Resolver
 
   @impl true
   def provider(%{name: name}, providers) do
     case Enum.find(providers, fn {given, _opts} -> to_string(given) == name end) do
       {_given, opts} ->
-        {:ok, WardrikOAuth.Provider.new(name, [key: "fixed/" <> name] ++ opts)}
+        {:ok, Wardrik.OAuth.Provider.new(name, [key: "fixed/" <> name] ++ opts)}
 
       nil ->
         {:error, :not_found}
@@ -14,9 +14,9 @@ defmodule WardrikOAuth.Test.Fixed do
   end
 end
 
-defmodule WardrikOAuth.Test.Apps do
+defmodule Wardrik.OAuth.Test.Apps do
   @moduledoc "Resolves each principal's providers as the test set them, in an `Agent`."
-  @behaviour WardrikOAuth.Resolver
+  @behaviour Wardrik.OAuth.Resolver
 
   @impl true
   def provider(%{name: name, principal: principal}, apps) do

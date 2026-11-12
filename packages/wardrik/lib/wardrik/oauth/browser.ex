@@ -1,12 +1,12 @@
-defmodule WardrikOAuth.Browser do
+defmodule Wardrik.OAuth.Browser do
   @moduledoc """
   Browser sign-in: the authorization code flow with PKCE, on the service's own page.
   """
 
-  alias WardrikOAuth.Metadata
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Request
-  alias WardrikOAuth.Token
+  alias Wardrik.OAuth.Metadata
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Request
+  alias Wardrik.OAuth.Token
 
   @doc "Builds the URL that starts a sign-in, with its `state` and PKCE verifier."
   @spec start(Metadata.t(), Provider.t(), String.t()) ::

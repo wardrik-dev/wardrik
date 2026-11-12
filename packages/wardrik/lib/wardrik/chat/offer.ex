@@ -1,4 +1,4 @@
-defmodule WardrikChannel.Offer do
+defmodule Wardrik.Chat.Offer do
   @moduledoc "An agent that may answer in a channel's rooms, with its name and description."
 
   @enforce_keys [:agent]

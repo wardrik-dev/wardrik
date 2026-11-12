@@ -1,4 +1,4 @@
-defmodule WardrikEvents.Test.Events do
+defmodule Wardrik.EventLog.Test.Events do
   @moduledoc "Starts events over an ETS store for a test, and writes agents' events to them."
 
   import ExUnit.Callbacks, only: [start_supervised!: 1]
@@ -6,17 +6,17 @@ defmodule WardrikEvents.Test.Events do
   alias WardrikCore.Event
 
   def start_events(context) do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     events = :"events #{context.test}"
-    start_supervised!({WardrikStore, store})
-    start_supervised!({WardrikEvents, name: events, store: store, deployment: "test"})
+    start_supervised!({Wardrik.Store, store})
+    start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
     trimmed(events)
     %{events: events, store: store}
   end
 
   def trimmed(events) do
-    {WardrikEvents.Retention, retention, :worker, _modules} =
-      events |> Supervisor.which_children() |> List.keyfind(WardrikEvents.Retention, 0)
+    {Wardrik.EventLog.Retention, retention, :worker, _modules} =
+      events |> Supervisor.which_children() |> List.keyfind(Wardrik.EventLog.Retention, 0)
 
     :sys.get_state(retention)
   end
@@ -31,7 +31,7 @@ defmodule WardrikEvents.Test.Events do
       metadata: Map.merge(metadata, %{agent_id: agent, conversation: conversation})
     }
 
-    :ok = WardrikEvents.handle_event(event, events)
+    :ok = Wardrik.EventLog.handle_event(event, events)
   end
 
   def stopped(events, log, time \\ DateTime.utc_now()),
@@ -41,12 +41,12 @@ defmodule WardrikEvents.Test.Events do
   defp log(agent), do: {agent, nil}
 
   def sequences(events, resources, opts \\ []) do
-    {:ok, %{events: read}} = WardrikEvents.page(events, resources, opts)
+    {:ok, %{events: read}} = Wardrik.EventLog.page(events, resources, opts)
     Enum.map(read, &(&1["sequence"] || &1["type"]))
   end
 end
 
-defmodule WardrikEvents.Test.Protocol do
+defmodule Wardrik.EventLog.Test.Protocol do
   @moduledoc "Validates CloudEvents against the protocol's schemas."
 
   import ExUnit.Assertions

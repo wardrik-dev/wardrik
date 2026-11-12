@@ -49,6 +49,8 @@ defmodule WardrikDaemon.HTTP do
   use Plug.Router, copy_opts_to_assign: :daemon
 
   alias Wardrik.Error
+  alias Wardrik.HTTP.Response
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Allowed
@@ -61,8 +63,6 @@ defmodule WardrikDaemon.HTTP do
   alias WardrikDaemon.Secrets
   alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
-  alias WardrikHTTP.Response
-  alias WardrikVault.Secret
 
   @own [:wardrik, :authenticator, :store, :orgs, :config, :web]
   @request_id Plug.RequestId.init(http_header: "request-id")
@@ -417,7 +417,7 @@ defmodule WardrikDaemon.HTTP do
   end
 
   defp authenticated(conn, %{wardrik: wardrik, authenticator: {module, opts}}) do
-    request = %WardrikHTTP.Authenticator.Request{conn: conn, server: Wardrik, wardrik: wardrik}
+    request = %Wardrik.HTTP.Authenticator.Request{conn: conn, server: Wardrik, wardrik: wardrik}
     module.authenticate(request, opts)
   end
 

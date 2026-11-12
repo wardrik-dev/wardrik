@@ -1,4 +1,4 @@
-defmodule WardrikVaultTest do
+defmodule Wardrik.VaultTest do
   use ExUnit.Case, async: true
 
   defp credential(name, principal),
@@ -6,38 +6,38 @@ defmodule WardrikVaultTest do
 
   import ExUnit.CaptureLog
 
+  alias Wardrik.Vault.Sealed
+  alias Wardrik.Vault.Secret
+  alias Wardrik.Vault.TestGrants
   alias WardrikCore.Principal
-  alias WardrikVault.Sealed
-  alias WardrikVault.Secret
-  alias WardrikVault.TestGrants
 
   @jon %Principal{id: "user:jon"}
   @acme %Principal{id: "org:acme"}
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"#{context.test}")
-    start_supervised!({WardrikStore, store})
-    key = WardrikVault.generate_key()
+    store = Wardrik.Store.ETS.new(name: :"#{context.test}")
+    start_supervised!({Wardrik.Store, store})
+    key = Wardrik.Vault.generate_key()
     %{store: store, key: key, vault: start_vault(store, [key], {TestGrants, self()})}
   end
 
   defp start_vault(store, keys, grants) do
     name = :"vault_#{System.unique_integer([:positive])}"
-    spec = {WardrikVault, name: name, store: store, keys: keys, grants: grants}
+    spec = {Wardrik.Vault, name: name, store: store, keys: keys, grants: grants}
     start_supervised!(Supervisor.child_spec(spec, id: name))
     name
   end
 
   test "seals a value and unseals it", %{vault: vault, store: store} do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "ghp_secret"})
+      Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "ghp_secret"})
 
-    assert WardrikVault.fetch(vault, @jon, "github") == {:ok, "ghp_secret"}
+    assert Wardrik.Vault.fetch(vault, @jon, "github") == {:ok, "ghp_secret"}
     refute inspect(%Secret{principal: @jon, name: "github", value: "ghp_secret"}) =~ "ghp_secret"
 
-    scoped = WardrikStore.scope(store, "wardrik_vault")
-    assert [path] = WardrikStore.keys(scoped)
-    assert %Sealed{} = sealed = WardrikStore.get(scoped, path)
+    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+    assert [path] = Wardrik.Store.keys(scoped)
+    assert %Sealed{} = sealed = Wardrik.Store.get(scoped, path)
     refute inspect(sealed) =~ "ghp_secret"
     refute :erlang.term_to_binary(sealed) =~ "ghp_secret"
   end
@@ -48,12 +48,12 @@ defmodule WardrikVaultTest do
     key: key
   } do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "ghp_secret"})
+      Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "ghp_secret"})
 
-    assert WardrikVault.read(store, @jon, "github", keys: [key]) == {:ok, "ghp_secret"}
-    assert WardrikVault.read(store, @acme, "github", keys: [key]) == {:error, :not_found}
+    assert Wardrik.Vault.read(store, @jon, "github", keys: [key]) == {:ok, "ghp_secret"}
+    assert Wardrik.Vault.read(store, @acme, "github", keys: [key]) == {:error, :not_found}
 
-    assert WardrikVault.read(store, @jon, "github", keys: [WardrikVault.generate_key()]) ==
+    assert Wardrik.Vault.read(store, @jon, "github", keys: [Wardrik.Vault.generate_key()]) ==
              {:error, :undecipherable}
   end
 
@@ -63,118 +63,126 @@ defmodule WardrikVaultTest do
          store: store,
          key: key
        } do
-    deployment = WardrikVault.deployment()
+    deployment = Wardrik.Vault.deployment()
 
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: deployment, name: "SIGNING", value: "old"})
+      Wardrik.Vault.put(vault, %Secret{principal: deployment, name: "SIGNING", value: "old"})
 
-    assert WardrikVault.value(vault, {:secret, "SIGNING"}) == {:ok, "old"}
-    assert WardrikVault.value(vault, "inline") == {:ok, "inline"}
-    assert WardrikVault.value(vault, nil) == {:ok, nil}
-    assert {:error, :not_found} = WardrikVault.value(vault, {:secret, "NONE"})
-
-    {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: deployment, name: "SIGNING", value: "new"})
-
-    assert WardrikVault.value(vault, {:secret, "SIGNING"}) == {:ok, "new"}
-    assert WardrikVault.read_value(store, [key], {:secret, "SIGNING"}) == {:ok, "new"}
-    assert WardrikVault.read_value(store, [key], "inline") == {:ok, "inline"}
+    assert Wardrik.Vault.value(vault, {:secret, "SIGNING"}) == {:ok, "old"}
+    assert Wardrik.Vault.value(vault, "inline") == {:ok, "inline"}
+    assert Wardrik.Vault.value(vault, nil) == {:ok, nil}
+    assert {:error, :not_found} = Wardrik.Vault.value(vault, {:secret, "NONE"})
 
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{
+      Wardrik.Vault.put(vault, %Secret{principal: deployment, name: "SIGNING", value: "new"})
+
+    assert Wardrik.Vault.value(vault, {:secret, "SIGNING"}) == {:ok, "new"}
+    assert Wardrik.Vault.read_value(store, [key], {:secret, "SIGNING"}) == {:ok, "new"}
+    assert Wardrik.Vault.read_value(store, [key], "inline") == {:ok, "inline"}
+
+    {:ok, _vsn} =
+      Wardrik.Vault.put(vault, %Secret{
         principal: %Principal{id: "acme"},
         name: "OWN",
         value: "acme's"
       })
 
-    assert {:error, :not_found} = WardrikVault.value(vault, {:secret, "OWN"})
+    assert {:error, :not_found} = Wardrik.Vault.value(vault, {:secret, "OWN"})
   end
 
   test "says which vault isn't started" do
     assert_raise ArgumentError, ~r/^MyApp.Missing isn't started/, fn ->
-      WardrikVault.fetch(MyApp.Missing, %WardrikCore.Principal{id: "user:jon"}, "github")
+      Wardrik.Vault.fetch(MyApp.Missing, %WardrikCore.Principal{id: "user:jon"}, "github")
     end
   end
 
   test "gives a principal only what it holds", %{vault: vault} do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @acme, name: "github", value: "acme's"})
+      Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "github", value: "acme's"})
 
-    assert WardrikVault.fetch(vault, @jon, "github") == {:error, :not_found}
+    assert Wardrik.Vault.fetch(vault, @jon, "github") == {:error, :not_found}
   end
 
   test "reads a value for one purpose only as that kind", %{vault: vault} do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @acme, name: "GOOGLE_SECRET", value: "app"},
+      Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "GOOGLE_SECRET", value: "app"},
         kind: :client_secret
       )
 
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @acme, name: "ANTHROPIC_API_KEY", value: "key"},
+      Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "ANTHROPIC_API_KEY", value: "key"},
         kind: :api_key
       )
 
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @acme, name: "LOOSE", value: "loose"})
+      Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "LOOSE", value: "loose"})
 
-    assert WardrikVault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :api_key) ==
+    assert Wardrik.Vault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :api_key) ==
              {:error, :wrong_kind}
 
-    assert WardrikVault.fetch(vault, @acme, "LOOSE", kind: :api_key) == {:error, :wrong_kind}
-    assert WardrikVault.fetch(vault, @acme, "ANTHROPIC_API_KEY", kind: :api_key) == {:ok, "key"}
-    assert WardrikVault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :client_secret) == {:ok, "app"}
+    assert Wardrik.Vault.fetch(vault, @acme, "LOOSE", kind: :api_key) == {:error, :wrong_kind}
+    assert Wardrik.Vault.fetch(vault, @acme, "ANTHROPIC_API_KEY", kind: :api_key) == {:ok, "key"}
+
+    assert Wardrik.Vault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :client_secret) ==
+             {:ok, "app"}
 
     assert_raise ArgumentError, ~r/:password isn't a vault kind/, fn ->
-      WardrikVault.put(vault, %Secret{principal: @acme, name: "X", value: "x"}, kind: :password)
+      Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "X", value: "x"}, kind: :password)
     end
   end
 
   test "won't unseal a value relabelled as another kind", %{vault: vault, store: store} do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @acme, name: "GOOGLE_SECRET", value: "app"},
+      Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "GOOGLE_SECRET", value: "app"},
         kind: :client_secret
       )
 
-    scoped = WardrikStore.scope(store, "wardrik_vault")
-    sealed = WardrikStore.get(scoped, "org%3Aacme/GOOGLE_SECRET")
-    {:ok, _vsn} = WardrikStore.put(scoped, "org%3Aacme/GOOGLE_SECRET", %{sealed | kind: :api_key})
+    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+    sealed = Wardrik.Store.get(scoped, "org%3Aacme/GOOGLE_SECRET")
 
-    assert WardrikVault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :api_key) ==
+    {:ok, _vsn} =
+      Wardrik.Store.put(scoped, "org%3Aacme/GOOGLE_SECRET", %{sealed | kind: :api_key})
+
+    assert Wardrik.Vault.fetch(vault, @acme, "GOOGLE_SECRET", kind: :api_key) ==
              {:error, :undecipherable}
   end
 
   test "won't unseal a value moved to another principal", %{vault: vault, store: store} do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @acme, name: "github", value: "acme's"})
+      Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "github", value: "acme's"})
 
-    scoped = WardrikStore.scope(store, "wardrik_vault")
+    scoped = Wardrik.Store.scope(store, "wardrik_vault")
 
     {:ok, _vsn} =
-      WardrikStore.put(scoped, "user%3Ajon/github", WardrikStore.get(scoped, "org%3Aacme/github"))
+      Wardrik.Store.put(
+        scoped,
+        "user%3Ajon/github",
+        Wardrik.Store.get(scoped, "org%3Aacme/github")
+      )
 
-    assert WardrikVault.fetch(vault, @jon, "github") == {:error, :undecipherable}
+    assert Wardrik.Vault.fetch(vault, @jon, "github") == {:error, :undecipherable}
   end
 
   test "seals with the first key and unseals with any", %{vault: vault, store: store, key: old} do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{
+      Wardrik.Vault.put(vault, %Secret{
         principal: @jon,
         name: "github",
         value: "sealed with the old key"
       })
 
-    rotated = start_vault(store, [WardrikVault.generate_key(), old], nil)
+    rotated = start_vault(store, [Wardrik.Vault.generate_key(), old], nil)
 
-    assert WardrikVault.fetch(rotated, @jon, "github") == {:ok, "sealed with the old key"}
+    assert Wardrik.Vault.fetch(rotated, @jon, "github") == {:ok, "sealed with the old key"}
 
     {:ok, _vsn} =
-      WardrikVault.put(rotated, %Secret{
+      Wardrik.Vault.put(rotated, %Secret{
         principal: @jon,
         name: "linear",
         value: "sealed with the new key"
       })
 
-    assert WardrikVault.fetch(vault, @jon, "linear") == {:error, :undecipherable}
+    assert Wardrik.Vault.fetch(vault, @jon, "linear") == {:error, :undecipherable}
   end
 
   test "seals and unseals nothing without a key", %{store: store} do
@@ -182,73 +190,73 @@ defmodule WardrikVaultTest do
 
     assert log =~ "isn't 32 bytes"
 
-    assert WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "x"}) ==
+    assert Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "x"}) ==
              {:error, :no_key}
 
-    assert WardrikVault.fetch(vault, @jon, "github") == {:error, :no_key}
+    assert Wardrik.Vault.fetch(vault, @jon, "github") == {:error, :no_key}
   end
 
   test "writes over a version only while it's current", %{vault: vault} do
     {:ok, vsn} =
-      WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "first"},
+      Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "first"},
         kind: :grant,
         if_vsn: nil
       )
 
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "second"},
+      Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "second"},
         kind: :grant,
         if_vsn: vsn
       )
 
     assert {:error, :conflict} =
-             WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "third"},
+             Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "third"},
                if_vsn: vsn
              )
 
-    assert {:ok, :grant, "second", _vsn} = WardrikVault.lookup(vault, @jon, "github")
+    assert {:ok, :grant, "second", _vsn} = Wardrik.Vault.lookup(vault, @jon, "github")
   end
 
   test "lists names and kinds, and deletes", %{vault: vault} do
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "a"}, kind: :grant)
+      Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "a"}, kind: :grant)
 
     {:ok, _vsn} =
-      WardrikVault.put(vault, %Secret{principal: @jon, name: "linear/api", value: "b"})
+      Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "linear/api", value: "b"})
 
-    {:ok, _vsn} = WardrikVault.put(vault, %Secret{principal: @acme, name: "github", value: "c"})
+    {:ok, _vsn} = Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "github", value: "c"})
 
-    assert Enum.sort(WardrikVault.list(vault)) == [
+    assert Enum.sort(Wardrik.Vault.list(vault)) == [
              {"org:acme", "github", :secret},
              {"user:jon", "github", :grant},
              {"user:jon", "linear/api", :secret}
            ]
 
-    assert WardrikVault.names(vault, @jon) == ["github", "linear/api"]
-    assert :ok = WardrikVault.delete(vault, @jon, "github")
-    assert WardrikVault.names(vault, @jon) == ["linear/api"]
+    assert Wardrik.Vault.names(vault, @jon) == ["github", "linear/api"]
+    assert :ok = Wardrik.Vault.delete(vault, @jon, "github")
+    assert Wardrik.Vault.names(vault, @jon) == ["linear/api"]
   end
 
   describe "as an agent's credentials" do
     test "resolves a secret", %{vault: vault} do
       {:ok, _vsn} =
-        WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "ghp_secret"})
+        Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "ghp_secret"})
 
-      assert WardrikVault.resolve(credential("github", @jon), vault) == {:ok, "ghp_secret"}
+      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "ghp_secret"}
     end
 
     test "renews a grant through its grants", %{vault: vault} do
       {:ok, vsn} =
-        WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
+        Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
           kind: :grant
         )
 
-      assert WardrikVault.resolve(credential("github", @jon), vault) == {:ok, "renewed token"}
+      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "renewed token"}
       assert_received {:renew, "github", %{value: "token", vsn: ^vsn}}
     end
 
     test "asks for a name nobody holds", %{vault: vault} do
-      assert WardrikVault.resolve(credential("github", @jon), vault) ==
+      assert Wardrik.Vault.resolve(credential("github", @jon), vault) ==
                {:authorize, "https://example.com/authorize/github"}
 
       assert_received {:ask, "github", "user:jon"}
@@ -256,39 +264,39 @@ defmodule WardrikVaultTest do
 
     test "asks again for a grant it can't unseal", %{vault: vault, store: store} do
       {:ok, _vsn} =
-        WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
+        Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
           kind: :grant
         )
 
-      rotated = start_vault(store, [WardrikVault.generate_key()], {TestGrants, self()})
+      rotated = start_vault(store, [Wardrik.Vault.generate_key()], {TestGrants, self()})
 
       assert capture_log(fn ->
                assert {:authorize, _url} =
-                        WardrikVault.resolve(credential("github", @jon), rotated)
+                        Wardrik.Vault.resolve(credential("github", @jon), rotated)
              end) =~ "asking again"
     end
 
     test "tells its grants a grant was refused, and ignores a refused secret", %{vault: vault} do
       {:ok, _vsn} =
-        WardrikVault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
+        Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
           kind: :grant
         )
 
       {:ok, _vsn} =
-        WardrikVault.put(vault, %Secret{principal: @jon, name: "linear", value: "secret"})
+        Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "linear", value: "secret"})
 
-      assert :ok = WardrikVault.refused(credential("github", @jon), vault)
-      assert :ok = WardrikVault.refused(credential("linear", @jon), vault)
+      assert :ok = Wardrik.Vault.refused(credential("github", @jon), vault)
+      assert :ok = Wardrik.Vault.refused(credential("linear", @jon), vault)
       assert_received {:refused, "github"}
       refute_received {:refused, "linear"}
     end
 
     test "resolves nothing without a principal, or without grants", %{vault: vault, store: store} do
-      assert WardrikVault.resolve(credential("github", nil), vault) == {:error, :no_principal}
-      assert WardrikVault.refused(credential("github", nil), vault) == :ok
+      assert Wardrik.Vault.resolve(credential("github", nil), vault) == {:error, :no_principal}
+      assert Wardrik.Vault.refused(credential("github", nil), vault) == :ok
 
-      plain = start_vault(store, [WardrikVault.generate_key()], nil)
-      assert WardrikVault.resolve(credential("github", @jon), plain) == {:error, :not_found}
+      plain = start_vault(store, [Wardrik.Vault.generate_key()], nil)
+      assert Wardrik.Vault.resolve(credential("github", @jon), plain) == {:error, :not_found}
     end
 
     test "parks a tool's call on the sign-in its grants ask for", %{vault: vault} do
@@ -296,7 +304,7 @@ defmodule WardrikVaultTest do
         WardrikCore.Context.new(
           agent_id: "digest",
           principal: @jon,
-          credentials: {WardrikVault, vault}
+          credentials: {Wardrik.Vault, vault}
         )
 
       assert {:park, %WardrikCore.Authorization{credential: "github", principal: @jon}} =

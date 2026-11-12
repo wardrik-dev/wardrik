@@ -52,8 +52,8 @@ WardrikCore.start_agent(
   model: "anthropic:claude-haiku-4-5",
   capabilities: [{WardrikACP, name: MyApp.ACP, harnesses: [:claude]}],
   middleware: [
-    {WardrikPolicy.Middleware,
-     WardrikPolicy.new!(deny: ["claude/delete"], default: [read_only: :allow, else: :ask])}
+    {Wardrik.Policy.Middleware,
+     Wardrik.Policy.new!(deny: ["claude/delete"], default: [read_only: :allow, else: :ask])}
   ]
 )
 ```
@@ -117,7 +117,7 @@ A coding agent can work with no person in the loop, in one of two ways.
 **The policy decides each request.** Claude Code still asks, and no request parks:
 
 ```elixir
-WardrikPolicy.new!(
+Wardrik.Policy.new!(
   allow: ["claude/*"],
   deny: ["claude/delete", "claude/execute(command = git push*)"]
 )
@@ -198,8 +198,8 @@ Wardrik.Agent.define(scope, "agt_builder",
 ## Related
 
 - [WardrikCore](https://hexdocs.pm/wardrik_core): the agent runtime.
-- [WardrikPolicy](https://hexdocs.pm/wardrik_policy): rules, judges and budgets.
-- [WardrikMCP](https://hexdocs.pm/wardrik_mcp): the tools of MCP servers.
+- `Wardrik.Policy`: rules, judges and budgets.
+- `Wardrik.MCP`: the tools of MCP servers.
 - [Wardrik](https://hexdocs.pm/wardrik): agents, governed.
 
 ## License

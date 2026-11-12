@@ -1,10 +1,10 @@
-defmodule WardrikEvents.Audit do
+defmodule Wardrik.EventLog.Audit do
   @moduledoc false
 
-  alias WardrikEvents.CloudEvent
-  alias WardrikEvents.Encoder.Value
-  alias WardrikEvents.Log
-  alias WardrikEvents.Reader
+  alias Wardrik.EventLog.CloudEvent
+  alias Wardrik.EventLog.Encoder.Value
+  alias Wardrik.EventLog.Log
+  alias Wardrik.EventLog.Reader
 
   @log {"audit", nil}
 

@@ -1,8 +1,8 @@
-defmodule WardrikWorkspace.Path do
+defmodule Wardrik.Workspace.Path do
   @moduledoc """
   Paths and globs within a workspace.
 
-      WardrikWorkspace.Path.normalize("notes//./today.md")
+      Wardrik.Workspace.Path.normalize("notes//./today.md")
       #=> {:ok, "notes/today.md"}
 
     * A path is refused if it starts with `/` or `~`, holds `..`, a NUL or a backslash, or is

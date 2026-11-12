@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.ChannelMembers do
   @moduledoc """
-  Maps chat members to daemon users. It's the daemon's `WardrikChannel.Identities`.
+  Maps chat members to daemon users. It's the daemon's `Wardrik.Chat.Identities`.
 
       channels:
         slack:
@@ -17,14 +17,14 @@ defmodule WardrikDaemon.ChannelMembers do
     * Anyone else is refused and told to ask an admin.
   """
 
-  @behaviour WardrikChannel.Identities
+  @behaviour Wardrik.Chat.Identities
 
-  alias WardrikChannel.Identities.Request
+  alias Wardrik.Chat.Identities.Request
   alias WardrikCore.Principal
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Owners
 
-  @impl WardrikChannel.Identities
+  @impl Wardrik.Chat.Identities
   def identify(%Request{} = request, opts) do
     case mapped(request, Keyword.fetch!(opts, :members), Keyword.fetch!(opts, :domains)) do
       {:ok, user} ->

@@ -79,11 +79,11 @@ Policies are data. Check one before any model runs:
 
 ```elixir
 policy = [ask: %{"refund_order" => "Refunds need a person."}, budget: [usd: 0.05, per: :day]]
-rules = WardrikPolicy.new!(policy)
+rules = Wardrik.Policy.new!(policy)
 
 %{
-  "look_up_order" => WardrikPolicy.decide(rules, "look_up_order"),
-  "refund_order" => WardrikPolicy.decide(rules, "refund_order")
+  "look_up_order" => Wardrik.Policy.decide(rules, "look_up_order"),
+  "refund_order" => Wardrik.Policy.decide(rules, "refund_order")
 }
 ```
 

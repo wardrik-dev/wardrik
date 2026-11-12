@@ -1,20 +1,20 @@
-defmodule WardrikHTTP.WorkerTest do
+defmodule Wardrik.HTTP.Endpoint.WorkerTest do
   use ExUnit.Case, async: true
 
-  alias WardrikHTTP.Test.Worker
-  alias WardrikTesting.Server
+  alias Wardrik.HTTP.Test.Worker
+  alias Wardrik.Testing.Server
 
   @lookup %{"name" => "lookup", "inputSchema" => %{"type" => "object"}}
 
   setup context do
     name = :"server #{context.test}"
-    :ok = WardrikHTTP.Test.start(name, ["wrk_shop"])
+    :ok = Wardrik.HTTP.Test.start(name, ["wrk_shop"])
 
     http =
       start_supervised!(
-        {WardrikHTTP,
+        {Wardrik.HTTP.Endpoint,
          server: {Server, name},
-         authenticator: {WardrikHTTP.Test.Authenticator, []},
+         authenticator: {Wardrik.HTTP.Test.Authenticator, []},
          port: 0,
          keepalive: 50}
       )
@@ -92,7 +92,7 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "closes the socket once it no longer authenticates", context do
     connect(context)
-    WardrikHTTP.Test.Authenticator.revoke(context.name, "wrk_shop")
+    Wardrik.HTTP.Test.Authenticator.revoke(context.name, "wrk_shop")
     assert_receive {:worker_closed, {:remote, 1008, "The request no longer authenticates."}}
   end
 
@@ -101,7 +101,7 @@ defmodule WardrikHTTP.WorkerTest do
              Worker.start(context.url, "wrk_nope", self())
 
     request = %{name: context.name, secret: "wrk_shop"}
-    assert WardrikHTTP.Test.request(request, "GET", "/v1/workers").status == 426
+    assert Wardrik.HTTP.Test.request(request, "GET", "/v1/workers").status == 426
   end
 
   defp connect(context) do

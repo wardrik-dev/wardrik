@@ -1,11 +1,11 @@
-defmodule WardrikPolicy.Default do
+defmodule Wardrik.Policy.Default do
   @moduledoc false
 
-  alias WardrikPolicy.Call
-  alias WardrikPolicy.Decision
-  alias WardrikPolicy.Read
+  alias Wardrik.Policy.Call
+  alias Wardrik.Policy.Decision
+  alias Wardrik.Policy.Read
 
-  @type effect() :: WardrikPolicy.effect()
+  @type effect() :: Wardrik.Policy.effect()
   @type by_annotation() :: %{String.t() => effect()}
 
   @spec decode(term()) :: {:ok, {effect(), by_annotation()}} | {:error, String.t()}
@@ -27,24 +27,24 @@ defmodule WardrikPolicy.Default do
     with {:ok, effect} <- effect(effect), do: {:ok, {effect, %{}}}
   end
 
-  @spec to_json(WardrikPolicy.t()) :: String.t() | map() | nil
-  def to_json(%WardrikPolicy{default: :allow, by_annotation: by_annotation})
+  @spec to_json(Wardrik.Policy.t()) :: String.t() | map() | nil
+  def to_json(%Wardrik.Policy{default: :allow, by_annotation: by_annotation})
       when map_size(by_annotation) == 0,
       do: nil
 
-  def to_json(%WardrikPolicy{default: fallback, by_annotation: by_annotation})
+  def to_json(%Wardrik.Policy{default: fallback, by_annotation: by_annotation})
       when map_size(by_annotation) == 0,
       do: Atom.to_string(fallback)
 
-  def to_json(%WardrikPolicy{default: fallback, by_annotation: by_annotation}) do
+  def to_json(%Wardrik.Policy{default: fallback, by_annotation: by_annotation}) do
     by_annotation
     |> Map.put("else", fallback)
     |> Map.new(fn {annotation, effect} -> {annotation, Atom.to_string(effect)} end)
   end
 
-  @spec for_tool(WardrikPolicy.t(), Call.t()) :: effect()
+  @spec for_tool(Wardrik.Policy.t(), Call.t()) :: effect()
   def for_tool(
-        %WardrikPolicy{default: fallback, by_annotation: by_annotation},
+        %Wardrik.Policy{default: fallback, by_annotation: by_annotation},
         %Call{annotations: annotations}
       ) do
     by_annotation

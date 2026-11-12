@@ -39,7 +39,7 @@ defmodule WardrikSlack.Install do
   """
 
   alias Wardrik.Channel.Installation
-  alias WardrikChannel.Channel
+  alias Wardrik.Chat.Channel
   alias WardrikSlack.API
 
   @authorize "https://slack.com/oauth/v2/authorize"

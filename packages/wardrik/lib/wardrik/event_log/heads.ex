@@ -1,4 +1,4 @@
-defmodule WardrikEvents.Heads do
+defmodule Wardrik.EventLog.Heads do
   @moduledoc false
 
   use GenServer
@@ -16,7 +16,7 @@ defmodule WardrikEvents.Heads do
   @doc """
   Updates the value under `key` with the function `:with`. Returns `{before, after}`.
 
-      WardrikEvents.Heads.update(heads, :count, initial: 0, with: &(&1 + 1))
+      Wardrik.EventLog.Heads.update(heads, :count, initial: 0, with: &(&1 + 1))
 
   `:with` gets `:initial` if `key` has no value. If another process updates `key` first, it runs
   again on the new value.

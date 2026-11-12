@@ -2,14 +2,14 @@ defmodule Wardrik.Operations.Agent do
   @moduledoc false
 
   alias Wardrik.Error
+  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Runs
+  alias Wardrik.EventLog.Timeline
   alias Wardrik.JSON
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Running
   alias Wardrik.Operations.Snapshot
   alias WardrikCore.Authorization
-  alias WardrikEvents.Cursor
-  alias WardrikEvents.Runs
-  alias WardrikEvents.Timeline
 
   @doc "Returns what the agent is doing now."
   @spec read(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
@@ -18,7 +18,7 @@ defmodule Wardrik.Operations.Agent do
 
     with :ok <- Snapshot.known(scope.wardrik, key) do
       events = Wardrik.events(scope.wardrik)
-      activity = WardrikEvents.activity(events, key)
+      activity = Wardrik.EventLog.activity(events, key)
 
       {:ok,
        Snapshot.conversation(
@@ -31,7 +31,7 @@ defmodule Wardrik.Operations.Agent do
            "spent_today" => Wardrik.Spending.today(scope.wardrik, agent),
            "activity" => activity,
            "interrupts" => Snapshot.interrupts(activity),
-           "cursor" => WardrikEvents.head(events, [key])
+           "cursor" => Wardrik.EventLog.head(events, [key])
          },
          conversation
        )}
@@ -45,7 +45,7 @@ defmodule Wardrik.Operations.Agent do
 
     with {:ok, pid} <- Running.awake(scope.wardrik, key) do
       message_id = input["id"] || message_id()
-      cursor = WardrikEvents.head(Wardrik.events(scope.wardrik), [key])
+      cursor = Wardrik.EventLog.head(Wardrik.events(scope.wardrik), [key])
       :ok = WardrikCore.ask(pid, text(input), metadata(scope, message_id))
       {:ok, %{"message" => %{"id" => message_id, "cursor" => cursor}}}
     end
@@ -148,14 +148,16 @@ defmodule Wardrik.Operations.Agent do
   @spec timeline(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def timeline(scope, input) do
     events = Wardrik.events(scope.wardrik)
-    {timeline, cursor} = WardrikEvents.view(events, Running.key(input), Timeline)
+    {timeline, cursor} = Wardrik.EventLog.view(events, Running.key(input), Timeline)
     {:ok, %{"items" => JSON.json(Timeline.items(timeline)), "cursor" => Cursor.encode(cursor)}}
   end
 
   @doc "Returns the agent's runs, with what each did and cost."
   @spec runs(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def runs(scope, input) do
-    {runs, cursor} = WardrikEvents.view(Wardrik.events(scope.wardrik), Running.key(input), Runs)
+    {runs, cursor} =
+      Wardrik.EventLog.view(Wardrik.events(scope.wardrik), Running.key(input), Runs)
+
     each = Enum.map(Runs.runs(runs), &Map.put(&1, :duration_ms, Runs.duration_ms(&1)))
 
     {:ok,

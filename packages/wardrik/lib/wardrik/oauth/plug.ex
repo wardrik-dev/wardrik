@@ -1,8 +1,8 @@
-defmodule WardrikOAuth.Plug do
+defmodule Wardrik.OAuth.Plug do
   @moduledoc """
-  Serves the sign-in pages. Mount it at `WardrikOAuth`'s `page`.
+  Serves the sign-in pages. Mount it at `Wardrik.OAuth`'s `page`.
 
-      forward "/oauth", WardrikOAuth.Plug,
+      forward "/oauth", Wardrik.OAuth.Plug,
         oauth: MyApp.OAuth,
         principal: {MyApp.Session, :principal, []}
 
@@ -14,10 +14,10 @@ defmodule WardrikOAuth.Plug do
 
   ## Options
 
-    * `:oauth` - required. The `WardrikOAuth` name.
+    * `:oauth` - required. The `Wardrik.OAuth` name.
     * `:principal` - required. `{module, function, args}`, called with the conn, then `args`.
       Returns the `WardrikCore.Principal` signed in at the browser, or `nil`. Only they can
-      finish their own sign-in. See `WardrikOAuth.finish/3`.
+      finish their own sign-in. See `Wardrik.OAuth.finish/3`.
   """
 
   @behaviour Plug
@@ -38,12 +38,12 @@ defmodule WardrikOAuth.Plug do
 
     case principal(conn, opts) do
       nil -> page(conn, 401, "Sign-in didn't finish", unknown())
-      principal -> finished(conn, WardrikOAuth.finish(oauth, conn.query_params, as: principal))
+      principal -> finished(conn, Wardrik.OAuth.finish(oauth, conn.query_params, as: principal))
     end
   end
 
   def call(%Plug.Conn{method: "GET", path_info: ["device", id]} = conn, %{oauth: oauth}) do
-    case WardrikOAuth.flow(oauth, id) do
+    case Wardrik.OAuth.flow(oauth, id) do
       {:ok, %{user_code: code, verification_uri: uri, provider: provider}} ->
         page(conn, 200, "Sign in to #{escape(provider)}", """
         <p>Enter this code:</p>
@@ -60,7 +60,7 @@ defmodule WardrikOAuth.Plug do
     conn
     |> put_resp_content_type("application/json")
     |> put_resp_header("cache-control", "public, max-age=3600")
-    |> send_resp(200, JSON.encode!(WardrikOAuth.client_document(oauth)))
+    |> send_resp(200, JSON.encode!(Wardrik.OAuth.client_document(oauth)))
   end
 
   def call(conn, _opts), do: send_resp(conn, 404, "Not found")

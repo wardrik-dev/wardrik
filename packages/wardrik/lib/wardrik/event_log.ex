@@ -1,23 +1,23 @@
-defmodule WardrikEvents do
+defmodule Wardrik.EventLog do
   @moduledoc """
   Keeps each agent's events as CloudEvents, in logs you can read back and follow.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_events#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       children = [
-        {WardrikStore, store},
-        {WardrikEvents, name: MyApp.Events, store: store, deployment: "acme-prod"}
+        {Wardrik.Store, store},
+        {Wardrik.EventLog, name: MyApp.Events, store: store, deployment: "acme-prod"}
       ]
 
       WardrikCore.start_agent(
         agent_id: "agt_1",
         model: "anthropic:claude-haiku-4-5",
-        events: {WardrikEvents, MyApp.Events}
+        events: {Wardrik.EventLog, MyApp.Events}
       )
 
-      {:ok, stream} = WardrikEvents.stream(MyApp.Events, ["agt_1"])
-      Enum.each(stream, fn {event, cursor} -> save(event, WardrikEvents.Cursor.encode(cursor)) end)
+      {:ok, stream} = Wardrik.EventLog.stream(MyApp.Events, ["agt_1"])
+      Enum.each(stream, fn {event, cursor} -> save(event, Wardrik.EventLog.Cursor.encode(cursor)) end)
 
   Each conversation has its own log, `{agent, conversation}`. The main one is `{agent, nil}`.
   Functions that read take a list of:
@@ -26,7 +26,7 @@ defmodule WardrikEvents do
     * `{"agt_1", "C1"}` - one conversation.
 
   `subscribe/2` also takes `:all`, for every agent's events as they happen. To ship every event
-  out, to your warehouse or tracing, give the events a `WardrikEvents.Sink`.
+  out, to your warehouse or tracing, give the events a `Wardrik.EventLog.Sink`.
 
   Every function raises `ArgumentError` if `name` isn't started.
   """
@@ -37,18 +37,18 @@ defmodule WardrikEvents do
 
   require Logger
 
-  alias WardrikEvents.Activity
-  alias WardrikEvents.Audit
-  alias WardrikEvents.CloudEvent
-  alias WardrikEvents.Cursor
-  alias WardrikEvents.Encoder
-  alias WardrikEvents.Heads
-  alias WardrikEvents.Log
-  alias WardrikEvents.Reader
-  alias WardrikEvents.Retention
-  alias WardrikEvents.Sink
-  alias WardrikEvents.Subscribers
-  alias WardrikEvents.Tail
+  alias Wardrik.EventLog.Activity
+  alias Wardrik.EventLog.Audit
+  alias Wardrik.EventLog.CloudEvent
+  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Encoder
+  alias Wardrik.EventLog.Heads
+  alias Wardrik.EventLog.Log
+  alias Wardrik.EventLog.Reader
+  alias Wardrik.EventLog.Retention
+  alias Wardrik.EventLog.Sink
+  alias Wardrik.EventLog.Subscribers
+  alias Wardrik.EventLog.Tail
 
   @typedoc "One conversation's log. `conversation` is `nil` for the agent's main one."
   @type log() :: {agent :: String.t(), conversation :: String.t() | nil}
@@ -67,7 +67,7 @@ defmodule WardrikEvents do
                    store: [
                      type: :any,
                      required: true,
-                     doc: "The WardrikStore used for event logs."
+                     doc: "The Wardrik.Store used for event logs."
                    ],
                    deployment: [
                      type: :string,
@@ -83,14 +83,14 @@ defmodule WardrikEvents do
                      type: {:list, :any},
                      default: [],
                      doc:
-                       "WardrikEvents.Sink modules or {module, opts} entries called after storage."
+                       "Wardrik.EventLog.Sink modules or {module, opts} entries called after storage."
                    ]
                  )
 
   @doc """
   Starts the events.
 
-      WardrikEvents.start_link(name: MyApp.Events, store: store, deployment: "acme-prod")
+      Wardrik.EventLog.start_link(name: MyApp.Events, store: store, deployment: "acme-prod")
 
   ## Options
 
@@ -128,7 +128,7 @@ defmodule WardrikEvents do
   @doc """
   Returns whether `resource` covers `log`.
 
-      WardrikEvents.covers?("agt_1", {"agt_1", "C1"})
+      Wardrik.EventLog.covers?("agt_1", {"agt_1", "C1"})
       #=> true
   """
   @spec covers?(:all | String.t() | log(), log()) :: boolean()
@@ -141,7 +141,7 @@ defmodule WardrikEvents do
   Writes `{type, subject, data}` to an agent's log, like the agent's own events.
 
       data = %{"trigger" => %{"name" => "daily"}, "status" => "asked"}
-      :ok = WardrikEvents.append(MyApp.Events, "agt_1", {"trigger.fired", "triggers/daily", data})
+      :ok = Wardrik.EventLog.append(MyApp.Events, "agt_1", {"trigger.fired", "triggers/daily", data})
 
   `type` is a `WardrikProtocol` event type without its `wardrik.` prefix.
 
@@ -172,7 +172,7 @@ defmodule WardrikEvents do
   end
 
   @doc """
-  Subscribes the calling process to `resources`, or `:all`. It receives `{WardrikEvents, log, event}`.
+  Subscribes the calling process to `resources`, or `:all`. It receives `{Wardrik.EventLog, log, event}`.
   """
   @spec subscribe(atom(), resources() | :all) :: :ok
   def subscribe(events, resources), do: Subscribers.subscribe(settings(events).group, resources)
@@ -190,8 +190,8 @@ defmodule WardrikEvents do
   @doc """
   Returns a page of kept events, oldest first.
 
-      {:ok, %{events: events, next: next}} = WardrikEvents.page(MyApp.Events, ["agt_1"], limit: 100)
-      {:ok, %{events: more}} = WardrikEvents.page(MyApp.Events, ["agt_1"], after: next)
+      {:ok, %{events: events, next: next}} = Wardrik.EventLog.page(MyApp.Events, ["agt_1"], limit: 100)
+      {:ok, %{events: more}} = Wardrik.EventLog.page(MyApp.Events, ["agt_1"], after: next)
 
     * `next` is the cursor after the page.
     * Starts with a `wardrik.events.dropped` if retention dropped events after the cursor.
@@ -218,11 +218,11 @@ defmodule WardrikEvents do
   @doc """
   Streams `{event, cursor}`: kept events after `:after`, then new ones as they're written.
 
-      {:ok, stream} = WardrikEvents.stream(MyApp.Events, [{"agt_1", "C1"}], after: saved)
+      {:ok, stream} = Wardrik.EventLog.stream(MyApp.Events, [{"agt_1", "C1"}], after: saved)
 
       Enum.each(stream, fn {event, cursor} ->
         IO.puts(event["type"])
-        save(WardrikEvents.Cursor.encode(cursor))
+        save(Wardrik.EventLog.Cursor.encode(cursor))
       end)
 
     * New events include live ones, like `wardrik.message.delta`.
@@ -245,21 +245,21 @@ defmodule WardrikEvents do
   end
 
   @doc """
-  Returns what an agent is doing now. See `WardrikEvents.Activity`.
+  Returns what an agent is doing now. See `Wardrik.EventLog.Activity`.
 
-      WardrikEvents.activity(MyApp.Events, "agt_1")
-      WardrikEvents.activity(MyApp.Events, {"agt_1", "C1"})
+      Wardrik.EventLog.activity(MyApp.Events, "agt_1")
+      Wardrik.EventLog.activity(MyApp.Events, {"agt_1", "C1"})
       #=> %{"doing" => [...], "since" => "2026-10-22T09:00:03.000000Z", "pending" => 1}
   """
   @spec activity(atom(), agent()) :: map()
   def activity(events, agent), do: events |> settings() |> loaded(logged(agent))
 
   @doc """
-  Folds a log's kept events into a `WardrikEvents.View`. Returns its state and the cursor after.
+  Folds a log's kept events into a `Wardrik.EventLog.View`. Returns its state and the cursor after.
 
-      {timeline, cursor} = WardrikEvents.view(MyApp.Events, "agt_1", WardrikEvents.Timeline)
+      {timeline, cursor} = Wardrik.EventLog.view(MyApp.Events, "agt_1", Wardrik.EventLog.Timeline)
 
-  `opts` go to `c:WardrikEvents.View.init/1`.
+  `opts` go to `c:Wardrik.EventLog.View.init/1`.
   """
   @spec view(atom(), agent(), module(), keyword()) :: {term(), Cursor.t()}
   def view(events, agent, view, opts \\ []) do
@@ -275,7 +275,7 @@ defmodule WardrikEvents do
   Writes `{type, subject, data}` to the audit, the log of who changed what.
 
       change = {"agent.forgotten", "agents/agt_1", %{"agent" => %{"id" => "agt_1"}}}
-      :ok = WardrikEvents.record(MyApp.Events, change, actor: %WardrikCore.Principal{id: "user_42"})
+      :ok = Wardrik.EventLog.record(MyApp.Events, change, actor: %WardrikCore.Principal{id: "user_42"})
 
   ## Options
 
@@ -296,8 +296,8 @@ defmodule WardrikEvents do
   @doc """
   Returns a page of the audit, oldest first. `next` is the last change's sequence number.
 
-      %{events: changes, next: next} = WardrikEvents.audit(MyApp.Events, limit: 100)
-      %{events: more} = WardrikEvents.audit(MyApp.Events, after: next)
+      %{events: changes, next: next} = Wardrik.EventLog.audit(MyApp.Events, limit: 100)
+      %{events: more} = Wardrik.EventLog.audit(MyApp.Events, after: next)
 
   ## Options
 
@@ -325,8 +325,8 @@ defmodule WardrikEvents do
     store = Keyword.fetch!(opts, :store)
 
     settings = %{
-      store: WardrikStore.scope(store, "wardrik_events"),
-      audit: WardrikStore.scope(store, "wardrik_audit"),
+      store: Wardrik.Store.scope(store, "wardrik_events"),
+      audit: Wardrik.Store.scope(store, "wardrik_audit"),
       deployment: Keyword.fetch!(opts, :deployment),
       retention: Keyword.fetch!(opts, :retention),
       sinks: Keyword.fetch!(opts, :sinks),
@@ -446,7 +446,7 @@ defmodule WardrikEvents do
   rescue
     ArgumentError ->
       reraise ArgumentError,
-              "#{inspect(events)} isn't started. Add {WardrikEvents, name: #{inspect(events)}, store: store} to your supervision tree, ahead of what uses it.",
+              "#{inspect(events)} isn't started. Add {Wardrik.EventLog, name: #{inspect(events)}, store: store} to your supervision tree, ahead of what uses it.",
               __STACKTRACE__
   end
 

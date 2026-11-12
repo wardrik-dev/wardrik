@@ -1,11 +1,11 @@
-defmodule WardrikWorkspace.Reads do
+defmodule Wardrik.Workspace.Reads do
   @moduledoc false
 
-  alias WardrikWorkspace.File
-  alias WardrikWorkspace.Files
-  alias WardrikWorkspace.Path
-  alias WardrikWorkspace.Spec
-  alias WardrikWorkspace.Tools
+  alias Wardrik.Workspace.File
+  alias Wardrik.Workspace.Files
+  alias Wardrik.Workspace.Path
+  alias Wardrik.Workspace.Spec
+  alias Wardrik.Workspace.Tools
 
   @max_lines 2000
   @max_read_bytes 128 * 1024
@@ -129,7 +129,8 @@ defmodule WardrikWorkspace.Reads do
   end
 
   @doc false
-  @spec resolved(Spec.t(), term()) :: {:ok, WardrikWorkspace.Mount.t(), String.t()} | {:ok, map()}
+  @spec resolved(Spec.t(), term()) ::
+          {:ok, Wardrik.Workspace.Mount.t(), String.t()} | {:ok, map()}
   def resolved(spec, path) do
     case Spec.resolve(spec, path) do
       {:ok, mount, path} -> {:ok, mount, path}

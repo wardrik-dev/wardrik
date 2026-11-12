@@ -1,9 +1,9 @@
-defmodule WardrikPolicy.Judge do
+defmodule Wardrik.Policy.Judge do
   @moduledoc """
   Asks a model yes-or-no questions about each tool call, and decides by the probability of yes.
 
       iex> policy =
-      ...>   WardrikPolicy.new!(
+      ...>   Wardrik.Policy.new!(
       ...>     judge: [
       ...>       questions: [
       ...>         [
@@ -16,7 +16,7 @@ defmodule WardrikPolicy.Judge do
       ...>     ]
       ...>   )
       iex> evaluate = fn _model, _state, _questions -> {:ok, [0.72], %{}} end
-      iex> WardrikPolicy.decide(policy, "books__pay_bill", evaluate: evaluate)
+      iex> Wardrik.Policy.decide(policy, "books__pay_bill", evaluate: evaluate)
       {:ask, "Judged 72% likely: Does this call send money outside the company?"}
 
   ## Options
@@ -34,19 +34,19 @@ defmodule WardrikPolicy.Judge do
 
   ## Rules
 
-    * `WardrikPolicy.decide/3` takes the function that asks the model as `:evaluate`.
-      `WardrikPolicy.Middleware` uses `WardrikCore.evaluate/2`.
+    * `Wardrik.Policy.decide/3` takes the function that asks the model as `:evaluate`.
+      `Wardrik.Policy.Middleware` uses `WardrikCore.evaluate/2`.
     * A deny beats an ask, and an ask beats an allow, across questions and rules.
     * A judge's allow only decides calls no rule names, and never after content from outside.
     * If the model can't answer, the call asks a person, when some question could ask or deny.
     * Arguments can be written to fool a judge. Keep exact checks in rules.
   """
 
-  alias WardrikPolicy.Call
-  alias WardrikPolicy.Decision
-  alias WardrikPolicy.Name
+  alias Wardrik.Policy.Call
+  alias Wardrik.Policy.Decision
+  alias Wardrik.Policy.Name
 
-  alias WardrikPolicy.Read
+  alias Wardrik.Policy.Read
 
   @outside "outside"
 
@@ -142,7 +142,7 @@ defmodule WardrikPolicy.Judge do
   @doc """
   Decides a call to the tool `name` by the judge alone.
 
-      WardrikPolicy.Judge.decide(judge, "books__pay_bill",
+      Wardrik.Policy.Judge.decide(judge, "books__pay_bill",
         arguments: %{"amount" => 120},
         evaluate: evaluate
       )
@@ -154,7 +154,7 @@ defmodule WardrikPolicy.Judge do
     * `:arguments` - the call's arguments, with string keys. `%{}` by default.
     * `:evaluate` - asks the judge's model. See `t:evaluate/0`.
   """
-  @spec decide(t(), String.t(), keyword()) :: WardrikPolicy.decision() | :pass
+  @spec decide(t(), String.t(), keyword()) :: Wardrik.Policy.decision() | :pass
   def decide(%__MODULE__{} = judge, name, opts \\ []) do
     opts = Keyword.validate!(opts, arguments: %{}, evaluate: nil)
     {answer, _measurements} = judge(judge, Call.new(name, opts))

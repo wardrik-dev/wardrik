@@ -1,12 +1,12 @@
-defmodule WardrikWorkspaceTest do
+defmodule Wardrik.WorkspaceTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.Workspace.Mount
   alias WardrikCore.Tool
-  alias WardrikWorkspace.Mount
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
-    start_supervised!({WardrikStore, store})
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
+    start_supervised!({Wardrik.Store, store})
 
     opts = [
       store: store,
@@ -17,7 +17,7 @@ defmodule WardrikWorkspaceTest do
       ]
     ]
 
-    tools = Map.new(WardrikWorkspace.tools(nil, opts), &{&1.name, &1})
+    tools = Map.new(Wardrik.Workspace.tools(nil, opts), &{&1.name, &1})
 
     %{
       store: store,

@@ -1,4 +1,4 @@
-defmodule WardrikHTTP do
+defmodule Wardrik.HTTP.Endpoint do
   @schema NimbleOptions.new!(
             server: [
               type: {:tuple, [:atom, :atom]},
@@ -11,7 +11,7 @@ defmodule WardrikHTTP do
               type: :mod_arg,
               required: true,
               doc:
-                "The `WardrikHTTP.Authenticator` that says who each request comes from, as " <>
+                "The `Wardrik.HTTP.Authenticator` that says who each request comes from, as " <>
                   "`{module, config}`."
             ],
             sign_in: [
@@ -33,7 +33,7 @@ defmodule WardrikHTTP do
   `:sign_in`:
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_http#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       children = [
         MyApp.AgentRuntime,
@@ -41,10 +41,10 @@ defmodule WardrikHTTP do
          wardrik: MyApp.AgentRuntime, authenticator: {MyAppWeb.WardrikSession, []}, port: 4000}
       ]
 
-  Use `WardrikHTTP` itself to serve any `Wardrik.Server`:
+  Use `Wardrik.HTTP.Endpoint` itself to serve any `Wardrik.Server`:
 
       children = [
-        {WardrikHTTP,
+        {Wardrik.HTTP.Endpoint,
          server: {Wardrik, MyApp.AgentRuntime},
          authenticator: {MyAppWeb.WardrikSession, []},
          port: 4000}
@@ -65,7 +65,7 @@ defmodule WardrikHTTP do
   | each operation's route | every operation in `WardrikProtocol`, as JSON |
   | the same, with `Accept: text/event-stream` | streaming operations, as server-sent events |
   | `GET /v1/openapi.json` | the OpenAPI document |
-  | `GET /v1/workers` | the tool workers' WebSocket. See `WardrikHTTP.Worker`. |
+  | `GET /v1/workers` | the tool workers' WebSocket. See `Wardrik.HTTP.Worker`. |
   | `POST /v1/channels/{channel}/{path}` | a chat app's request, relayed to the channel and back |
   | `/oauth/*` | sign-in pages, from `:sign_in` |
 
@@ -78,11 +78,11 @@ defmodule WardrikHTTP do
   import Plug.Conn
 
   alias Wardrik.Error
-  alias WardrikHTTP.Authenticator
-  alias WardrikHTTP.EventStream
-  alias WardrikHTTP.Input
-  alias WardrikHTTP.Response
-  alias WardrikHTTP.Routes
+  alias Wardrik.HTTP.Authenticator
+  alias Wardrik.HTTP.EventStream
+  alias Wardrik.HTTP.Input
+  alias Wardrik.HTTP.Response
+  alias Wardrik.HTTP.Routes
 
   @own [:server, :authenticator, :sign_in, :keepalive]
   @request_id Plug.RequestId.init(http_header: "request-id")
@@ -108,7 +108,7 @@ defmodule WardrikHTTP do
     with {:ok, scope} <- authenticate(conn, settings),
          :ok <- upgradable(conn) do
       worker = %{scope: scope, alive?: alive?(conn, settings), keepalive: settings.keepalive}
-      WebSockAdapter.upgrade(conn, WardrikHTTP.Worker, worker, [])
+      WebSockAdapter.upgrade(conn, Wardrik.HTTP.Worker, worker, [])
     else
       {:error, :upgrade_required} -> upgrade_required(conn)
       {:error, %Error{} = error} -> Response.error(conn, error)

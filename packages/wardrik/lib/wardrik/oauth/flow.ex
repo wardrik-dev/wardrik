@@ -1,4 +1,4 @@
-defmodule WardrikOAuth.Flow do
+defmodule Wardrik.OAuth.Flow do
   @moduledoc """
   A process for one sign-in under way. It ends when the principal finishes, or after 15 minutes.
   """
@@ -7,13 +7,13 @@ defmodule WardrikOAuth.Flow do
 
   require Logger
 
+  alias Wardrik.OAuth.Browser
+  alias Wardrik.OAuth.Device
+  alias Wardrik.OAuth.Metadata
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Registration
+  alias Wardrik.OAuth.Token
   alias WardrikCore.Principal
-  alias WardrikOAuth.Browser
-  alias WardrikOAuth.Device
-  alias WardrikOAuth.Metadata
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Registration
-  alias WardrikOAuth.Token
 
   @lifetime :timer.minutes(15)
 
@@ -196,7 +196,7 @@ defmodule WardrikOAuth.Flow do
   defp granted(flow, token) do
     %{settings: settings, provider: provider, principal: principal} = flow
 
-    with {:ok, _vsn} <- WardrikOAuth.keep(settings, provider, principal, token) do
+    with {:ok, _vsn} <- Wardrik.OAuth.keep(settings, provider, principal, token) do
       tell(settings.on_granted, provider.name, principal)
       :granted
     end

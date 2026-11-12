@@ -23,10 +23,10 @@ defmodule Wardrik.AgentToolsTest do
         policies: [relay: [allow_after: %{"outside" => ["agent_ask"]}]]
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{scope: owner(wardrik)}
   end
 
@@ -185,7 +185,7 @@ defmodule Wardrik.AgentToolsTest do
     :ok = Supervisor.terminate_child(scope.wardrik, Wardrik.Delegation)
     run!(scope, "agent.ask", %{"agent" => "acme/front", "content" => "Ask the worker"})
 
-    assert_receive {WardrikEvents, {"acme/worker", nil}, %{"type" => "wardrik.run.completed"}},
+    assert_receive {Wardrik.EventLog, {"acme/worker", nil}, %{"type" => "wardrik.run.completed"}},
                    5_000
 
     refute_received {:prompted, "From agent" <> _rest}
@@ -223,7 +223,7 @@ defmodule Wardrik.AgentToolsTest do
     for _turn <- 1..2,
         do:
           assert_receive(
-            {WardrikEvents, {"acme/front", nil}, %{"type" => "wardrik.run.completed"}}
+            {Wardrik.EventLog, {"acme/front", nil}, %{"type" => "wardrik.run.completed"}}
           )
 
     assert [%{metadata: %{labels: ["outside"]}} | _rest] = history(scope, "acme/worker")

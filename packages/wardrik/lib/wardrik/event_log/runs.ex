@@ -1,13 +1,13 @@
-defmodule WardrikEvents.Runs do
+defmodule Wardrik.EventLog.Runs do
   @moduledoc """
   A view of an agent's runs, and the totals across them.
 
-      {runs, _cursor} = WardrikEvents.view(MyApp.Events, "agt_1", WardrikEvents.Runs)
+      {runs, _cursor} = Wardrik.EventLog.view(MyApp.Events, "agt_1", Wardrik.EventLog.Runs)
 
-      WardrikEvents.Runs.runs(runs)
+      Wardrik.EventLog.Runs.runs(runs)
       #=> [%{id: "0af7...", status: :completed, model: "anthropic:claude-haiku-4-5", ...}]
 
-      WardrikEvents.Runs.totals(runs)
+      Wardrik.EventLog.Runs.totals(runs)
       #=> %{runs: 12, failed: 1, tool_calls: 40, input_tokens: 51_200, output_tokens: 8_300, cost_micro_usd: 91_000, last_at: "..."}
 
   A run's tool calls, tokens and cost include its subagents'. See `t:run/0`.
@@ -18,9 +18,9 @@ defmodule WardrikEvents.Runs do
       set.
   """
 
-  @behaviour WardrikEvents.View
+  @behaviour Wardrik.EventLog.View
 
-  alias WardrikEvents.CloudEvent
+  alias Wardrik.EventLog.CloudEvent
 
   defstruct runs: %{}, order: [], senders: %{}, events?: false
 
@@ -56,10 +56,10 @@ defmodule WardrikEvents.Runs do
 
   @summed [:tool_calls, :input_tokens, :output_tokens, :cost_micro_usd]
 
-  @impl WardrikEvents.View
+  @impl Wardrik.EventLog.View
   def init(opts), do: %__MODULE__{events?: Keyword.get(opts, :events, false)}
 
-  @impl WardrikEvents.View
+  @impl Wardrik.EventLog.View
   def handle_event(%{"type" => "wardrik.message.created", "data" => data}, runs) do
     sender = get_in(data, ["sender", "name"]) || get_in(data, ["sender", "id"])
     %{runs | senders: Map.put(runs.senders, data["message"]["id"], sender)}

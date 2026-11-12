@@ -1,17 +1,17 @@
-defmodule WardrikPolicy.Rules do
+defmodule Wardrik.Policy.Rules do
   @moduledoc false
 
-  alias WardrikPolicy.Call
-  alias WardrikPolicy.Decision
-  alias WardrikPolicy.Name
-  alias WardrikPolicy.Pattern
-  alias WardrikPolicy.Read
-  alias WardrikPolicy.Rule
+  alias Wardrik.Policy.Call
+  alias Wardrik.Policy.Decision
+  alias Wardrik.Policy.Name
+  alias Wardrik.Policy.Pattern
+  alias Wardrik.Policy.Read
+  alias Wardrik.Policy.Rule
 
   @effects [:allow, :ask, :deny]
   @outside "outside"
 
-  @spec decide(WardrikPolicy.t(), Call.t()) :: Decision.t()
+  @spec decide(Wardrik.Policy.t(), Call.t()) :: Decision.t()
   def decide(policy, %Call{name: name} = call) do
     whole = Enum.filter(policy.rules, &Rule.whole?(&1, call))
     per_resource = Enum.map(call.resources, &for_resource(policy.rules, call, &1))

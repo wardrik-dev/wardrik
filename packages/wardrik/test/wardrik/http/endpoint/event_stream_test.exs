@@ -1,9 +1,9 @@
-defmodule WardrikHTTP.EventStreamTest do
+defmodule Wardrik.HTTP.Endpoint.EventStreamTest do
   use ExUnit.Case, async: true
 
-  import WardrikHTTP.Test
+  import Wardrik.HTTP.Test
 
-  alias WardrikTesting.Server
+  alias Wardrik.Testing.Server
 
   setup context do
     name = :"server #{context.test}"
@@ -11,9 +11,9 @@ defmodule WardrikHTTP.EventStreamTest do
 
     http =
       start_supervised!(
-        {WardrikHTTP,
+        {Wardrik.HTTP.Endpoint,
          server: {Server, name},
-         authenticator: {WardrikHTTP.Test.Authenticator, []},
+         authenticator: {Wardrik.HTTP.Test.Authenticator, []},
          port: 0,
          keepalive: 20},
         id: :http
@@ -42,7 +42,7 @@ defmodule WardrikHTTP.EventStreamTest do
     stream = open(context, "/v1/events")
     assert until(stream, ": keepalive")
 
-    WardrikHTTP.Test.Authenticator.revoke(context.name, context.secret)
+    Wardrik.HTTP.Test.Authenticator.revoke(context.name, context.secret)
     assert ended(stream)
   end
 

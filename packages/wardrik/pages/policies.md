@@ -51,24 +51,24 @@ Wardrik.Agent.define(scope, "agt_books",
 )
 ```
 
-`WardrikPolicy.decide/3` shows what rules make of a call, with no model:
+`Wardrik.Policy.decide/3` shows what rules make of a call, with no model:
 
 ```elixir
-deployment = WardrikPolicy.new!(deny: ["shell/*"])
+deployment = Wardrik.Policy.new!(deny: ["shell/*"])
 
 books =
-  WardrikPolicy.new!(
+  Wardrik.Policy.new!(
     allow: ["books/list_*", "shell/*"],
     ask: %{"books/pay_bill(amount >= 1000)" => "A bill this size needs a person."}
   )
 
-WardrikPolicy.decide([deployment, books], "books/list_bills")
+Wardrik.Policy.decide([deployment, books], "books/list_bills")
 #=> :allow
 
-WardrikPolicy.decide([deployment, books], "books/pay_bill", arguments: %{"amount" => 9400})
+Wardrik.Policy.decide([deployment, books], "books/pay_bill", arguments: %{"amount" => 9400})
 #=> {:ask, "A bill this size needs a person."}
 
-WardrikPolicy.decide([deployment, books], "shell/exec")
+Wardrik.Policy.decide([deployment, books], "shell/exec")
 #=> {:deny, "shell/exec is not allowed for this agent."}
 ```
 
@@ -135,4 +135,4 @@ Wardrik.Agent.define(scope, "agt_triage",
 #=> {:error, %Wardrik.Error{type: :invalid_request, ...}}
 ```
 
-See [WardrikPolicy](https://hexdocs.pm/wardrik_policy) for every rule, and judges.
+See `Wardrik.Policy` for every rule, and judges.

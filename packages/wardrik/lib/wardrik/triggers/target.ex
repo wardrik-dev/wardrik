@@ -1,28 +1,28 @@
-defmodule WardrikTriggers.Target do
+defmodule Wardrik.Triggers.Target do
   @moduledoc """
-  Connects triggers to your agents. Given to `WardrikTriggers` as `:target`, as `{module, opts}`.
+  Connects triggers to your agents. Given to `Wardrik.Triggers` as `:target`, as `{module, opts}`.
 
       defmodule MyApp.Triggers do
-        @behaviour WardrikTriggers.Target
+        @behaviour Wardrik.Triggers.Target
 
         @impl true
-        def ask(%WardrikTriggers.Target.Ask{agent: id, prompt: prompt}, _opts),
+        def ask(%Wardrik.Triggers.Target.Ask{agent: id, prompt: prompt}, _opts),
           do: MyApp.Agents.ask(id, prompt)
 
         @impl true
-        def fired(%WardrikTriggers.Target.Fired{}, _opts), do: :ok
+        def fired(%Wardrik.Triggers.Target.Fired{}, _opts), do: :ok
 
         @impl true
-        def resolve_secret(%WardrikTriggers.Target.Secret{agent: id, name: name}, _opts),
+        def resolve_secret(%Wardrik.Triggers.Target.Secret{agent: id, name: name}, _opts),
           do: MyApp.Secrets.fetch(id, name)
       end
 
   Each callback takes a request struct, then `opts`.
   """
 
-  alias WardrikTriggers.Target.Ask
-  alias WardrikTriggers.Target.Fired
-  alias WardrikTriggers.Target.Secret
+  alias Wardrik.Triggers.Target.Ask
+  alias Wardrik.Triggers.Target.Fired
+  alias Wardrik.Triggers.Target.Secret
 
   @doc """
   Asks the agent the prompt. Returns `:no_agent` if there's no such agent. `{:error, reason}` is

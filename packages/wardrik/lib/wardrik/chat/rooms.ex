@@ -1,33 +1,33 @@
-defmodule WardrikChannel.Rooms do
+defmodule Wardrik.Chat.Rooms do
   @moduledoc """
   Keeps which agent answers in each room, and the threads it has answered in.
 
       # The bot was invited into the room
-      WardrikChannel.Rooms.joined(workspace, room, member)
+      Wardrik.Chat.Rooms.joined(workspace, room, member)
       #=> {:bound, binding, offer}  # one agent offered; it now answers when mentioned
       #=> {:choose, offers}         # several offered; show them to pick from
       #=> :none                     # none offered
 
       # Someone picked an agent
       {:ok, binding, offer} =
-        WardrikChannel.Rooms.chose(workspace, room: room, agent: "agt_01JF8X5RQ2", by: member)
+        Wardrik.Chat.Rooms.chose(workspace, room: room, agent: "agt_01JF8X5RQ2", by: member)
 
       # Answer every message, not only mentions
-      {:ok, binding} = WardrikChannel.Rooms.answers(workspace, room, :everything, member)
+      {:ok, binding} = Wardrik.Chat.Rooms.answers(workspace, room, :everything, member)
 
       # The bot left the room
-      :ok = WardrikChannel.Rooms.left(workspace, room, member)
+      :ok = Wardrik.Chat.Rooms.left(workspace, room, member)
 
     * Each change is recorded in the audit as `wardrik.room.bound` or `wardrik.room.unbound`.
     * Pass the `member` who made it, or `nil` if the adapter doesn't know.
-    * A member is offered the agents they may read. See `WardrikChannel.Workspace.offered/2`.
+    * A member is offered the agents they may read. See `Wardrik.Chat.Workspace.offered/2`.
   """
 
-  alias WardrikChannel.Binding
-  alias WardrikChannel.Member
-  alias WardrikChannel.Offer
-  alias WardrikChannel.Replies
-  alias WardrikChannel.Workspace
+  alias Wardrik.Chat.Binding
+  alias Wardrik.Chat.Member
+  alias Wardrik.Chat.Offer
+  alias Wardrik.Chat.Replies
+  alias Wardrik.Chat.Workspace
 
   @typedoc "What a room shows once its bot joins: its agent, agents to pick from, or none."
   @type shown() :: {:bound, Binding.t(), Offer.t()} | {:choose, [Offer.t()]} | :none
@@ -41,7 +41,7 @@ defmodule WardrikChannel.Rooms do
   def get(%Workspace{installation: installation} = workspace, room) do
     owner = installation.owner
 
-    case WardrikStore.get(store(workspace), key(workspace, room)) do
+    case Wardrik.Store.get(store(workspace), key(workspace, room)) do
       %{"agent" => agent, "answers" => answers, "owner" => ^owner} ->
         %Binding{room: room, agent: agent, answers: answers(answers)}
 
@@ -75,7 +75,7 @@ defmodule WardrikChannel.Rooms do
 
     * `:room` - the room. Required.
     * `:agent` - the agent's ID. Required.
-    * `:by` - the `WardrikChannel.Member` who chose, or `nil` if the adapter doesn't know.
+    * `:by` - the `Wardrik.Chat.Member` who chose, or `nil` if the adapter doesn't know.
   """
   @spec chose(Workspace.t(), room: String.t(), agent: String.t(), by: Member.t() | nil) ::
           {:ok, Binding.t(), Offer.t()} | {:error, :not_offered}
@@ -105,7 +105,7 @@ defmodule WardrikChannel.Rooms do
   def left(workspace, room, by \\ nil) do
     case get(workspace, room) do
       %Binding{agent: agent} ->
-        :ok = WardrikStore.delete(store(workspace), key(workspace, room))
+        :ok = Wardrik.Store.delete(store(workspace), key(workspace, room))
         :ok = Replies.forget(workspace, room)
         record(workspace, by, "room.unbound", room, %{"agent" => %{"id" => agent}})
 
@@ -117,20 +117,20 @@ defmodule WardrikChannel.Rooms do
   @doc """
   Returns whether `:room`'s agent has answered in `:thread`.
 
-      WardrikChannel.Rooms.started?(workspace, room: "C024BE91L", thread: "1696.1234")
+      Wardrik.Chat.Rooms.started?(workspace, room: "C024BE91L", thread: "1696.1234")
   """
   @spec started?(Workspace.t(), room: String.t(), thread: String.t()) :: boolean()
   def started?(workspace, opts),
-    do: WardrikStore.get(store(workspace), thread_key(workspace, opts)) != nil
+    do: Wardrik.Store.get(store(workspace), thread_key(workspace, opts)) != nil
 
   @doc """
   Marks `:thread` as one `:room`'s agent answers in.
 
-      :ok = WardrikChannel.Rooms.start(workspace, room: "C024BE91L", thread: "1696.1234")
+      :ok = Wardrik.Chat.Rooms.start(workspace, room: "C024BE91L", thread: "1696.1234")
   """
   @spec start(Workspace.t(), room: String.t(), thread: String.t()) :: :ok
   def start(workspace, opts) do
-    {:ok, _vsn} = WardrikStore.put(store(workspace), thread_key(workspace, opts), true)
+    {:ok, _vsn} = Wardrik.Store.put(store(workspace), thread_key(workspace, opts), true)
     :ok
   end
 
@@ -141,7 +141,7 @@ defmodule WardrikChannel.Rooms do
       "owner" => workspace.installation.owner
     }
 
-    {:ok, _vsn} = WardrikStore.put(store(workspace), key(workspace, room), bound)
+    {:ok, _vsn} = Wardrik.Store.put(store(workspace), key(workspace, room), bound)
 
     data = %{"agent" => %{"id" => agent}, "answers" => bound["answers"]}
     :ok = record(workspace, by, "room.bound", room, data)
@@ -155,7 +155,7 @@ defmodule WardrikChannel.Rooms do
     data = Map.merge(data, %{"channel" => channel.name, "room" => room})
     subject = "channels/#{channel.name}/rooms/#{room}"
     actor = actor(workspace, by)
-    :ok = WardrikEvents.record(channel.events, {type, subject, data}, actor: actor)
+    :ok = Wardrik.EventLog.record(channel.events, {type, subject, data}, actor: actor)
   end
 
   # Whoever your app knows the member as, else the channel acting for the installation's owner.

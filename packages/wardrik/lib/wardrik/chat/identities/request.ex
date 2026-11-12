@@ -1,8 +1,8 @@
-defmodule WardrikChannel.Identities.Request do
+defmodule Wardrik.Chat.Identities.Request do
   @moduledoc """
-  The member `c:WardrikChannel.Identities.identify/2` names.
+  The member `c:Wardrik.Chat.Identities.identify/2` names.
 
-      %WardrikChannel.Identities.Request{
+      %Wardrik.Chat.Identities.Request{
         channel: "slack",
         workspace: "T0123",
         member: "U024BE7LH",

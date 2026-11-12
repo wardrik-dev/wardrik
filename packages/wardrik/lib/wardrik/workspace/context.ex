@@ -1,8 +1,8 @@
-defmodule WardrikWorkspace.Context do
+defmodule Wardrik.Workspace.Context do
   @moduledoc """
   Middleware that reads workspace files into the agent's instructions each turn.
 
-      middleware: [{WardrikWorkspace.Context, store: store, tree: tree, files: ["MEMORY.md"]}]
+      middleware: [{Wardrik.Workspace.Context, store: store, tree: tree, files: ["MEMORY.md"]}]
 
     * Adds a `# Your workspace` section: each of `:files`, then the other top-level files and
       the shared trees.
@@ -12,7 +12,7 @@ defmodule WardrikWorkspace.Context do
 
   ## Options
 
-  `WardrikWorkspace`'s options, plus:
+  `Wardrik.Workspace`'s options, plus:
 
     * `:files` - paths to read into each turn. `[]` unless set.
     * `:max_bytes` - how much of `:files` to read in total. `16_384` unless set.
@@ -20,9 +20,9 @@ defmodule WardrikWorkspace.Context do
 
   @behaviour WardrikCore.Middleware
 
+  alias Wardrik.Workspace.Files
+  alias Wardrik.Workspace.Spec
   alias WardrikCore.Context
-  alias WardrikWorkspace.Files
-  alias WardrikWorkspace.Spec
 
   @max_names 50
   @plain ~r{\A[A-Za-z0-9._-]+/?\z}
@@ -87,7 +87,7 @@ defmodule WardrikWorkspace.Context do
         state: :found,
         content: file.content,
         version: version,
-        labels: WardrikWorkspace.File.labels(file)
+        labels: Wardrik.Workspace.File.labels(file)
       }
     else
       _unwritten -> %{path: path, state: :unwritten}

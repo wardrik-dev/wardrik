@@ -1,4 +1,4 @@
-defmodule WardrikWorkspace.Tools do
+defmodule Wardrik.Workspace.Tools do
   @moduledoc """
   The six file tools.
 
@@ -18,10 +18,10 @@ defmodule WardrikWorkspace.Tools do
     * Each call's resource is its path or glob, for policies like `write_file(notes/*)`.
   """
 
+  alias Wardrik.Workspace.Reads
+  alias Wardrik.Workspace.Spec
+  alias Wardrik.Workspace.Writes
   alias WardrikCore.Tool
-  alias WardrikWorkspace.Reads
-  alias WardrikWorkspace.Spec
-  alias WardrikWorkspace.Writes
 
   @doc "Returns the file tools over `spec`."
   @spec build(Spec.t()) :: [Tool.t()]

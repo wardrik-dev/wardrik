@@ -16,7 +16,10 @@ defmodule Wardrik.Operations.Changes do
       |> Map.put("agent", %{"id" => agent})
       |> Wardrik.Operations.Snapshot.conversation(conversation)
 
-    recorded(scope, {Keyword.fetch!(args, :type), WardrikEvents.CloudEvent.subject(agent), data})
+    recorded(
+      scope,
+      {Keyword.fetch!(args, :type), Wardrik.EventLog.CloudEvent.subject(agent), data}
+    )
   end
 
   defp about({_agent, _conversation} = key), do: key
@@ -32,5 +35,5 @@ defmodule Wardrik.Operations.Changes do
       )
 
   defp recorded(%Scope{wardrik: wardrik, principal: principal}, change),
-    do: :ok = WardrikEvents.record(Wardrik.events(wardrik), change, actor: principal)
+    do: :ok = Wardrik.EventLog.record(Wardrik.events(wardrik), change, actor: principal)
 end

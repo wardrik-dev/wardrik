@@ -30,7 +30,7 @@ defmodule Wardrik.Sleeper do
 
   @impl GenServer
   def handle_continue(:subscribe, %{wardrik: wardrik} = state) do
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     {:noreply, state}
   end
 
@@ -38,13 +38,13 @@ defmodule Wardrik.Sleeper do
   def handle_cast({:watch, id}, state), do: {:noreply, state |> disarm(id) |> arm(id)}
 
   @impl GenServer
-  def handle_info({WardrikEvents, id, %{"type" => type}}, state) when type in @idle,
+  def handle_info({Wardrik.EventLog, id, %{"type" => type}}, state) when type in @idle,
     do: {:noreply, state |> disarm(id) |> arm(id)}
 
-  def handle_info({WardrikEvents, id, %{"type" => type}}, state) when type in @busy,
+  def handle_info({Wardrik.EventLog, id, %{"type" => type}}, state) when type in @busy,
     do: {:noreply, disarm(state, id)}
 
-  def handle_info({WardrikEvents, _id, _event}, state), do: {:noreply, state}
+  def handle_info({Wardrik.EventLog, _id, _event}, state), do: {:noreply, state}
 
   def handle_info({:sleep, id, ref}, %{timers: timers} = state) do
     case Map.fetch(timers, id) do

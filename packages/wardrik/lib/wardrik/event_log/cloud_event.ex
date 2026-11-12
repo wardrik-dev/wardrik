@@ -1,4 +1,4 @@
-defmodule WardrikEvents.CloudEvent do
+defmodule Wardrik.EventLog.CloudEvent do
   @moduledoc """
   Builds Wardrik's CloudEvents: maps with string keys, and the payload under `"data"`.
   """
@@ -11,7 +11,7 @@ defmodule WardrikEvents.CloudEvent do
   @doc """
   Builds an event of `type`, without its `wardrik.` prefix.
 
-      WardrikEvents.CloudEvent.new("run.started",
+      Wardrik.EventLog.CloudEvent.new("run.started",
         subject: "runs/0af7...",
         data: data,
         deployment: "acme-prod",

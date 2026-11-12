@@ -1,4 +1,4 @@
-defmodule WardrikHTTP.Routes do
+defmodule Wardrik.HTTP.Routes do
   @moduledoc false
 
   segment = fn
@@ -23,10 +23,10 @@ defmodule WardrikHTTP.Routes do
   Each parameter takes one segment. An operation on a conversation matches its conversation route
   too, which gives `"conversation"`.
 
-      WardrikHTTP.Routes.match("POST", ["v1", "agents", "agt_1", "messages"])
+      Wardrik.HTTP.Routes.match("POST", ["v1", "agents", "agt_1", "messages"])
       #=> {:ok, %{id: "agent.ask", ...}, %{"agent" => "agt_1"}}
 
-      WardrikHTTP.Routes.match("GET", ~w(v1 agents agt_1 conversations C1 timeline))
+      Wardrik.HTTP.Routes.match("GET", ~w(v1 agents agt_1 conversations C1 timeline))
       #=> {:ok, %{id: "agent.timeline", ...}, %{"agent" => "agt_1", "conversation" => "C1"}}
   """
   @spec match(String.t(), [String.t()]) ::

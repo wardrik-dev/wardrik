@@ -1,8 +1,8 @@
-defmodule WardrikTriggers.Target.Ask do
+defmodule Wardrik.Triggers.Target.Ask do
   @moduledoc """
-  What `c:WardrikTriggers.Target.ask/2` asks: that `agent` be asked `prompt`, by `trigger`.
+  What `c:Wardrik.Triggers.Target.ask/2` asks: that `agent` be asked `prompt`, by `trigger`.
 
-      %WardrikTriggers.Target.Ask{
+      %Wardrik.Triggers.Target.Ask{
         agent: "agt_triage",
         prompt: "Write the digest.",
         trigger: "daily",

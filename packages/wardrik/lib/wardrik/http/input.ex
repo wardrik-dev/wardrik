@@ -1,9 +1,9 @@
-defmodule WardrikHTTP.Input do
+defmodule Wardrik.HTTP.Input do
   @moduledoc false
 
   alias Plug.Conn.Unfetched
   alias Wardrik.Error
-  alias WardrikHTTP.BodyReader
+  alias Wardrik.HTTP.BodyReader
 
   @limit 8_000_000
 
@@ -53,8 +53,8 @@ defmodule WardrikHTTP.Input do
 
   defp unkept,
     do:
-      "The body was parsed before WardrikHTTP saw it. " <>
-        "Give Plug.Parsers body_reader: {WardrikHTTP.BodyReader, :read_body, []}."
+      "The body was parsed before Wardrik.HTTP.Endpoint saw it. " <>
+        "Give Plug.Parsers body_reader: {Wardrik.HTTP.BodyReader, :read_body, []}."
 
   defp decoded({:ok, "", conn}), do: {:ok, %{}, conn}
 

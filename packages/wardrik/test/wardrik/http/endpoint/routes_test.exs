@@ -1,7 +1,7 @@
-defmodule WardrikHTTP.RoutesTest do
+defmodule Wardrik.HTTP.Endpoint.RoutesTest do
   use ExUnit.Case, async: true
 
-  alias WardrikHTTP.Routes
+  alias Wardrik.HTTP.Routes
 
   test "routes every operation by its method and path, and its conversation route" do
     for operation <- WardrikProtocol.operations(),

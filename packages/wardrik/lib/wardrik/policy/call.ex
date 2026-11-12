@@ -1,4 +1,4 @@
-defmodule WardrikPolicy.Call do
+defmodule Wardrik.Policy.Call do
   @moduledoc false
 
   @enforce_keys [:name]
@@ -10,7 +10,7 @@ defmodule WardrikPolicy.Call do
           resources: [String.t()],
           annotations: map(),
           labels: [String.t()],
-          evaluate: WardrikPolicy.Judge.evaluate() | nil
+          evaluate: Wardrik.Policy.Judge.evaluate() | nil
         }
 
   @spec new(String.t(), keyword()) :: t()

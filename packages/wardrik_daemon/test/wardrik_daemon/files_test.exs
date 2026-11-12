@@ -87,7 +87,7 @@ defmodule WardrikDaemon.FilesTest do
     write(context, "policies/careful.yaml", "ask: [echo]\n")
     write(context, "policies/open.yml", "default: allow\n")
 
-    assert {:ok, %{"careful" => %WardrikPolicy{}, "open" => %WardrikPolicy{}}} =
+    assert {:ok, %{"careful" => %Wardrik.Policy{}, "open" => %Wardrik.Policy{}}} =
              Policies.read(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies"))
 
     write(context, "policies/empty.yaml", "")

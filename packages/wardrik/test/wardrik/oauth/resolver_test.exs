@@ -1,12 +1,12 @@
-defmodule WardrikOAuth.ResolverTest do
+defmodule Wardrik.OAuth.ResolverTest do
   use ExUnit.Case, async: false
 
   defp credential(name, principal),
     do: %WardrikCore.Credentials.Request{name: name, principal: principal}
 
+  alias Wardrik.OAuth.GitHub
+  alias Wardrik.OAuth.Provider
   alias WardrikCore.Principal
-  alias WardrikOAuth.GitHub
-  alias WardrikOAuth.Provider
 
   @jon %Principal{id: "user_jon"}
   @ada %Principal{id: "user_ada"}
@@ -17,29 +17,29 @@ defmodule WardrikOAuth.ResolverTest do
     {:ok, polls} = Agent.start_link(fn -> [] end)
     Req.Test.stub(GitHub, GitHub.plug(polls, self()))
 
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     vault = :"vault #{context.test}"
     oauth = :"oauth #{context.test}"
     test = self()
     apps = start_supervised!({Agent, fn -> %{test: test} end})
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
-      {WardrikVault,
+      {Wardrik.Vault,
        name: vault,
        store: store,
-       keys: [WardrikVault.generate_key()],
-       grants: {WardrikOAuth, oauth}}
+       keys: [Wardrik.Vault.generate_key()],
+       grants: {Wardrik.OAuth, oauth}}
     )
 
     start_supervised!(
-      {WardrikOAuth,
+      {Wardrik.OAuth,
        name: oauth,
        vault: vault,
        store: store,
        page: "https://agents.test/oauth",
-       resolver: {WardrikOAuth.Test.Apps, apps},
+       resolver: {Wardrik.OAuth.Test.Apps, apps},
        req_options: [plug: {Req.Test, GitHub}]}
     )
 
@@ -62,10 +62,10 @@ defmodule WardrikOAuth.ResolverTest do
   defp client_id({:authorize, url}), do: URI.decode_query(URI.parse(url).query)["client_id"]
 
   defp sign_in(oauth, principal) do
-    {:ok, %{url: url}} = WardrikOAuth.authorize(oauth, "github", principal)
+    {:ok, %{url: url}} = Wardrik.OAuth.authorize(oauth, "github", principal)
     state = URI.decode_query(URI.parse(url).query)["state"]
     params = %{"state" => state, "code" => "c", "iss" => GitHub.issuer()}
-    {:ok, _signed_in} = WardrikOAuth.finish(oauth, params, as: principal)
+    {:ok, _signed_in} = Wardrik.OAuth.finish(oauth, params, as: principal)
   end
 
   test "signs each principal in only with the provider the resolver gives them", %{
@@ -75,11 +75,11 @@ defmodule WardrikOAuth.ResolverTest do
     give(apps, @jon, "github", app("acme-github", "acme-client"))
     give(apps, @ada, "github", app("globex-github", "globex-client"))
 
-    assert client_id(WardrikOAuth.authorize(oauth, "github", @jon)) == "acme-client"
+    assert client_id(Wardrik.OAuth.authorize(oauth, "github", @jon)) == "acme-client"
     assert_received {:resolved, "github", "user_jon"}
-    assert client_id(WardrikOAuth.authorize(oauth, "github", @ada)) == "globex-client"
+    assert client_id(Wardrik.OAuth.authorize(oauth, "github", @ada)) == "globex-client"
 
-    assert WardrikOAuth.authorize(oauth, "github", %Principal{id: "user_bo"}) ==
+    assert Wardrik.OAuth.authorize(oauth, "github", %Principal{id: "user_bo"}) ==
              {:error, :not_found}
   end
 
@@ -92,14 +92,14 @@ defmodule WardrikOAuth.ResolverTest do
     sign_in(oauth, @jon)
 
     give(apps, @jon, "github", app("globex-github", "globex-client", "globex-secret"))
-    :ok = WardrikVault.refused(credential("github", @jon), vault)
+    :ok = Wardrik.Vault.refused(credential("github", @jon), vault)
 
-    assert {:authorize, url} = WardrikVault.resolve(credential("github", @jon), vault)
+    assert {:authorize, url} = Wardrik.Vault.resolve(credential("github", @jon), vault)
     assert client_id({:authorize, url}) == "globex-client"
     refute_received {:refreshed, _token}
 
     give(apps, @jon, "github", app("acme-github", "acme-client", "acme-secret-2"))
-    assert WardrikVault.resolve(credential("github", @jon), vault) == {:ok, "fresh"}
+    assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "fresh"}
     assert_received {:refreshed_as, "acme-client", "acme-secret-2"}
   end
 
@@ -107,9 +107,9 @@ defmodule WardrikOAuth.ResolverTest do
     give(apps, @jon, "github", app("acme-github", nil))
     give(apps, @ada, "github", app("globex-github", nil))
 
-    assert {:ok, _sign_in} = WardrikOAuth.authorize(oauth, "github", @jon)
+    assert {:ok, _sign_in} = Wardrik.OAuth.authorize(oauth, "github", @jon)
     assert_receive {:registered, _request}
-    assert {:ok, _sign_in} = WardrikOAuth.authorize(oauth, "github", @ada)
+    assert {:ok, _sign_in} = Wardrik.OAuth.authorize(oauth, "github", @ada)
     assert_receive {:registered, _request}
   end
 
@@ -118,7 +118,7 @@ defmodule WardrikOAuth.ResolverTest do
     apps: apps
   } do
     give(apps, @jon, "github", {:error, :down})
-    assert WardrikOAuth.authorize(oauth, "github", @jon) == {:error, :down}
+    assert Wardrik.OAuth.authorize(oauth, "github", @jon) == {:error, :down}
 
     {:ok, github} = app("acme-github", "acme-client")
 
@@ -131,13 +131,13 @@ defmodule WardrikOAuth.ResolverTest do
         ] do
       give(apps, @jon, "github", {:ok, given})
 
-      assert WardrikOAuth.authorize(oauth, "github", @jon) ==
+      assert Wardrik.OAuth.authorize(oauth, "github", @jon) ==
                {:error, "github doesn't resolve: #{why}"}
     end
 
     give(apps, @jon, "github", github)
 
-    assert WardrikOAuth.authorize(oauth, "github", @jon) ==
+    assert Wardrik.OAuth.authorize(oauth, "github", @jon) ==
              {:error, "github doesn't resolve: it's #{inspect(github)}"}
 
     refute_received {:registered, _request}
@@ -145,7 +145,7 @@ defmodule WardrikOAuth.ResolverTest do
 
   test "needs a resolver" do
     assert_raise NimbleOptions.ValidationError, ~r/required :resolver option not found/, fn ->
-      WardrikOAuth.start_link(
+      Wardrik.OAuth.start_link(
         name: :unresolved,
         vault: :vault,
         store: :store,
@@ -156,12 +156,12 @@ defmodule WardrikOAuth.ResolverTest do
 
   test "forgets the client it registered for an app", %{oauth: oauth, apps: apps} do
     give(apps, @jon, "github", app("acme-github", nil))
-    assert {:ok, _sign_in} = WardrikOAuth.authorize(oauth, "github", @jon)
+    assert {:ok, _sign_in} = Wardrik.OAuth.authorize(oauth, "github", @jon)
     assert_receive {:registered, _request}
 
-    assert :ok = WardrikOAuth.forget_client(oauth, "acme-github")
+    assert :ok = Wardrik.OAuth.forget_client(oauth, "acme-github")
     give(apps, @ada, "github", app("acme-github", nil))
-    assert {:ok, _sign_in} = WardrikOAuth.authorize(oauth, "github", @ada)
+    assert {:ok, _sign_in} = Wardrik.OAuth.authorize(oauth, "github", @ada)
     assert_receive {:registered, _request}
   end
 end

@@ -1,17 +1,17 @@
-defmodule WardrikEvents.Reader do
+defmodule Wardrik.EventLog.Reader do
   @moduledoc false
 
-  alias WardrikEvents.CloudEvent
-  alias WardrikEvents.Cursor
-  alias WardrikEvents.Log
+  alias Wardrik.EventLog.CloudEvent
+  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Log
 
   @chunk 500
 
   @typedoc "`{log, sequence, event}`."
-  @type entry() :: {WardrikEvents.log(), non_neg_integer(), CloudEvent.t()}
+  @type entry() :: {Wardrik.EventLog.log(), non_neg_integer(), CloudEvent.t()}
 
   @doc "Returns the kept logs `resources` cover."
-  @spec covered(WardrikStore.t(), WardrikEvents.resources()) :: [WardrikEvents.log()]
+  @spec covered(Wardrik.Store.t(), Wardrik.EventLog.resources()) :: [Wardrik.EventLog.log()]
   def covered(store, resources) do
     resources
     |> Enum.flat_map(&logs(store, &1))
@@ -24,7 +24,7 @@ defmodule WardrikEvents.Reader do
   defp logs(store, agent), do: Log.logs(store, agent)
 
   @doc "Returns the cursor at the end of the logs `resources` cover."
-  @spec head(WardrikStore.t(), WardrikEvents.resources()) :: Cursor.t()
+  @spec head(Wardrik.Store.t(), Wardrik.EventLog.resources()) :: Cursor.t()
   def head(store, resources),
     do: store |> covered(resources) |> Map.new(fn log -> {log, Log.last(store, log)} end)
 
@@ -32,9 +32,9 @@ defmodule WardrikEvents.Reader do
   Returns up to `:limit` entries after the cursor `:after` from the logs `resources` cover,
   oldest first, and the cursor after them.
 
-      WardrikEvents.Reader.page(settings, ["agt_1"], after: %{}, limit: 100)
+      Wardrik.EventLog.Reader.page(settings, ["agt_1"], after: %{}, limit: 100)
   """
-  @spec page(map(), WardrikEvents.resources(), after: Cursor.t(), limit: pos_integer()) ::
+  @spec page(map(), Wardrik.EventLog.resources(), after: Cursor.t(), limit: pos_integer()) ::
           {[entry()], Cursor.t()}
   def page(settings, resources, args) do
     cursor = Keyword.fetch!(args, :after)
@@ -52,11 +52,11 @@ defmodule WardrikEvents.Reader do
   @doc """
   Returns up to `:limit` entries of `log` after the sequence number `:after`.
 
-      WardrikEvents.Reader.entries(settings, {"agt_1", nil}, after: 0, limit: 100)
+      Wardrik.EventLog.Reader.entries(settings, {"agt_1", nil}, after: 0, limit: 100)
 
   If retention dropped the next one, the entries start with a `wardrik.events.dropped`.
   """
-  @spec entries(map(), WardrikEvents.log(), after: non_neg_integer(), limit: pos_integer()) ::
+  @spec entries(map(), Wardrik.EventLog.log(), after: non_neg_integer(), limit: pos_integer()) ::
           [entry()]
   def entries(settings, log, args) do
     at = Keyword.fetch!(args, :after)
@@ -73,7 +73,7 @@ defmodule WardrikEvents.Reader do
   end
 
   @doc "Streams every entry of `log` after the sequence number `:after`, oldest first."
-  @spec all(map(), WardrikEvents.log(), after: non_neg_integer()) :: Enumerable.t(entry())
+  @spec all(map(), Wardrik.EventLog.log(), after: non_neg_integer()) :: Enumerable.t(entry())
   def all(settings, log, args \\ [after: 0]) do
     args
     |> Keyword.fetch!(:after)

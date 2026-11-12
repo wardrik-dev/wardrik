@@ -61,7 +61,7 @@ Wardrik.Agent.definition(scope, "agt_assistant")
 - `servers/*` gives every server it's resolved with.
 - With `credential_name: "github"`, a server is reached with each person's own account. See
   [Credentials](credentials.md).
-- See `WardrikMCP.Server` for every server option.
+- See `Wardrik.MCP.Server` for every server option.
 
 ## Servers your app adds
 
@@ -69,7 +69,7 @@ Add a server while Wardrik runs, then configure access through your resolver:
 
 ```elixir
 :ok =
-  WardrikMCP.add(Wardrik.mcp(MyApp.AgentRuntime), "acme:linear",
+  Wardrik.MCP.add(Wardrik.mcp(MyApp.AgentRuntime), "acme:linear",
     transport: {:streamable_http, url: "https://mcp.linear.app/mcp"},
     prefix: "linear"
   )

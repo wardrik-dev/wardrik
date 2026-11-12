@@ -1,10 +1,10 @@
-defmodule WardrikOAuth.Metadata do
+defmodule Wardrik.OAuth.Metadata do
   @moduledoc """
   An authorization server's metadata, discovered from its issuer or resource.
   """
 
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Request
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Request
 
   @enforce_keys [:token_endpoint]
   defstruct [

@@ -1,8 +1,8 @@
-defmodule WardrikVault.Secret do
+defmodule Wardrik.Vault.Secret do
   @moduledoc """
-  A value to seal, and who holds it under what name. See `WardrikVault.put/3`.
+  A value to seal, and who holds it under what name. See `Wardrik.Vault.put/3`.
 
-      WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
+      Wardrik.Vault.put(MyApp.Vault, %Wardrik.Vault.Secret{
         principal: %WardrikCore.Principal{id: "user:jon"},
         name: "github",
         value: "ghp_..."

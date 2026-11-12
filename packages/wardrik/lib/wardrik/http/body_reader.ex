@@ -1,11 +1,11 @@
-defmodule WardrikHTTP.BodyReader do
+defmodule Wardrik.HTTP.BodyReader do
   @moduledoc """
   Keeps a request's raw body while `Plug.Parsers` reads it, for webhook signatures.
 
       plug Plug.Parsers,
         parsers: [:json],
         json_decoder: JSON,
-        body_reader: {WardrikHTTP.BodyReader, :read_body, []}
+        body_reader: {Wardrik.HTTP.BodyReader, :read_body, []}
   """
 
   import Plug.Conn

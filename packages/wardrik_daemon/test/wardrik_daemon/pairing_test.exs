@@ -5,13 +5,13 @@ defmodule WardrikDaemon.PairingTest do
   import ExUnit.CaptureIO
   import WardrikDaemon.Test
 
+  alias Wardrik.OAuth.Device
+  alias Wardrik.OAuth.Token
   alias WardrikCore.Principal
   alias WardrikDaemon.CLI
   alias WardrikDaemon.Client
   alias WardrikDaemon.Pairings
   alias WardrikDaemon.Tokens
-  alias WardrikOAuth.Device
-  alias WardrikOAuth.Token
 
   setup :set_mimic_global
 
@@ -39,7 +39,7 @@ defmodule WardrikDaemon.PairingTest do
 
     test = self()
 
-    stub(WardrikOAuth.Browser, :exchange, fn _metadata, _provider, args ->
+    stub(Wardrik.OAuth.Browser, :exchange, fn _metadata, _provider, args ->
       send(test, {:exchanged, Keyword.fetch!(args, :code)})
       {:ok, %Token{access_token: "at", token_endpoint: "https://crm.test/token"}}
     end)
@@ -85,7 +85,7 @@ defmodule WardrikDaemon.PairingTest do
 
   defp connected?(context, id, provider) do
     vault = Wardrik.vault(context.running)
-    match?({:ok, _grant}, WardrikVault.fetch(vault, %Principal{id: id}, provider))
+    match?({:ok, _grant}, Wardrik.Vault.fetch(vault, %Principal{id: id}, provider))
   end
 
   test "a code finishes only the sign-in its own principal started", context do

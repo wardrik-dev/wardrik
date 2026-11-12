@@ -1,9 +1,9 @@
-defmodule WardrikVault.Grants do
+defmodule Wardrik.Vault.Grants do
   @moduledoc """
   Refreshes and asks for credentials a user gives by signing in, like OAuth tokens.
-  `WardrikOAuth` implements it.
+  `Wardrik.OAuth` implements it.
 
-      {WardrikVault, name: MyApp.Vault, store: store, keys: keys, grants: {MyApp.OAuth, opts}}
+      {Wardrik.Vault, name: MyApp.Vault, store: store, keys: keys, grants: {MyApp.OAuth, opts}}
 
   When a tool needs a credential, the vault calls:
 
@@ -11,14 +11,14 @@ defmodule WardrikVault.Grants do
     * `c:ask/2` if nobody holds it, or the grant won't unseal.
     * `c:refused/2` when a service refuses the grant.
 
-  Write new tokens with `WardrikVault.put/3`, `kind: :grant` and `:if_vsn`, so two renewals never
+  Write new tokens with `Wardrik.Vault.put/3`, `kind: :grant` and `:if_vsn`, so two renewals never
   write over each other.
   """
 
-  alias WardrikVault.Grants.Request
+  alias Wardrik.Vault.Grants.Request
 
   @typedoc "A grant as the vault holds it. `vsn` is the version to write a renewal over."
-  @type grant() :: %{value: binary(), vsn: WardrikStore.vsn()}
+  @type grant() :: %{value: binary(), vsn: Wardrik.Store.vsn()}
 
   @doc "Returns the credential the request's `grant` gives. Renews it first if it has run out."
   @callback renew(Request.t(), opts :: term()) ::

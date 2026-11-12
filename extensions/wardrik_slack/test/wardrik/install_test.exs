@@ -2,7 +2,7 @@ defmodule Wardrik.Slack.InstallTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  import Wardrik.Test.Slack
+  import WardrikSlack.Test.Wardrik
 
   alias Wardrik.Channel.Installation
   alias WardrikSlack.Install
@@ -37,7 +37,7 @@ defmodule Wardrik.Slack.InstallTest do
              Install.installed(channel, "globex", %{"code" => "good", "state" => state(url)})
 
     assert {:ok, %Installation{owner: "globex"}} =
-             WardrikChannel.Channel.installation(channel, "T7")
+             Wardrik.Chat.Channel.installation(channel, "T7")
 
     assert {:error, "This was started by someone else" <> _} =
              Install.installed(channel, "acme", %{"code" => "good", "state" => state(url)})
@@ -62,7 +62,7 @@ defmodule Wardrik.Slack.InstallTest do
 
     callback = %{type: "event_callback", team_id: "T7", event: %{type: "tokens_revoked"}}
     deliver(context, "events", JSON.encode!(callback))
-    assert WardrikChannel.Channel.installation(channel, "T7") == :error
+    assert Wardrik.Chat.Channel.installation(channel, "T7") == :error
   end
 
   @tag slack: [
@@ -98,7 +98,7 @@ defmodule Wardrik.Slack.InstallTest do
     assert_received {:slack, "apps.uninstall", %{"client_id" => "1.2"}}
 
     assert {:ok, channel} = Wardrik.Test.Channel.fetch(wardrik, "slack")
-    assert WardrikChannel.Channel.installation(channel, "T7") == :error
+    assert Wardrik.Chat.Channel.installation(channel, "T7") == :error
 
     assert Wardrik.Channels.install_url(wardrik, channel: "teams", owner: "globex") ==
              {:error, "There's no channel teams here."}

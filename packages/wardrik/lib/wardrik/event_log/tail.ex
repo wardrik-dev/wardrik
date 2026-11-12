@@ -1,9 +1,9 @@
-defmodule WardrikEvents.Tail do
+defmodule Wardrik.EventLog.Tail do
   @moduledoc false
 
-  alias WardrikEvents.Cursor
-  alias WardrikEvents.Reader
-  alias WardrikEvents.Subscribers
+  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Reader
+  alias Wardrik.EventLog.Subscribers
 
   @page 500
 
@@ -11,9 +11,9 @@ defmodule WardrikEvents.Tail do
   Streams `{event, cursor}` after the cursor `:after`, of the `:types` given or `:all`. With `nil`
   for `:after`, starts at what's written next.
 
-      WardrikEvents.Tail.stream(settings, ["agt_1"], after: nil, types: :all)
+      Wardrik.EventLog.Tail.stream(settings, ["agt_1"], after: nil, types: :all)
   """
-  @spec stream(map(), WardrikEvents.resources(),
+  @spec stream(map(), Wardrik.EventLog.resources(),
           after: Cursor.t() | nil,
           types: [String.t()] | :all
         ) ::
@@ -51,7 +51,7 @@ defmodule WardrikEvents.Tail do
 
   defp next(%{replay: []} = tail) do
     receive do
-      {WardrikEvents, log, event} -> arrived(tail, log, event)
+      {Wardrik.EventLog, log, event} -> arrived(tail, log, event)
     end
   end
 
@@ -97,7 +97,7 @@ defmodule WardrikEvents.Tail do
 
   defp flush do
     receive do
-      {WardrikEvents, _log, _event} -> flush()
+      {Wardrik.EventLog, _log, _event} -> flush()
     after
       0 -> :ok
     end

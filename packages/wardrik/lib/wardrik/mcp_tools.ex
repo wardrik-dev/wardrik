@@ -6,7 +6,7 @@ defmodule Wardrik.MCPTools do
   @impl WardrikCore.Capability
   def tools(%WardrikCore.Context{agent_id: id} = context, opts) do
     mcp = Keyword.fetch!(opts, :mcp)
-    WardrikMCP.tools(context, name: mcp, servers: picked(mcp, resolved(id, opts), opts))
+    Wardrik.MCP.tools(context, name: mcp, servers: picked(mcp, resolved(id, opts), opts))
   end
 
   defp resolved(id, opts) do
@@ -22,11 +22,11 @@ defmodule Wardrik.MCPTools do
   end
 
   @doc """
-  Returns the `WardrikMCP` names of the servers `opts` reach that are up.
+  Returns the `Wardrik.MCP` names of the servers `opts` reach that are up.
   """
   @spec picked(atom(), %{String.t() => String.t()}, keyword()) :: [String.t()]
   def picked(mcp, servers, opts) do
-    available = MapSet.new(WardrikMCP.servers(mcp))
+    available = MapSet.new(Wardrik.MCP.servers(mcp))
     keys = if Keyword.get(opts, :all, false), do: Map.values(servers), else: named(servers, opts)
     for key <- Enum.uniq(keys), MapSet.member?(available, key), do: key
   end

@@ -1,13 +1,13 @@
-defmodule WardrikMCP.Connection do
+defmodule Wardrik.MCP.Connection do
   @moduledoc false
   use GenServer
 
   require Logger
 
   alias Anubis.MCP.Response
-  alias WardrikMCP.Server
-  alias WardrikMCP.Servers
-  alias WardrikMCP.Tool
+  alias Wardrik.MCP.Server
+  alias Wardrik.MCP.Servers
+  alias Wardrik.MCP.Tool
 
   @first_retry :timer.seconds(1)
   @last_retry :timer.minutes(1)
@@ -347,5 +347,5 @@ defmodule WardrikMCP.Connection do
   defp hash(nil), do: nil
   defp hash(token), do: :erlang.phash2(token)
 
-  defp version, do: :wardrik_mcp |> Application.spec(:vsn) |> to_string()
+  defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
 end

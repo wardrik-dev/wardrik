@@ -1,4 +1,4 @@
-defmodule WardrikMCP.Result do
+defmodule Wardrik.MCP.Result do
   @moduledoc false
 
   alias Anubis.MCP.Error

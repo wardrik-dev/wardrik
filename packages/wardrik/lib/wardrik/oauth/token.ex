@@ -1,11 +1,11 @@
-defmodule WardrikOAuth.Token do
+defmodule Wardrik.OAuth.Token do
   @moduledoc """
   A token an authorization server granted. Kept in the vault as JSON.
 
   `provider` is the key of the provider that issued it. Only that provider refreshes it.
   """
 
-  alias WardrikOAuth.Request
+  alias Wardrik.OAuth.Request
 
   @derive {Inspect, only: [:expires_at, :scope]}
   @enforce_keys [:access_token, :token_endpoint]

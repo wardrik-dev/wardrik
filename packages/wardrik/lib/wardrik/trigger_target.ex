@@ -1,14 +1,14 @@
 defmodule Wardrik.TriggerTarget do
   @moduledoc false
 
-  @behaviour WardrikTriggers.Target
+  @behaviour Wardrik.Triggers.Target
 
   alias Wardrik.Operations.Running
-  alias WardrikTriggers.Target.Ask
-  alias WardrikTriggers.Target.Fired
-  alias WardrikTriggers.Target.Secret
+  alias Wardrik.Triggers.Target.Ask
+  alias Wardrik.Triggers.Target.Fired
+  alias Wardrik.Triggers.Target.Secret
 
-  @impl WardrikTriggers.Target
+  @impl Wardrik.Triggers.Target
   def ask(%Ask{agent: agent_id} = ask, wardrik) do
     case Running.awake(wardrik, agent_id) do
       {:ok, pid} -> overlapped(pid, ask, wardrik)
@@ -16,18 +16,18 @@ defmodule Wardrik.TriggerTarget do
     end
   end
 
-  @impl WardrikTriggers.Target
+  @impl Wardrik.Triggers.Target
   def fired(%Fired{agent: agent_id, trigger: trigger, status: status}, wardrik) do
     data = %{"trigger" => %{"name" => trigger}, "status" => Atom.to_string(status)}
 
-    WardrikEvents.append(
+    Wardrik.EventLog.append(
       Wardrik.events(wardrik),
       {agent_id, nil},
       {"trigger.fired", "triggers/" <> trigger, data}
     )
   end
 
-  @impl WardrikTriggers.Target
+  @impl Wardrik.Triggers.Target
   def resolve_secret(%Secret{}, %Wardrik{vault_keys: []}), do: :error
 
   # The secret is the principal's the agent's resolver gives. An agent that acts for no one has none.
@@ -35,7 +35,7 @@ defmodule Wardrik.TriggerTarget do
     with {:ok, %Wardrik.Resolved{principal: %WardrikCore.Principal{} = principal}} <-
            Wardrik.Resolver.defined(wardrik, agent_id),
          {:ok, secret} <-
-           WardrikVault.fetch(Wardrik.vault(wardrik), principal, name, kind: :signing_secret) do
+           Wardrik.Vault.fetch(Wardrik.vault(wardrik), principal, name, kind: :signing_secret) do
       {:ok, secret}
     else
       _none -> :error
@@ -64,9 +64,9 @@ defmodule Wardrik.TriggerTarget do
 
   defp cancelled(%Ask{agent: agent_id, trigger: trigger}, wardrik) do
     :ok =
-      WardrikEvents.record(
+      Wardrik.EventLog.record(
         Wardrik.events(wardrik),
-        {"agent.cancelled", WardrikEvents.CloudEvent.subject(agent_id),
+        {"agent.cancelled", Wardrik.EventLog.CloudEvent.subject(agent_id),
          %{"agent" => %{"id" => agent_id}, "trigger" => trigger}}
       )
   end

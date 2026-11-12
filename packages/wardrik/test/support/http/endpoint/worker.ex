@@ -1,4 +1,4 @@
-defmodule WardrikHTTP.Test.Worker do
+defmodule Wardrik.HTTP.Test.Worker do
   @moduledoc "A tool worker's socket for a test: it sends the test each message, and sends what it's told."
   use WebSockex
 

@@ -1,14 +1,8 @@
-# WardrikOAuth
+# Wardrik.OAuth
 
 OAuth sign-in for [WardrikCore](https://hexdocs.pm/wardrik_core) agents. Tokens are sealed in a
-[WardrikVault](https://hexdocs.pm/wardrik_vault). [Wardrik](https://hexdocs.pm/wardrik) sets this
+`Wardrik.Vault`. [Wardrik](https://hexdocs.pm/wardrik) sets this
 up for you; see [Credentials and sign-ins](https://hexdocs.pm/wardrik/credentials.html).
-
-## Install
-
-```elixir
-{:wardrik_oauth, "~> 0.1.0-rc.2"}
-```
 
 ## Start OAuth
 
@@ -17,15 +11,15 @@ Register `https://agents.example.com/oauth/callback` as its redirect URI.
 Use your app's public address instead of `agents.example.com`.
 
 ```elixir
-Mix.install([{:wardrik_oauth, "~> 0.1.0-rc.2"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.10"}])
 
 defmodule MyApp.OAuthApps do
-  @behaviour WardrikOAuth.Resolver
+  @behaviour Wardrik.OAuth.Resolver
 
   @impl true
   def provider(%{name: "google"}, _opts) do
     {:ok,
-     WardrikOAuth.Provider.new("google",
+     Wardrik.OAuth.Provider.new("google",
        key: "google",
        issuer: "https://accounts.google.com",
        client_id: System.fetch_env!("GOOGLE_CLIENT_ID"),
@@ -38,14 +32,14 @@ defmodule MyApp.OAuthApps do
   def provider(_request, _opts), do: {:error, :not_found}
 end
 
-store = WardrikStore.ETS.new(name: MyApp.Store)
-keys = [WardrikVault.generate_key()]
+store = Wardrik.Store.ETS.new(name: MyApp.Store)
+keys = [Wardrik.Vault.generate_key()]
 
 children = [
-  {WardrikStore, store},
-  {WardrikVault,
-   name: MyApp.Vault, store: store, keys: keys, grants: {WardrikOAuth, MyApp.OAuth}},
-  {WardrikOAuth,
+  {Wardrik.Store, store},
+  {Wardrik.Vault,
+   name: MyApp.Vault, store: store, keys: keys, grants: {Wardrik.OAuth, MyApp.OAuth}},
+  {Wardrik.OAuth,
    name: MyApp.OAuth,
    vault: MyApp.Vault,
    store: store,
@@ -58,14 +52,14 @@ children = [
 
 - This example stores data in memory. Persist the vault key and use persistent storage in your app.
 - The resolver is called for sign-ins and token refreshes.
-- See `WardrikOAuth.Provider` and `WardrikOAuth.start_link/1` for options.
+- See `Wardrik.OAuth.Provider` and `Wardrik.OAuth.start_link/1` for options.
 
 ## Mount the pages
 
 Phoenix router fragment: implement `MyApp.Session.principal/1` to return the signed-in user.
 
 ```elixir
-forward("/oauth", WardrikOAuth.Plug,
+forward("/oauth", Wardrik.OAuth.Plug,
   oauth: MyApp.OAuth,
   principal: {MyApp.Session, :principal, []}
 )
@@ -79,9 +73,9 @@ forward("/oauth", WardrikOAuth.Plug,
 
 ## Configure agent credentials
 
-In an existing Core runtime, pass the vault through `credentials: {WardrikVault, MyApp.Vault}`.
+In an existing Core runtime, pass the vault through `credentials: {Wardrik.Vault, MyApp.Vault}`.
 Configure the MCP server with `credential_name: "google"` to use the provider above.
-See [WardrikMCP](https://hexdocs.pm/wardrik_mcp) for server setup.
+See `Wardrik.MCP` for server setup.
 
 - A missing credential parks the tool call with a `WardrikCore.Authorization` containing a sign-in URL.
 - Your app displays that URL and resumes matching parked calls after sign-in.

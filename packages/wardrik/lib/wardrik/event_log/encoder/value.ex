@@ -1,4 +1,4 @@
-defmodule WardrikEvents.Encoder.Value do
+defmodule Wardrik.EventLog.Encoder.Value do
   @moduledoc false
 
   alias ReqLLM.Message.ContentPart

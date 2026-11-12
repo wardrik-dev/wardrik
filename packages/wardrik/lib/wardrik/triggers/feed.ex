@@ -1,4 +1,4 @@
-defmodule WardrikTriggers.Feed do
+defmodule Wardrik.Triggers.Feed do
   @moduledoc false
 
   @behaviour Saxy.Handler

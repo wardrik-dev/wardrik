@@ -1,11 +1,11 @@
-defmodule WardrikMCP.Servers do
+defmodule Wardrik.MCP.Servers do
   @moduledoc false
 
   use GenServer
 
-  alias WardrikMCP.Connection
-  alias WardrikMCP.Server
-  alias WardrikMCP.Tool
+  alias Wardrik.MCP.Connection
+  alias Wardrik.MCP.Server
+  alias Wardrik.MCP.Tool
 
   @doc "Starts the server registry and the servers in `settings`."
   @spec start_link(map()) :: GenServer.on_start()
@@ -107,7 +107,7 @@ defmodule WardrikMCP.Servers do
 
   def handle_call({:listed, name, definitions}, _from, %{settings: settings} = state) do
     if settings.store,
-      do: {:ok, _vsn} = WardrikStore.put(settings.store, "tools/" <> name, definitions)
+      do: {:ok, _vsn} = Wardrik.Store.put(settings.store, "tools/" <> name, definitions)
 
     true = :ets.insert(name(settings.mcp), {{:listed, name}, definitions})
     {:reply, :ok, state}
@@ -134,7 +134,7 @@ defmodule WardrikMCP.Servers do
   defp listed(mcp, name) do
     case {read(mcp, {:listed, name}), read(mcp, :store)} do
       {nil, nil} -> nil
-      {nil, store} -> WardrikStore.get(store, "tools/" <> name)
+      {nil, store} -> Wardrik.Store.get(store, "tools/" <> name)
       {definitions, _store} -> definitions
     end
   end
@@ -153,7 +153,7 @@ defmodule WardrikMCP.Servers do
   end
 
   defp not_started(mcp) do
-    "#{inspect(mcp)} isn't started. Add {WardrikMCP, name: #{inspect(mcp)}, servers: servers} to your supervision tree, ahead of what uses it."
+    "#{inspect(mcp)} isn't started. Add {Wardrik.MCP, name: #{inspect(mcp)}, servers: servers} to your supervision tree, ahead of what uses it."
   end
 
   defp built(settings, name, opts) do
@@ -175,14 +175,14 @@ defmodule WardrikMCP.Servers do
   defp kept(%{store: nil}, _name, _opts), do: :ok
 
   defp kept(%{store: store}, name, opts) do
-    with {:ok, _vsn} <- WardrikStore.put(store, "servers/" <> name, opts), do: :ok
+    with {:ok, _vsn} <- Wardrik.Store.put(store, "servers/" <> name, opts), do: :ok
   end
 
   defp forget(%{store: nil}, _name), do: :ok
 
   defp forget(%{store: store}, name) do
-    with :ok <- WardrikStore.delete(store, "servers/" <> name),
-         do: WardrikStore.delete(store, "tools/" <> name)
+    with :ok <- Wardrik.Store.delete(store, "servers/" <> name),
+         do: Wardrik.Store.delete(store, "tools/" <> name)
   end
 
   defp started(%{settings: settings} = state, server) do
@@ -215,7 +215,7 @@ defmodule WardrikMCP.Servers do
   defp reconciled(%{settings: settings} = state) do
     kept =
       Map.new(
-        WardrikStore.keys(settings.store, "servers/"),
+        Wardrik.Store.keys(settings.store, "servers/"),
         &{String.replace_prefix(&1, "servers/", ""), &1}
       )
 
@@ -223,7 +223,7 @@ defmodule WardrikMCP.Servers do
       Enum.reduce(kept, state, fn {name, key}, state ->
         if Map.has_key?(state.servers, name),
           do: state,
-          else: started(state, added(settings, name, WardrikStore.get(settings.store, key)))
+          else: started(state, added(settings, name, Wardrik.Store.get(settings.store, key)))
       end)
 
     gone =

@@ -1,16 +1,16 @@
-defmodule WardrikPolicy.LabelsTest do
+defmodule Wardrik.Policy.LabelsTest do
   use ExUnit.Case, async: true
 
-  alias WardrikPolicy.Decision
+  alias Wardrik.Policy.Decision
 
   @gated %{gated: true}
   @outside ["outside"]
 
   defp explain(rules, name, opts),
-    do: rules |> WardrikPolicy.new!() |> WardrikPolicy.explain(name, opts)
+    do: rules |> Wardrik.Policy.new!() |> Wardrik.Policy.explain(name, opts)
 
   defp decide(rules, name, opts),
-    do: rules |> WardrikPolicy.new!() |> WardrikPolicy.decide(name, opts)
+    do: rules |> Wardrik.Policy.new!() |> Wardrik.Policy.decide(name, opts)
 
   test "a gated call a rule allows asks once the run has read content from outside" do
     rules = [allow: ["linear/*"]]
@@ -76,7 +76,7 @@ defmodule WardrikPolicy.LabelsTest do
           {[allow_after: %{"" => ["github/*"]}], ~r/which is not a label/},
           {[allow_after: %{"outside" => "github/*"}], ~r/is a list of tool patterns/}
         ] do
-      assert_raise ArgumentError, message, fn -> WardrikPolicy.new!(rules) end
+      assert_raise ArgumentError, message, fn -> Wardrik.Policy.new!(rules) end
     end
   end
 end

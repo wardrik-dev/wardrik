@@ -31,9 +31,9 @@ end
 defmodule Wardrik.Sink.Events do
   @moduledoc false
 
-  @behaviour WardrikEvents.Sink
+  @behaviour Wardrik.EventLog.Sink
 
-  @impl WardrikEvents.Sink
+  @impl Wardrik.EventLog.Sink
   def handle_event(event, {module, opts}),
     do: module.handle_event(Wardrik.Event.from_json(event), opts)
 end

@@ -1,10 +1,10 @@
-defmodule WardrikEvents.Subscribers do
+defmodule Wardrik.EventLog.Subscribers do
   @moduledoc false
 
   @all "all"
 
-  @doc "Subscribes the calling process to `resources`. See `WardrikEvents.resources()`."
-  @spec subscribe(atom(), WardrikEvents.resources() | :all) :: :ok
+  @doc "Subscribes the calling process to `resources`. See `Wardrik.EventLog.resources()`."
+  @spec subscribe(atom(), Wardrik.EventLog.resources() | :all) :: :ok
   def subscribe(group, resources) do
     for {topic, covered} <- by_topic(resources) do
       :ok = Group.join(group, topic, %{covers: Enum.uniq(held(group, topic) ++ covered)})
@@ -14,7 +14,7 @@ defmodule WardrikEvents.Subscribers do
   end
 
   @doc "Unsubscribes the calling process from `resources`."
-  @spec unsubscribe(atom(), WardrikEvents.resources() | :all) :: :ok
+  @spec unsubscribe(atom(), Wardrik.EventLog.resources() | :all) :: :ok
   def unsubscribe(group, resources) do
     for {topic, covered} <- by_topic(resources) do
       case held(group, topic) -- covered do
@@ -26,17 +26,17 @@ defmodule WardrikEvents.Subscribers do
     :ok
   end
 
-  @doc "Sends `event` to every process subscribed to `log`, as `{WardrikEvents, log, event}`."
-  @spec publish(atom(), WardrikEvents.log(), map()) :: :ok
+  @doc "Sends `event` to every process subscribed to `log`, as `{Wardrik.EventLog, log, event}`."
+  @spec publish(atom(), Wardrik.EventLog.log(), map()) :: :ok
   def publish(group, {agent, _conversation} = log, event) do
     takers =
       for topic <- [topic(agent), @all],
           {pid, %{covers: covers}} <- Group.members(group, topic),
-          Enum.any?(covers, &WardrikEvents.covers?(&1, log)),
+          Enum.any?(covers, &Wardrik.EventLog.covers?(&1, log)),
           uniq: true,
           do: pid
 
-    Enum.each(takers, &send(&1, {WardrikEvents, log, event}))
+    Enum.each(takers, &send(&1, {Wardrik.EventLog, log, event}))
   end
 
   defp by_topic(:all), do: %{@all => [:all]}

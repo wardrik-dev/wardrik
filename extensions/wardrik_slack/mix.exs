@@ -12,6 +12,7 @@ defmodule WardrikSlack.MixProject do
       docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_coverage: [ignore_modules: [~r/^Wardrik\.Test\./]],
       aliases: aliases(),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
@@ -36,8 +37,9 @@ defmodule WardrikSlack.MixProject do
       ["lib", "test/support"] ++
         Enum.map(
           ~w(authorizers.ex directory.ex owned.ex channel/chat.ex),
-          &Path.join("../../packages/wardrik/test/support", &1)
+          &Path.expand(&1, Path.join(__DIR__, "../../packages/wardrik/test/support"))
         )
+
   defp elixirc_paths(_env), do: ["lib"]
 
   defp package do
@@ -72,7 +74,6 @@ defmodule WardrikSlack.MixProject do
       {:nimble_options, "~> 1.1"},
       {:req, "~> 0.7"},
       {:websockex, "~> 0.5.1"},
-      {:plug, "~> 1.16", only: :test},
       {:mimic, "~> 2.5", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

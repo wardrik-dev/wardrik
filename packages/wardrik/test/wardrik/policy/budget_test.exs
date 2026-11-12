@@ -1,7 +1,7 @@
-defmodule WardrikPolicy.BudgetTest do
+defmodule Wardrik.Policy.BudgetTest do
   use ExUnit.Case, async: true
 
-  alias WardrikPolicy.Budget
+  alias Wardrik.Policy.Budget
 
   doctest Budget
 

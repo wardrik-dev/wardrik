@@ -1,10 +1,10 @@
 if Code.ensure_loaded?(Req) do
-  defmodule WardrikStore.S3 do
+  defmodule Wardrik.Store.S3 do
     @moduledoc """
     Keeps keys in an S3 bucket, one object per key, written with S3's conditional requests.
 
         store =
-          WardrikStore.S3.new(
+          Wardrik.Store.S3.new(
             bucket: "wardrik",
             endpoint: "https://<account>.r2.cloudflarestorage.com",
             region: "auto",
@@ -12,7 +12,7 @@ if Code.ensure_loaded?(Req) do
             secret_access_key: System.fetch_env!("S3_SECRET_ACCESS_KEY")
           )
 
-        children = [{WardrikStore, store}]
+        children = [{Wardrik.Store, store}]
 
       * Works with AWS S3, R2, Tigris and MinIO: any service that refuses a conditional write
         whose condition fails.
@@ -39,12 +39,12 @@ if Code.ensure_loaded?(Req) do
 
     A write whose answer never arrives is read back before it's answered: it succeeded where the
     object holds its bytes, and conflicted where the object holds a version its condition ruled
-    out. A read that fails raises `WardrikStore.S3.Error`.
+    out. A read that fails raises `Wardrik.Store.S3.Error`.
     """
 
-    @behaviour WardrikStore.Adapter
+    @behaviour Wardrik.Store.Adapter
 
-    alias WardrikStore.S3.Error
+    alias Wardrik.Store.S3.Error
 
     @required [:bucket, :endpoint, :access_key_id, :secret_access_key]
     @page_size 1000
@@ -79,11 +79,11 @@ if Code.ensure_loaded?(Req) do
 
     Raises `ArgumentError` naming the required options it wasn't given.
     """
-    @spec new(keyword()) :: WardrikStore.t()
+    @spec new(keyword()) :: Wardrik.Store.t()
     def new(opts) do
       case Enum.reject(@required, &Keyword.get(opts, &1)) do
         [] ->
-          WardrikStore.new(__MODULE__, %__MODULE__{
+          Wardrik.Store.new(__MODULE__, %__MODULE__{
             req: request(opts),
             bucket: opts[:bucket],
             endpoint: opts[:endpoint],
@@ -92,7 +92,7 @@ if Code.ensure_loaded?(Req) do
 
         missing ->
           raise ArgumentError,
-                "WardrikStore.S3 needs #{Enum.map_join(missing, ", ", &inspect/1)}"
+                "Wardrik.Store.S3 needs #{Enum.map_join(missing, ", ", &inspect/1)}"
       end
     end
 
@@ -138,11 +138,11 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def child_spec(%__MODULE__{} = store),
       do: %{id: __MODULE__, start: {__MODULE__, :start_link, [store]}}
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def put(%__MODULE__{} = store, path, value, opts) do
       object = object(store, path)
       nonce = :crypto.strong_rand_bytes(16)
@@ -203,7 +203,7 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def lookup(%__MODULE__{} = store, path) do
       case read(store, object(store, path)) do
         {:value, _nonce, value, etag} -> {value, etag}
@@ -211,7 +211,7 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def lookup_many(%__MODULE__{} = store, paths) do
       paths
       |> Task.async_stream(&{&1, lookup(store, &1)},
@@ -224,7 +224,7 @@ if Code.ensure_loaded?(Req) do
       end)
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def entries(%__MODULE__{} = store, prefix), do: lookup_many(store, keys(store, prefix))
 
     defp read(store, object) do
@@ -247,7 +247,7 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def delete(%__MODULE__{} = store, path, opts) do
       object = object(store, path)
 
@@ -300,11 +300,11 @@ if Code.ensure_loaded?(Req) do
 
     defp removed(error, _store, _object, _condition), do: error
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def keys(%__MODULE__{} = store, prefix),
       do: for({path, _etag} <- versions(store, prefix), do: path)
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def versions(%__MODULE__{} = store, prefix) do
       root = store.prefix <> "/"
 

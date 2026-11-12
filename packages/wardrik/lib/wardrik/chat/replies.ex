@@ -1,4 +1,4 @@
-defmodule WardrikChannel.Replies do
+defmodule Wardrik.Chat.Replies do
   @moduledoc """
   Posts agents' answers in each room's threads: replies, status, calls to decide, and failures.
 
@@ -7,10 +7,10 @@ defmodule WardrikChannel.Replies do
     * A failed post is retried with backoff, up to eight times. Later posts wait behind it.
   """
 
-  alias WardrikChannel.Channel
-  alias WardrikChannel.Replies.Server
-  alias WardrikChannel.Replies.State
-  alias WardrikChannel.Workspace
+  alias Wardrik.Chat.Channel
+  alias Wardrik.Chat.Replies.Server
+  alias Wardrik.Chat.Replies.State
+  alias Wardrik.Chat.Workspace
 
   @doc "Returns the child spec of the supervisor the channel's rooms run under."
   @spec child_spec(Channel.t()) :: Supervisor.child_spec()
@@ -18,7 +18,7 @@ defmodule WardrikChannel.Replies do
     [
       name: supervisor(channel),
       prefix: "#{channel.name}/replies/",
-      backend: {WardrikStore.Durable, store: channel.store},
+      backend: {Wardrik.Store.Durable, store: channel.store},
       init_info: %{channel: channel}
     ]
     |> DurableServer.Supervisor.child_spec()
@@ -28,7 +28,7 @@ defmodule WardrikChannel.Replies do
   @doc """
   Starts posting what `:agent` does in `:conversation`, in its thread of `:room`. Idempotent.
 
-      WardrikChannel.Replies.follow(workspace,
+      Wardrik.Chat.Replies.follow(workspace,
         room: "C024BE91L",
         agent: "agt_01JF8X5RQ2",
         conversation: "slack.T0123.C024BE91L.1696.1234"
@@ -51,7 +51,7 @@ defmodule WardrikChannel.Replies do
   @doc """
   Posts the calls `:agent` waits on in `:conversation` again, in its thread of `:room`.
 
-      WardrikChannel.Replies.remind(workspace,
+      Wardrik.Chat.Replies.remind(workspace,
         room: "C024BE91L",
         agent: "agt_01JF8X5RQ2",
         conversation: "slack.T0123.C024BE91L.1696.1234"

@@ -1,19 +1,19 @@
-defmodule WardrikPolicy do
+defmodule Wardrik.Policy do
   @moduledoc """
   Decides each tool call an agent makes: run it, ask a person first, or refuse it.
 
       iex> policy =
-      ...>   WardrikPolicy.new!(
+      ...>   Wardrik.Policy.new!(
       ...>     allow: ["web_search", "write_file(notes/*)"],
       ...>     ask: %{"books/create_bill(amount >= 1000)" => "A bill this size needs a person."},
       ...>     deny: ["shell/*"]
       ...>   )
-      iex> WardrikPolicy.decide(policy, "web_search")
+      iex> Wardrik.Policy.decide(policy, "web_search")
       :allow
-      iex> WardrikPolicy.decide(policy, "books__create_bill", arguments: %{"amount" => 9400})
+      iex> Wardrik.Policy.decide(policy, "books__create_bill", arguments: %{"amount" => 9400})
       {:ask, "A bill this size needs a person."}
-      iex> WardrikPolicy.explain(policy, "shell__exec")
-      %WardrikPolicy.Decision{
+      iex> Wardrik.Policy.explain(policy, "shell__exec")
+      %Wardrik.Policy.Decision{
         effect: :deny,
         message: "shell/exec is not allowed for this agent.",
         rule: "shell/*",
@@ -31,8 +31,8 @@ defmodule WardrikPolicy do
       with that label.
     * `:default` - for calls no rule names: `:allow`, `:ask`, `:deny`, or a list by annotation.
       `:allow` by default.
-    * `:budget` - see `WardrikPolicy.Budget`.
-    * `:judge` - see `WardrikPolicy.Judge`.
+    * `:budget` - see `Wardrik.Policy.Budget`.
+    * `:judge` - see `Wardrik.Policy.Judge`.
 
   ## Patterns
 
@@ -47,20 +47,20 @@ defmodule WardrikPolicy do
   ## Defaults by annotation
 
       iex> policy =
-      ...>   WardrikPolicy.new!(
+      ...>   Wardrik.Policy.new!(
       ...>     allow: ["write_file(notes/*)"],
       ...>     default: [read_only: :allow, else: :ask]
       ...>   )
-      iex> WardrikPolicy.decide(policy, "write_file", resources: ["secrets/key"])
+      iex> Wardrik.Policy.decide(policy, "write_file", resources: ["secrets/key"])
       {:ask, "write_file needs your approval."}
-      iex> WardrikPolicy.decide(policy, "read_file", annotations: %{read_only: true})
+      iex> Wardrik.Policy.decide(policy, "read_file", annotations: %{read_only: true})
       :allow
 
   ## Policy files
 
       iex> {:ok, policy} =
-      ...>   WardrikPolicy.decode(%{"deny" => ["email/send(to != *@acme.com)"], "default" => "ask"})
-      iex> WardrikPolicy.decide(policy, "email__send", arguments: %{"to" => "x@evil.example"})
+      ...>   Wardrik.Policy.decode(%{"deny" => ["email/send(to != *@acme.com)"], "default" => "ask"})
+      iex> Wardrik.Policy.decide(policy, "email__send", arguments: %{"to" => "x@evil.example"})
       {:deny, "email/send is not allowed for this agent."}
 
   ## Content from outside
@@ -69,26 +69,26 @@ defmodule WardrikPolicy do
   even if a rule allows it. `allow_after` keeps it allowed:
 
       iex> policy =
-      ...>   WardrikPolicy.new!(
+      ...>   Wardrik.Policy.new!(
       ...>     allow: ["linear/*"],
       ...>     allow_after: %{"outside" => ["github/add_labels"]}
       ...>   )
       iex> gated = %{gated: true}
-      iex> WardrikPolicy.decide(policy, "linear__create_issue", annotations: gated, labels: ["outside"])
+      iex> Wardrik.Policy.decide(policy, "linear__create_issue", annotations: gated, labels: ["outside"])
       {:ask, "linear/create_issue is allowed, but this run has read content from outside, which may be what asked for it."}
-      iex> WardrikPolicy.decide(policy, "github__add_labels", annotations: gated, labels: ["outside"])
+      iex> Wardrik.Policy.decide(policy, "github__add_labels", annotations: gated, labels: ["outside"])
       :allow
 
   Any label `allow_after` names holds gated calls the same way.
   """
 
-  alias WardrikPolicy.Budget
-  alias WardrikPolicy.Call
-  alias WardrikPolicy.Decision
-  alias WardrikPolicy.Default
-  alias WardrikPolicy.Judge
-  alias WardrikPolicy.Read
-  alias WardrikPolicy.Rules
+  alias Wardrik.Policy.Budget
+  alias Wardrik.Policy.Call
+  alias Wardrik.Policy.Decision
+  alias Wardrik.Policy.Default
+  alias Wardrik.Policy.Judge
+  alias Wardrik.Policy.Read
+  alias Wardrik.Policy.Rules
 
   defstruct name: nil, rules: [], default: :allow, by_annotation: %{}, budget: nil, judge: nil
 
@@ -108,13 +108,13 @@ defmodule WardrikPolicy do
   @doc """
   Builds a policy from a keyword list or map. See the module docs for the keys.
 
-      WardrikPolicy.new!([deny: ["shell/*"], budget: [usd: 5.00]], name: "acme")
+      Wardrik.Policy.new!([deny: ["shell/*"], budget: [usd: 5.00]], name: "acme")
 
   Raises `ArgumentError` if a rule, budget or judge can't be read.
 
   ## Options
 
-    * `:name` - names the policy in each `WardrikPolicy.Decision`.
+    * `:name` - names the policy in each `Wardrik.Policy.Decision`.
   """
   @spec new!(keyword() | map(), keyword()) :: t()
   def new!(fields, opts \\ []) do
@@ -183,13 +183,13 @@ defmodule WardrikPolicy do
     * `:resources` - what the call acts on, such as file paths. `[]` by default.
     * `:annotations` - the tool's annotations, as `%{read_only: true}`. `%{}` by default.
     * `:labels` - labels for what the run has read, as `["outside"]`. `[]` by default.
-    * `:evaluate` - asks a judge's model. See `t:WardrikPolicy.Judge.evaluate/0`.
+    * `:evaluate` - asks a judge's model. See `t:Wardrik.Policy.Judge.evaluate/0`.
   """
   @spec decide(t() | [t()], String.t(), keyword()) :: decision()
   def decide(policies, name, opts \\ []),
     do: policies |> explain(name, opts) |> Decision.outcome()
 
-  @doc "Decides a call like `decide/3`, and returns a `WardrikPolicy.Decision` that says what decided."
+  @doc "Decides a call like `decide/3`, and returns a `Wardrik.Policy.Decision` that says what decided."
   @spec explain(t() | [t()], String.t(), keyword()) :: Decision.t()
   def explain(policies, name, opts \\ []) do
     opts =

@@ -2,7 +2,7 @@ defmodule Wardrik.Slack.SocketTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  import Wardrik.Test.Slack
+  import WardrikSlack.Test.Wardrik
 
   alias WardrikSlack.Socket
   alias WardrikSlack.Socket.Connection

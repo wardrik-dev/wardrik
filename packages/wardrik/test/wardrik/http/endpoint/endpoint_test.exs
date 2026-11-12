@@ -1,9 +1,11 @@
-defmodule WardrikHTTPTest do
+defmodule Wardrik.HTTP.EndpointTest do
   use ExUnit.Case, async: true
 
   import Plug.Conn
   import Plug.Test
-  import WardrikHTTP.Test
+  import Wardrik.HTTP.Test
+
+  alias Wardrik.HTTP.Endpoint
 
   @notes "/v1/agents/acme%2F%40maria%2Fnotes"
 
@@ -67,7 +69,7 @@ defmodule WardrikHTTPTest do
 
   describe "refusals" do
     test "asks for credentials where none are sent, or the authenticator refuses them", context do
-      conn = WardrikHTTP.call(conn("GET", "/v1/agents"), settings(context))
+      conn = Endpoint.call(conn("GET", "/v1/agents"), settings(context))
 
       assert conn.status == 401
       assert get_resp_header(conn, "www-authenticate") == ["Bearer"]
@@ -103,17 +105,22 @@ defmodule WardrikHTTPTest do
 
     test "won't start without a server, or without an authenticator" do
       assert_raise NimbleOptions.ValidationError, ~r/required :server option not found/, fn ->
-        WardrikHTTP.init(authenticator: {WardrikHTTP.Test.Authenticator, []})
+        Endpoint.init(authenticator: {Wardrik.HTTP.Test.Authenticator, []})
       end
 
       assert_raise NimbleOptions.ValidationError,
                    ~r/required :authenticator option not found/,
-                   fn -> WardrikHTTP.init(server: {WardrikTesting.Server, :anything}) end
+                   fn ->
+                     Endpoint.init(server: {Wardrik.Testing.Server, :anything})
+                   end
 
       assert_raise NimbleOptions.ValidationError,
                    ~r/required :authenticator option not found/,
                    fn ->
-                     WardrikHTTP.child_spec(server: {WardrikTesting.Server, :anything}, port: 0)
+                     Endpoint.child_spec(
+                       server: {Wardrik.Testing.Server, :anything},
+                       port: 0
+                     )
                    end
     end
   end
@@ -137,12 +144,13 @@ defmodule WardrikHTTPTest do
       |> conn("/v1/hooks/agt_hooks/issues", "payload=%7B%22a%22%3A1%7D")
       |> put_req_header("content-type", "application/x-www-form-urlencoded")
       |> put_req_header("authorization", "Bearer s3cret")
-      |> WardrikHTTP.call(settings(context))
+      |> Endpoint.call(settings(context))
 
       assert_received {:ran, "hook.deliver", %{"body" => "payload=%7B%22a%22%3A1%7D"} = input}
       assert input["headers"]["content-type"] == "application/x-www-form-urlencoded"
 
-      document = body(WardrikHTTP.call(conn("GET", "/v1/openapi.json"), settings(context)))
+      document =
+        body(Endpoint.call(conn("GET", "/v1/openapi.json"), settings(context)))
 
       assert %{"content" => %{"*/*" => %{}}} =
                document["paths"]["/v1/hooks/{agent}/{trigger}"]["post"]["requestBody"]
@@ -153,14 +161,14 @@ defmodule WardrikHTTPTest do
         Plug.Parsers.init(
           parsers: [:json],
           json_decoder: JSON,
-          body_reader: {WardrikHTTP.BodyReader, :read_body, []}
+          body_reader: {Wardrik.HTTP.BodyReader, :read_body, []}
         )
 
       "POST"
       |> conn("/v1/hooks/agt_hooks/issues", ~s({"action": "opened"}))
       |> put_req_header("content-type", "application/json")
       |> Plug.Parsers.call(parsers)
-      |> WardrikHTTP.call(settings(context))
+      |> Endpoint.call(settings(context))
 
       assert_received {:ran, "hook.deliver", %{"body" => ~s({"action": "opened"})}}
     end
@@ -173,10 +181,10 @@ defmodule WardrikHTTPTest do
         |> conn("/v1/hooks/agt_hooks/issues", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
-        |> WardrikHTTP.call(settings(context))
+        |> Endpoint.call(settings(context))
 
       assert conn.status == 500
-      assert body(conn)["error"]["message"] =~ "WardrikHTTP.BodyReader"
+      assert body(conn)["error"]["message"] =~ "Wardrik.HTTP.BodyReader"
     end
 
     test "reads a parsed body for every other operation", context do
@@ -188,7 +196,7 @@ defmodule WardrikHTTPTest do
         |> put_req_header("content-type", "application/json")
         |> put_req_header("authorization", "Bearer " <> context.secret)
         |> Plug.Parsers.call(parsers)
-        |> WardrikHTTP.call(settings(context))
+        |> Endpoint.call(settings(context))
 
       assert conn.status == 200
     end
@@ -200,7 +208,7 @@ defmodule WardrikHTTPTest do
       "POST"
       |> conn("/v1/channels/slack/events", ~s({"type":"url_verification"}))
       |> put_req_header("x-slack-signature", "v0=abc")
-      |> WardrikHTTP.call(settings(context))
+      |> Endpoint.call(settings(context))
 
     assert_received {:ran, "channel.deliver",
                      %{"channel" => "slack", "path" => "events", "headers" => headers}}
@@ -211,18 +219,18 @@ defmodule WardrikHTTPTest do
 
   describe "documents and pages" do
     test "answers the OpenAPI document", context do
-      conn = WardrikHTTP.call(conn("GET", "/v1/openapi.json"), settings(context))
+      conn = Endpoint.call(conn("GET", "/v1/openapi.json"), settings(context))
       assert %{"openapi" => "3.1.0"} = body(conn)
     end
 
     test "has no sign-in pages where its server signs no one in", context do
       settings = settings(context, sign_in: {__MODULE__, :pages, [:none]})
-      assert WardrikHTTP.call(conn("GET", "/oauth/device/x"), settings).status == 404
+      assert Endpoint.call(conn("GET", "/oauth/device/x"), settings).status == 404
     end
 
     test "serves the sign-in pages its server has", context do
       settings = settings(context, sign_in: {__MODULE__, :pages, [:some]})
-      conn = WardrikHTTP.call(conn("GET", "/oauth/device/x"), settings)
+      conn = Endpoint.call(conn("GET", "/oauth/device/x"), settings)
       assert {conn.status, conn.resp_body} == {200, "Sign in at /device/x"}
     end
   end
@@ -231,6 +239,6 @@ defmodule WardrikHTTPTest do
     "POST"
     |> conn(path, ~s({"action":"opened"}))
     |> merge_req_headers(headers)
-    |> WardrikHTTP.call(settings(context))
+    |> Endpoint.call(settings(context))
   end
 end

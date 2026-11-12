@@ -1,4 +1,4 @@
-defmodule Wardrik.Test.Slack.Tools do
+defmodule WardrikSlack.Test.Wardrik.Tools do
   @moduledoc "A capability with one tool, `echo`."
   @behaviour WardrikCore.Capability
 
@@ -15,7 +15,7 @@ defmodule Wardrik.Test.Slack.Tools do
   end
 end
 
-defmodule Wardrik.Test.Slack do
+defmodule WardrikSlack.Test.Wardrik do
   @moduledoc """
   Starts a Wardrik with a Slack channel for a test, in front of a fake Slack that sends the test
   each call it takes, as `{:slack, method, params}`.
@@ -27,7 +27,7 @@ defmodule Wardrik.Test.Slack do
   @people %{"U1" => "maria", "U2" => "jon", "U3" => "ana"}
 
   def start_wardrik(context) do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     name = :"wardrik #{context.test}"
     test = self()
 
@@ -45,7 +45,7 @@ defmodule Wardrik.Test.Slack do
       |> Keyword.merge(Map.get(context, :slack, []))
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
       {Wardrik,
@@ -54,9 +54,9 @@ defmodule Wardrik.Test.Slack do
          resolver: {Wardrik.Test.Owned, {name, channels: %{"slack" => "T1"}}},
          name: name,
          store: store,
-         vault_keys: [WardrikVault.generate_key()],
+         vault_keys: [Wardrik.Vault.generate_key()],
          channels: [slack: {WardrikSlack, slack}],
-         capabilities: [tools: Wardrik.Test.Slack.Tools],
+         capabilities: [tools: WardrikSlack.Test.Wardrik.Tools],
          policies: [careful: [ask: ["echo"]]],
          notify: Map.get(context, :notify, []),
          defaults: %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}

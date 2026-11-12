@@ -2,7 +2,7 @@ defmodule Wardrik.Slack.PackageTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  import Wardrik.Test.Slack
+  import WardrikSlack.Test.Wardrik
 
   setup :set_mimic_global
   setup :start_wardrik

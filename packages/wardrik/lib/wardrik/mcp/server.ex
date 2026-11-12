@@ -1,4 +1,4 @@
-defmodule WardrikMCP.Server do
+defmodule Wardrik.MCP.Server do
   @inherited ~w(HOME LANG LC_ALL LOGNAME PATH SHELL TERM TMPDIR USER)
 
   @secret {:tuple, [{:in, [:secret]}, :string]}
@@ -31,7 +31,7 @@ defmodule WardrikMCP.Server do
             ],
             owner: [
               type: :string,
-              doc: "Passed to `WardrikMCP`'s `:secret` with each secret name."
+              doc: "Passed to `Wardrik.MCP`'s `:secret` with each secret name."
             ],
             only: [
               type: {:list, :string},
@@ -241,7 +241,7 @@ defmodule WardrikMCP.Server do
     end)
   end
 
-  defp secret(%__MODULE__{secret: nil}, _name), do: {:error, "WardrikMCP was given no :secret"}
+  defp secret(%__MODULE__{secret: nil}, _name), do: {:error, "Wardrik.MCP was given no :secret"}
 
   defp secret(%__MODULE__{secret: secret, owner: owner}, name) do
     case secret.(owner, name) do
@@ -298,7 +298,9 @@ defmodule WardrikMCP.Server do
   end
 
   defp pooled(opts, nil), do: opts
-  defp pooled(opts, mcp), do: Keyword.put_new(opts, :finch_name, WardrikMCP.Connection.finch(mcp))
+
+  defp pooled(opts, mcp),
+    do: Keyword.put_new(opts, :finch_name, Wardrik.MCP.Connection.finch(mcp))
 
   defp isolated(opts) do
     kept = @inherited ++ Map.keys(opts[:env] || %{})

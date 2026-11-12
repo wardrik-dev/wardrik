@@ -1,12 +1,12 @@
-defmodule WardrikWorkspace.ContextTest do
+defmodule Wardrik.Workspace.ContextTest do
   use ExUnit.Case, async: true
 
-  alias WardrikWorkspace.Context
-  alias WardrikWorkspace.Mount
+  alias Wardrik.Workspace.Context
+  alias Wardrik.Workspace.Mount
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
-    start_supervised!({WardrikStore, store})
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
+    start_supervised!({Wardrik.Store, store})
 
     opts = [
       store: store,
@@ -14,7 +14,7 @@ defmodule WardrikWorkspace.ContextTest do
       shared: [%Mount{name: "runbooks", tree: "shared/acme/runbooks", mode: :read}]
     ]
 
-    tools = Map.new(WardrikWorkspace.tools(nil, opts), &{&1.name, &1})
+    tools = Map.new(Wardrik.Workspace.tools(nil, opts), &{&1.name, &1})
 
     write = fn path, content ->
       tools["write_file"].run.(
@@ -31,10 +31,10 @@ defmodule WardrikWorkspace.ContextTest do
     write.("MEMORY.md", "Likes tea.")
     write.("notes/a.md", "x")
     write.("todo.md", "y")
-    file = %WardrikWorkspace.File{content: "z"}
+    file = %Wardrik.Workspace.File{content: "z"}
 
     {:ok, _version} =
-      WardrikWorkspace.Files.write(opts[:store],
+      Wardrik.Workspace.Files.write(opts[:store],
         tree: "shared/acme/runbooks",
         path: "deploy.md",
         file: file,
@@ -43,7 +43,7 @@ defmodule WardrikWorkspace.ContextTest do
 
     text =
       Context.text(
-        WardrikWorkspace.Spec.new(opts),
+        Wardrik.Workspace.Spec.new(opts),
         ["MEMORY.md", "SOUL.md", "shared/runbooks/deploy.md"],
         16_384
       )
@@ -60,7 +60,7 @@ defmodule WardrikWorkspace.ContextTest do
     write.("MEMORY.md", Enum.map_join(1..200, "\n", &"line #{&1}"))
     write.("SOUL.md", "short")
 
-    text = Context.text(WardrikWorkspace.Spec.new(opts), ["MEMORY.md", "SOUL.md"], 200)
+    text = Context.text(Wardrik.Workspace.Spec.new(opts), ["MEMORY.md", "SOUL.md"], 200)
 
     assert text =~ "line 1\n"
     assert text =~ "line 200\n</file>"
@@ -75,7 +75,7 @@ defmodule WardrikWorkspace.ContextTest do
       | messages: [ReqLLM.Context.user("Hi.", %{labels: ["outside"]})]
     }
 
-    tools = Map.new(WardrikWorkspace.tools(nil, opts), &{&1.name, &1})
+    tools = Map.new(Wardrik.Workspace.tools(nil, opts), &{&1.name, &1})
     tools["write_file"].run.(%{path: "MEMORY.md", content: "From a page."}, reader)
 
     turn = %{

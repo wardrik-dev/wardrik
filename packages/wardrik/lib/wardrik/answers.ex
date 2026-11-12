@@ -36,14 +36,14 @@ defmodule Wardrik.Answers do
     {:ok, _page} =
       allowed(Wardrik.Agent.events(scope, agent, [limit: 1], conversation: conversation))
 
-    :ok = WardrikEvents.subscribe(events, [log])
+    :ok = Wardrik.EventLog.subscribe(events, [log])
 
     case Wardrik.Agent.ask(scope, agent, input, conversation: conversation) do
       {:ok, message} ->
         %{events: events, agent: log, message: message.id, run: nil, text: [], done: false}
 
       {:error, error} ->
-        :ok = WardrikEvents.unsubscribe(events, [log])
+        :ok = Wardrik.EventLog.unsubscribe(events, [log])
         raise error
     end
   end
@@ -55,7 +55,7 @@ defmodule Wardrik.Answers do
 
   defp next(%{agent: agent} = state, timeout) do
     receive do
-      {WardrikEvents, ^agent, event} -> seen(event, state)
+      {Wardrik.EventLog, ^agent, event} -> seen(event, state)
     after
       timeout -> {[{:failed, "Nothing came for #{timeout} ms."}], %{state | done: true}}
     end
@@ -107,13 +107,13 @@ defmodule Wardrik.Answers do
   defp why("wardrik.run.deadline_exceeded", _data), do: "It ran past its timeout."
 
   defp stopped(%{events: events, agent: agent}) do
-    :ok = WardrikEvents.unsubscribe(events, [agent])
+    :ok = Wardrik.EventLog.unsubscribe(events, [agent])
     flush(agent)
   end
 
   defp flush(agent) do
     receive do
-      {WardrikEvents, ^agent, _event} -> flush(agent)
+      {Wardrik.EventLog, ^agent, _event} -> flush(agent)
     after
       0 -> :ok
     end

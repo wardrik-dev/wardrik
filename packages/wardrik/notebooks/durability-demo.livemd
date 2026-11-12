@@ -76,7 +76,7 @@ opts = [
   authorizer: {MyApp.AllowAll, []},
   resolver: {MyApp.Agents, []},
   capabilities: [shop: MyApp.Shop],
-  store: {WardrikStore.EKV, data_dir: dir},
+  store: {Wardrik.Store.EKV, data_dir: dir},
   discovery_interval_ms: 1_000
 ]
 

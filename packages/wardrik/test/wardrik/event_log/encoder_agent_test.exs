@@ -1,8 +1,8 @@
-defmodule WardrikEvents.EncoderAgentTest do
+defmodule Wardrik.EventLog.EncoderAgentTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  import WardrikEvents.Test.LLM
+  import Wardrik.EventLog.Test.LLM
 
   alias WardrikCore.Event
 
@@ -46,8 +46,8 @@ defmodule WardrikEvents.EncoderAgentTest do
       WardrikCore.start_agent(:encoder_core,
         agent_id: "agt_#{System.unique_integer([:positive])}",
         model: "anthropic:claude-haiku-4-5",
-        capabilities: [WardrikEvents.Test.Echo],
-        events: {WardrikEvents.Test.Sink, self()}
+        capabilities: [Wardrik.EventLog.Test.Echo],
+        events: {Wardrik.EventLog.Test.Sink, self()}
       )
 
     :ok = WardrikCore.ask(agent, "Say hi", %{principal: %WardrikCore.Principal{id: "user:jon"}})
@@ -56,7 +56,7 @@ defmodule WardrikEvents.EncoderAgentTest do
     envelope = JSV.build!(WardrikProtocol.schema("cloudevent"))
 
     types =
-      for event <- events, cloud_event <- WardrikEvents.Encoder.encode(event, "local") do
+      for event <- events, cloud_event <- Wardrik.EventLog.Encoder.encode(event, "local") do
         assert {:ok, _} = JSV.validate(cloud_event, envelope)
         "wardrik." <> type = cloud_event["type"]
 

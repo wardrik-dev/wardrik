@@ -124,7 +124,7 @@ defmodule WardrikDaemon.ResolverTest do
   test "posts each channel's notices in the owner's workspace, then its org's, never another org's",
        context do
     {:ok, {adapter, opts}} = Wardrik.Operations.Channels.fetch(context.wardrik, "slack")
-    slack = WardrikChannel.channel(adapter, opts)
+    slack = Wardrik.Chat.channel(adapter, opts)
 
     assert {:ok, %Resolved{channels: channels}} = resolve(context, "payments/@ana", "ana-refunds")
     assert channels == %{"team" => "*"}
@@ -137,7 +137,7 @@ defmodule WardrikDaemon.ResolverTest do
         token: "xoxb-#{workspace}"
       }
 
-      :ok = WardrikChannel.Channel.install(slack, installation)
+      :ok = Wardrik.Chat.Channel.install(slack, installation)
     end
 
     assert {:ok, %Resolved{channels: %{"slack" => "T2"}}} =

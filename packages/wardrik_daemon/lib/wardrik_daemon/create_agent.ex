@@ -26,7 +26,7 @@ defmodule WardrikDaemon.CreateAgent do
          |> JSV.build!()
 
   @typedoc "What it needs: the Wardrik's `:wardrik` name, and the daemon's own `:store`."
-  @type daemon() :: %{required(:wardrik) => atom(), required(:store) => WardrikStore.t()}
+  @type daemon() :: %{required(:wardrik) => atom(), required(:store) => Wardrik.Store.t()}
 
   @doc """
   Makes the agent `input` describes (`name` plus its definition) for `owner`. The caller checks access.

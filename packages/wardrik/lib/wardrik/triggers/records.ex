@@ -1,7 +1,7 @@
-defmodule WardrikTriggers.Records do
+defmodule Wardrik.Triggers.Records do
   @moduledoc false
 
-  alias WardrikTriggers.Trigger
+  alias Wardrik.Triggers.Trigger
 
   @prefix "triggers/"
 
@@ -10,46 +10,48 @@ defmodule WardrikTriggers.Records do
 
       Records.lookup(store, agent_id: "agt_digest", name: "daily")
   """
-  @spec lookup(WardrikStore.t(), agent_id: String.t(), name: String.t()) ::
-          {map(), WardrikStore.vsn()} | nil
-  def lookup(store, args), do: WardrikStore.lookup(store, key(args))
+  @spec lookup(Wardrik.Store.t(), agent_id: String.t(), name: String.t()) ::
+          {map(), Wardrik.Store.vsn()} | nil
+  def lookup(store, args), do: Wardrik.Store.lookup(store, key(args))
 
   @doc """
   Writes `record` if the stored version is `vsn`. Pass `nil` to create it.
 
   Returns `{:error, :conflict}` if the version differs.
   """
-  @spec put(WardrikStore.t(), map(), WardrikStore.vsn() | nil) ::
+  @spec put(Wardrik.Store.t(), map(), Wardrik.Store.vsn() | nil) ::
           :ok | {:error, :conflict | term()}
   def put(store, %{"agent_id" => agent_id, "trigger" => %{"name" => name}} = record, vsn) do
-    with {:ok, _vsn} <- WardrikStore.put(store, key(agent_id, name), record, if_vsn: vsn), do: :ok
+    with {:ok, _vsn} <- Wardrik.Store.put(store, key(agent_id, name), record, if_vsn: vsn),
+         do: :ok
   end
 
   @doc "Deletes trigger `:name` of `:agent_id`."
-  @spec delete(WardrikStore.t(), agent_id: String.t(), name: String.t()) :: :ok | {:error, term()}
-  def delete(store, args), do: WardrikStore.delete(store, key(args))
+  @spec delete(Wardrik.Store.t(), agent_id: String.t(), name: String.t()) ::
+          :ok | {:error, term()}
+  def delete(store, args), do: Wardrik.Store.delete(store, key(args))
 
   @doc "Returns every stored trigger as `{agent_id, name}`."
-  @spec all(WardrikStore.t()) :: [{String.t(), String.t()}]
-  def all(store), do: store |> WardrikStore.keys(@prefix) |> Enum.map(&parsed/1)
+  @spec all(Wardrik.Store.t()) :: [{String.t(), String.t()}]
+  def all(store), do: store |> Wardrik.Store.keys(@prefix) |> Enum.map(&parsed/1)
 
   @doc "Returns the trigger names of `agent_id`."
-  @spec of(WardrikStore.t(), String.t()) :: [String.t()]
+  @spec of(Wardrik.Store.t(), String.t()) :: [String.t()]
   def of(store, agent_id) do
-    for key <- WardrikStore.keys(store, prefix(agent_id)),
+    for key <- Wardrik.Store.keys(store, prefix(agent_id)),
         {^agent_id, name} <- [parsed(key)],
         do: name
   end
 
   @doc "Returns the records of `agent_id`'s triggers, by name."
-  @spec records(WardrikStore.t(), String.t()) :: [map()]
+  @spec records(Wardrik.Store.t(), String.t()) :: [map()]
   def records(store, agent_id),
-    do: for({_key, record, _vsn} <- WardrikStore.entries(store, prefix(agent_id)), do: record)
+    do: for({_key, record, _vsn} <- Wardrik.Store.entries(store, prefix(agent_id)), do: record)
 
   @doc "Returns every stored record."
-  @spec records(WardrikStore.t()) :: [map()]
+  @spec records(Wardrik.Store.t()) :: [map()]
   def records(store),
-    do: for({_key, record, _vsn} <- WardrikStore.entries(store, @prefix), do: record)
+    do: for({_key, record, _vsn} <- Wardrik.Store.entries(store, @prefix), do: record)
 
   @doc "Returns the record's trigger."
   @spec trigger(map()) :: Trigger.t()
@@ -75,7 +77,7 @@ defmodule WardrikTriggers.Records do
 
   Returns `{:error, :not_found}` if there's no record.
   """
-  @spec update(WardrikStore.t(), [agent_id: String.t(), name: String.t()], (map() -> map())) ::
+  @spec update(Wardrik.Store.t(), [agent_id: String.t(), name: String.t()], (map() -> map())) ::
           :ok | {:error, term()}
   def update(store, args, fun) do
     case lookup(store, args) do

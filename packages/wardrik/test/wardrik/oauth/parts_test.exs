@@ -1,10 +1,10 @@
-defmodule WardrikOAuth.PartsTest do
+defmodule Wardrik.OAuth.PartsTest do
   use ExUnit.Case, async: true
 
-  alias WardrikOAuth.Device
-  alias WardrikOAuth.Metadata
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Token
+  alias Wardrik.OAuth.Device
+  alias Wardrik.OAuth.Metadata
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Token
 
   @req [plug: {Req.Test, __MODULE__}]
   @issuer "https://auth.test"
@@ -73,7 +73,7 @@ defmodule WardrikOAuth.PartsTest do
     metadata = %{metadata() | authorization_endpoint: nil}
 
     assert {:error, {:no_browser_flow, @issuer}} =
-             WardrikOAuth.Browser.start(metadata, provider(), "https://app.test/callback")
+             Wardrik.OAuth.Browser.start(metadata, provider(), "https://app.test/callback")
   end
 
   describe "discovering metadata" do

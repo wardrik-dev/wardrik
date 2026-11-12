@@ -1,6 +1,6 @@
-defmodule WardrikEvents.Activity do
+defmodule Wardrik.EventLog.Activity do
   @moduledoc """
-  A view of what an agent is doing now. `WardrikEvents.activity/2` returns the current one.
+  A view of what an agent is doing now. `Wardrik.EventLog.activity/2` returns the current one.
 
       %{
         "doing" => [%{"type" => "wardrik.tool_call.started", "tool" => %{"name" => "github__search_issues", "call" => %{"id" => "call_1"}}, "since" => "..."}],
@@ -18,7 +18,7 @@ defmodule WardrikEvents.Activity do
     * `:since` - the starting `"since"`. Now unless set.
   """
 
-  @behaviour WardrikEvents.View
+  @behaviour Wardrik.EventLog.View
 
   @salient ~w(wardrik.run.started wardrik.run.resumed wardrik.run.interrupted wardrik.message.started
               wardrik.message.retrying wardrik.step.started)
@@ -28,13 +28,13 @@ defmodule WardrikEvents.Activity do
   @running ~w(wardrik.tool_call.started wardrik.tool_call.retrying)
   @described ~w(message step interrupts attempt attempts wait_ms)
 
-  @impl WardrikEvents.View
+  @impl Wardrik.EventLog.View
   def init(opts) do
     since = Keyword.get_lazy(opts, :since, &DateTime.utc_now/0)
     %{"doing" => [], "since" => DateTime.to_iso8601(since), "pending" => 0}
   end
 
-  @impl WardrikEvents.View
+  @impl Wardrik.EventLog.View
   def handle_event(%{"type" => type, "data" => data, "time" => time}, activity) do
     activity = %{activity | "pending" => max(activity["pending"] + queued(type, data), 0)}
     current = activity["doing"]

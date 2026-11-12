@@ -84,8 +84,7 @@ children = [
 ]
 ```
 
-To keep agents in Postgres, use `WardrikStore.Durable` from
-[wardrik_store](https://hexdocs.pm/wardrik_store).
+To keep agents in Postgres, use `Wardrik.Store.Durable` from `wardrik`.
 
 ## Crash recovery
 

@@ -1,17 +1,7 @@
-# WardrikTesting
+# Wardrik.Testing
 
 A `Wardrik.Server` for testing packages built on
 [WardrikProtocol](https://hexdocs.pm/wardrik_protocol), without Wardrik itself.
-
-## Install
-
-```elixir
-def deps do
-  [
-    {:wardrik_testing, "~> 0.1.0-rc.3", only: :test}
-  ]
-end
-```
 
 ## Usage
 
@@ -21,8 +11,8 @@ defmodule MyApp.AgentTest do
 
   setup context do
     name = :"server #{context.test}"
-    :ok = WardrikTesting.Server.start(name, offered: [{"acme/triage", ["chat"]}])
-    %{scope: Wardrik.Scope.new(WardrikTesting.Server, wardrik: name, principal: "user_42")}
+    :ok = Wardrik.Testing.Server.start(name, offered: [{"acme/triage", ["chat"]}])
+    %{scope: Wardrik.Scope.new(Wardrik.Testing.Server, wardrik: name, principal: "user_42")}
   end
 
   test "asks the agent", %{scope: scope} do
@@ -35,5 +25,5 @@ end
 Save the module as `test/agent_test.exs`. Your `test/test_helper.exs` must call `ExUnit.start()`.
 Run `mix test test/agent_test.exs`.
 
-* Pass `{WardrikTesting.Server, name}` wherever a package takes a Wardrik server.
-* See `WardrikTesting.Server` for the messages your test receives and how it answers.
+* Pass `{Wardrik.Testing.Server, name}` wherever a package takes a Wardrik server.
+* See `Wardrik.Testing.Server` for the messages your test receives and how it answers.

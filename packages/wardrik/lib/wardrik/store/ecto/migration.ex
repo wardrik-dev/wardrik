@@ -1,13 +1,13 @@
 if Code.ensure_loaded?(Ecto.Migration) do
-  defmodule WardrikStore.Ecto.Migration do
+  defmodule Wardrik.Store.Ecto.Migration do
     @moduledoc """
-    Creates the table `WardrikStore.Ecto` keeps keys in.
+    Creates the table `Wardrik.Store.Ecto` keeps keys in.
 
         defmodule MyApp.Repo.Migrations.AddWardrikStore do
           use Ecto.Migration
 
-          def up, do: WardrikStore.Ecto.Migration.up(version: 1)
-          def down, do: WardrikStore.Ecto.Migration.down(version: 1)
+          def up, do: Wardrik.Store.Ecto.Migration.up(version: 1)
+          def down, do: Wardrik.Store.Ecto.Migration.down(version: 1)
         end
 
     When a release adds a version, add a migration that runs it.
@@ -37,7 +37,7 @@ if Code.ensure_loaded?(Ecto.Migration) do
       if version in @versions,
         do: version,
         else:
-          raise(ArgumentError, "WardrikStore.Ecto.Migration has no version #{inspect(version)}")
+          raise(ArgumentError, "Wardrik.Store.Ecto.Migration has no version #{inspect(version)}")
     end
 
     defp change(1, :up) do

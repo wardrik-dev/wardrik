@@ -1,9 +1,7 @@
 defmodule Wardrik.TenancyTest do
   use ExUnit.Case, async: true
 
-  @libraries ~w(wardrik wardrik_core wardrik_events wardrik_http wardrik_protocol wardrik_channel
-                wardrik_slack wardrik_triggers wardrik_mcp wardrik_oauth wardrik_vault
-                wardrik_workspace wardrik_store wardrik_policy)a
+  @libraries ~w(wardrik wardrik_core wardrik_protocol)a
 
   @readers ~r{"/@"|"@" <>|Owners|AgentID|\.org\(|Definition\.principal|Wardrik\.Resource\b}
 
@@ -17,7 +15,7 @@ defmodule Wardrik.TenancyTest do
   @others [
     # wardrik_protocol: an operation ID, as "agent.ask".
     ~s|defp parts(id), do: String.split(id, ".", parts: 2)|,
-    # wardrik_policy: a tool name pattern, as "github/*".
+    # Wardrik.Policy: a tool name pattern, as "github/*".
     ~s|def glob(source), do: String.split(source, "*")|
   ]
 

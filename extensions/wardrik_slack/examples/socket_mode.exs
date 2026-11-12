@@ -42,11 +42,11 @@ defmodule Local.Agents do
 end
 
 defmodule Local.Members do
-  @behaviour WardrikChannel.Identities
+  @behaviour Wardrik.Chat.Identities
 
   # Each Slack member is a user of their own. Your app maps them to its users.
   @impl true
-  def identify(%WardrikChannel.Identities.Request{workspace: workspace, member: member}, _opts),
+  def identify(%Wardrik.Chat.Identities.Request{workspace: workspace, member: member}, _opts),
     do: {:ok, Wardrik.principal("slack:#{workspace}/#{member}")}
 end
 

@@ -1,4 +1,4 @@
-defmodule WardrikChannel.Waiting do
+defmodule Wardrik.Chat.Waiting do
   @moduledoc """
   A call the agent waits on a person to decide.
 
@@ -9,7 +9,7 @@ defmodule WardrikChannel.Waiting do
     * `:asked_by` - the ID of who asked for the turn, if known.
 
   Put `agent`, `conversation`, the interrupt's `id` and `asked_by` on the buttons. Pass them back
-  in a `WardrikChannel.Answer` to `WardrikChannel.decide/2`.
+  in a `Wardrik.Chat.Answer` to `Wardrik.Chat.decide/2`.
   """
 
   @enforce_keys [:agent, :interrupt]

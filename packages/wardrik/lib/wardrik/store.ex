@@ -1,21 +1,21 @@
-defmodule WardrikStore do
+defmodule Wardrik.Store do
   @moduledoc """
   A durable key-value store. Wardrik packages keep their data in it, each under its own scope.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_store#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
-      store = WardrikStore.ETS.new(name: MyApp.Store)
-      children = [{WardrikStore, store}]
+      store = Wardrik.Store.ETS.new(name: MyApp.Store)
+      children = [{Wardrik.Store, store}]
 
-      mine = WardrikStore.scope(store, "my_app")
-      {:ok, vsn} = WardrikStore.put(mine, "settings/theme", "dark", if_vsn: nil)
+      mine = Wardrik.Store.scope(store, "my_app")
+      {:ok, vsn} = Wardrik.Store.put(mine, "settings/theme", "dark", if_vsn: nil)
 
-  The adapter decides where keys are kept. See `WardrikStore.ETS`, `WardrikStore.EKV` and
-  `WardrikStore.Ecto`.
+  The adapter decides where keys are kept. See `Wardrik.Store.ETS`, `Wardrik.Store.EKV` and
+  `Wardrik.Store.Ecto`.
   """
 
-  alias WardrikStore.Adapter
+  alias Wardrik.Store.Adapter
 
   @enforce_keys [:adapter, :config]
   defstruct [:adapter, :config, scope: ""]
@@ -39,7 +39,7 @@ defmodule WardrikStore do
   @doc """
   Returns the child spec that runs the store. Starts nothing if it's already running.
 
-      children = [{WardrikStore, store}]
+      children = [{Wardrik.Store, store}]
   """
   @spec child_spec(t()) :: Supervisor.child_spec()
   def child_spec(%__MODULE__{adapter: adapter, config: config}) do
@@ -59,7 +59,7 @@ defmodule WardrikStore do
   @doc """
   Returns the store nested under the scope `name`. Keys in one scope never match another's.
 
-      mine = WardrikStore.scope(store, "my_app")
+      mine = Wardrik.Store.scope(store, "my_app")
 
   `name` is lowercase letters, digits and underscores, starting with a letter. Raises
   `ArgumentError` otherwise.
@@ -74,9 +74,9 @@ defmodule WardrikStore do
   @doc """
   Writes `value` under `key`. Returns `{:ok, vsn}`.
 
-      {:ok, vsn} = WardrikStore.put(store, "settings/theme", "dark", if_vsn: nil)
-      {:ok, _vsn} = WardrikStore.put(store, "settings/theme", "light", if_vsn: vsn)
-      {:error, :conflict} = WardrikStore.put(store, "settings/theme", "blue", if_vsn: vsn)
+      {:ok, vsn} = Wardrik.Store.put(store, "settings/theme", "dark", if_vsn: nil)
+      {:ok, _vsn} = Wardrik.Store.put(store, "settings/theme", "light", if_vsn: vsn)
+      {:error, :conflict} = Wardrik.Store.put(store, "settings/theme", "blue", if_vsn: vsn)
 
   ## Options
 
@@ -148,7 +148,7 @@ defmodule WardrikStore do
   @doc """
   Returns `{key, vsn}` for each of the scope's keys that starts with `prefix`, sorted by key.
   Reads no values, so it costs what `keys/2` does where the adapter implements
-  `c:WardrikStore.Adapter.versions/2`.
+  `c:Wardrik.Store.Adapter.versions/2`.
   """
   @spec versions(t(), String.t()) :: [{key(), vsn()}]
   def versions(%__MODULE__{adapter: adapter, config: config} = store, prefix \\ "")

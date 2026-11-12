@@ -100,7 +100,7 @@ defmodule Wardrik.Resolution do
 
   defp trigger(fields, index, files?) do
     with :ok <- prompted(fields, files?) do
-      case WardrikTriggers.Trigger.decode(fields, index) do
+      case Wardrik.Triggers.Trigger.decode(fields, index) do
         {:ok, _trigger} -> :ok
         {:error, why} -> {:error, Error.new(:invalid_request, "A trigger doesn't read: #{why}.")}
       end
@@ -120,7 +120,7 @@ defmodule Wardrik.Resolution do
 
     for tool <- expanded(wardrik, servers, Map.get(definition, "tools", [])),
         {:server, name} <- [named(wardrik, tool)],
-        WardrikMCP.tools(nil,
+        Wardrik.MCP.tools(nil,
           name: mcp,
           servers: Wardrik.MCPTools.picked(mcp, servers, names: [name])
         ) == [],
@@ -172,7 +172,7 @@ defmodule Wardrik.Resolution do
        )}
 
   defp prompted(%{"prompt_file" => file}, true) do
-    case WardrikWorkspace.Path.normalize(file) do
+    case Wardrik.Workspace.Path.normalize(file) do
       {:ok, _path} -> :ok
       {:error, why} -> {:error, Error.new(:invalid_request, "A trigger's prompt_file: #{why}.")}
     end
@@ -297,9 +297,9 @@ defmodule Wardrik.Resolution do
   defp compaction_key("keep"), do: :keep
   defp compaction_key("window"), do: :window
 
-  defp gating(nil), do: WardrikPolicy.new!(default: [gated: :ask])
+  defp gating(nil), do: Wardrik.Policy.new!(default: [gated: :ask])
 
-  defp gating(%WardrikPolicy{by_annotation: by_annotation} = policy),
+  defp gating(%Wardrik.Policy{by_annotation: by_annotation} = policy),
     do: %{policy | by_annotation: Map.put_new(by_annotation, "gated", :ask)}
 
   defp channels(wardrik, names) do
@@ -319,7 +319,7 @@ defmodule Wardrik.Resolution do
   end
 
   defp policy(_wardrik, rules) do
-    case WardrikPolicy.decode(rules) do
+    case Wardrik.Policy.decode(rules) do
       {:ok, policy} ->
         {:ok, policy}
 

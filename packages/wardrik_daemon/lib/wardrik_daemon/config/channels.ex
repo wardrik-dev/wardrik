@@ -11,7 +11,7 @@ defmodule WardrikDaemon.Config.Channels do
 
     * The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are taken.
     * `type` is required. `slack` is the only type.
-    * It takes `WardrikChannel`'s and `WardrikSlack`'s options, except `owner`, `installations`
+    * It takes `Wardrik.Chat`'s and `WardrikSlack`'s options, except `owner`, `installations`
       and `identities`.
     * `domains` maps email domains to orgs, and `members` member IDs to users. See
       `WardrikDaemon.ChannelMembers`.
@@ -66,7 +66,7 @@ defmodule WardrikDaemon.Config.Channels do
 
   defp schema(adapter),
     do:
-      Options.public(WardrikChannel.Channel.schema(), @managed) ++
+      Options.public(Wardrik.Chat.Channel.schema(), @managed) ++
         Options.public(adapter.schema(), @managed) ++ @members
 
   defp added(opts) do

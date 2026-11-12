@@ -1,10 +1,10 @@
-defmodule WardrikTesting.Server do
+defmodule Wardrik.Testing.Server do
   @moduledoc """
   A `Wardrik.Server` for tests, which answers from a script.
 
       setup do
-        :ok = WardrikTesting.Server.start(:my_test)
-        scope = Wardrik.Scope.new(WardrikTesting.Server, wardrik: :my_test, principal: "user_42")
+        :ok = Wardrik.Testing.Server.start(:my_test)
+        scope = Wardrik.Scope.new(Wardrik.Testing.Server, wardrik: :my_test, principal: "user_42")
         %{scope: scope}
       end
 
@@ -24,7 +24,7 @@ defmodule WardrikTesting.Server do
     * The agent `missing` is never found.
     * The `:offered` agents are listed and defined.
     * `agent.read` says whether the conversation waits on a person.
-    * A message is answered as `WardrikTesting.Script` says.
+    * A message is answered as `Wardrik.Testing.Script` says.
     * A stream with `"after" => "nope"` fails with `:invalid_request`.
     * Following `acme/broken` fails partway, and `acme/waiting` waits on `call_1`. Any other agent
       replies `"Re: "` and the input.
@@ -35,7 +35,7 @@ defmodule WardrikTesting.Server do
   alias Wardrik.Error
   alias Wardrik.Scope
   alias Wardrik.Server.Request
-  alias WardrikTesting.Script
+  alias Wardrik.Testing.Script
 
   @event %{
     "specversion" => "1.0",
@@ -71,14 +71,14 @@ defmodule WardrikTesting.Server do
     :ok
   end
 
-  @doc "Returns the name to start `WardrikEvents` under, so answers are written to logs."
+  @doc "Returns the name to start `Wardrik.EventLog` under, so answers are written to logs."
   @spec events(atom()) :: atom()
   def events(name), do: Module.concat(name, Events)
 
   @doc """
   Offers one more agent, with its `:id`, `:channels` and any `:description`.
 
-      :ok = WardrikTesting.Server.add_agent(:my_test, id: "acme/books", channels: ["chat"])
+      :ok = Wardrik.Testing.Server.add_agent(:my_test, id: "acme/books", channels: ["chat"])
   """
   @spec add_agent(atom(), keyword()) :: :ok
   def add_agent(name, agent) do
@@ -91,11 +91,11 @@ defmodule WardrikTesting.Server do
   def offer_agents(name, offered), do: update(name, &%{&1 | offered: offered})
 
   @doc false
-  @spec log(map()) :: WardrikEvents.log()
+  @spec log(map()) :: Wardrik.EventLog.log()
   def log(input), do: {Map.fetch!(input, "agent"), input["conversation"]}
 
   @doc false
-  @spec hold(atom(), WardrikEvents.log(), {String.t(), [map()]}) :: :ok
+  @spec hold(atom(), Wardrik.EventLog.log(), {String.t(), [map()]}) :: :ok
   def hold(name, conversation, held),
     do: update(name, &%{&1 | held: Map.put(&1.held, conversation, held)})
 
@@ -220,5 +220,5 @@ defmodule WardrikTesting.Server do
 
   defp state(name), do: Agent.get(state_name(name), & &1)
   defp update(name, change), do: Agent.update(state_name(name), change)
-  defp state_name(name), do: Module.concat(name, WardrikTesting)
+  defp state_name(name), do: Module.concat(name, Wardrik.Testing)
 end

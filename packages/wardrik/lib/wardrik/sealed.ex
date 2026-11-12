@@ -10,13 +10,13 @@ defmodule Wardrik.Sealed do
     {owner, name, opts} = named(args)
 
     with {:ok, wardrik} <- sealing(instance),
-         do: WardrikVault.fetch(Wardrik.vault(wardrik), principal(owner), name, opts)
+         do: Wardrik.Vault.fetch(Wardrik.vault(wardrik), principal(owner), name, opts)
   end
 
-  @spec list(atom() | Wardrik.t()) :: [{String.t(), String.t(), WardrikVault.kind()}]
+  @spec list(atom() | Wardrik.t()) :: [{String.t(), String.t(), Wardrik.Vault.kind()}]
   def list(instance) do
     case sealing(instance) do
-      {:ok, wardrik} -> WardrikVault.list(Wardrik.vault(wardrik))
+      {:ok, wardrik} -> Wardrik.Vault.list(Wardrik.vault(wardrik))
       {:error, :no_keys} -> []
     end
   end
@@ -55,7 +55,7 @@ defmodule Wardrik.Sealed do
   defp resolved_pair(_wardrik, _what, pair), do: pair
 
   defp value(%Wardrik{vault_keys: []}, _ref), do: {:error, :no_keys}
-  defp value(wardrik, ref), do: WardrikVault.value(Wardrik.vault(wardrik), ref)
+  defp value(wardrik, ref), do: Wardrik.Vault.value(Wardrik.vault(wardrik), ref)
 
   defp sealing(instance) do
     case Wardrik.Instance.fetch!(instance) do

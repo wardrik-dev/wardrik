@@ -1,4 +1,4 @@
-defmodule WardrikOAuth.Registration do
+defmodule Wardrik.OAuth.Registration do
   @moduledoc """
   Makes Wardrik a client of an authorization server it has no `client_id` for.
 
@@ -10,10 +10,10 @@ defmodule WardrikOAuth.Registration do
     3. If neither is possible, it returns `{:error, {:no_client, name}}`.
   """
 
-  alias WardrikOAuth.ClientSecrets
-  alias WardrikOAuth.Metadata
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Request
+  alias Wardrik.OAuth.ClientSecrets
+  alias Wardrik.OAuth.Metadata
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Request
 
   @device "urn:ietf:params:oauth:grant-type:device_code"
 
@@ -23,7 +23,7 @@ defmodule WardrikOAuth.Registration do
     do: {:ok, provider}
 
   def client(settings, provider, metadata) do
-    case WardrikStore.get(settings.store, key(provider)) do
+    case Wardrik.Store.get(settings.store, key(provider)) do
       nil -> register(settings, provider, metadata)
       registered -> {:ok, applied(settings, provider, registered)}
     end
@@ -34,7 +34,7 @@ defmodule WardrikOAuth.Registration do
   def registered(_settings, %Provider{client_id: id} = provider) when is_binary(id), do: provider
 
   def registered(settings, provider) do
-    case WardrikStore.get(settings.store, key(provider)) do
+    case Wardrik.Store.get(settings.store, key(provider)) do
       nil -> provider
       registered -> applied(settings, provider, registered)
     end
@@ -43,7 +43,7 @@ defmodule WardrikOAuth.Registration do
   @doc "Deletes the client registered for the provider `key`."
   @spec forget(map(), String.t()) :: :ok | {:error, term()}
   def forget(settings, key) do
-    with :ok <- WardrikStore.delete(settings.store, "registrations/" <> key),
+    with :ok <- Wardrik.Store.delete(settings.store, "registrations/" <> key),
          do: ClientSecrets.forget(settings, "registrations/" <> key)
   end
 
@@ -79,7 +79,7 @@ defmodule WardrikOAuth.Registration do
   defp kept(settings, provider, registered) do
     {secret, client} = Map.pop(registered, "client_secret")
 
-    case WardrikStore.put(settings.store, key(provider), client, if_vsn: nil) do
+    case Wardrik.Store.put(settings.store, key(provider), client, if_vsn: nil) do
       {:ok, _vsn} -> sealed(settings, provider, client["client_id"], secret)
       {:error, :conflict} -> {:ok, registered(settings, provider)}
       {:error, reason} -> {:error, reason}

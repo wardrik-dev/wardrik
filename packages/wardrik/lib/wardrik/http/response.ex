@@ -1,4 +1,4 @@
-defmodule WardrikHTTP.Response do
+defmodule Wardrik.HTTP.Response do
   @moduledoc false
 
   import Plug.Conn

@@ -1,17 +1,17 @@
-defmodule WardrikWorkspace.Spec do
+defmodule Wardrik.Workspace.Spec do
   @moduledoc """
   What an agent's file tools reach: the `:store`, its `:own` mount, and `:shared` mounts.
   """
 
-  alias WardrikWorkspace.Mount
-  alias WardrikWorkspace.Path
+  alias Wardrik.Workspace.Mount
+  alias Wardrik.Workspace.Path
 
   @enforce_keys [:store, :own]
   defstruct [:store, :own, shared: []]
 
-  @type t() :: %__MODULE__{store: WardrikStore.t(), own: Mount.t(), shared: [Mount.t()]}
+  @type t() :: %__MODULE__{store: Wardrik.Store.t(), own: Mount.t(), shared: [Mount.t()]}
 
-  @doc "Builds a spec from `WardrikWorkspace`'s options: `:store`, `:tree` and `:shared`."
+  @doc "Builds a spec from `Wardrik.Workspace`'s options: `:store`, `:tree` and `:shared`."
   @spec new(keyword()) :: t()
   def new(opts) do
     %__MODULE__{

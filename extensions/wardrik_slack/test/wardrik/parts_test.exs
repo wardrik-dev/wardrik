@@ -3,9 +3,9 @@ defmodule Wardrik.Slack.PartsTest do
 
   use Mimic
 
-  import Wardrik.Test.Slack
+  import WardrikSlack.Test.Wardrik
 
-  alias WardrikChannel.Waiting
+  alias Wardrik.Chat.Waiting
   alias WardrikSlack.Dispatch
   alias WardrikSlack.Rooms
 
@@ -47,18 +47,18 @@ defmodule Wardrik.Slack.PartsTest do
   describe "rooms" do
     test "offer a menu where there are many agents to pick from", context do
       for n <- 1..6, do: define(context.owner, "acme/agent-#{n}", channels: ["slack"])
-      {:ok, workspace} = WardrikChannel.workspace(context.channel, "T1")
+      {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
 
       assert %{blocks: [_question, %{elements: [%{type: "static_select", options: options}]}]} =
-               Rooms.message(WardrikChannel.Rooms.choices(workspace), workspace, nil)
+               Rooms.message(Wardrik.Chat.Rooms.choices(workspace), workspace, nil)
 
       assert Enum.count(options) == 6
     end
 
     test "say how the agent answers", context do
       define(context.owner, "acme/triage", channels: ["slack"])
-      {:ok, workspace} = WardrikChannel.workspace(context.channel, "T1")
-      {:bound, binding, offer} = WardrikChannel.Rooms.joined(workspace, "C1")
+      {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
+      {:bound, binding, offer} = Wardrik.Chat.Rooms.joined(workspace, "C1")
 
       assert JSON.encode!(Rooms.message({:bound, binding, offer}, workspace, nil)) =~
                "Mention the app"

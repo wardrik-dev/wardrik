@@ -14,7 +14,7 @@ defmodule WardrikDaemon.Config.MCP do
 
     * A server has `command` (with `args`, `env`) or `url` (with `headers`), not both.
     * `url` is the full endpoint, used as given.
-    * It takes `WardrikMCP.Server`'s options too, except `transport` and `owner`.
+    * It takes `Wardrik.MCP.Server`'s options too, except `transport` and `owner`.
     * `credential` is `credential_name`. `timeout` is in seconds.
     * Orgs and people add their own servers. See `WardrikDaemon.Servers`.
   """
@@ -24,10 +24,10 @@ defmodule WardrikDaemon.Config.MCP do
   @transport ~w(command args env url headers)
   @managed ~w(transport owner credential_name)
 
-  @doc "Returns the servers `section` names, as `WardrikMCP` takes them, or the key that doesn't read."
+  @doc "Returns the servers `section` names, as `Wardrik.MCP` takes them, or the key that doesn't read."
   @spec read(map()) :: {:ok, keyword()} | {:error, String.t()}
   def read(section) do
-    Options.loaded([WardrikMCP.Server])
+    Options.loaded([Wardrik.MCP.Server])
     Options.each(section, &server/2)
   end
 
@@ -39,7 +39,7 @@ defmodule WardrikDaemon.Config.MCP do
          {:ok, transport} <- transport(transport, path),
          {:ok, own} <- Options.convert(renamed(own), [], path),
          opts = [transport: transport] ++ Enum.map(own, &option/1),
-         {:ok, _server} <- Options.built(fn -> WardrikMCP.Server.new!(name, opts) end, path) do
+         {:ok, _server} <- Options.built(fn -> Wardrik.MCP.Server.new!(name, opts) end, path) do
       {:ok, opts}
     end
   end

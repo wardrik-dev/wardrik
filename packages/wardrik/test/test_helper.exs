@@ -3,9 +3,9 @@ Logger.configure(level: :warning)
 
 Mimic.copy(ReqLLM)
 Mimic.copy(ReqLLM.StreamResponse)
-Mimic.copy(WardrikMCP)
+Mimic.copy(Wardrik.MCP)
 Mimic.copy(WardrikCore)
-Mimic.copy(WardrikStore)
+Mimic.copy(Wardrik.Store)
 Mimic.copy(Anubis.Client)
 
 # The runtime the policy tests run their agents on.

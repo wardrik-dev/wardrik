@@ -9,7 +9,7 @@ defmodule WardrikSlack.Notices do
   | `:finished` | the answer, under the agent's ID         |
   """
 
-  alias WardrikChannel.Waiting
+  alias Wardrik.Chat.Waiting
   alias WardrikSlack.Blocks
 
   @doc "Returns the message for `notice`."

@@ -1,20 +1,20 @@
-defmodule WardrikEvents.View do
+defmodule Wardrik.EventLog.View do
   @moduledoc """
   A behaviour for views. A view folds a log's events, oldest first, into what a screen shows.
 
-      {timeline, cursor} = WardrikEvents.view(MyApp.Events, "agt_1", WardrikEvents.Timeline)
+      {timeline, cursor} = Wardrik.EventLog.view(MyApp.Events, "agt_1", Wardrik.EventLog.Timeline)
 
   To keep it current, fold in new events:
 
       {:ok, stream} =
-        WardrikEvents.stream(MyApp.Events, [{"agt_1", nil}], after: WardrikEvents.Cursor.encode(cursor))
+        Wardrik.EventLog.stream(MyApp.Events, [{"agt_1", nil}], after: Wardrik.EventLog.Cursor.encode(cursor))
 
       Enum.reduce(stream, timeline, fn {event, _cursor}, timeline ->
-        WardrikEvents.Timeline.handle_event(event, timeline)
+        Wardrik.EventLog.Timeline.handle_event(event, timeline)
       end)
   """
 
-  alias WardrikEvents.CloudEvent
+  alias Wardrik.EventLog.CloudEvent
 
   @doc "Returns the state before any event."
   @callback init(opts :: keyword()) :: term()

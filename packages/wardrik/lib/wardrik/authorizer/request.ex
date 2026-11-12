@@ -16,7 +16,7 @@ defmodule Wardrik.Authorizer.Request do
     * `:actor` - who acts for them, as RFC 8693's `act`, or `nil` for the principal itself:
       * `{:agent, id}` - an agent's tools, or its answer to another agent. The principal is its
         resolved one.
-      * `{:channel, name}` - a chat member, as `WardrikChannel.Identities` names them, or the
+      * `{:channel, name}` - a chat member, as `Wardrik.Chat.Identities` names them, or the
         installation's owner for what the channel does itself.
     * `:action` - as `"agent.ask"`.
     * `:resource` - `{:agent, id}`, `{:deployment, name}`, or another `{kind, id}` your app checks.

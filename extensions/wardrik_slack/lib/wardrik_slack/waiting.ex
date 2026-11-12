@@ -8,7 +8,7 @@ defmodule WardrikSlack.Waiting do
       `WardrikSlack.Answers`. Only the bot can change its own messages.
   """
 
-  alias WardrikChannel.Waiting
+  alias Wardrik.Chat.Waiting
   alias WardrikSlack.Blocks
 
   @note "wardrik-note:"

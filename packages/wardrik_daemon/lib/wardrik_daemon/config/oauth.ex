@@ -14,7 +14,7 @@ defmodule WardrikDaemon.Config.OAuth do
 
     * It takes `Wardrik.start_link/1`'s `:oauth` options, except `page` and `resolver`, which the
       daemon sets.
-    * Each provider takes `WardrikOAuth.Provider`'s options, and is named after its credential.
+    * Each provider takes `Wardrik.OAuth.Provider`'s options, and is named after its credential.
     * With `oauth` set, orgs and people can add OAuth apps, even with no `providers`.
   """
 
@@ -28,7 +28,7 @@ defmodule WardrikDaemon.Config.OAuth do
   def read(nil, _page), do: {:ok, nil}
 
   def read(section, page) do
-    Options.loaded([WardrikOAuth.Provider, Req.Steps])
+    Options.loaded([Wardrik.OAuth.Provider, Req.Steps])
     {providers, own} = Map.pop(section, "providers", %{})
 
     with {:ok, own} <- Options.validate(own, schema(), "oauth"),
@@ -51,7 +51,7 @@ defmodule WardrikDaemon.Config.OAuth do
   defp provider(name, provider) do
     path = "oauth.providers.#{name}"
 
-    schema = Options.public(WardrikOAuth.Provider.schema(), [:key])
+    schema = Options.public(Wardrik.OAuth.Provider.schema(), [:key])
 
     with {:ok, opts} <- Options.convert(provider, schema, path),
          opts = Enum.map(opts, &value/1),
@@ -63,7 +63,7 @@ defmodule WardrikDaemon.Config.OAuth do
   # The daemon names each app; see `WardrikDaemon.OAuthApps.key/1`.
   defp built(name, opts) do
     key = WardrikDaemon.OAuthApps.key(%{owner: "deployment", name: to_string(name)})
-    WardrikOAuth.Provider.new(name, [key: key] ++ opts)
+    Wardrik.OAuth.Provider.new(name, [key: key] ++ opts)
   end
 
   defp value({key, text}) when key in @atoms, do: {key, Options.atom(text)}

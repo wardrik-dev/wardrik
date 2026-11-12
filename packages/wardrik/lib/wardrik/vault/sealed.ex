@@ -1,4 +1,4 @@
-defmodule WardrikVault.Sealed do
+defmodule Wardrik.Vault.Sealed do
   @moduledoc "A credential as the vault writes it. Only a key can unseal it."
 
   @enforce_keys [:kind, :nonce, :ciphertext, :tag]
@@ -7,7 +7,7 @@ defmodule WardrikVault.Sealed do
   @typedoc "A sealed secret or grant."
   @type t() :: %__MODULE__{
           version: pos_integer(),
-          kind: WardrikVault.kind(),
+          kind: Wardrik.Vault.kind(),
           nonce: binary(),
           ciphertext: binary(),
           tag: binary()
@@ -19,9 +19,9 @@ defmodule WardrikVault.Sealed do
   @doc """
   Seals `value` with `:key`. Binds it to `:path` and `:kind`, so it can't be moved or relabelled.
 
-      WardrikVault.Sealed.seal("ghp_...", key: key, path: "user%3Ajon/github", kind: :secret)
+      Wardrik.Vault.Sealed.seal("ghp_...", key: key, path: "user%3Ajon/github", kind: :secret)
   """
-  @spec seal(binary(), key: binary(), path: String.t(), kind: WardrikVault.kind()) :: t()
+  @spec seal(binary(), key: binary(), path: String.t(), kind: Wardrik.Vault.kind()) :: t()
   def seal(value, args) do
     key = Keyword.fetch!(args, :key)
     path = Keyword.fetch!(args, :path)
@@ -91,6 +91,6 @@ defmodule WardrikVault.Sealed do
 
   defimpl Inspect do
     def inspect(%{kind: kind, ciphertext: ciphertext}, _opts),
-      do: "#WardrikVault.Sealed<#{kind}, #{byte_size(ciphertext)} bytes>"
+      do: "#Wardrik.Vault.Sealed<#{kind}, #{byte_size(ciphertext)} bytes>"
   end
 end

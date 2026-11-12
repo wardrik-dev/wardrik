@@ -1,9 +1,9 @@
-defmodule WardrikEvents.AuditTest do
+defmodule Wardrik.EventLog.AuditTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  import WardrikEvents.Test.Events
-  import WardrikEvents.Test.Protocol
+  import Wardrik.EventLog.Test.Events
+  import Wardrik.EventLog.Test.Protocol
 
   alias WardrikCore.Principal
 
@@ -17,14 +17,14 @@ defmodule WardrikEvents.AuditTest do
     assistant = %Principal{id: "acme/agent/helper"}
 
     assert :ok =
-             WardrikEvents.record(events, forgotten("agt_1"),
+             Wardrik.EventLog.record(events, forgotten("agt_1"),
                actor: actor,
                assumed_by: [assistant]
              )
 
-    assert :ok = WardrikEvents.record(events, forgotten("agt_2"))
+    assert :ok = Wardrik.EventLog.record(events, forgotten("agt_2"))
 
-    assert %{events: [first, second], next: 2} = WardrikEvents.audit(events)
+    assert %{events: [first, second], next: 2} = Wardrik.EventLog.audit(events)
 
     assert %{
              "source" => "wardrik://test/audit",
@@ -42,37 +42,37 @@ defmodule WardrikEvents.AuditTest do
 
   test "pages through the changes", %{events: events} do
     for agent <- ["agt_1", "agt_2", "agt_3"],
-        do: :ok = WardrikEvents.record(events, forgotten(agent))
+        do: :ok = Wardrik.EventLog.record(events, forgotten(agent))
 
-    assert %{events: [_, _], next: 2} = WardrikEvents.audit(events, limit: 2)
+    assert %{events: [_, _], next: 2} = Wardrik.EventLog.audit(events, limit: 2)
 
     assert %{events: [%{"sequence" => "000000000003"}], next: 3} =
-             WardrikEvents.audit(events, after: 2)
+             Wardrik.EventLog.audit(events, after: 2)
 
-    assert %{events: [], next: 3} = WardrikEvents.audit(events, after: 3)
+    assert %{events: [], next: 3} = Wardrik.EventLog.audit(events, after: 3)
   end
 
   test "keeps its numbers apart from an agent named audit", %{events: events} do
     stopped(events, "audit")
-    :ok = WardrikEvents.record(events, forgotten("audit"))
+    :ok = Wardrik.EventLog.record(events, forgotten("audit"))
 
     assert sequences(events, ["audit"]) == ["000000000001"]
-    assert %{events: [%{"sequence" => "000000000001"}]} = WardrikEvents.audit(events)
+    assert %{events: [%{"sequence" => "000000000001"}]} = Wardrik.EventLog.audit(events)
   end
 
   test "says so when the changes asked for were trimmed", %{events: events} do
-    :ok = WardrikEvents.record(events, forgotten("agt_1"))
-    :ok = WardrikEvents.trim(events, DateTime.add(DateTime.utc_now(), 1, :day))
+    :ok = Wardrik.EventLog.record(events, forgotten("agt_1"))
+    :ok = Wardrik.EventLog.trim(events, DateTime.add(DateTime.utc_now(), 1, :day))
 
-    assert %{events: [dropped], next: 1} = WardrikEvents.audit(events)
+    assert %{events: [dropped], next: 1} = Wardrik.EventLog.audit(events)
 
     assert %{"type" => "wardrik.events.dropped", "source" => "wardrik://test/audit"} =
              valid!(dropped)
   end
 
   test "returns the store's refusal", %{events: events} do
-    expect(WardrikStore, :put, fn _store, _key, _value, _opts -> {:error, :down} end)
+    expect(Wardrik.Store, :put, fn _store, _key, _value, _opts -> {:error, :down} end)
 
-    assert {:error, :down} = WardrikEvents.record(events, forgotten("agt_1"))
+    assert {:error, :down} = Wardrik.EventLog.record(events, forgotten("agt_1"))
   end
 end

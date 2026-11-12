@@ -1,31 +1,31 @@
-defmodule WardrikTriggers do
+defmodule Wardrik.Triggers do
   @moduledoc """
   Asks agents something on a clock, when a feed has new entries, or when a service sends a
   webhook.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_triggers#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       children = [
-        {WardrikTriggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
+        {Wardrik.Triggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
       ]
 
       :ok =
-        WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
+        Wardrik.Triggers.put(MyApp.Triggers, "agt_digest", [
           %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."}
         ])
 
-    * Triggers are kept in a `WardrikStore`. Each run happens once in the cluster.
-    * Agents are asked through the `WardrikTriggers.Target` given as `:target`.
-    * Trigger keys are in `WardrikTriggers.Trigger`.
+    * Triggers are kept in a `Wardrik.Store`. Each run happens once in the cluster.
+    * Agents are asked through the `Wardrik.Triggers.Target` given as `:target`.
+    * Trigger keys are in `Wardrik.Triggers.Trigger`.
   """
 
   use Supervisor
 
-  alias WardrikTriggers.Records
-  alias WardrikTriggers.Run
-  alias WardrikTriggers.Scheduler
-  alias WardrikTriggers.Trigger
+  alias Wardrik.Triggers.Records
+  alias Wardrik.Triggers.Run
+  alias Wardrik.Triggers.Scheduler
+  alias Wardrik.Triggers.Trigger
 
   @start_options NimbleOptions.new!(
                    name: [
@@ -36,12 +36,12 @@ defmodule WardrikTriggers do
                    store: [
                      type: :any,
                      required: true,
-                     doc: "The WardrikStore used for trigger records."
+                     doc: "The Wardrik.Store used for trigger records."
                    ],
                    target: [
                      type: :mod_arg,
                      required: true,
-                     doc: "The WardrikTriggers.Target callback module and options."
+                     doc: "The Wardrik.Triggers.Target callback module and options."
                    ],
                    req_options: [
                      type: :keyword_list,
@@ -82,7 +82,7 @@ defmodule WardrikTriggers do
   Replaces the triggers of `agent_id`.
 
       :ok =
-        WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
+        Wardrik.Triggers.put(MyApp.Triggers, "agt_digest", [
           %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."}
         ])
 
@@ -101,7 +101,7 @@ defmodule WardrikTriggers do
   Adds or replaces one trigger of `agent_id`, by its name.
 
       {:ok, trigger} =
-        WardrikTriggers.set(MyApp.Triggers, "agt_digest", %{
+        Wardrik.Triggers.set(MyApp.Triggers, "agt_digest", %{
           "every" => "@daily",
           "prompt" => "Hi"
         })
@@ -115,7 +115,7 @@ defmodule WardrikTriggers do
   @doc """
   Removes a trigger. Returns `{:error, :not_found}` if there's none.
 
-      :ok = WardrikTriggers.remove(MyApp.Triggers, agent_id: "agt_digest", name: "daily")
+      :ok = Wardrik.Triggers.remove(MyApp.Triggers, agent_id: "agt_digest", name: "daily")
   """
   @spec remove(atom(), agent_id: String.t(), name: String.t()) ::
           :ok | {:error, :not_found | term()}
@@ -136,7 +136,7 @@ defmodule WardrikTriggers do
   Returns when each of `agent_ids` next runs on a schedule, in one read. Agents with no
   scheduled trigger are left out.
 
-      WardrikTriggers.next_runs(MyApp.Triggers, ["agt_digest", "agt_triage"])
+      Wardrik.Triggers.next_runs(MyApp.Triggers, ["agt_digest", "agt_triage"])
       #=> %{"agt_digest" => ~U[2026-11-04 09:00:00Z]}
   """
   @spec next_runs(atom(), [String.t()]) :: %{String.t() => DateTime.t()}
@@ -155,7 +155,7 @@ defmodule WardrikTriggers do
   @doc """
   Asks the agent about a request sent to its webhook trigger.
 
-      WardrikTriggers.deliver(MyApp.Triggers,
+      Wardrik.Triggers.deliver(MyApp.Triggers,
         agent_id: "agt_digest",
         name: "issues",
         request: %{body: body, headers: headers}
@@ -168,7 +168,7 @@ defmodule WardrikTriggers do
   @spec deliver(atom(),
           agent_id: String.t(),
           name: String.t(),
-          request: WardrikTriggers.Webhook.request()
+          request: Wardrik.Triggers.Webhook.request()
         ) :: :ok | {:error, :not_found | :busy | :no_agent | :failed}
   def deliver(triggers, args), do: Run.webhook(settings(triggers), args)
 
@@ -179,7 +179,7 @@ defmodule WardrikTriggers do
   @impl Supervisor
   def init(opts) do
     settings = %{
-      store: WardrikStore.scope(opts.store, "wardrik_triggers"),
+      store: Wardrik.Store.scope(opts.store, "wardrik_triggers"),
       target: opts.target,
       req_options: opts.req_options,
       reconcile: opts.reconcile,
@@ -203,7 +203,7 @@ defmodule WardrikTriggers do
   rescue
     ArgumentError ->
       reraise ArgumentError,
-              "#{inspect(triggers)} isn't started. Add {WardrikTriggers, name: #{inspect(triggers)}, store: store, target: target} to your supervision tree, ahead of what uses it.",
+              "#{inspect(triggers)} isn't started. Add {Wardrik.Triggers, name: #{inspect(triggers)}, store: store, target: target} to your supervision tree, ahead of what uses it.",
               __STACKTRACE__
   end
 

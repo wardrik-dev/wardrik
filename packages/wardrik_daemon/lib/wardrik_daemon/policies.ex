@@ -8,11 +8,11 @@ defmodule WardrikDaemon.Policies do
       deny: [shell/*]
       budget: {usd: 5.00, per: day}
 
-  See `WardrikPolicy`. An empty file doesn't read; write `default: allow` to allow every call.
+  See `Wardrik.Policy`. An empty file doesn't read; write `default: allow` to allow every call.
   """
 
   @doc "Returns each policy in `dir` by name, or the reason one doesn't read. A missing directory holds none."
-  @spec read(Path.t()) :: {:ok, %{String.t() => WardrikPolicy.t()}} | {:error, String.t()}
+  @spec read(Path.t()) :: {:ok, %{String.t() => Wardrik.Policy.t()}} | {:error, String.t()}
   def read(dir) do
     read =
       for path <- Path.wildcard(Path.join(dir, "*.{yaml,yml}")),
@@ -28,7 +28,7 @@ defmodule WardrikDaemon.Policies do
     name = path |> Path.basename() |> Path.rootname()
 
     with {:ok, fields} <- fields(path),
-         {:ok, policy} <- WardrikPolicy.decode(fields, name: name) do
+         {:ok, policy} <- Wardrik.Policy.decode(fields, name: name) do
       {:ok, policy}
     else
       {:error, why} -> {:error, "#{path}: #{why}"}

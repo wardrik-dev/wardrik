@@ -1,4 +1,4 @@
-defmodule WardrikStore.Counter do
+defmodule Wardrik.Store.Counter do
   @moduledoc "A durable server the tests keep in a store."
   use DurableServer, vsn: 1
 

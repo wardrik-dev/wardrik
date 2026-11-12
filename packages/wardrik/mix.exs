@@ -98,6 +98,19 @@ defmodule Wardrik.MixProject do
         "pages/subsystems/testing.md",
         "CHANGELOG.md"
       ],
+      groups_for_modules: [
+        Store: [Wardrik.Store, ~r/^Wardrik\.Store\./],
+        "Event log": [Wardrik.EventLog, ~r/^Wardrik\.EventLog\./],
+        Policy: [Wardrik.Policy, ~r/^Wardrik\.Policy\./],
+        Vault: [Wardrik.Vault, ~r/^Wardrik\.Vault\./],
+        OAuth: [Wardrik.OAuth, ~r/^Wardrik\.OAuth\./],
+        MCP: [Wardrik.MCP, ~r/^Wardrik\.MCP\./],
+        Triggers: [Wardrik.Triggers, ~r/^Wardrik\.Triggers\./],
+        Workspace: [Wardrik.Workspace, ~r/^Wardrik\.Workspace\./],
+        HTTP: [Wardrik.HTTP, ~r/^Wardrik\.HTTP\./],
+        Chat: [Wardrik.Chat, ~r/^Wardrik\.Chat\./],
+        Testing: [Wardrik.Testing, ~r/^Wardrik\.Testing\./]
+      ],
       groups_for_extras: [
         "See it in action": ~r"notebooks/",
         Subsystems: ~r"pages/subsystems/",

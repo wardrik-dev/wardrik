@@ -27,13 +27,13 @@ defmodule WardrikDaemon.KeysTest do
   defp seal(context, owner, value, kind \\ :api_key) do
     vault = context.wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()
 
-    secret = %WardrikVault.Secret{
+    secret = %Wardrik.Vault.Secret{
       principal: %Principal{id: owner},
       name: "ANTHROPIC_API_KEY",
       value: value
     }
 
-    {:ok, _vsn} = WardrikVault.put(vault, secret, kind: kind)
+    {:ok, _vsn} = Wardrik.Vault.put(vault, secret, kind: kind)
   end
 
   defp key_used(context, owner, name) do

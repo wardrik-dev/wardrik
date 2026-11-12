@@ -24,7 +24,7 @@ defmodule Wardrik.Resolved do
     * `:policies` - named policies its definition may use, beside Wardrik's.
     * `:defaults` - what its definition gets where it says nothing.
     * `:middleware` - run after Wardrik's, as `{module, opts}`.
-    * `:servers` - MCP servers by the name its `tools` use, to the `WardrikMCP` name.
+    * `:servers` - MCP servers by the name its `tools` use, to the `Wardrik.MCP` name.
     * `:notify` - targets by the name its `notify` uses, to a `:notify` target or `{module, opts}`.
     * `:channels` - the workspace each channel posts its notices in, by channel name.
     * `:workspaces` - other agents' workspaces it may mount, `:read` or `:write`.
@@ -42,8 +42,8 @@ defmodule Wardrik.Resolved do
 
   @type t() :: %__MODULE__{
           principal: WardrikCore.Principal.t() | nil,
-          policy: WardrikPolicy.t() | keyword() | map() | [WardrikPolicy.t() | map()] | nil,
-          policies: %{optional(String.t()) => WardrikPolicy.t() | keyword() | map()},
+          policy: Wardrik.Policy.t() | keyword() | map() | [Wardrik.Policy.t() | map()] | nil,
+          policies: %{optional(String.t()) => Wardrik.Policy.t() | keyword() | map()},
           defaults: map(),
           middleware: [WardrikCore.Context.entry()],
           servers: %{optional(String.t()) => String.t()},

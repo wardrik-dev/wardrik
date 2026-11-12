@@ -111,10 +111,10 @@ defmodule WardrikDaemon.OrgsTest do
 
   describe "settings" do
     setup do
-      base = WardrikPolicy.new!(budget: [usd: 50.0, per: :month])
+      base = Wardrik.Policy.new!(budget: [usd: 50.0, per: :month])
 
       strict =
-        WardrikPolicy.new!(
+        Wardrik.Policy.new!(
           deny: ["stripe/refund"],
           budget: [usd: 1.0, per: :turn]
         )
@@ -126,7 +126,7 @@ defmodule WardrikDaemon.OrgsTest do
         "ops" => %{mcp: [], channels: [], notify: [], policy: "unlimited"}
       }
 
-      {:ok, unlimited} = WardrikPolicy.decode(%{"budget" => %{"per" => "day"}})
+      {:ok, unlimited} = Wardrik.Policy.decode(%{"budget" => %{"per" => "day"}})
       policies = %{"base" => base, "strict" => strict, "unlimited" => unlimited}
       %{config: %{org: "platform", orgs: orgs, policies: policies}}
     end
@@ -138,7 +138,7 @@ defmodule WardrikDaemon.OrgsTest do
                WardrikDaemon.Orgs.settings("payments", config)
 
       assert base.budget == nil
-      assert %WardrikPolicy.Budget{usd: 1.0, per: :turn} = strict.budget
+      assert %Wardrik.Policy.Budget{usd: 1.0, per: :turn} = strict.budget
 
       assert %Ceiling{name: "base", budget: %{usd: 50.0, per: :month}, on_exhausted: :ask} =
                pooled

@@ -1,10 +1,10 @@
-defmodule WardrikMCP.Tool do
+defmodule Wardrik.MCP.Tool do
   @moduledoc false
 
+  alias Wardrik.MCP.Connection
+  alias Wardrik.MCP.Result
+  alias Wardrik.MCP.Server
   alias WardrikCore.Context
-  alias WardrikMCP.Connection
-  alias WardrikMCP.Result
-  alias WardrikMCP.Server
 
   @hints [
     {"readOnlyHint", :read_only},
@@ -90,7 +90,7 @@ defmodule WardrikMCP.Tool do
         {:park, authorization}
 
       {:error, reason} ->
-        raise WardrikMCP.Unavailable,
+        raise Wardrik.MCP.Unavailable,
               "The MCP server #{server.name} isn't connected: #{inspect(reason)}"
     end
   end
@@ -129,7 +129,7 @@ defmodule WardrikMCP.Tool do
     if Result.passing?(error),
       do:
         raise(
-          WardrikMCP.Unavailable,
+          Wardrik.MCP.Unavailable,
           "The MCP server #{server.name} failed: #{Result.message(error)}"
         ),
       else: answer(server, called, context)
@@ -146,7 +146,7 @@ defmodule WardrikMCP.Tool do
     Anubis.Client.call_tool(client, name, arguments, timeout: server.timeout)
   catch
     :exit, _reason ->
-      raise WardrikMCP.Unavailable, "The MCP server #{server.name} isn't connected."
+      raise Wardrik.MCP.Unavailable, "The MCP server #{server.name} isn't connected."
   end
 
   defp cost(nil, _called), do: %{}

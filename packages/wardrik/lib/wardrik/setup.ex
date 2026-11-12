@@ -12,7 +12,7 @@ defmodule Wardrik.Setup do
       name: name,
       store: store,
       vault_keys: opts[:vault_keys],
-      credentials: opts[:credentials] || vaulted(opts[:vault_keys], {WardrikVault, vault}),
+      credentials: opts[:credentials] || vaulted(opts[:vault_keys], {Wardrik.Vault, vault}),
       key_source: opts[:key_source],
       grants: opts[:grants] || grants(opts[:oauth], Module.concat(name, OAuth)),
       oauth: oauth(opts[:oauth], opts[:vault_keys]),
@@ -114,7 +114,7 @@ defmodule Wardrik.Setup do
     policies = Enum.reject([wardrik.policy | policies(policy)], &is_nil/1)
 
     opts
-    |> Keyword.put(:events, {WardrikEvents, Wardrik.events(wardrik)})
+    |> Keyword.put(:events, {Wardrik.EventLog, Wardrik.events(wardrik)})
     |> Keyword.put_new(:prices, wardrik.prices)
     |> model_options(wardrik)
     |> credentials(wardrik)
@@ -131,23 +131,23 @@ defmodule Wardrik.Setup do
       )
 
   @doc "Returns an agent's `:policy` as a list of policies. `nil` is `[]`."
-  @spec policies(WardrikPolicy.t() | [WardrikPolicy.t()] | keyword() | map() | nil) ::
-          [WardrikPolicy.t()]
+  @spec policies(Wardrik.Policy.t() | [Wardrik.Policy.t()] | keyword() | map() | nil) ::
+          [Wardrik.Policy.t()]
   def policies(nil), do: []
   def policies([]), do: []
-  def policies(%WardrikPolicy{} = policy), do: [policy]
+  def policies(%Wardrik.Policy{} = policy), do: [policy]
 
-  def policies([%WardrikPolicy{} | _rest] = policies), do: policies
+  def policies([%Wardrik.Policy{} | _rest] = policies), do: policies
   def policies(rules), do: [policy(rules)]
 
   @doc "Builds a policy from its rules."
-  @spec policy(WardrikPolicy.t() | keyword() | map() | nil) :: WardrikPolicy.t() | nil
+  @spec policy(Wardrik.Policy.t() | keyword() | map() | nil) :: Wardrik.Policy.t() | nil
   def policy(nil), do: nil
-  def policy(%WardrikPolicy{} = policy), do: policy
-  def policy(rules), do: WardrikPolicy.new!(rules)
+  def policy(%Wardrik.Policy{} = policy), do: policy
+  def policy(rules), do: Wardrik.Policy.new!(rules)
 
-  defp store(_name, %WardrikStore{} = store), do: store
-  defp store(name, nil), do: store(name, {WardrikStore.ETS, []})
+  defp store(_name, %Wardrik.Store{} = store), do: store
+  defp store(name, nil), do: store(name, {Wardrik.Store.ETS, []})
 
   defp store(name, {adapter, opts}),
     do: built(adapter, Keyword.put_new(opts, :name, Module.concat(name, Store)))
@@ -158,17 +158,17 @@ defmodule Wardrik.Setup do
       else: raise(ArgumentError, unavailable(adapter))
   end
 
-  defp unavailable(WardrikStore.Ecto),
+  defp unavailable(Wardrik.Store.Ecto),
     do:
-      "WardrikStore.Ecto is only compiled alongside :ecto_sql and :postgrex; add them to your deps."
+      "Wardrik.Store.Ecto is only compiled alongside :ecto_sql and :postgrex; add them to your deps."
 
   defp unavailable(adapter),
     do: "#{inspect(adapter)} isn't compiled; add the dependency it comes with to your deps."
 
-  defp backend(store, nil), do: {WardrikStore.Durable, store: store}
+  defp backend(store, nil), do: {Wardrik.Store.Durable, store: store}
 
   defp backend(store, interval),
-    do: {WardrikStore.Durable, store: store, discovery_interval_ms: interval}
+    do: {Wardrik.Store.Durable, store: store, discovery_interval_ms: interval}
 
   defp oauth(nil, _keys), do: nil
 
@@ -181,7 +181,7 @@ defmodule Wardrik.Setup do
   defp vaulted(_keys, entry), do: entry
 
   defp grants(nil, _oauth), do: nil
-  defp grants(_oauth, name), do: {WardrikOAuth, name}
+  defp grants(_oauth, name), do: {Wardrik.OAuth, name}
 
   defp credentials(opts, wardrik) do
     opts
@@ -198,7 +198,7 @@ defmodule Wardrik.Setup do
   defp governed(opts, []), do: opts
 
   defp governed(opts, policies) do
-    middleware = {WardrikPolicy.Middleware, policies}
+    middleware = {Wardrik.Policy.Middleware, policies}
     Keyword.update(opts, :middleware, [middleware], &[middleware | &1])
   end
 end

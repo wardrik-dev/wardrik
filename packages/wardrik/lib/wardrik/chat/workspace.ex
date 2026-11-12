@@ -1,21 +1,21 @@
-defmodule WardrikChannel.Workspace do
+defmodule Wardrik.Chat.Workspace do
   @moduledoc """
   A channel in one workspace it's added to, such as one Slack workspace. Adapters get one with
-  `WardrikChannel.workspace/2`.
+  `Wardrik.Chat.workspace/2`.
 
   A member's scope, which your `Wardrik.Authorizer` sees, has:
 
-    * `principal` - who `WardrikChannel.Identities` says the member is.
+    * `principal` - who `Wardrik.Chat.Identities` says the member is.
     * `actor` - `{:channel, name}`.
     * `context.installation` - `%{owner: owner, workspace: workspace}`.
     * `context.asked_by` - when deciding, the ID of who asked, where known.
   """
 
   alias Wardrik.Channel.Installation
-  alias WardrikChannel.Answer
-  alias WardrikChannel.Channel
-  alias WardrikChannel.Member
-  alias WardrikChannel.Offer
+  alias Wardrik.Chat.Answer
+  alias Wardrik.Chat.Channel
+  alias Wardrik.Chat.Member
+  alias Wardrik.Chat.Offer
   alias WardrikCore.Principal
 
   @enforce_keys [:channel, :installation]
@@ -115,7 +115,7 @@ defmodule WardrikChannel.Workspace do
   @doc """
   Returns the conversation ID of `:thread` in `:room`.
 
-      WardrikChannel.Workspace.conversation(workspace, room: "C024BE91L", thread: "1696.1234")
+      Wardrik.Chat.Workspace.conversation(workspace, room: "C024BE91L", thread: "1696.1234")
       #=> "slack.T0123.C024BE91L.1696.1234"
   """
   @spec conversation(t(), room: String.t(), thread: String.t()) :: String.t()
@@ -125,7 +125,7 @@ defmodule WardrikChannel.Workspace do
   @doc """
   Returns the thread of `:room` that `:conversation` holds. The reverse of `conversation/2`.
 
-      WardrikChannel.Workspace.thread(workspace,
+      Wardrik.Chat.Workspace.thread(workspace,
         room: "C024BE91L",
         conversation: "slack.T0123.C024BE91L.1696.1234"
       )
@@ -140,7 +140,7 @@ defmodule WardrikChannel.Workspace do
   @doc """
   Returns whether `conversation` is a thread in one of the workspace's rooms.
 
-      WardrikChannel.Workspace.thread?(workspace, "slack.T0123.C024BE91L.1696.1234")
+      Wardrik.Chat.Workspace.thread?(workspace, "slack.T0123.C024BE91L.1696.1234")
       #=> true
   """
   @spec thread?(t(), String.t() | nil) :: boolean()

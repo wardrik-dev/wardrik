@@ -1,10 +1,10 @@
 if Code.ensure_loaded?(EKV) do
-  defmodule WardrikStore.EKV do
+  defmodule Wardrik.Store.EKV do
     @moduledoc """
     Keeps keys on disk with EKV, copied to each connected node.
 
-        store = WardrikStore.EKV.new(name: :my_app, data_dir: "/var/lib/my_app")
-        children = [{WardrikStore, store}]
+        store = Wardrik.Store.EKV.new(name: :my_app, data_dir: "/var/lib/my_app")
+        children = [{Wardrik.Store, store}]
 
     Keys sit under `wardrik_store/`, so the store can share an EKV instance with other data.
 
@@ -13,7 +13,7 @@ if Code.ensure_loaded?(EKV) do
     of writes, as with every other adapter.
     """
 
-    @behaviour WardrikStore.Adapter
+    @behaviour Wardrik.Store.Adapter
 
     @root "wardrik_store/"
 
@@ -27,16 +27,16 @@ if Code.ensure_loaded?(EKV) do
 
     Other options, such as `:data_dir`, are passed to EKV when the store starts.
     """
-    @spec new(keyword()) :: WardrikStore.t()
+    @spec new(keyword()) :: Wardrik.Store.t()
     def new(opts) do
       options = Keyword.put_new(opts, :cluster_size, 1)
-      WardrikStore.new(__MODULE__, %{name: Keyword.fetch!(opts, :name), options: options})
+      Wardrik.Store.new(__MODULE__, %{name: Keyword.fetch!(opts, :name), options: options})
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def child_spec(%{options: options}), do: EKV.child_spec(options)
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def put(%{name: name} = config, path, value, opts) do
       case EKV.put(name, @root <> path, value, conditional(opts)) do
         :ok -> {:ok, nil}
@@ -46,10 +46,10 @@ if Code.ensure_loaded?(EKV) do
       end
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def lookup(%{name: name}, path), do: EKV.lookup(name, @root <> path)
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def delete(%{name: name} = config, path, opts) do
       case EKV.delete(name, @root <> path, conditional(opts)) do
         :ok -> :ok
@@ -75,14 +75,14 @@ if Code.ensure_loaded?(EKV) do
       end
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def keys(%{name: name}, prefix) do
       name
       |> EKV.keys(@root <> prefix)
       |> Enum.map(fn {key, _vsn} -> String.replace_prefix(key, @root, "") end)
     end
 
-    @impl WardrikStore.Adapter
+    @impl Wardrik.Store.Adapter
     def versions(%{name: name}, prefix) do
       for {key, vsn} <- EKV.keys(name, @root <> prefix),
           do: {String.replace_prefix(key, @root, ""), vsn}

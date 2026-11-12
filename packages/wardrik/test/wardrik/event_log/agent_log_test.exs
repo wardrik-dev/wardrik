@@ -1,20 +1,20 @@
-defmodule WardrikEvents.AgentLogTest do
+defmodule Wardrik.EventLog.AgentLogTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  import WardrikEvents.Test.LLM
-  import WardrikEvents.Test.Protocol
+  import Wardrik.EventLog.Test.LLM
+  import Wardrik.EventLog.Test.Protocol
 
-  alias WardrikEvents.Runs
-  alias WardrikEvents.Timeline
+  alias Wardrik.EventLog.Runs
+  alias Wardrik.EventLog.Timeline
 
   setup :set_mimic_global
 
   setup do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    store = WardrikStore.ETS.new(name: :agent_log_store)
-    start_supervised!({WardrikStore, store})
-    start_supervised!({WardrikEvents, name: :agent_log_events, store: store})
+    store = Wardrik.Store.ETS.new(name: :agent_log_store)
+    start_supervised!({Wardrik.Store, store})
+    start_supervised!({Wardrik.EventLog, name: :agent_log_events, store: store})
     start_supervised!({WardrikCore.Backends.MemoryStore, name: :agent_log_agents})
 
     start_supervised!(
@@ -29,10 +29,10 @@ defmodule WardrikEvents.AgentLogTest do
 
   defp streamed(acc \\ []) do
     receive do
-      {WardrikEvents, _log, %{"type" => "wardrik.run.completed"} = event} ->
+      {Wardrik.EventLog, _log, %{"type" => "wardrik.run.completed"} = event} ->
         Enum.reverse([event | acc])
 
-      {WardrikEvents, _log, event} ->
+      {Wardrik.EventLog, _log, event} ->
         streamed([event | acc])
     after
       1_000 -> flunk("The run never completed: #{inspect(Enum.map(acc, & &1["type"]))}")
@@ -44,19 +44,19 @@ defmodule WardrikEvents.AgentLogTest do
 
   test "an agent's turn streams as it happens, and is kept in its log in order" do
     expect(ReqLLM, :stream_text, fn _model, _messages, _opts -> {:ok, answer("Hi.")} end)
-    :ok = WardrikEvents.subscribe(:agent_log_events, ["agt_1"])
+    :ok = Wardrik.EventLog.subscribe(:agent_log_events, ["agt_1"])
 
     {:ok, agent} =
       WardrikCore.start_agent(:agent_log_core,
         agent_id: "agt_1",
         model: "anthropic:claude-haiku-4-5",
-        events: {WardrikEvents, :agent_log_events}
+        events: {Wardrik.EventLog, :agent_log_events}
       )
 
     :ok = WardrikCore.ask(agent, "Say hi")
     {kept_streamed, live} = streamed() |> Enum.split_with(&Map.has_key?(&1, "sequence"))
 
-    assert {:ok, %{events: kept}} = WardrikEvents.page(:agent_log_events, ["agt_1"])
+    assert {:ok, %{events: kept}} = Wardrik.EventLog.page(:agent_log_events, ["agt_1"])
     assert kept == kept_streamed
 
     assert Enum.map(kept, & &1["type"]) == [
@@ -76,56 +76,56 @@ defmodule WardrikEvents.AgentLogTest do
              ["wardrik.message.started"]
            ]
 
-    assert_receive {WardrikEvents, {"agt_1", nil},
+    assert_receive {Wardrik.EventLog, {"agt_1", nil},
                     %{"type" => "wardrik.activity.changed", "data" => %{"activity" => idle}}}
 
     assert %{"doing" => [], "pending" => 0} = idle
-    assert WardrikEvents.activity(:agent_log_events, "agt_1") == idle
+    assert Wardrik.EventLog.activity(:agent_log_events, "agt_1") == idle
   end
 
   test "a conversation's turn is kept in the conversation's own log" do
     expect(ReqLLM, :stream_text, fn _model, _messages, _opts -> {:ok, answer("Hi.")} end)
-    :ok = WardrikEvents.subscribe(:agent_log_events, [{"agt_1", "C1"}])
+    :ok = Wardrik.EventLog.subscribe(:agent_log_events, [{"agt_1", "C1"}])
 
     {:ok, agent} =
       WardrikCore.start_agent(:agent_log_core,
         agent_id: "agt_1",
         conversation: "C1",
         model: "anthropic:claude-haiku-4-5",
-        events: {WardrikEvents, :agent_log_events}
+        events: {Wardrik.EventLog, :agent_log_events}
       )
 
     :ok = WardrikCore.ask(agent, "Say hi")
     streamed()
 
     assert {:ok, %{events: [started | _] = kept}} =
-             WardrikEvents.page(:agent_log_events, [{"agt_1", "C1"}])
+             Wardrik.EventLog.page(:agent_log_events, [{"agt_1", "C1"}])
 
     assert Enum.all?(kept, &match?(%{"agent" => "agt_1", "conversation" => "C1"}, valid!(&1)))
 
     assert %{"type" => "wardrik.agent.started", "data" => %{"conversation" => %{"id" => "C1"}}} =
              started
 
-    assert {:ok, %{events: []}} = WardrikEvents.page(:agent_log_events, [{"agt_1", nil}])
-    assert {:ok, %{events: ^kept}} = WardrikEvents.page(:agent_log_events, ["agt_1"])
+    assert {:ok, %{events: []}} = Wardrik.EventLog.page(:agent_log_events, [{"agt_1", nil}])
+    assert {:ok, %{events: ^kept}} = Wardrik.EventLog.page(:agent_log_events, ["agt_1"])
   end
 
   test "an agent's turn reads back as its timeline and its runs" do
     expect(ReqLLM, :stream_text, fn _model, _messages, _opts -> {:ok, answer("Hi.")} end)
-    :ok = WardrikEvents.subscribe(:agent_log_events, ["agt_1"])
+    :ok = Wardrik.EventLog.subscribe(:agent_log_events, ["agt_1"])
 
     {:ok, agent} =
       WardrikCore.start_agent(:agent_log_core,
         agent_id: "agt_1",
         model: "anthropic:claude-haiku-4-5",
-        events: {WardrikEvents, :agent_log_events}
+        events: {Wardrik.EventLog, :agent_log_events}
       )
 
     :ok = WardrikCore.ask(agent, "Say hi")
     streamed()
 
     assert {timeline, %{{"agt_1", nil} => 6}} =
-             WardrikEvents.view(:agent_log_events, "agt_1", Timeline)
+             Wardrik.EventLog.view(:agent_log_events, "agt_1", Timeline)
 
     assert [
              %{kind: :user, text: "Say hi"},
@@ -139,7 +139,7 @@ defmodule WardrikEvents.AgentLogTest do
 
     assert %{type: :text, text: "Hi.", live: false} = answer
 
-    {runs, _cursor} = WardrikEvents.view(:agent_log_events, {"agt_1", nil}, Runs)
+    {runs, _cursor} = Wardrik.EventLog.view(:agent_log_events, {"agt_1", nil}, Runs)
 
     assert [%{status: :completed, model: "claude-haiku-4-5" <> _date, source: nil} = run] =
              Runs.runs(runs)

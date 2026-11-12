@@ -15,7 +15,7 @@ defmodule WardrikSlack.Dispatch do
 
   require Logger
 
-  alias WardrikChannel.Channel
+  alias Wardrik.Chat.Channel
   alias WardrikSlack.Answers
   alias WardrikSlack.Messages
   alias WardrikSlack.Rooms
@@ -24,7 +24,7 @@ defmodule WardrikSlack.Dispatch do
   @spec event(Channel.t(), map()) :: term()
   def event(channel, %{"team_id" => team, "event" => %{"type" => type}})
       when type in ["app_uninstalled", "tokens_revoked"] do
-    WardrikChannel.Channel.uninstall(channel, team)
+    Wardrik.Chat.Channel.uninstall(channel, team)
   end
 
   def event(channel, %{"team_id" => team, "event" => %{"type" => type} = event} = callback) do
@@ -50,7 +50,7 @@ defmodule WardrikSlack.Dispatch do
   defp bot(_callback), do: nil
 
   defp within(channel, team, act) do
-    case WardrikChannel.workspace(channel, team) do
+    case Wardrik.Chat.workspace(channel, team) do
       {:ok, workspace} ->
         act.(workspace)
 

@@ -1,9 +1,9 @@
-defmodule WardrikMCP.ResultTest do
+defmodule Wardrik.MCP.ResultTest do
   use ExUnit.Case, async: true
 
   alias Anubis.MCP.Error
   alias Anubis.MCP.Response
-  alias WardrikMCP.Result
+  alias Wardrik.MCP.Result
 
   test "joins the text of each part, and says what it can't show" do
     content = [

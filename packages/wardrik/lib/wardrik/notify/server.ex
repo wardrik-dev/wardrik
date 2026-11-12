@@ -71,7 +71,7 @@ defmodule Wardrik.Notify.Server do
   defp interrupts(wardrik, agent) do
     wardrik
     |> Wardrik.events()
-    |> WardrikEvents.activity(agent)
+    |> Wardrik.EventLog.activity(agent)
     |> Snapshot.interrupts()
     |> Enum.map(&Wardrik.Interrupt.from_json/1)
   end

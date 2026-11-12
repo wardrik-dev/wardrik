@@ -1,20 +1,20 @@
-defmodule WardrikEvents.SinkTest do
+defmodule Wardrik.EventLog.SinkTest do
   use ExUnit.Case, async: false
 
-  import WardrikEvents.Test.Events
+  import Wardrik.EventLog.Test.Events
 
   defmodule Told do
-    @behaviour WardrikEvents.Sink
+    @behaviour Wardrik.EventLog.Sink
 
     @impl true
     def handle_event(event, test), do: send(test, {:sunk, event})
   end
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     events = :"events #{context.test}"
-    start_supervised!({WardrikStore, store})
-    start_supervised!({WardrikEvents, name: events, store: store, sinks: [{Told, self()}]})
+    start_supervised!({Wardrik.Store, store})
+    start_supervised!({Wardrik.EventLog, name: events, store: store, sinks: [{Told, self()}]})
     %{events: events}
   end
 
@@ -29,7 +29,7 @@ defmodule WardrikEvents.SinkTest do
                        "sequence" => "000000000001"
                      }}
 
-    :ok = WardrikEvents.record(events, {"agent.forgotten", "agents/agt_1", %{}})
+    :ok = Wardrik.EventLog.record(events, {"agent.forgotten", "agents/agt_1", %{}})
     assert_received {:sunk, %{"type" => "wardrik.agent.forgotten", "sequence" => "000000000001"}}
   end
 

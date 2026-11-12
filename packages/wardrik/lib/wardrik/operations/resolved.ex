@@ -21,9 +21,9 @@ defmodule Wardrik.Operations.Resolved do
     %{
       "agent" => id,
       "servers" => servers(Wardrik.mcp(wardrik), resolved.servers),
-      "policy" => resolved.policy |> List.wrap() |> Enum.map(&WardrikPolicy.to_json/1),
+      "policy" => resolved.policy |> List.wrap() |> Enum.map(&Wardrik.Policy.to_json/1),
       "policies" =>
-        Map.new(resolved.policies, fn {name, p} -> {name, WardrikPolicy.to_json(p)} end),
+        Map.new(resolved.policies, fn {name, p} -> {name, Wardrik.Policy.to_json(p)} end),
       "defaults" => resolved.defaults,
       "notify" => Enum.map(Enum.sort(resolved.notify), &target/1),
       "channels" => resolved.channels,
@@ -36,7 +36,7 @@ defmodule Wardrik.Operations.Resolved do
   defp servers(mcp, servers) do
     for {name, server} <- Enum.sort(servers) do
       picked = Wardrik.MCPTools.picked(mcp, servers, names: [name])
-      tools = WardrikMCP.tools(nil, name: mcp, servers: picked)
+      tools = Wardrik.MCP.tools(nil, name: mcp, servers: picked)
       %{"name" => name, "server" => server, "tools" => Enum.map(tools, & &1.name)}
     end
   end

@@ -1,4 +1,4 @@
-defmodule WardrikOAuth.GitHub do
+defmodule Wardrik.OAuth.GitHub do
   @moduledoc "Stub authorization servers the tests sign in with: device codes, polls answered in turn, codes and refreshes."
 
   @issuer "https://github.test/login/oauth"
@@ -119,7 +119,7 @@ defmodule WardrikOAuth.GitHub do
   defp next_poll([]), do: {%{"error" => "authorization_pending"}, []}
 end
 
-defmodule WardrikOAuth.TestHook do
+defmodule Wardrik.OAuth.TestHook do
   @moduledoc "What the tests' sign-ins call once granted, and the telemetry they watch."
 
   def granted(name, principal, test), do: send(test, {:granted, name, principal.id})

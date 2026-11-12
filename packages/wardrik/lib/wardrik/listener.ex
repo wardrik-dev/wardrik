@@ -81,23 +81,23 @@ defmodule Wardrik.Listener do
     instance = Keyword.fetch!(opts, :wardrik)
     events = instance |> Instance.fetch!() |> Wardrik.events()
     resources = Keyword.fetch!(opts, :agents)
-    started = WardrikEvents.head(events, resources)
+    started = Wardrik.EventLog.head(events, resources)
 
     options = [events: events, listener: module, started: started, resources: resources] ++ opts
-    WardrikEvents.Listener.start_link(Wardrik.Listener.Events, options)
+    Wardrik.EventLog.Listener.start_link(Wardrik.Listener.Events, options)
   end
 end
 
 defmodule Wardrik.Listener.Events do
   @moduledoc false
 
-  use WardrikEvents.Listener
+  use Wardrik.EventLog.Listener
 
-  @impl WardrikEvents.Listener
+  @impl Wardrik.EventLog.Listener
   def handle(event, listener),
     do: module(listener).handle(Wardrik.Event.from_json(event), ours(listener))
 
-  @impl WardrikEvents.Listener
+  @impl Wardrik.EventLog.Listener
   def cursor(listener), do: module(listener).cursor(ours(listener)) || listener.options[:started]
 
   defp module(listener), do: Keyword.fetch!(listener.options, :listener)

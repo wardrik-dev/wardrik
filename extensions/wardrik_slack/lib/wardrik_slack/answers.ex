@@ -2,13 +2,13 @@ defmodule WardrikSlack.Answers do
   @moduledoc """
   Handles presses of the buttons `WardrikSlack.Waiting` posts.
 
-    * Approve and Deny call `WardrikChannel.decide/2` with the typed note, then show who decided.
+    * Approve and Deny call `Wardrik.Chat.decide/2` with the typed note, then show who decided.
     * Show link tells only the person who pressed it where to sign in.
   """
 
+  alias Wardrik.Chat.Answer
+  alias Wardrik.Chat.Workspace
   alias Wardrik.Error
-  alias WardrikChannel.Answer
-  alias WardrikChannel.Workspace
   alias WardrikSlack.API
   alias WardrikSlack.Blocks
   alias WardrikSlack.Messages
@@ -63,7 +63,7 @@ defmodule WardrikSlack.Answers do
       decision: decision(action, note)
     }
 
-    case WardrikChannel.decide(workspace, answer) do
+    case Wardrik.Chat.decide(workspace, answer) do
       {:ok, _decision} -> {:decided, action, note}
       {:error, message} -> {:said, message}
     end

@@ -31,7 +31,7 @@ defmodule Wardrik.Operations.Lifecycle do
     triggers = Map.get(definition, "triggers", [])
 
     with :ok <- Definitions.put(wardrik, id, definition),
-         :ok <- WardrikTriggers.put(Wardrik.triggers(wardrik), id, triggers) do
+         :ok <- Wardrik.Triggers.put(Wardrik.triggers(wardrik), id, triggers) do
       :ok
     else
       {:error, reason} ->
@@ -100,9 +100,9 @@ defmodule Wardrik.Operations.Lifecycle do
          before = messages(wardrik, key),
          :ok <- WardrikCore.delete(Wardrik.agents(wardrik), key),
          {:ok, _pid} <- Running.bring(wardrik, Running.held(opts, conversation)) do
-      subject = WardrikEvents.CloudEvent.subject(agent)
+      subject = Wardrik.EventLog.CloudEvent.subject(agent)
       cleared = {"conversation.cleared", subject, %{"messages_before" => before}}
-      :ok = WardrikEvents.append(Wardrik.events(wardrik), key, cleared)
+      :ok = Wardrik.EventLog.append(Wardrik.events(wardrik), key, cleared)
       Changes.record(scope, type: "agent.cleared", agent: key)
       Agent.read(scope, input)
     end
@@ -118,7 +118,7 @@ defmodule Wardrik.Operations.Lifecycle do
 
       calls =
         for %{"type" => "wardrik.tool_call.started", "tool" => tool, "since" => since} <-
-              WardrikEvents.activity(Wardrik.events(wardrik), key)["doing"],
+              Wardrik.EventLog.activity(Wardrik.events(wardrik), key)["doing"],
             do: %{
               "id" => tool["call"]["id"],
               "name" => tool["name"],
@@ -156,7 +156,7 @@ defmodule Wardrik.Operations.Lifecycle do
   def forgotten(wardrik, id) do
     with :ok <- deleted(wardrik, id),
          :ok <- Definitions.delete(wardrik, id),
-         :ok <- WardrikTriggers.put(Wardrik.triggers(wardrik), id, []) do
+         :ok <- Wardrik.Triggers.put(Wardrik.triggers(wardrik), id, []) do
       :ok
     else
       {:error, reason} ->
@@ -209,7 +209,7 @@ defmodule Wardrik.Operations.Lifecycle do
   end
 
   defp idle(wardrik, key) do
-    case Snapshot.status(WardrikEvents.activity(Wardrik.events(wardrik), key)) do
+    case Snapshot.status(Wardrik.EventLog.activity(Wardrik.events(wardrik), key)) do
       "idle" ->
         :ok
 

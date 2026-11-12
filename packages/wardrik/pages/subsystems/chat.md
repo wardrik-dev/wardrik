@@ -1,17 +1,7 @@
-# WardrikChannel
+# Wardrik.Chat
 
 Talk to [Wardrik](https://hexdocs.pm/wardrik) agents from chat apps, such as Slack. This package
 holds what every chat adapter shares: rooms, threads, replies and approvals.
-
-## Install
-
-Add an adapter, such as [WardrikSlack](https://hexdocs.pm/wardrik_slack). It brings this package in.
-
-```elixir
-{:wardrik_slack, "~> 0.1.0-rc.4"}
-```
-
-To write your own adapter, depend on `{:wardrik_channel, "~> 0.1.0-rc.5"}`. See `WardrikChannel`.
 
 ## Set up
 
@@ -36,7 +26,7 @@ Implement `identify/2` to map chat members to your app's users. Return an error 
 
 ```elixir
 defmodule MyApp.ChatMembers do
-  @behaviour WardrikChannel.Identities
+  @behaviour Wardrik.Chat.Identities
 
   @impl true
   def identify(request, _opts) do

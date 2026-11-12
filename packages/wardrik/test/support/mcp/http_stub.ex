@@ -1,4 +1,4 @@
-defmodule WardrikMCP.HTTPStub do
+defmodule Wardrik.MCP.HTTPStub do
   @moduledoc false
   # An MCP server over HTTP that answers at `path` alone and tells `test` each request's path, and
   # the authorization it was sent.

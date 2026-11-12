@@ -1,9 +1,9 @@
-defmodule WardrikHTTP.Authenticator do
+defmodule Wardrik.HTTP.Authenticator do
   @moduledoc """
   A behaviour that turns a request into the `Wardrik.Scope` it runs in. Required.
 
       defmodule MyAppWeb.WardrikSession do
-        @behaviour WardrikHTTP.Authenticator
+        @behaviour Wardrik.HTTP.Authenticator
 
         @impl true
         def authenticate(%{conn: conn, server: server, wardrik: wardrik}, _opts) do
@@ -20,6 +20,6 @@ defmodule WardrikHTTP.Authenticator do
   """
 
   @doc "Returns the scope the request's `conn` acts in, or an error."
-  @callback authenticate(WardrikHTTP.Authenticator.Request.t(), opts :: term()) ::
+  @callback authenticate(Wardrik.HTTP.Authenticator.Request.t(), opts :: term()) ::
               {:ok, Wardrik.Scope.t()} | {:error, Wardrik.Error.t()}
 end

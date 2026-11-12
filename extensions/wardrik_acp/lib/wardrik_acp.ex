@@ -46,7 +46,7 @@ defmodule WardrikACP do
         agent_id: "builder",
         model: "anthropic:claude-haiku-4-5",
         capabilities: [{WardrikACP, name: MyApp.ACP, harnesses: [:claude]}],
-        middleware: [{WardrikPolicy.Middleware, WardrikPolicy.new!(ask: ["claude/execute"])}]
+        middleware: [{Wardrik.Policy.Middleware, Wardrik.Policy.new!(ask: ["claude/execute"])}]
       )
 
     * The model sees a tool named `claude`. Its arguments are `task`, `checkout` and `work`.

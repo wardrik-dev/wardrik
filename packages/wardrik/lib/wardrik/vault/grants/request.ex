@@ -1,15 +1,15 @@
-defmodule WardrikVault.Grants.Request do
+defmodule Wardrik.Vault.Grants.Request do
   @moduledoc """
-  What a `WardrikVault.Grants` callback is asked about.
+  What a `Wardrik.Vault.Grants` callback is asked about.
 
-      %WardrikVault.Grants.Request{
+      %Wardrik.Vault.Grants.Request{
         vault: MyApp.Vault,
         name: "github",
         principal: %WardrikCore.Principal{id: "user_42"},
         grant: %{value: json, vsn: vsn}
       }
 
-  `grant` is what the principal holds, for `c:WardrikVault.Grants.renew/2`. `nil` otherwise.
+  `grant` is what the principal holds, for `c:Wardrik.Vault.Grants.renew/2`. `nil` otherwise.
   """
 
   alias WardrikCore.Principal
@@ -21,6 +21,6 @@ defmodule WardrikVault.Grants.Request do
           vault: GenServer.name(),
           name: String.t(),
           principal: Principal.t(),
-          grant: WardrikVault.Grants.grant() | nil
+          grant: Wardrik.Vault.Grants.grant() | nil
         }
 end

@@ -4,6 +4,7 @@ defmodule WardrikSlack.InstallTest do
   import WardrikSlack.Test
 
   alias Wardrik.Channel.Installation
+  alias Wardrik.Chat
   alias WardrikSlack.Install
 
   setup :start_slack
@@ -36,7 +37,7 @@ defmodule WardrikSlack.InstallTest do
              Install.installed(channel, "globex", %{"code" => "good", "state" => state(url)})
 
     assert {:ok, %Installation{owner: "globex"}} =
-             WardrikChannel.Channel.installation(channel, "T7")
+             Chat.Channel.installation(channel, "T7")
 
     assert {:error, "This was started by someone else" <> _} =
              Install.installed(channel, "acme", %{"code" => "good", "state" => state(url)})
@@ -61,7 +62,7 @@ defmodule WardrikSlack.InstallTest do
 
     callback = %{type: "event_callback", team_id: "T7", event: %{type: "tokens_revoked"}}
     deliver(context, "events", JSON.encode!(callback))
-    assert WardrikChannel.Channel.installation(channel, "T7") == :error
+    assert Chat.Channel.installation(channel, "T7") == :error
   end
 
   @tag slack: [
@@ -76,13 +77,13 @@ defmodule WardrikSlack.InstallTest do
 
     {:ok, url} =
       WardrikSlack.install_url(
-        %WardrikChannel.Install{owner: "globex", return_to: "/settings"},
+        %Wardrik.Chat.Install{owner: "globex", return_to: "/settings"},
         channel
       )
 
     assert {:ok, %Installation{workspace: "T7", name: "Globex"}, "/settings"} =
              WardrikSlack.installed(
-               %WardrikChannel.Install{
+               %Wardrik.Chat.Install{
                  owner: "globex",
                  query: %{"code" => "good", "state" => state(url)}
                },
@@ -94,7 +95,7 @@ defmodule WardrikSlack.InstallTest do
     assert_received {:slack, "apps.uninstall",
                      %{"client_id" => "1.2", "client_secret" => "c13nt"}}
 
-    assert WardrikChannel.Channel.installation(channel, "T7") == :error
+    assert Chat.Channel.installation(channel, "T7") == :error
 
     assert WardrikSlack.uninstall("T7", channel) == :ok
   end

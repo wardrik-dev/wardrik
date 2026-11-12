@@ -20,14 +20,14 @@ A dollar budget denies a model with no price. Give one with Wardrik's `:prices` 
 ## A budget on paper
 
 ```elixir
-asks = WardrikPolicy.new!(budget: [usd: 0.01, per: :day]).budget
-denies = WardrikPolicy.new!(budget: [usd: 0.01, per: :day, on_exhausted: :deny]).budget
+asks = Wardrik.Policy.new!(budget: [usd: 0.01, per: :day]).budget
+denies = Wardrik.Policy.new!(budget: [usd: 0.01, per: :day, on_exhausted: :deny]).budget
 
 for usd <- [0.004, 0.009, 0.012] do
   %{
     spent: usd,
-    asks: WardrikPolicy.Budget.check(asks, %{usd: usd}),
-    denies: WardrikPolicy.Budget.check(denies, %{usd: usd})
+    asks: Wardrik.Policy.Budget.check(asks, %{usd: usd}),
+    denies: Wardrik.Policy.Budget.check(denies, %{usd: usd})
   }
 end
 ```

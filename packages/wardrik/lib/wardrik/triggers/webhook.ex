@@ -1,9 +1,9 @@
-defmodule WardrikTriggers.Webhook do
+defmodule Wardrik.Triggers.Webhook do
   @moduledoc """
   Verifies webhook requests against a trigger's secret.
 
       :ok =
-        WardrikTriggers.Webhook.verify(request,
+        Wardrik.Triggers.Webhook.verify(request,
           verify: :shared,
           secret: "s3cret",
           now: DateTime.utc_now()

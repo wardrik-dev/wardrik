@@ -1,4 +1,4 @@
-defmodule WardrikHTTP.Worker do
+defmodule Wardrik.HTTP.Worker do
   @moduledoc """
   The tool workers' WebSocket at `GET /v1/workers`. Wardrik is the MCP client over it.
 
@@ -152,5 +152,5 @@ defmodule WardrikHTTP.Worker do
 
   defp keep_alive(state), do: Process.send_after(self(), :keepalive, state.keepalive)
 
-  defp version, do: :wardrik_http |> Application.spec(:vsn) |> to_string()
+  defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
 end

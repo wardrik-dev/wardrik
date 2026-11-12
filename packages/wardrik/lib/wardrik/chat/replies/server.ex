@@ -1,16 +1,16 @@
-defmodule WardrikChannel.Replies.Server do
+defmodule Wardrik.Chat.Replies.Server do
   @moduledoc false
 
   use DurableServer, vsn: 2
 
   require Logger
 
-  alias WardrikChannel.Outbound
-  alias WardrikChannel.Replies.Follower
-  alias WardrikChannel.Replies.State
-  alias WardrikChannel.Waiting
-  alias WardrikChannel.Workspace
-  alias WardrikEvents.Cursor
+  alias Wardrik.Chat.Outbound
+  alias Wardrik.Chat.Replies.Follower
+  alias Wardrik.Chat.Replies.State
+  alias Wardrik.Chat.Waiting
+  alias Wardrik.Chat.Workspace
+  alias Wardrik.EventLog.Cursor
 
   @types ~w(wardrik.message.created wardrik.run.started wardrik.tool_call.started
             wardrik.run.completed wardrik.run.interrupted wardrik.run.failed wardrik.run.cancelled
@@ -72,7 +72,7 @@ defmodule WardrikChannel.Replies.Server do
   # Reads the new conversation from its end now, then follows it with the rest.
   defp followed(state, conversation) do
     {:ok, read} = Cursor.decode(state.cursor || Cursor.encode(%{}))
-    {:ok, head} = Cursor.decode(WardrikEvents.head(state.channel.events, [conversation]))
+    {:ok, head} = Cursor.decode(Wardrik.EventLog.head(state.channel.events, [conversation]))
 
     listen(%{
       state
@@ -87,7 +87,7 @@ defmodule WardrikChannel.Replies.Server do
     :ok = stop(state.follower)
 
     {:ok, follower} =
-      WardrikEvents.Listener.start_link(Follower,
+      Wardrik.EventLog.Listener.start_link(Follower,
         events: state.channel.events,
         resources: state.conversations,
         types: @types,

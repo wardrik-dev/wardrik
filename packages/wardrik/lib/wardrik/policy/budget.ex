@@ -1,32 +1,32 @@
-defmodule WardrikPolicy.Budget do
+defmodule Wardrik.Policy.Budget do
   @moduledoc """
   Caps what an agent spends on model calls, in dollars, tokens or both.
 
-      iex> policy = WardrikPolicy.new!(budget: [usd: 5.00, per: :day])
-      iex> WardrikPolicy.Budget.check(policy.budget, %{usd: 4.10})
+      iex> policy = Wardrik.Policy.new!(budget: [usd: 5.00, per: :day])
+      iex> Wardrik.Policy.Budget.check(policy.budget, %{usd: 4.10})
       :allow
-      iex> WardrikPolicy.Budget.check(policy.budget, %{usd: 5.02})
+      iex> Wardrik.Policy.Budget.check(policy.budget, %{usd: 5.02})
       {:ask, "This agent has spent $5.02 of $5.00 today. Approve to allow $5.00 more."}
 
   `grant/2` records an approval:
 
-      iex> policy = WardrikPolicy.new!(budget: [tokens: 200_000, grant: [tokens: 50_000]])
-      iex> spent = WardrikPolicy.Budget.grant(policy.budget, %{tokens: 201_000})
-      iex> WardrikPolicy.Budget.check(policy.budget, spent)
+      iex> policy = Wardrik.Policy.new!(budget: [tokens: 200_000, grant: [tokens: 50_000]])
+      iex> spent = Wardrik.Policy.Budget.grant(policy.budget, %{tokens: 201_000})
+      iex> Wardrik.Policy.Budget.check(policy.budget, spent)
       :allow
-      iex> WardrikPolicy.Budget.check(policy.budget, %{spent | tokens: 251_000})
+      iex> Wardrik.Policy.Budget.check(policy.budget, %{spent | tokens: 251_000})
       {:ask, "This agent has used 251,000 of 251,000 tokens today. Approve to allow 50,000 more."}
 
   `cost/2` prices a call that reports no cost:
 
-      iex> policy = WardrikPolicy.new!(budget: [usd: 5.00, price: [input: 0.60, output: 2.20]])
-      iex> WardrikPolicy.Budget.cost(policy.budget, %{input_tokens: 10_000, output_tokens: 2_000})
+      iex> policy = Wardrik.Policy.new!(budget: [usd: 5.00, price: [input: 0.60, output: 2.20]])
+      iex> Wardrik.Policy.Budget.cost(policy.budget, %{input_tokens: 10_000, output_tokens: 2_000})
       0.0104
 
     * Check before each model call. The call that crosses the limit still runs.
     * What was spent is a map of `:usd`, `:tokens` and `:granted`. Reset it when `period/2`
       changes.
-    * `WardrikPolicy.Middleware` does all of this for you.
+    * `Wardrik.Policy.Middleware` does all of this for you.
 
   ## Options
 
@@ -42,7 +42,7 @@ defmodule WardrikPolicy.Budget do
     * `:on_exhausted` - `:ask` a person, or `:deny`. `:ask` by default.
   """
 
-  alias WardrikPolicy.Read
+  alias Wardrik.Policy.Read
 
   defstruct usd: nil,
             tokens: nil,
@@ -124,15 +124,15 @@ defmodule WardrikPolicy.Budget do
   Checks what was spent against the budget. Returns `:allow`, or `{:ask, prompt}` or
   `{:deny, message}` as `:on_exhausted` says.
 
-      iex> policy = WardrikPolicy.new!(budget: [usd: 5.00, on_exhausted: :deny])
-      iex> WardrikPolicy.Budget.check(policy.budget, %{usd: 5.02}, spender: "acme's agents have")
+      iex> policy = Wardrik.Policy.new!(budget: [usd: 5.00, on_exhausted: :deny])
+      iex> Wardrik.Policy.Budget.check(policy.budget, %{usd: 5.02}, spender: "acme's agents have")
       {:deny, "acme's agents have spent $5.02 of $5.00 today."}
 
   ## Options
 
     * `:spender` - starts the message. `"This agent has"` by default.
   """
-  @spec check(t(), spent(), keyword()) :: WardrikPolicy.decision()
+  @spec check(t(), spent(), keyword()) :: Wardrik.Policy.decision()
   def check(%__MODULE__{} = budget, spent, opts \\ []) do
     spender = Keyword.get(opts, :spender, "This agent has")
 

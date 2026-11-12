@@ -1,4 +1,4 @@
-defmodule WardrikPolicy.Read do
+defmodule Wardrik.Policy.Read do
   @moduledoc false
 
   @spec all([{:ok, value} | {:error, String.t()}]) :: {:ok, [value]} | {:error, String.t()}

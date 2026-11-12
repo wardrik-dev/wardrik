@@ -1,8 +1,8 @@
-defmodule WardrikEvents.Encoder.ValueTest do
+defmodule Wardrik.EventLog.Encoder.ValueTest do
   use ExUnit.Case, async: true
 
   alias ReqLLM.Message.ContentPart
-  alias WardrikEvents.Encoder.Value
+  alias Wardrik.EventLog.Encoder.Value
 
   @message JSV.build!(WardrikProtocol.schema("defs") |> get_in(["$defs", "message"]))
 

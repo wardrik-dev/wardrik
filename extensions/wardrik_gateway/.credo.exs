@@ -50,7 +50,7 @@
       checks: %{
         enabled:
           [
-            {WardrikEvents.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
+            {Wardrik.EventLog.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
             #
             ## Consistency Checks
             #

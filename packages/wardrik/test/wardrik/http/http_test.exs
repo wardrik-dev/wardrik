@@ -56,14 +56,14 @@ defmodule Wardrik.HTTPTest do
       answers([answer("Hello.")])
 
       :ok =
-        WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+        Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
       conn = request(context, "PUT", agent, %{"model" => "anthropic:claude-haiku-4-5"})
       assert %{"agent" => %{"id" => ^id}} = body(conn)
 
       conn = request(context, "POST", conversation <> "/messages", %{"content" => "Hi"})
       assert %{"message" => %{"id" => _message}} = body(conn)
-      assert_receive {WardrikEvents, {^id, "C1/ 2%"}, %{"type" => "wardrik.run.completed"}}
+      assert_receive {Wardrik.EventLog, {^id, "C1/ 2%"}, %{"type" => "wardrik.run.completed"}}
 
       conn = request(context, "GET", conversation)
       assert %{"agent" => %{"id" => ^id}, "conversation" => "C1/ 2%"} = body(conn)
@@ -155,11 +155,11 @@ defmodule Wardrik.HTTPTest do
       answers([answer("Triaged.")])
 
       :ok =
-        WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+        Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
       conn = hook(context, "/v1/hooks/acme%2Fhooks/issues", [{"authorization", "Bearer s3cret"}])
       assert {conn.status, conn.resp_body} == {202, ""}
-      assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.completed"}}
+      assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.completed"}}
 
       assert hook(context, "/v1/hooks/acme%2Fhooks/issues/s3cret", []).status == 202
       assert hook(context, "/v1/hooks/acme%2Fhooks/issues/nope", []).status == 404
@@ -170,7 +170,7 @@ defmodule Wardrik.HTTPTest do
         Plug.Parsers.init(
           parsers: [:json],
           json_decoder: JSON,
-          body_reader: {WardrikHTTP.BodyReader, :read_body, []}
+          body_reader: {Wardrik.HTTP.BodyReader, :read_body, []}
         )
 
       conn =
@@ -194,7 +194,7 @@ defmodule Wardrik.HTTPTest do
         |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
 
       assert conn.status == 500
-      assert body(conn)["error"]["message"] =~ "WardrikHTTP.BodyReader"
+      assert body(conn)["error"]["message"] =~ "Wardrik.HTTP.BodyReader"
     end
 
     test "reads a parsed body for every other operation", context do

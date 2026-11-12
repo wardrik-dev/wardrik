@@ -1,21 +1,21 @@
-defmodule WardrikChannelTest do
+defmodule Wardrik.ChatTest do
   use ExUnit.Case, async: true
 
-  import WardrikChannel.Test
+  import Wardrik.Chat.Test
 
   alias Wardrik.Channel.Installation
   alias Wardrik.Channel.Notification
-  alias WardrikChannel.Answer
-  alias WardrikChannel.Binding
-  alias WardrikChannel.Channel
-  alias WardrikChannel.Inbound
-  alias WardrikChannel.Member
-  alias WardrikChannel.Offer
-  alias WardrikChannel.Outbound
-  alias WardrikChannel.Rooms
-  alias WardrikChannel.Test.Chat
-  alias WardrikChannel.Waiting
-  alias WardrikChannel.Workspace
+  alias Wardrik.Chat.Answer
+  alias Wardrik.Chat.Binding
+  alias Wardrik.Chat.Channel
+  alias Wardrik.Chat.Inbound
+  alias Wardrik.Chat.Member
+  alias Wardrik.Chat.Offer
+  alias Wardrik.Chat.Outbound
+  alias Wardrik.Chat.Rooms
+  alias Wardrik.Chat.Test.Chat
+  alias Wardrik.Chat.Waiting
+  alias Wardrik.Chat.Workspace
 
   setup :start_channel
 
@@ -30,7 +30,7 @@ defmodule WardrikChannelTest do
     do: %Inbound{room: "C1", thread: thread, id: id, sender: sender, text: text}
 
   defp audited(context) do
-    %{events: events} = WardrikEvents.audit(context.events)
+    %{events: events} = Wardrik.EventLog.audit(context.events)
     for %{"type" => "wardrik.room." <> _rest} = event <- events, do: event
   end
 
@@ -63,7 +63,7 @@ defmodule WardrikChannelTest do
         {"agt_quiet", []}
       ]
 
-      :ok = WardrikTesting.Server.offer_agents(context.name, offered)
+      :ok = Wardrik.Testing.Server.offer_agents(context.name, offered)
 
       assert {:choose, [%Offer{agent: "agt_one"}, %Offer{agent: "agt_two"}]} =
                Rooms.joined(context.workspace, "C1")
@@ -80,7 +80,7 @@ defmodule WardrikChannelTest do
 
       assert Rooms.left(context.workspace, "C1", @maria) == :ok
       assert Rooms.get(context.workspace, "C1") == nil
-      assert WardrikChannel.received(context.workspace, mention("Hi", "1.1")) == :ignored
+      assert Wardrik.Chat.received(context.workspace, mention("Hi", "1.1")) == :ignored
       assert Rooms.left(context.workspace, "C1") == :ok
 
       assert ["wardrik.room.bound", "wardrik.room.unbound"] =
@@ -95,7 +95,7 @@ defmodule WardrikChannelTest do
                Rooms.answers(context.workspace, "C1", :everything)
 
       assert {:asked, _conversation} =
-               WardrikChannel.received(context.workspace, %{
+               Wardrik.Chat.received(context.workspace, %{
                  mention("Hi", "1.1")
                  | mentioned?: false
                })
@@ -113,7 +113,7 @@ defmodule WardrikChannelTest do
       conversation = conversation(context, "1.1")
 
       assert {:asked, ^conversation} =
-               WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+               Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
 
       assert_receive {:asked, ^conversation, "Hi", sender}
       assert sender == "ana"
@@ -122,7 +122,7 @@ defmodule WardrikChannelTest do
                       %Outbound{thread: "1.1", body: {:reply, "Answered: Hi", ["1.1"]}}}
 
       assert {:asked, ^conversation} =
-               WardrikChannel.received(context.workspace, reply("More", "1.1", "1.2"))
+               Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
 
       assert_receive {:delivered,
                       %Outbound{thread: "1.1", body: {:reply, "Answered: More", ["1.2"]}}}
@@ -130,7 +130,7 @@ defmodule WardrikChannelTest do
 
     test "follows each thread's own conversation, and no other log", context do
       {agent, conversation} = conversation(context, "1.1")
-      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
 
       look_alikes = [
@@ -143,29 +143,29 @@ defmodule WardrikChannelTest do
       for log <- look_alikes do
         said = %{"role" => "assistant", "parts" => [%{"type" => "text", "content" => "Not here"}]}
         data = %{"run" => %{"id" => "r9"}, "messages" => [said]}
-        :ok = WardrikEvents.append(context.events, log, {"run.completed", "runs/r9", data})
+        :ok = Wardrik.EventLog.append(context.events, log, {"run.completed", "runs/r9", data})
       end
 
-      WardrikChannel.received(context.workspace, reply("More", "1.1", "1.2"))
+      Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: More", ["1.2"]}}}
       refute_received {:delivered, %Outbound{body: {:reply, "Not here", _answering}}}
     end
 
     test "follows a new thread from its end, and keeps following the others", context do
-      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Answered: Hi", _}}}
 
-      WardrikChannel.received(context.workspace, mention("Hey", "2.1"))
+      Wardrik.Chat.received(context.workspace, mention("Hey", "2.1"))
       assert_receive {:delivered, %Outbound{thread: "2.1", body: {:reply, "Answered: Hey", _}}}
 
-      WardrikChannel.received(context.workspace, reply("More", "1.1", "1.2"))
+      Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
       assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Answered: More", _}}}
       refute_received {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
     end
 
     test "posts nothing a replaced follower hands it, and starts over from an rc.1 room",
          context do
-      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
 
       replies = Module.concat([context.name, "Channels", context.channel.name, "Replies"])
@@ -177,51 +177,51 @@ defmodule WardrikChannelTest do
 
       saved = %{workspace: "T1", room: "C1", cursor: "old"}
 
-      assert WardrikChannel.Replies.Server.load_state(1, saved) ==
-               WardrikChannel.Replies.State.new("T1", "C1")
+      assert Wardrik.Chat.Replies.Server.load_state(1, saved) ==
+               Wardrik.Chat.Replies.State.new("T1", "C1")
     end
 
     test "shows what the agent is doing while it works", context do
-      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:status, "is thinking…"}}}
     end
 
     test "tries a post again that the chat app refused", context do
       :counters.put(context.refusals, 1, 1)
-      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
 
       assert_receive {:refused, %Outbound{}}
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", ["1.1"]}}}, 3_000
     end
 
     test "moves on from a post the adapter declines", context do
-      WardrikChannel.received(context.workspace, mention("skip", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("skip", "1.1"))
       assert_receive {:skipped, %Outbound{}}
 
-      WardrikChannel.received(context.workspace, reply("Hi", "1.1", "1.2"))
+      Wardrik.Chat.received(context.workspace, reply("Hi", "1.1", "1.2"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
       refute_received {:skipped, _outbound}
     end
 
     test "says why a run failed", context do
-      WardrikChannel.received(context.workspace, mention("fail now", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("fail now", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:failed, "It broke."}}}
     end
 
     test "carries on from where it posted after the room's process stops", context do
-      WardrikChannel.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
 
       replies = Module.concat([context.name, "Channels", context.channel.name, "Replies"])
       :ok = DurableServer.Supervisor.terminate_child(replies, "T1/C1")
-      WardrikChannel.received(context.workspace, reply("More", "1.1", "1.2"))
+      Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
 
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: More", _answering}}}
       refute_received {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
     end
 
     test "reminds no room that isn't posting", context do
-      assert WardrikChannel.Replies.remind(context.workspace,
+      assert Wardrik.Chat.Replies.remind(context.workspace,
                room: "C9",
                agent: "agt_triage",
                conversation: "chat.T1.C9.x"
@@ -229,15 +229,15 @@ defmodule WardrikChannelTest do
     end
 
     test "leaves alone what isn't for it", context do
-      assert WardrikChannel.received(context.workspace, %{
+      assert Wardrik.Chat.received(context.workspace, %{
                mention("Hi", "1.1")
                | mentioned?: false
              }) ==
                :ignored
 
-      assert WardrikChannel.received(context.workspace, reply("Hi", "9.9", "9.10")) == :ignored
+      assert Wardrik.Chat.received(context.workspace, reply("Hi", "9.9", "9.10")) == :ignored
 
-      assert WardrikChannel.received(context.workspace, %{mention("Hi", "1.1") | room: "C2"}) ==
+      assert Wardrik.Chat.received(context.workspace, %{mention("Hi", "1.1") | room: "C2"}) ==
                :ignored
     end
   end
@@ -245,7 +245,7 @@ defmodule WardrikChannelTest do
   describe "deciding" do
     setup context do
       Rooms.joined(context.workspace, "C1")
-      WardrikChannel.received(context.workspace, mention("echo hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("echo hi", "1.1"))
 
       assert_receive {:delivered, %Outbound{body: {:waiting, [%Waiting{} = waiting]}}}
 
@@ -276,7 +276,7 @@ defmodule WardrikChannelTest do
       }
 
       assert {:ok, %Wardrik.Decision{decision: :approved}} =
-               WardrikChannel.decide(context.workspace, answer)
+               Wardrik.Chat.decide(context.workspace, answer)
 
       assert_receive {:delivered, %Outbound{body: {:said, "Approved by maria."}}}
       assert_receive {:delivered, %Outbound{body: {:reply, "Done.", ["1.1"]}}}
@@ -294,7 +294,7 @@ defmodule WardrikChannelTest do
         decision: {:deny, nil}
       }
 
-      assert WardrikChannel.decide(context.workspace, answer) ==
+      assert Wardrik.Chat.decide(context.workspace, answer) ==
                {:error, context.channel.deciding}
 
       channel = context.channel.name
@@ -313,7 +313,7 @@ defmodule WardrikChannelTest do
       assert seen == %{asked_by: asked_by, installation: %{owner: "acme", workspace: "T1"}}
 
       assert {:ok, %Wardrik.Decision{decision: :rejected}} =
-               WardrikChannel.decide(context.workspace, %{
+               Wardrik.Chat.decide(context.workspace, %{
                  answer
                  | member: @ana,
                    decision: {:deny, "Not now."}
@@ -331,7 +331,7 @@ defmodule WardrikChannelTest do
         decision: {:approve, "Once."}
       }
 
-      assert {:ok, _decision} = WardrikChannel.decide(context.workspace, answer)
+      assert {:ok, _decision} = Wardrik.Chat.decide(context.workspace, answer)
 
       assert_receive {:delivered, %Outbound{body: {:said, "Approved by maria: Once."}}}
     end
@@ -346,7 +346,7 @@ defmodule WardrikChannelTest do
 
     test "posts the waiting call again for a message behind it", context do
       assert {:asked, _conversation} =
-               WardrikChannel.received(context.workspace, reply("Well?", "1.1", "1.2"))
+               Wardrik.Chat.received(context.workspace, reply("Well?", "1.1", "1.2"))
 
       assert_receive {:delivered,
                       %Outbound{body: {:waiting, [%Waiting{interrupt: %{id: "call_1"}}]}}}
@@ -354,9 +354,9 @@ defmodule WardrikChannelTest do
   end
 
   defmodule ByEmail do
-    @behaviour WardrikChannel.Identities
+    @behaviour Wardrik.Chat.Identities
 
-    @impl WardrikChannel.Identities
+    @impl Wardrik.Chat.Identities
     def identify(request, _opts), do: {:ok, %WardrikCore.Principal{id: request.email}}
   end
 
@@ -365,7 +365,7 @@ defmodule WardrikChannelTest do
     member = %Member{id: "U9", name: "maria", email: "maria@acme.com"}
 
     assert {:ok, %WardrikCore.Principal{id: "maria@acme.com"}} =
-             WardrikChannel.Channel.identify(channel, "T1", member)
+             Wardrik.Chat.Channel.identify(channel, "T1", member)
   end
 
   describe "members your app doesn't know" do
@@ -377,7 +377,7 @@ defmodule WardrikChannelTest do
     test "can't ask, and are told why", context do
       stranger = %Member{id: "U9", name: "stranger"}
 
-      assert WardrikChannel.received(context.workspace, mention("Hi", "1.1", stranger)) ==
+      assert Wardrik.Chat.received(context.workspace, mention("Hi", "1.1", stranger)) ==
                {:error, "Nobody here knows you yet."}
 
       refute_received {:asked, _conversation, _text, _sender}
@@ -385,7 +385,7 @@ defmodule WardrikChannelTest do
     end
 
     test "can't decide, and are told why", context do
-      WardrikChannel.received(context.workspace, mention("echo hi", "1.1"))
+      Wardrik.Chat.received(context.workspace, mention("echo hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:waiting, [%Waiting{} = waiting]}}}
 
       answer = %Answer{
@@ -397,7 +397,7 @@ defmodule WardrikChannelTest do
         decision: {:approve, nil}
       }
 
-      assert WardrikChannel.decide(context.workspace, answer) ==
+      assert Wardrik.Chat.decide(context.workspace, answer) ==
                {:error, "Nobody here knows you yet."}
 
       refute_received {:authorizing, _request}
@@ -408,37 +408,37 @@ defmodule WardrikChannelTest do
     test "is named in lower-case letters, digits and -, and says where it's added" do
       passed = [server: S, wardrik: :w, events: :e, store: nil]
 
-      identified = [identities: {WardrikChannel.Test.Members, members: %{}}] ++ passed
+      identified = [identities: {Wardrik.Chat.Test.Members, members: %{}}] ++ passed
 
       assert_raise ArgumentError, ~r/lower-case/, fn ->
-        WardrikChannel.channel(
-          WardrikChannel.Test.Chat,
+        Wardrik.Chat.channel(
+          Wardrik.Chat.Test.Chat,
           [channel: "Chat", token: "t"] ++ identified
         )
       end
 
       assert_raise ArgumentError, ~r/token/, fn ->
-        WardrikChannel.channel(WardrikChannel.Test.Chat, [channel: "chat"] ++ identified)
+        Wardrik.Chat.channel(Wardrik.Chat.Test.Chat, [channel: "chat"] ++ identified)
       end
 
-      identities = {WardrikChannel.Test.Members, members: %{}}
+      identities = {Wardrik.Chat.Test.Members, members: %{}}
 
       assert_raise NimbleOptions.ValidationError, ~r/:identities/, fn ->
-        WardrikChannel.channel(
-          WardrikChannel.Test.Chat,
+        Wardrik.Chat.channel(
+          Wardrik.Chat.Test.Chat,
           [channel: "chat", token: "t", owner: "acme"] ++ passed
         )
       end
 
       channel =
-        WardrikChannel.channel(
-          WardrikChannel.Test.Chat,
+        Wardrik.Chat.channel(
+          Wardrik.Chat.Test.Chat,
           [channel: "chat", token: "t", owner: "acme", identities: identities] ++
-            Keyword.put(passed, :store, WardrikStore.ETS.new(name: :unused))
+            Keyword.put(passed, :store, Wardrik.Store.ETS.new(name: :unused))
         )
 
       refute Map.has_key?(channel, :approvers)
-      refute Keyword.has_key?(WardrikChannel.Channel.schema().schema, :approvers)
+      refute Keyword.has_key?(Wardrik.Chat.Channel.schema().schema, :approvers)
 
       refute Map.has_key?(
                %Installation{channel: "c", workspace: "w", owner: "o", token: "t"},
@@ -464,12 +464,12 @@ defmodule WardrikChannelTest do
   describe "notices" do
     test "knows a conversation in one of the workspace's threads", context do
       {:ok, workspace} =
-        WardrikChannel.workspace(WardrikChannel.channel(Chat, channel_options(context)), "T1")
+        Wardrik.Chat.workspace(Wardrik.Chat.channel(Chat, channel_options(context)), "T1")
 
-      thread = WardrikChannel.Workspace.conversation(workspace, room: "C1", thread: "1696.1234")
-      assert WardrikChannel.Workspace.thread?(workspace, thread)
-      refute WardrikChannel.Workspace.thread?(workspace, "api-1")
-      refute WardrikChannel.Workspace.thread?(workspace, nil)
+      thread = Workspace.conversation(workspace, room: "C1", thread: "1696.1234")
+      assert Workspace.thread?(workspace, thread)
+      refute Workspace.thread?(workspace, "api-1")
+      refute Workspace.thread?(workspace, nil)
     end
 
     test "posts a notice in the room itself, in the workspace it names", context do
@@ -521,7 +521,7 @@ defmodule WardrikChannelTest do
       vault = :"vault #{context.channel.name}"
 
       start_supervised!(
-        {WardrikVault, name: vault, store: context.store, keys: [WardrikVault.generate_key()]}
+        {Wardrik.Vault, name: vault, store: context.store, keys: [Wardrik.Vault.generate_key()]}
       )
 
       opts =
@@ -530,7 +530,7 @@ defmodule WardrikChannelTest do
         |> Keyword.drop([:token, :owner])
         |> Keyword.merge(installations: :stored, vault: vault)
 
-      %{stored: WardrikChannel.channel(WardrikChannel.Test.Chat, opts), vault: vault}
+      %{stored: Wardrik.Chat.channel(Wardrik.Chat.Test.Chat, opts), vault: vault}
     end
 
     test "keep each workspace, its owner kept and its token sealed in the vault", context do
@@ -547,7 +547,7 @@ defmodule WardrikChannelTest do
       assert Channel.install(channel, installation) == :ok
       assert Channel.installation(channel, "T1") == {:ok, installation}
 
-      assert WardrikVault.fetch(
+      assert Wardrik.Vault.fetch(
                context.vault,
                %WardrikCore.Principal{id: "acme"},
                "#{channel.name}:T1"
@@ -619,7 +619,7 @@ defmodule WardrikChannelTest do
         |> Keyword.drop([:token, :owner])
         |> Keyword.put(:installations, :stored)
 
-      channel = WardrikChannel.channel(WardrikChannel.Test.Chat, opts)
+      channel = Wardrik.Chat.channel(Wardrik.Chat.Test.Chat, opts)
 
       installation = %Installation{
         channel: channel.name,
@@ -669,14 +669,14 @@ defmodule WardrikChannelTest do
 
   defp channel_options(context) do
     [
-      server: WardrikTesting.Server,
+      server: Wardrik.Testing.Server,
       wardrik: context.name,
       events: context.events,
       channel: context.channel.name,
       store: context.store,
       token: "xoxb-test",
       owner: "acme",
-      identities: {WardrikChannel.Test.Members, members: members()},
+      identities: {Wardrik.Chat.Test.Members, members: members()},
       test: self(),
       refusals: context.refusals
     ]

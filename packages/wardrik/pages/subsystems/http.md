@@ -1,18 +1,7 @@
-# WardrikHTTP
+# Wardrik.HTTP.Endpoint
 
 Serves [Wardrik](https://hexdocs.pm/wardrik) over HTTP. Every operation is a JSON route, and
 agents' events stream as server-sent events.
-
-## Install
-
-```elixir
-def deps do
-  [
-    {:wardrik, "~> 0.1.0-rc.7"},
-    {:wardrik_http, "~> 0.1.0-rc.2"}
-  ]
-end
-```
 
 ## Serve HTTP requests
 
@@ -41,7 +30,7 @@ do. See [Who may do what](https://hexdocs.pm/wardrik/access.html).
 
 ```elixir
 defmodule MyAppWeb.WardrikSession do
-  @behaviour WardrikHTTP.Authenticator
+  @behaviour Wardrik.HTTP.Authenticator
 
   @impl true
   def authenticate(%{conn: conn, wardrik: wardrik}, _opts) do
@@ -119,7 +108,7 @@ Wardrik.Agent.define(scope, "agt_1",
 * The worker authenticates like any request. Your authorizer must allow it `agent.serve`.
 * If a worker goes away mid-call, a read-only or idempotent tool runs again elsewhere. Any other
   waits on a person as `in_doubt`.
-* See `WardrikHTTP.Worker` for the exchange.
+* See `Wardrik.HTTP.Worker` for the exchange.
 
 ## Sign people in
 

@@ -42,7 +42,7 @@ defmodule WardrikDaemon.Test do
   @doc "Starts the Postgres store the suite shares, where `DATABASE_URL` is set."
   def start_store do
     with url when is_binary(url) <- System.get_env("DATABASE_URL") do
-      children = [{WardrikStore, WardrikStore.Ecto.new(url: url)}]
+      children = [{Wardrik.Store, Wardrik.Store.Ecto.new(url: url)}]
       {:ok, _supervisor} = Supervisor.start_link(children, strategy: :one_for_one)
     end
   end
@@ -50,11 +50,11 @@ defmodule WardrikDaemon.Test do
   defp store(context) do
     if System.get_env("DATABASE_URL"),
       do:
-        WardrikStore.scope(
-          WardrikStore.Ecto.new(repo: WardrikStore.Ecto.Repo),
+        Wardrik.Store.scope(
+          Wardrik.Store.Ecto.new(repo: Wardrik.Store.Ecto.Repo),
           "t#{System.unique_integer([:positive])}"
         ),
-      else: WardrikStore.ETS.new(name: :"store #{context.test}")
+      else: Wardrik.Store.ETS.new(name: :"store #{context.test}")
   end
 
   @doc "Makes the agent `name` for `owner`, as the daemon's route does, and returns its ID."
@@ -127,7 +127,7 @@ defmodule WardrikDaemon.Test do
     Map.merge(context, %{
       wardrik: name,
       admin: admin,
-      daemon_store: WardrikStore.scope(store, "wardrik_daemon"),
+      daemon_store: Wardrik.Store.scope(store, "wardrik_daemon"),
       log: log
     })
   end

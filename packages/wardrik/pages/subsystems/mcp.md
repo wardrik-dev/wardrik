@@ -1,16 +1,6 @@
-# WardrikMCP
+# Wardrik.MCP
 
 Gives [WardrikCore](https://hexdocs.pm/wardrik_core) agents the tools of any MCP server.
-
-## Install
-
-```elixir
-def deps do
-  [
-    {:wardrik_mcp, "~> 0.1.0-rc.2"}
-  ]
-end
-```
 
 ## Connect to servers
 
@@ -18,10 +8,10 @@ Install `github-mcp-server` and set `GITHUB_TOKEN`, `LINEAR_TOKEN`, and `ANTHROP
 Run in a fresh session:
 
 ```elixir
-Mix.install([{:wardrik_mcp, "~> 0.1.0-rc.2"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.10"}])
 
 children = [
-  {WardrikMCP,
+  {Wardrik.MCP,
    name: MyApp.MCP,
    servers: [
      github: [
@@ -46,7 +36,7 @@ children = [
 
 - A command gets its `env` plus `HOME`, `PATH` and a few other basics, not your app's whole environment.
 - A server that's down offers no tools. It's retried, up to a minute between tries.
-- Every server option is in `WardrikMCP.Server`.
+- Every server option is in `Wardrik.MCP.Server`.
 
 ## Configure agent tools
 
@@ -63,7 +53,7 @@ children = [
 WardrikCore.start_agent(
   agent_id: "triage",
   model: "anthropic:claude-haiku-4-5",
-  capabilities: [{WardrikMCP, name: MyApp.MCP, servers: [:github, :linear]}]
+  capabilities: [{Wardrik.MCP, name: MyApp.MCP, servers: [:github, :linear]}]
 )
 ```
 
@@ -76,7 +66,7 @@ WardrikCore.start_agent(
 Supervision-tree fragment: implement `MyApp.Vault.fetch/2` in your app.
 
 ```elixir
-{WardrikMCP,
+{Wardrik.MCP,
  name: MyApp.MCP,
  secret: &MyApp.Vault.fetch/2,
  servers: [
@@ -90,7 +80,7 @@ Supervision-tree fragment: implement `MyApp.Vault.fetch/2` in your app.
  ]}
 
 # After the secret changes:
-WardrikMCP.reconnect(MyApp.MCP, owner: "acme", secret: "CRM_KEY")
+Wardrik.MCP.reconnect(MyApp.MCP, owner: "acme", secret: "CRM_KEY")
 ```
 
 `MyApp.Vault.fetch(owner, name)` returns `{:ok, value}` or `{:error, reason}`. It runs each time the
@@ -101,18 +91,18 @@ server connects.
 Alternative startup fragment: define a persistent `store` and implement `MyApp.Egress.public/1` before starting MCP.
 
 ```elixir
-{WardrikMCP, name: MyApp.MCP, store: store, check: &MyApp.Egress.public/1}
+{Wardrik.MCP, name: MyApp.MCP, store: store, check: &MyApp.Egress.public/1}
 
-WardrikMCP.add(MyApp.MCP, "linear",
+Wardrik.MCP.add(MyApp.MCP, "linear",
   transport: {:streamable_http, url: "https://mcp.linear.app/mcp"}
 )
 
 # => :ok
 
-WardrikMCP.servers(MyApp.MCP)
+Wardrik.MCP.servers(MyApp.MCP)
 # => ["linear"]
 
-WardrikMCP.remove(MyApp.MCP, "linear")
+Wardrik.MCP.remove(MyApp.MCP, "linear")
 # => :ok
 ```
 
@@ -122,7 +112,7 @@ WardrikMCP.remove(MyApp.MCP, "linear")
 ## Per-person credentials
 
 ```elixir
-WardrikMCP.add(MyApp.MCP, "linear",
+Wardrik.MCP.add(MyApp.MCP, "linear",
   transport: {:streamable_http, url: "https://mcp.linear.app/mcp"},
   credential_name: "linear"
 )
@@ -141,7 +131,7 @@ Tools carry the server's hints as annotations: `read_only`, `destructive`, `idem
 - Answers are labelled `"outside"` unless the server is `trusted: true`.
 
 ```elixir
-WardrikPolicy.new!(default: [destructive: :deny, read_only: :allow, else: :ask])
+Wardrik.Policy.new!(default: [destructive: :deny, read_only: :allow, else: :ask])
 ```
 
 ## Costs

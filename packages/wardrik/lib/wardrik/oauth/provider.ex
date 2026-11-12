@@ -1,4 +1,4 @@
-defmodule WardrikOAuth.Provider do
+defmodule Wardrik.OAuth.Provider do
   @schema NimbleOptions.new!(
             key: [
               type: :string,
@@ -28,7 +28,7 @@ defmodule WardrikOAuth.Provider do
               type: :string,
               doc: """
               Your OAuth app's client ID. Without it, Wardrik becomes the client where the
-              service allows. See `WardrikOAuth.Registration`.
+              service allows. See `Wardrik.OAuth.Registration`.
               """
             ],
             client_secret: [
@@ -59,7 +59,7 @@ defmodule WardrikOAuth.Provider do
   @moduledoc """
   An OAuth app with a service. Its name is the credential a tool asks for.
 
-      WardrikOAuth.Provider.new("github",
+      Wardrik.OAuth.Provider.new("github",
         key: "github",
         issuer: "https://github.com/login/oauth",
         client_id: System.fetch_env!("GITHUB_CLIENT_ID"),

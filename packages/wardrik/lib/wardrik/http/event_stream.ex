@@ -1,4 +1,4 @@
-defmodule WardrikHTTP.EventStream do
+defmodule Wardrik.HTTP.EventStream do
   @moduledoc false
 
   import Plug.Conn

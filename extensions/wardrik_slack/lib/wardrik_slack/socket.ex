@@ -11,7 +11,7 @@ defmodule WardrikSlack.Socket do
 
   require Logger
 
-  alias WardrikChannel.Channel
+  alias Wardrik.Chat.Channel
   alias WardrikSlack.API
   alias WardrikSlack.Dispatch
   alias WardrikSlack.Socket.Connection

@@ -1,14 +1,14 @@
-defmodule WardrikStore.DurableConformance do
-  @moduledoc "The tests `WardrikStore.Durable` passes over a store, run on the store under `:store`."
+defmodule Wardrik.Store.DurableConformance do
+  @moduledoc "The tests `Wardrik.Store.Durable` passes over a store, run on the store under `:store`."
 
   defmacro __using__(_opts) do
     quote do
       import ExUnit.CaptureLog
-      import WardrikStore.Conformance, only: [unique_key: 1]
+      import Wardrik.Store.Conformance, only: [unique_key: 1]
 
       alias DurableServer.Meta
       alias DurableServer.StoredState
-      alias WardrikStore.Durable
+      alias Wardrik.Store.Durable
 
       describe "a Durable backend" do
         setup %{store: store} do
@@ -126,7 +126,7 @@ defmodule WardrikStore.DurableConformance do
           stored = %StoredState{vsn: 1, state: %{}, meta: %Meta{}}
           unreadable = %{"vsn" => 1, "state" => <<131, 100, 0, 3, "zzq">>, "meta" => "x"}
 
-          {:ok, _vsn} = WardrikStore.put(WardrikStore.scope(store, "durable"), key, unreadable)
+          {:ok, _vsn} = Wardrik.Store.put(Wardrik.Store.scope(store, "durable"), key, unreadable)
 
           assert {:error, :not_found} = Durable.get_object(backend, key, [])
 

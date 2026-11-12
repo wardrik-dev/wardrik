@@ -1,4 +1,4 @@
-defmodule WardrikEvents.Credo.Check.NoSleepyTests do
+defmodule Wardrik.EventLog.Credo.Check.NoSleepyTests do
   use Credo.Check,
     base_priority: :high,
     category: :warning,

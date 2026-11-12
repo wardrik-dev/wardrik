@@ -1,4 +1,4 @@
-defmodule WardrikWorkspace.Mount do
+defmodule Wardrik.Workspace.Mount do
   @moduledoc """
   A tree an agent sees.
 

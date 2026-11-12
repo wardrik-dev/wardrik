@@ -1,8 +1,8 @@
-defmodule WardrikPolicy.AgentTest do
+defmodule Wardrik.Policy.AgentTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias WardrikPolicy.Ask
+  alias Wardrik.Policy.Ask
 
   defmodule Books do
     @behaviour WardrikCore.Capability
@@ -46,7 +46,7 @@ defmodule WardrikPolicy.AgentTest do
       {:ok, response("Done.")}
     end)
 
-    policy = WardrikPolicy.new!(ask: %{"books/create_bill(amount >= 1000)" => "Over $1,000."})
+    policy = Wardrik.Policy.new!(ask: %{"books/create_bill(amount >= 1000)" => "Over $1,000."})
     id = "books-#{System.unique_integer([:positive])}"
 
     {:ok, agent} =
@@ -54,7 +54,7 @@ defmodule WardrikPolicy.AgentTest do
         agent_id: id,
         model: "anthropic:claude-haiku-4-5",
         capabilities: [{Books, self()}],
-        middleware: [{WardrikPolicy.Middleware, policy}]
+        middleware: [{Wardrik.Policy.Middleware, policy}]
       )
 
     :ok = WardrikCore.ask(agent, "Pay the $9,400 invoice.")
@@ -76,14 +76,14 @@ defmodule WardrikPolicy.AgentTest do
     |> expect(:stream_text, fn _, _, _ -> {:ok, %{response("Hi.") | usage: used}} end)
     |> expect(:stream_text, fn _, _, _ -> {:ok, response("Done.")} end)
 
-    policy = WardrikPolicy.new!(budget: [tokens: 1000])
+    policy = Wardrik.Policy.new!(budget: [tokens: 1000])
     id = "budget-#{System.unique_integer([:positive])}"
 
     {:ok, agent} =
       WardrikCore.start_agent(
         agent_id: id,
         model: "anthropic:claude-haiku-4-5",
-        middleware: [{WardrikPolicy.Middleware, policy}]
+        middleware: [{Wardrik.Policy.Middleware, policy}]
       )
 
     :ok = WardrikCore.ask(agent, "Hello.")

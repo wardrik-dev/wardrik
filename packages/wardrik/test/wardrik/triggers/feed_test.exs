@@ -1,7 +1,7 @@
-defmodule WardrikTriggers.FeedTest do
+defmodule Wardrik.Triggers.FeedTest do
   use ExUnit.Case, async: true
 
-  alias WardrikTriggers.Feed
+  alias Wardrik.Triggers.Feed
 
   @rss """
   <?xml version="1.0"?>

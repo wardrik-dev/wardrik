@@ -1,36 +1,36 @@
-defmodule WardrikTriggersTest do
+defmodule Wardrik.TriggersTest do
   use ExUnit.Case, async: false
 
-  alias WardrikTriggers.Test.FailingStore
-  alias WardrikTriggers.Trigger
+  alias Wardrik.Triggers.Test.FailingStore
+  alias Wardrik.Triggers.Trigger
 
   @agent "acme/digest"
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     name = :"triggers #{context.test}"
     answer = Map.get(context, :answer, :asked)
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
-      {WardrikTriggers,
+      {Wardrik.Triggers,
        name: name,
        store: store,
-       target: {WardrikTriggers.Test.Target, %{test: self(), answer: answer}},
+       target: {Wardrik.Triggers.Test.Target, %{test: self(), answer: answer}},
        req_options: [plug: {Req.Test, __MODULE__}, retry_delay: 0],
        reconcile: :infinity}
     )
 
-    %{triggers: name, store: WardrikStore.scope(store, "wardrik_triggers")}
+    %{triggers: name, store: Wardrik.Store.scope(store, "wardrik_triggers")}
   end
 
   defp due(store, triggers, name, ago) do
     key = "triggers/" <> URI.encode_www_form(@agent) <> "/" <> name
-    {record, _vsn} = WardrikStore.lookup(store, key)
+    {record, _vsn} = Wardrik.Store.lookup(store, key)
     next_at = DateTime.utc_now() |> DateTime.add(-ago) |> DateTime.to_iso8601()
-    {:ok, _vsn} = WardrikStore.put(store, key, %{record | "next_at" => next_at})
-    :ok = WardrikTriggers.reconcile(triggers)
+    {:ok, _vsn} = Wardrik.Store.put(store, key, %{record | "next_at" => next_at})
+    :ok = Wardrik.Triggers.reconcile(triggers)
   end
 
   defp feed(items) do
@@ -50,38 +50,38 @@ defmodule WardrikTriggersTest do
 
   test "says which triggers aren't started" do
     assert_raise ArgumentError, ~r/^MyApp.Missing isn't started/, fn ->
-      WardrikTriggers.list(MyApp.Missing, "acme/digest")
+      Wardrik.Triggers.list(MyApp.Missing, "acme/digest")
     end
   end
 
   describe "keeping triggers" do
     test "gives an agent its triggers, each with its next run", %{triggers: triggers} do
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Go."}
         ])
 
       assert [{%Trigger{name: "daily"}, %DateTime{} = next_at}] =
-               WardrikTriggers.list(triggers, @agent)
+               Wardrik.Triggers.list(triggers, @agent)
 
       assert DateTime.after?(next_at, DateTime.utc_now())
     end
 
     test "gives each agent's earliest scheduled run, in one read", %{triggers: triggers} do
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{"name" => "daily", "every" => "1d", "prompt" => "Go."},
           %{"name" => "hourly", "every" => "1h", "prompt" => "Go."}
         ])
 
       :ok =
-        WardrikTriggers.put(triggers, "acme/other", [
+        Wardrik.Triggers.put(triggers, "acme/other", [
           %{"name" => "hook", "webhook" => %{"secret" => "${HOOK_SECRET}"}, "prompt" => "Go."}
         ])
 
-      [_daily, {_hourly, hourly}] = WardrikTriggers.list(triggers, @agent)
+      [_daily, {_hourly, hourly}] = Wardrik.Triggers.list(triggers, @agent)
 
-      assert WardrikTriggers.next_runs(triggers, [@agent, "acme/other", "acme/none"]) ==
+      assert Wardrik.Triggers.next_runs(triggers, [@agent, "acme/other", "acme/none"]) ==
                %{@agent => hourly}
     end
 
@@ -89,63 +89,63 @@ defmodule WardrikTriggersTest do
       triggers: triggers
     } do
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{"name" => "a", "every" => "1d", "prompt" => "Go."},
           %{"name" => "b", "every" => "1h", "prompt" => "Go."}
         ])
 
-      [{_a, next_at}, _b] = WardrikTriggers.list(triggers, @agent)
+      [{_a, next_at}, _b] = Wardrik.Triggers.list(triggers, @agent)
 
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{"name" => "a", "every" => "1d", "prompt" => "Changed."}
         ])
 
-      assert [{%Trigger{prompt: "Changed."}, ^next_at}] = WardrikTriggers.list(triggers, @agent)
+      assert [{%Trigger{prompt: "Changed."}, ^next_at}] = Wardrik.Triggers.list(triggers, @agent)
 
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{"name" => "a", "every" => "2d", "prompt" => "Go."}
         ])
 
-      assert [{_a, moved}] = WardrikTriggers.list(triggers, @agent)
+      assert [{_a, moved}] = Wardrik.Triggers.list(triggers, @agent)
       refute moved == next_at
 
-      :ok = WardrikTriggers.put(triggers, @agent, [])
-      assert WardrikTriggers.list(triggers, @agent) == []
+      :ok = Wardrik.Triggers.put(triggers, @agent, [])
+      assert Wardrik.Triggers.list(triggers, @agent) == []
     end
 
     test "sets and removes one trigger, and says what doesn't read", %{triggers: triggers} do
       assert {:ok, %Trigger{name: "hook"}} =
-               WardrikTriggers.set(triggers, @agent, %{
+               Wardrik.Triggers.set(triggers, @agent, %{
                  "name" => "hook",
                  "webhook" => %{"secret" => "${HOOK_SECRET}"},
                  "prompt" => "Go."
                })
 
-      assert [{%Trigger{name: "hook"}, nil}] = WardrikTriggers.list(triggers, @agent)
-      assert :ok = WardrikTriggers.remove(triggers, agent_id: @agent, name: "hook")
+      assert [{%Trigger{name: "hook"}, nil}] = Wardrik.Triggers.list(triggers, @agent)
+      assert :ok = Wardrik.Triggers.remove(triggers, agent_id: @agent, name: "hook")
 
       assert {:error, :not_found} =
-               WardrikTriggers.remove(triggers, agent_id: @agent, name: "hook")
+               Wardrik.Triggers.remove(triggers, agent_id: @agent, name: "hook")
 
       assert {:error, "a trigger has every, or a webhook"} =
-               WardrikTriggers.set(triggers, @agent, %{"prompt" => "Go."})
+               Wardrik.Triggers.set(triggers, @agent, %{"prompt" => "Go."})
 
       assert {:error, "a trigger has every" <> _} =
-               WardrikTriggers.put(triggers, @agent, [%{"prompt" => "Go."}])
+               Wardrik.Triggers.put(triggers, @agent, [%{"prompt" => "Go."}])
     end
 
     test "says when the store fails partway, and finishes the change when put again", context do
       store = FailingStore.new(:"failing #{context.test}")
       triggers = :"failing triggers #{context.test}"
-      start_supervised!({WardrikStore, store}, id: :failing_store)
+      start_supervised!({Wardrik.Store, store}, id: :failing_store)
 
       start_supervised!(
-        {WardrikTriggers,
+        {Wardrik.Triggers,
          name: triggers,
          store: store,
-         target: {WardrikTriggers.Test.Target, %{test: self(), answer: :asked}},
+         target: {Wardrik.Triggers.Test.Target, %{test: self(), answer: :asked}},
          reconcile: :infinity},
         id: :failing_triggers
       )
@@ -154,26 +154,26 @@ defmodule WardrikTriggersTest do
       later = for name <- ~w(a d), do: %{"name" => name, "every" => "1d", "prompt" => "Again."}
 
       for n <- 1..4 do
-        :ok = WardrikTriggers.put(triggers, @agent, before)
+        :ok = Wardrik.Triggers.put(triggers, @agent, before)
         FailingStore.fail_on(store, n)
 
-        assert {:error, :unavailable} = WardrikTriggers.put(triggers, @agent, later)
-        assert :ok = WardrikTriggers.put(triggers, @agent, later)
+        assert {:error, :unavailable} = Wardrik.Triggers.put(triggers, @agent, later)
+        assert :ok = Wardrik.Triggers.put(triggers, @agent, later)
 
         assert [{%Trigger{name: "a", prompt: "Again."}, _}, {%Trigger{name: "d"}, _}] =
-                 WardrikTriggers.list(triggers, @agent)
+                 Wardrik.Triggers.list(triggers, @agent)
       end
 
       FailingStore.fail_on(store, 1)
-      assert {:error, :unavailable} = WardrikTriggers.set(triggers, @agent, hd(before))
-      assert [{%Trigger{prompt: "Again."}, _}, _d] = WardrikTriggers.list(triggers, @agent)
+      assert {:error, :unavailable} = Wardrik.Triggers.set(triggers, @agent, hd(before))
+      assert [{%Trigger{prompt: "Again."}, _}, _d] = Wardrik.Triggers.list(triggers, @agent)
     end
   end
 
   describe "on a clock" do
     setup %{triggers: triggers} do
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{"name" => "daily", "every" => "1d", "prompt" => "Write it."}
         ])
     end
@@ -189,7 +189,7 @@ defmodule WardrikTriggersTest do
 
       assert_receive {:fired, @agent, "daily", :asked}
 
-      assert [{_daily, next_at}] = WardrikTriggers.list(triggers, @agent)
+      assert [{_daily, next_at}] = Wardrik.Triggers.list(triggers, @agent)
       assert DateTime.diff(next_at, DateTime.utc_now(), :hour) >= 23
     end
 
@@ -211,7 +211,7 @@ defmodule WardrikTriggersTest do
       assert_receive {:fired, @agent, "daily", :asked}
 
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{"name" => "daily", "every" => "1d", "missed" => "skip", "prompt" => "Write it."}
         ])
 
@@ -225,7 +225,7 @@ defmodule WardrikTriggersTest do
   describe "watching a feed" do
     setup %{triggers: triggers} do
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{
             "name" => "rivals",
             "every" => "6h",
@@ -272,7 +272,7 @@ defmodule WardrikTriggersTest do
   describe "receiving a webhook" do
     setup %{triggers: triggers} do
       :ok =
-        WardrikTriggers.put(triggers, @agent, [
+        Wardrik.Triggers.put(triggers, @agent, [
           %{
             "name" => "issues",
             "webhook" => %{"secret" => "${HOOK_SECRET}"},
@@ -288,7 +288,7 @@ defmodule WardrikTriggersTest do
 
     test "asks the agent about each request once", %{triggers: triggers} do
       assert :ok =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "issues",
                  request: hook("{\"id\":1}")
@@ -300,7 +300,7 @@ defmodule WardrikTriggersTest do
       assert_receive {:fired, @agent, "issues", :asked}
 
       assert :ok =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "issues",
                  request: hook("{\"id\":1}")
@@ -311,28 +311,28 @@ defmodule WardrikTriggersTest do
 
     test "turns away what doesn't prove itself, or isn't a webhook", %{triggers: triggers} do
       assert {:error, :not_found} =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "issues",
                  request: hook("{}", "nope")
                )
 
       assert {:error, :not_found} =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "signed",
                  request: hook("{}")
                )
 
       assert {:error, :not_found} =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "daily",
                  request: hook("{}")
                )
 
       assert {:error, :not_found} =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "missing",
                  request: hook("{}")
@@ -346,14 +346,14 @@ defmodule WardrikTriggersTest do
       triggers: triggers
     } do
       assert {:error, :busy} =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "issues",
                  request: hook("{}")
                )
 
       assert {:error, :busy} =
-               WardrikTriggers.deliver(triggers,
+               Wardrik.Triggers.deliver(triggers,
                  agent_id: @agent,
                  name: "issues",
                  request: hook("{}")

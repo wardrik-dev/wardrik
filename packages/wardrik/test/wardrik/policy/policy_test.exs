@@ -1,12 +1,12 @@
-defmodule WardrikPolicyTest do
+defmodule Wardrik.PolicyTest do
   use ExUnit.Case, async: true
 
-  doctest WardrikPolicy
+  doctest Wardrik.Policy
 
   describe "decide/4" do
     setup do
       policy =
-        WardrikPolicy.new!(
+        Wardrik.Policy.new!(
           allow: ["web_search", "write_file(notes/*)", "books/create_bill(amount < 1000)"],
           ask: %{"books/create_bill(amount >= 1000)" => "A bill this size needs a person."},
           deny: %{
@@ -19,76 +19,78 @@ defmodule WardrikPolicyTest do
     end
 
     test "decides each call the way the rules name it", %{policy: policy} do
-      assert :allow = WardrikPolicy.decide(policy, "web_search")
-      assert :allow = WardrikPolicy.decide(policy, "write_file", resources: ["notes/today.md"])
+      assert :allow = Wardrik.Policy.decide(policy, "web_search")
+      assert :allow = Wardrik.Policy.decide(policy, "write_file", resources: ["notes/today.md"])
 
       assert :allow =
-               WardrikPolicy.decide(policy, "books__create_bill", arguments: %{"amount" => 50})
+               Wardrik.Policy.decide(policy, "books__create_bill", arguments: %{"amount" => 50})
 
       assert {:ask, "A bill this size needs a person."} =
-               WardrikPolicy.decide(policy, "books__create_bill", arguments: %{"amount" => 9400})
+               Wardrik.Policy.decide(policy, "books__create_bill", arguments: %{"amount" => 9400})
 
       assert {:deny, "Mail stays in the company."} =
-               WardrikPolicy.decide(policy, "email__send", arguments: %{"to" => "x@evil.example"})
+               Wardrik.Policy.decide(policy, "email__send",
+                 arguments: %{"to" => "x@evil.example"}
+               )
 
-      assert {:deny, "No shell."} = WardrikPolicy.decide(policy, "shell__exec")
+      assert {:deny, "No shell."} = Wardrik.Policy.decide(policy, "shell__exec")
     end
 
     test "a call no rule names follows the default", %{policy: policy} do
-      assert :allow = WardrikPolicy.decide(policy, "write_file", resources: ["secrets/key"])
+      assert :allow = Wardrik.Policy.decide(policy, "write_file", resources: ["secrets/key"])
 
       assert {:deny, "write_file is not allowed for this agent."} =
-               WardrikPolicy.decide(%{policy | default: :deny}, "write_file",
+               Wardrik.Policy.decide(%{policy | default: :deny}, "write_file",
                  resources: ["secrets/key"]
                )
     end
 
     test "the strictest rule wins" do
-      policy = WardrikPolicy.new!(allow: ["github/*"], deny: ["github/delete_*"])
+      policy = Wardrik.Policy.new!(allow: ["github/*"], deny: ["github/delete_*"])
 
-      assert :allow = WardrikPolicy.decide(policy, "github__create_issue")
-      assert {:deny, _} = WardrikPolicy.decide(policy, "github__delete_repo")
+      assert :allow = Wardrik.Policy.decide(policy, "github__create_issue")
+      assert {:deny, _} = Wardrik.Policy.decide(policy, "github__delete_repo")
     end
 
     test "reads arguments the way a model writes them", %{policy: policy} do
       assert {:ask, _} =
-               WardrikPolicy.decide(policy, "books__create_bill",
+               Wardrik.Policy.decide(policy, "books__create_bill",
                  arguments: %{"amount" => "9400"}
                )
 
       assert {:ask, _} =
-               WardrikPolicy.decide(policy, "books__create_bill",
+               Wardrik.Policy.decide(policy, "books__create_bill",
                  arguments: %{"amount" => "$9,400"}
                )
 
-      assert :allow = WardrikPolicy.decide(policy, "books__create_bill", arguments: %{})
+      assert :allow = Wardrik.Policy.decide(policy, "books__create_bill", arguments: %{})
     end
   end
 
   describe "explain/3" do
     test "names what caused the decision" do
-      policy = WardrikPolicy.new!(allow: ["write_file(notes/*)"], deny: ["shell/*"])
+      policy = Wardrik.Policy.new!(allow: ["write_file(notes/*)"], deny: ["shell/*"])
 
-      assert %WardrikPolicy.Decision{effect: :allow, rule: "write_file(notes/*)", cause: :rule} =
-               WardrikPolicy.explain(policy, "write_file", resources: ["notes/a"])
+      assert %Wardrik.Policy.Decision{effect: :allow, rule: "write_file(notes/*)", cause: :rule} =
+               Wardrik.Policy.explain(policy, "write_file", resources: ["notes/a"])
 
-      assert %WardrikPolicy.Decision{effect: :allow, rule: nil, cause: :no_rule} =
-               WardrikPolicy.explain(policy, "web_search")
+      assert %Wardrik.Policy.Decision{effect: :allow, rule: nil, cause: :no_rule} =
+               Wardrik.Policy.explain(policy, "web_search")
 
-      assert %WardrikPolicy.Decision{effect: :allow, cause: :no_rule} =
-               WardrikPolicy.explain(policy, "write_file", resources: ["notes/a", "secrets/key"])
+      assert %Wardrik.Policy.Decision{effect: :allow, cause: :no_rule} =
+               Wardrik.Policy.explain(policy, "write_file", resources: ["notes/a", "secrets/key"])
     end
   end
 
   describe "several policies" do
     setup do
       org =
-        WardrikPolicy.new!([allow: ["stripe/*"], ask: ["books/*"], deny: ["shell/*"]],
+        Wardrik.Policy.new!([allow: ["stripe/*"], ask: ["books/*"], deny: ["shell/*"]],
           name: "acme"
         )
 
       agent =
-        WardrikPolicy.new!([deny: ["stripe/refund"], allow: ["shell/*", "refund_order"]],
+        Wardrik.Policy.new!([deny: ["stripe/refund"], allow: ["shell/*", "refund_order"]],
           name: "books"
         )
 
@@ -96,37 +98,39 @@ defmodule WardrikPolicyTest do
     end
 
     test "any deny wins, so an agent's own policy can narrow its org's", %{org: org, agent: agent} do
-      assert %WardrikPolicy.Decision{effect: :deny, policy: "books"} =
-               WardrikPolicy.explain([org, agent], "stripe__refund")
+      assert %Wardrik.Policy.Decision{effect: :deny, policy: "books"} =
+               Wardrik.Policy.explain([org, agent], "stripe__refund")
     end
 
     test "an agent's own allow can't widen its org's", %{org: org, agent: agent} do
-      assert %WardrikPolicy.Decision{effect: :deny, policy: "acme"} =
-               WardrikPolicy.explain([org, agent], "shell__exec")
+      assert %Wardrik.Policy.Decision{effect: :deny, policy: "acme"} =
+               Wardrik.Policy.explain([org, agent], "shell__exec")
 
-      assert %WardrikPolicy.Decision{effect: :ask, policy: "acme"} =
-               WardrikPolicy.explain([agent, org], "books__create_bill")
+      assert %Wardrik.Policy.Decision{effect: :ask, policy: "acme"} =
+               Wardrik.Policy.explain([agent, org], "books__create_bill")
     end
 
     test "an agent's own allow can't lift its org's default", %{agent: agent} do
-      org = WardrikPolicy.new!([default: [read_only: :allow, else: :ask]], name: "acme")
+      org = Wardrik.Policy.new!([default: [read_only: :allow, else: :ask]], name: "acme")
 
-      assert %WardrikPolicy.Decision{effect: :ask, policy: "acme", cause: :no_rule} =
-               WardrikPolicy.explain([org, agent], "refund_order")
+      assert %Wardrik.Policy.Decision{effect: :ask, policy: "acme", cause: :no_rule} =
+               Wardrik.Policy.explain([org, agent], "refund_order")
 
-      assert %WardrikPolicy.Decision{effect: :allow} =
-               WardrikPolicy.explain([org, agent], "list_issues", annotations: %{read_only: true})
+      assert %Wardrik.Policy.Decision{effect: :allow} =
+               Wardrik.Policy.explain([org, agent], "list_issues",
+                 annotations: %{read_only: true}
+               )
     end
 
     test "no policies allow everything" do
-      assert :allow = WardrikPolicy.decide([], "anything")
+      assert :allow = Wardrik.Policy.decide([], "anything")
     end
   end
 
   describe "a default by annotation" do
     setup do
       policy =
-        WardrikPolicy.new!(
+        Wardrik.Policy.new!(
           allow: ["refund_order"],
           default: [destructive: :deny, read_only: :allow, else: :ask]
         )
@@ -135,46 +139,46 @@ defmodule WardrikPolicyTest do
     end
 
     test "decides a call no rule names by the tool's annotations", %{policy: policy} do
-      assert :allow = WardrikPolicy.decide(policy, "list", annotations: %{read_only: true})
-      assert {:ask, _} = WardrikPolicy.decide(policy, "open_issue")
+      assert :allow = Wardrik.Policy.decide(policy, "list", annotations: %{read_only: true})
+      assert {:ask, _} = Wardrik.Policy.decide(policy, "open_issue")
 
       assert {:ask, _} =
-               WardrikPolicy.decide(policy, "open_issue", annotations: %{read_only: nil})
+               Wardrik.Policy.decide(policy, "open_issue", annotations: %{read_only: nil})
 
-      assert {:deny, _} = WardrikPolicy.decide(policy, "drop", annotations: %{destructive: true})
+      assert {:deny, _} = Wardrik.Policy.decide(policy, "drop", annotations: %{destructive: true})
     end
 
     test "a rule that names the call still decides it", %{policy: policy} do
-      assert :allow = WardrikPolicy.decide(policy, "refund_order")
+      assert :allow = Wardrik.Policy.decide(policy, "refund_order")
     end
 
     test "the strictest of the tool's annotations wins", %{policy: policy} do
       assert {:deny, _} =
-               WardrikPolicy.decide(policy, "purge",
+               Wardrik.Policy.decide(policy, "purge",
                  annotations: %{read_only: true, destructive: true}
                )
     end
 
     test "allows the rest unless else says" do
-      policy = WardrikPolicy.new!(default: [read_only: :allow])
+      policy = Wardrik.Policy.new!(default: [read_only: :allow])
 
-      assert :allow = WardrikPolicy.decide(policy, "anything")
+      assert :allow = Wardrik.Policy.decide(policy, "anything")
     end
 
     test "reads from a file the same way" do
       {:ok, policy} =
-        WardrikPolicy.decode(%{"default" => %{"read_only" => "allow", "else" => "ask"}})
+        Wardrik.Policy.decode(%{"default" => %{"read_only" => "allow", "else" => "ask"}})
 
-      assert :allow = WardrikPolicy.decide(policy, "list", annotations: %{read_only: true})
-      assert {:ask, _} = WardrikPolicy.decide(policy, "open_issue")
+      assert :allow = Wardrik.Policy.decide(policy, "list", annotations: %{read_only: true})
+      assert {:ask, _} = Wardrik.Policy.decide(policy, "open_issue")
     end
 
     test "says what is wrong with a default it can't read" do
       assert {:error, "default gives read_only \"sometimes\", which is not allow, ask or deny"} =
-               WardrikPolicy.decode(%{"default" => %{"read_only" => "sometimes"}})
+               Wardrik.Policy.decode(%{"default" => %{"read_only" => "sometimes"}})
 
       assert {:error, "default is allow, ask or deny" <> _} =
-               WardrikPolicy.decode(%{"default" => "maybe"})
+               Wardrik.Policy.decode(%{"default" => "maybe"})
     end
   end
 
@@ -198,9 +202,9 @@ defmodule WardrikPolicyTest do
         }
       }
 
-      assert {:ok, %WardrikPolicy{budget: budget, judge: judge}} = WardrikPolicy.decode(fields)
+      assert {:ok, %Wardrik.Policy{budget: budget, judge: judge}} = Wardrik.Policy.decode(fields)
 
-      assert %WardrikPolicy.Budget{
+      assert %Wardrik.Policy.Budget{
                tokens: 400_000,
                per: :day,
                timezone: "America/Los_Angeles",
@@ -209,7 +213,7 @@ defmodule WardrikPolicyTest do
                on_exhausted: :deny
              } = budget
 
-      assert %WardrikPolicy.Judge{
+      assert %Wardrik.Policy.Judge{
                model: "anthropic:claude-haiku-4-5",
                questions: [%{question: "Does it send money?", tools: ["books/*"], ask: 0.5}]
              } = judge
@@ -217,18 +221,18 @@ defmodule WardrikPolicyTest do
 
     test "says what is wrong with a budget or a judge it can't read" do
       assert {:error, "per is one of" <> _} =
-               WardrikPolicy.decode(%{"budget" => %{"usd" => 5, "per" => "fortnight"}})
+               Wardrik.Policy.decode(%{"budget" => %{"usd" => 5, "per" => "fortnight"}})
 
       assert {:error, "cap is not a setting of a budget" <> _} =
-               WardrikPolicy.decode(%{"budget" => %{"cap" => 5}})
+               Wardrik.Policy.decode(%{"budget" => %{"cap" => 5}})
 
       assert {:error, "grant is a map of" <> _} =
-               WardrikPolicy.decode(%{"budget" => %{"usd" => 5, "grant" => 2}})
+               Wardrik.Policy.decode(%{"budget" => %{"usd" => 5, "grant" => 2}})
 
-      assert {:error, "a budget is a map" <> _} = WardrikPolicy.decode(%{"budget" => 5})
+      assert {:error, "a budget is a map" <> _} = Wardrik.Policy.decode(%{"budget" => 5})
 
       assert {:error, "each of a judge's questions has a question"} =
-               WardrikPolicy.decode(%{"judge" => %{"questions" => [%{"ask" => 0.5}]}})
+               Wardrik.Policy.decode(%{"judge" => %{"questions" => [%{"ask" => 0.5}]}})
 
       for {question, message} <- [
             {%{"question" => "Publish?"},
@@ -239,28 +243,28 @@ defmodule WardrikPolicyTest do
              "a question's tools name tools alone, as books/*, without their arguments"}
           ] do
         assert {:error, ^message} =
-                 WardrikPolicy.decode(%{"judge" => %{"questions" => [question]}})
+                 Wardrik.Policy.decode(%{"judge" => %{"questions" => [question]}})
       end
 
       assert {:error, "a judge's questions are a list"} =
-               WardrikPolicy.decode(%{"judge" => %{"questions" => "all"}})
+               Wardrik.Policy.decode(%{"judge" => %{"questions" => "all"}})
 
-      assert {:error, "a judge is a map" <> _} = WardrikPolicy.decode(%{"judge" => "yes"})
+      assert {:error, "a judge is a map" <> _} = Wardrik.Policy.decode(%{"judge" => "yes"})
     end
 
     test "says a setting named by an atom is not one" do
       assert {:error, ":default is not a setting of a policy; settings are strings, one of" <> _} =
-               WardrikPolicy.decode(%{default: :ask})
+               Wardrik.Policy.decode(%{default: :ask})
 
       assert {:error, ":usd is not a setting of a budget; settings are strings, one of" <> _} =
-               WardrikPolicy.decode(%{"budget" => %{usd: 5}})
+               Wardrik.Policy.decode(%{"budget" => %{usd: 5}})
     end
   end
 
   describe "to_json/1" do
     test "encodes a policy as the rules decode/2 reads" do
       policy =
-        WardrikPolicy.new!(
+        Wardrik.Policy.new!(
           allow: ["web_search", "books/create_bill(amount < 1000)"],
           ask: %{"books/create_bill(amount >= 1000)" => "A bill this size needs a person."},
           deny: ["shell/*", "email/send(to != *@acme.com)"],
@@ -273,49 +277,49 @@ defmodule WardrikPolicyTest do
           ]
         )
 
-      json = WardrikPolicy.to_json(policy)
+      json = Wardrik.Policy.to_json(policy)
 
       assert json == json |> JSON.encode!() |> JSON.decode!()
-      assert {:ok, ^policy} = WardrikPolicy.decode(json)
+      assert {:ok, ^policy} = Wardrik.Policy.decode(json)
     end
 
     test "leaves out what a policy doesn't set" do
-      assert WardrikPolicy.to_json(WardrikPolicy.new!(deny: ["shell/*"])) == %{
+      assert Wardrik.Policy.to_json(Wardrik.Policy.new!(deny: ["shell/*"])) == %{
                "deny" => ["shell/*"]
              }
 
-      assert %{"default" => "deny"} = WardrikPolicy.to_json(WardrikPolicy.new!(default: :deny))
+      assert %{"default" => "deny"} = Wardrik.Policy.to_json(Wardrik.Policy.new!(default: :deny))
     end
   end
 
   describe "new!/1" do
     test "reads a policy written as a file writes it" do
-      assert %WardrikPolicy{default: :ask, rules: [_]} =
-               WardrikPolicy.new!(%{"deny" => ["shell/*"], "default" => "ask"})
+      assert %Wardrik.Policy{default: :ask, rules: [_]} =
+               Wardrik.Policy.new!(%{"deny" => ["shell/*"], "default" => "ask"})
     end
 
     test "says what is wrong with a policy it can't read" do
       assert_raise ArgumentError, ~r/maybe is not a setting/, fn ->
-        WardrikPolicy.new!(maybe: ["web_search"])
+        Wardrik.Policy.new!(maybe: ["web_search"])
       end
 
       assert_raise ArgumentError, ~r/never closes/, fn ->
-        WardrikPolicy.new!(deny: ["books/*(amount > 5"])
+        Wardrik.Policy.new!(deny: ["books/*(amount > 5"])
       end
 
       assert_raise ArgumentError, ~r/YAML reads as a key/, fn ->
-        WardrikPolicy.new!(%{"deny" => [%{"books/*(memo" => "x)"}]})
+        Wardrik.Policy.new!(%{"deny" => [%{"books/*(memo" => "x)"}]})
       end
     end
 
     test "reads a budget and a judge as decode/2 does" do
       policy =
-        WardrikPolicy.new!(
+        Wardrik.Policy.new!(
           budget: [tokens: 400_000, per: :week, grant: [tokens: 1000], on_exhausted: :deny],
           judge: [questions: [[question: "Does it send money?", tools: ["books/*"], ask: 0.5]]]
         )
 
-      assert %WardrikPolicy.Budget{per: :week, grant: [tokens: 1000], on_exhausted: :deny} =
+      assert %Wardrik.Policy.Budget{per: :week, grant: [tokens: 1000], on_exhausted: :deny} =
                policy.budget
 
       assert [%{question: "Does it send money?", tools: ["books/*"], ask: 0.5}] =
@@ -341,8 +345,8 @@ defmodule WardrikPolicyTest do
             {[budget: [cap: 5]], %{"budget" => %{"cap" => 5}}},
             {[judge: "yes"], %{"judge" => "yes"}}
           ] do
-        {:error, message} = WardrikPolicy.decode(file)
-        assert_raise ArgumentError, message, fn -> WardrikPolicy.new!(fields) end
+        {:error, message} = Wardrik.Policy.decode(file)
+        assert_raise ArgumentError, message, fn -> Wardrik.Policy.new!(fields) end
       end
     end
   end

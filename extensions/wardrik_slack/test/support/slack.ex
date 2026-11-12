@@ -8,12 +8,12 @@ defmodule WardrikSlack.Test do
 
   @people %{"U1" => "maria", "U2" => "jon", "U3" => "ana"}
 
-  alias WardrikTesting.Server
+  alias Wardrik.Testing.Server
 
   def start_slack(context) do
     n = System.unique_integer([:positive])
     name = :"wardrik #{n}"
-    store = WardrikStore.ETS.new(name: :"store #{n}")
+    store = Wardrik.Store.ETS.new(name: :"store #{n}")
     events = Server.events(name)
     vault = :"vault #{n}"
     test = self()
@@ -43,14 +43,14 @@ defmodule WardrikSlack.Test do
           store: store
         ]
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
-      {WardrikEvents, name: events, store: store, deployment: "test", retention: :infinity}
+      {Wardrik.EventLog, name: events, store: store, deployment: "test", retention: :infinity}
     )
 
     start_supervised!(
-      {WardrikVault, name: vault, store: store, keys: [WardrikVault.generate_key()]}
+      {Wardrik.Vault, name: vault, store: store, keys: [Wardrik.Vault.generate_key()]}
     )
 
     :ok = Server.start(name, authorize: &deciders/1)
@@ -58,7 +58,7 @@ defmodule WardrikSlack.Test do
 
     owner = Wardrik.Scope.new(Server, wardrik: name, principal: "acme")
 
-    channel = WardrikChannel.channel(WardrikSlack, options)
+    channel = Wardrik.Chat.channel(WardrikSlack, options)
 
     %{wardrik: name, owner: owner, channel: channel, options: options, events: events}
   end
@@ -184,10 +184,10 @@ end
 defmodule WardrikSlack.Test.Members do
   @moduledoc "Knows the Slack members of `:members` as their users, as your app's identities would."
 
-  @behaviour WardrikChannel.Identities
+  @behaviour Wardrik.Chat.Identities
 
-  @impl WardrikChannel.Identities
-  def identify(%WardrikChannel.Identities.Request{member: member}, opts) do
+  @impl Wardrik.Chat.Identities
+  def identify(%Wardrik.Chat.Identities.Request{member: member}, opts) do
     case Map.fetch(Keyword.fetch!(opts, :members), member) do
       {:ok, user} -> {:ok, %WardrikCore.Principal{id: user}}
       :error -> {:error, "Nobody here knows you yet."}

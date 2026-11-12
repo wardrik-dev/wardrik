@@ -131,7 +131,7 @@ Wardrik.Agent.forget(triage, "agt_books")
 
 ## Channels
 
-A chat member acts as whoever `WardrikChannel.Identities` says, with `actor: {:channel, name}`.
+A chat member acts as whoever `Wardrik.Chat.Identities` says, with `actor: {:channel, name}`.
 The context has `:installation`, and `:asked_by` when deciding:
 
 ```elixir
@@ -147,12 +147,12 @@ Wardrik.Agent.approve(member, agent: "agt_books", interrupt: "toolu_01")
 
 ## Over HTTP
 
-Your app's sessions or tokens are the credential. A `WardrikHTTP.Authenticator` turns each
+Your app's sessions or tokens are the credential. A `Wardrik.HTTP.Authenticator` turns each
 request into a scope:
 
 ```elixir
 defmodule MyAppWeb.WardrikSession do
-  @behaviour WardrikHTTP.Authenticator
+  @behaviour Wardrik.HTTP.Authenticator
 
   @impl true
   def authenticate(%{conn: conn, wardrik: wardrik}, _opts) do

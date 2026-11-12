@@ -1,9 +1,9 @@
-defmodule WardrikEvents.Timeline do
+defmodule Wardrik.EventLog.Timeline do
   @moduledoc """
   A view of a conversation: each message people sent, and each run that answered, step by step.
 
-      {timeline, cursor} = WardrikEvents.view(MyApp.Events, "agt_1", WardrikEvents.Timeline)
-      WardrikEvents.Timeline.items(timeline)
+      {timeline, cursor} = Wardrik.EventLog.view(MyApp.Events, "agt_1", Wardrik.EventLog.Timeline)
+      Wardrik.EventLog.Timeline.items(timeline)
 
   To keep a screen current, fold in each new event and redraw what `touched/1` names.
 
@@ -30,9 +30,9 @@ defmodule WardrikEvents.Timeline do
   delegates count toward it, and what it cost counts toward the run.
   """
 
-  @behaviour WardrikEvents.View
+  @behaviour Wardrik.EventLog.View
 
-  alias WardrikEvents.CloudEvent
+  alias Wardrik.EventLog.CloudEvent
 
   defstruct items: %{}, order: [], touched: [], current: nil, delegated: %{}
 
@@ -53,10 +53,10 @@ defmodule WardrikEvents.Timeline do
 
   @error_limit 300
 
-  @impl WardrikEvents.View
+  @impl Wardrik.EventLog.View
   def init(_opts), do: %__MODULE__{}
 
-  @impl WardrikEvents.View
+  @impl Wardrik.EventLog.View
   def handle_event(%{"type" => type, "data" => data} = event, timeline) do
     timeline = %{timeline | touched: []}
 

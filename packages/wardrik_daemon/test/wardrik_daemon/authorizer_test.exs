@@ -46,8 +46,8 @@ defmodule WardrikDaemon.AuthorizerTest do
         ["payments", "growth"]
       )
 
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
-    start_supervised!({WardrikStore, store})
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
+    start_supervised!({Wardrik.Store, store})
 
     ids =
       Map.new(@agents, fn agent ->

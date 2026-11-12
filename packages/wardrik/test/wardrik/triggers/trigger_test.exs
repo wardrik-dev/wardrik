@@ -1,7 +1,7 @@
-defmodule WardrikTriggers.TriggerTest do
+defmodule Wardrik.Triggers.TriggerTest do
   use ExUnit.Case, async: true
 
-  alias WardrikTriggers.Trigger
+  alias Wardrik.Triggers.Trigger
 
   test "reads a trigger on a clock, with what it leaves out" do
     assert {:ok,

@@ -1,11 +1,11 @@
-defmodule WardrikChannel.Inbound do
+defmodule Wardrik.Chat.Inbound do
   @moduledoc """
-  A message someone posted in a room. Adapters pass it to `WardrikChannel.received/2`.
+  A message someone posted in a room. Adapters pass it to `Wardrik.Chat.received/2`.
 
     * `:room` - the room it was posted in.
     * `:thread` - the thread it replies in, or `nil` if it starts one.
     * `:id` - unique in its room. A message passed twice is answered once.
-    * `:sender` - a `WardrikChannel.Member`.
+    * `:sender` - a `Wardrik.Chat.Member`.
     * `:text` - the text, without any mention of the bot.
     * `:mentioned?` - whether it mentioned the bot. `false` unless set.
   """
@@ -17,7 +17,7 @@ defmodule WardrikChannel.Inbound do
           room: String.t(),
           thread: String.t() | nil,
           id: String.t(),
-          sender: WardrikChannel.Member.t(),
+          sender: Wardrik.Chat.Member.t(),
           text: String.t(),
           mentioned?: boolean()
         }

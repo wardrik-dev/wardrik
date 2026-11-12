@@ -1,45 +1,35 @@
-# WardrikEvents
+# Wardrik.EventLog
 
 Keeps each agent's events as [CloudEvents](https://cloudevents.io), in logs you can read back and
 follow.
-
-## Install
-
-```elixir
-def deps do
-  [
-    {:wardrik_events, "~> 0.1.0-rc.6"}
-  ]
-end
-```
 
 ## Start the event log
 
 Run in a fresh IEx session:
 
 ```elixir
-Mix.install([{:wardrik_events, "~> 0.1.0-rc.6"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.10"}])
 
-store = WardrikStore.ETS.new(name: MyApp.Store)
+store = Wardrik.Store.ETS.new(name: MyApp.Store)
 
 children = [
-  {WardrikStore, store},
-  {WardrikEvents, name: MyApp.Events, store: store, deployment: "acme-prod"}
+  {Wardrik.Store, store},
+  {Wardrik.EventLog, name: MyApp.Events, store: store, deployment: "acme-prod"}
 ]
 
 {:ok, _supervisor} = Supervisor.start_link(children, strategy: :one_for_one)
 ```
 
 * Give it to each [WardrikCore](https://hexdocs.pm/wardrik_core) agent as
-  `events: {WardrikEvents, MyApp.Events}`.
-* `WardrikStore.ETS` keeps events in memory. Use `WardrikStore.EKV` to keep them on disk.
-* See `WardrikEvents.start_link/1` for the options.
+  `events: {Wardrik.EventLog, MyApp.Events}`.
+* `Wardrik.Store.ETS` keeps events in memory. Use `Wardrik.Store.EKV` to keep them on disk.
+* See `Wardrik.EventLog.start_link/1` for the options.
 
 ## Read a log
 
 ```elixir
-{:ok, %{events: events, next: next}} = WardrikEvents.page(MyApp.Events, ["agt_1"], limit: 100)
-{:ok, %{events: more}} = WardrikEvents.page(MyApp.Events, ["agt_1"], after: next)
+{:ok, %{events: events, next: next}} = Wardrik.EventLog.page(MyApp.Events, ["agt_1"], limit: 100)
+{:ok, %{events: more}} = Wardrik.EventLog.page(MyApp.Events, ["agt_1"], after: next)
 ```
 
 * `"agt_1"` reads the agent and all its conversations. `{"agt_1", "C1"}` reads one conversation.
@@ -62,11 +52,11 @@ An event:
 ## Follow it
 
 ```elixir
-{:ok, stream} = WardrikEvents.stream(MyApp.Events, [{"agt_1", "C1"}], after: next)
+{:ok, stream} = Wardrik.EventLog.stream(MyApp.Events, [{"agt_1", "C1"}], after: next)
 
 Enum.each(stream, fn {event, cursor} ->
   IO.puts(event["type"])
-  IO.inspect(WardrikEvents.Cursor.encode(cursor), label: "cursor")
+  IO.inspect(Wardrik.EventLog.Cursor.encode(cursor), label: "cursor")
 end)
 ```
 
@@ -80,7 +70,7 @@ Integration example: implement `MyApp.Cursors`, `MyApp.Runs.row/1`, and the `age
 
 ```elixir
 defmodule MyApp.Runs do
-  use WardrikEvents.Listener
+  use Wardrik.EventLog.Listener
 
   @impl true
   def handle(event, listener) do
@@ -108,45 +98,45 @@ children = [
 
 ```elixir
 defmodule MyApp.Shipper do
-  @behaviour WardrikEvents.Sink
+  @behaviour Wardrik.EventLog.Sink
 
   @impl true
   def handle_event(event, opts), do: MyApp.Queue.push(opts[:queue], event)
 end
 
-{WardrikEvents, name: MyApp.Events, store: store, sinks: [{MyApp.Shipper, queue: :events}]}
+{Wardrik.EventLog, name: MyApp.Events, store: store, sinks: [{MyApp.Shipper, queue: :events}]}
 ```
 
 * A sink gets each event once it's kept, agents' and the audit's, in the process that wrote it.
   Return quickly.
 * An event whose node stops first isn't sent. Read on from each agent's log with `page/3`.
-* `WardrikEvents.subscribe(MyApp.Events, :all)` sends every agent's events, live ones too, to the
+* `Wardrik.EventLog.subscribe(MyApp.Events, :all)` sends every agent's events, live ones too, to the
   calling process as they happen.
 
 ## What an agent is doing
 
 ```elixir
-WardrikEvents.activity(MyApp.Events, "agt_1")
+Wardrik.EventLog.activity(MyApp.Events, "agt_1")
 
 # => %{"doing" => [%{"type" => "wardrik.tool_call.started", ...}], "since" => "...", "pending" => 1}
 
-{timeline, _cursor} = WardrikEvents.view(MyApp.Events, "agt_1", WardrikEvents.Timeline)
-WardrikEvents.Timeline.items(timeline)
+{timeline, _cursor} = Wardrik.EventLog.view(MyApp.Events, "agt_1", Wardrik.EventLog.Timeline)
+Wardrik.EventLog.Timeline.items(timeline)
 ```
 
 * A bare agent ID means its main conversation. Pass `{"agt_1", "C1"}` for another.
-* Views: `WardrikEvents.Timeline`, `WardrikEvents.Runs` and `WardrikEvents.Activity`. Write your
-  own with `WardrikEvents.View`.
+* Views: `Wardrik.EventLog.Timeline`, `Wardrik.EventLog.Runs` and `Wardrik.EventLog.Activity`. Write your
+  own with `Wardrik.EventLog.View`.
 
 ## Write events
 
 ```elixir
 data = %{"trigger" => %{"name" => "daily"}, "status" => "asked"}
-:ok = WardrikEvents.append(MyApp.Events, "agt_1", {"trigger.fired", "triggers/daily", data})
+:ok = Wardrik.EventLog.append(MyApp.Events, "agt_1", {"trigger.fired", "triggers/daily", data})
 
 change = {"agent.forgotten", "agents/agt_1", %{"agent" => %{"id" => "agt_1"}}}
-:ok = WardrikEvents.record(MyApp.Events, change, actor: %WardrikCore.Principal{id: "user_42"})
-%{events: changes} = WardrikEvents.audit(MyApp.Events)
+:ok = Wardrik.EventLog.record(MyApp.Events, change, actor: %WardrikCore.Principal{id: "user_42"})
+%{events: changes} = Wardrik.EventLog.audit(MyApp.Events)
 ```
 
 * `append/4` writes to an agent's log, like the agent's own events.

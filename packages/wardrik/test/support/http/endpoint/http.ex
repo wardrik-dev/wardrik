@@ -1,4 +1,4 @@
-defmodule WardrikHTTP.Test do
+defmodule Wardrik.HTTP.Test do
   @moduledoc "Serves a test's own server over HTTP, and asks it as a client would."
 
   import Plug.Conn
@@ -6,16 +6,16 @@ defmodule WardrikHTTP.Test do
 
   def settings(context, opts \\ []),
     do:
-      WardrikHTTP.init(
+      Wardrik.HTTP.Endpoint.init(
         [
-          server: {WardrikTesting.Server, context.name},
-          authenticator: {WardrikHTTP.Test.Authenticator, []}
+          server: {Wardrik.Testing.Server, context.name},
+          authenticator: {Wardrik.HTTP.Test.Authenticator, []}
         ] ++ opts
       )
 
   def start(name, secrets) do
-    :ok = WardrikTesting.Server.start(name)
-    WardrikHTTP.Test.Authenticator.start(name, secrets)
+    :ok = Wardrik.Testing.Server.start(name)
+    Wardrik.HTTP.Test.Authenticator.start(name, secrets)
   end
 
   def request(context, method, path, body \\ nil, headers \\ []) do
@@ -24,7 +24,7 @@ defmodule WardrikHTTP.Test do
     |> put_req_header("authorization", "Bearer " <> context.secret)
     |> put_req_header("content-type", "application/json")
     |> merge_req_headers(headers)
-    |> WardrikHTTP.call(settings(context))
+    |> Wardrik.HTTP.Endpoint.call(settings(context))
   end
 
   def body(conn), do: JSON.decode!(conn.resp_body)

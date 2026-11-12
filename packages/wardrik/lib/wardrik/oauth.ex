@@ -1,13 +1,13 @@
-defmodule WardrikOAuth do
+defmodule Wardrik.OAuth do
   @moduledoc """
-  OAuth sign-in for WardrikCore agents. Tokens are sealed in a `WardrikVault`.
+  OAuth sign-in for WardrikCore agents. Tokens are sealed in a `Wardrik.Vault`.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_oauth#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       children = [
-        {WardrikVault, name: MyApp.Vault, store: store, keys: keys, grants: {WardrikOAuth, MyApp.OAuth}},
-        {WardrikOAuth,
+        {Wardrik.Vault, name: MyApp.Vault, store: store, keys: keys, grants: {Wardrik.OAuth, MyApp.OAuth}},
+        {Wardrik.OAuth,
          name: MyApp.OAuth,
          vault: MyApp.Vault,
          store: store,
@@ -16,45 +16,45 @@ defmodule WardrikOAuth do
          on_granted: {MyApp.Agents, :granted, []}}
       ]
 
-    * Mount `WardrikOAuth.Plug` at `page` to finish sign-ins.
-    * `:resolver` gives the OAuth app each user signs in with. See `WardrikOAuth.Resolver`.
+    * Mount `Wardrik.OAuth.Plug` at `page` to finish sign-ins.
+    * `:resolver` gives the OAuth app each user signs in with. See `Wardrik.OAuth.Resolver`.
     * A token is refreshed only by the OAuth app that issued it.
   """
 
-  @behaviour WardrikVault.Grants
+  @behaviour Wardrik.Vault.Grants
 
   use Supervisor
 
+  alias Wardrik.OAuth.Flow
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Registration
+  alias Wardrik.OAuth.Renewal
+  alias Wardrik.OAuth.Resolver
+  alias Wardrik.OAuth.Token
+  alias Wardrik.Vault.Grants
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
-  alias WardrikOAuth.Flow
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Registration
-  alias WardrikOAuth.Renewal
-  alias WardrikOAuth.Resolver
-  alias WardrikOAuth.Token
-  alias WardrikVault.Grants
-  alias WardrikVault.Secret
 
   @schema NimbleOptions.new!(
             name: [type: :atom, required: true, doc: "The name functions reach it by."],
-            vault: [type: :any, required: true, doc: "The `WardrikVault` grants are sealed in."],
+            vault: [type: :any, required: true, doc: "The `Wardrik.Vault` grants are sealed in."],
             store: [
               type: :any,
               required: true,
-              doc: "The `WardrikStore` for the clients Wardrik registers."
+              doc: "The `Wardrik.Store` for the clients Wardrik registers."
             ],
             page: [
               type: :string,
               required: true,
               doc: """
-              The URL `WardrikOAuth.Plug` is mounted at, as `"https://agents.example.com/oauth"`.
+              The URL `Wardrik.OAuth.Plug` is mounted at, as `"https://agents.example.com/oauth"`.
               """
             ],
             resolver: [
               type: :mod_arg,
               required: true,
               doc: """
-              `{module, config}`, the `WardrikOAuth.Resolver` that gives each user's providers.
+              `{module, config}`, the `Wardrik.OAuth.Resolver` that gives each user's providers.
               """
             ],
             on_granted: [
@@ -87,7 +87,7 @@ defmodule WardrikOAuth do
           )
 
   @doc """
-  Starts `WardrikOAuth`.
+  Starts `Wardrik.OAuth`.
 
   ## Options
 
@@ -106,7 +106,7 @@ defmodule WardrikOAuth do
   @doc """
   Forgets the client Wardrik registered for the provider `key`. Call it when you delete that app.
 
-      :ok = WardrikOAuth.forget_client(MyApp.OAuth, "linear/app_1")
+      :ok = Wardrik.OAuth.forget_client(MyApp.OAuth, "linear/app_1")
   """
   @spec forget_client(atom(), String.t()) :: :ok | {:error, term()}
   def forget_client(oauth, key), do: oauth |> settings() |> Registration.forget(key)
@@ -114,10 +114,10 @@ defmodule WardrikOAuth do
   @doc """
   Starts `principal`'s sign-in with the provider `name`, or returns the one under way.
 
-      WardrikOAuth.authorize(MyApp.OAuth, "github", principal)
+      Wardrik.OAuth.authorize(MyApp.OAuth, "github", principal)
       #=> {:ok, %{url: "https://github.com/login/oauth/authorize?..."}}
 
-      WardrikOAuth.authorize(MyApp.OAuth, "linear", principal)
+      Wardrik.OAuth.authorize(MyApp.OAuth, "linear", principal)
       #=> {:ok, %{url: "https://linear.app/device", code: "WDJB-MJHT"}}
 
   A device sign-in gives the `code` to enter at `url`.
@@ -148,7 +148,7 @@ defmodule WardrikOAuth do
   @doc """
   Returns whether `principal`'s sign-in to the provider `name` is under way.
 
-      WardrikOAuth.signing_in?(MyApp.OAuth, "github", principal)
+      Wardrik.OAuth.signing_in?(MyApp.OAuth, "github", principal)
       #=> true
 
   `false` once it's granted, declined or expired.
@@ -164,9 +164,9 @@ defmodule WardrikOAuth do
   end
 
   @doc """
-  Finishes a browser sign-in from its callback's query params. `WardrikOAuth.Plug` calls it.
+  Finishes a browser sign-in from its callback's query params. `Wardrik.OAuth.Plug` calls it.
 
-      WardrikOAuth.finish(MyApp.OAuth, params, as: current_principal)
+      Wardrik.OAuth.finish(MyApp.OAuth, params, as: current_principal)
       #=> {:ok, %{provider: "github", principal: %WardrikCore.Principal{id: "user:jon"}}}
 
   `as:` is who is signed in to your app at the browser.
@@ -193,11 +193,11 @@ defmodule WardrikOAuth do
     :exit, _ended -> {:error, :no_such_flow}
   end
 
-  @impl WardrikVault.Grants
+  @impl Wardrik.Vault.Grants
   def ask(%Grants.Request{name: name, principal: principal}, oauth),
     do: begin(settings(oauth), name, principal)
 
-  @impl WardrikVault.Grants
+  @impl Wardrik.Vault.Grants
   def renew(%Grants.Request{name: name, principal: principal, grant: %{value: value}}, oauth) do
     settings = settings(oauth)
 
@@ -207,7 +207,7 @@ defmodule WardrikOAuth do
     end
   end
 
-  @impl WardrikVault.Grants
+  @impl Wardrik.Vault.Grants
   def refused(%Grants.Request{name: name, principal: principal}, oauth),
     do: Renewal.expire(settings(oauth), name, principal)
 
@@ -217,14 +217,14 @@ defmodule WardrikOAuth do
 
     value = Token.encode(%{token | provider: provider.key})
     secret = %Secret{principal: principal, name: provider.name, value: value}
-    WardrikVault.put(settings.vault, secret, [kind: :grant] ++ condition)
+    Wardrik.Vault.put(settings.vault, secret, [kind: :grant] ++ condition)
   end
 
   @impl Supervisor
   def init(opts) do
     settings = %{
       vault: Map.fetch!(opts, :vault),
-      store: opts |> Map.fetch!(:store) |> WardrikStore.scope("wardrik_oauth"),
+      store: opts |> Map.fetch!(:store) |> Wardrik.Store.scope("wardrik_oauth"),
       client_name: opts.client_name,
       page: opts |> Map.fetch!(:page) |> String.trim_trailing("/"),
       resolver: opts.resolver,
@@ -251,7 +251,7 @@ defmodule WardrikOAuth do
   rescue
     ArgumentError ->
       reraise ArgumentError,
-              "#{inspect(oauth)} isn't started. Add {WardrikOAuth, name: #{inspect(oauth)}, ...} to your supervision tree, ahead of what uses it.",
+              "#{inspect(oauth)} isn't started. Add {Wardrik.OAuth, name: #{inspect(oauth)}, ...} to your supervision tree, ahead of what uses it.",
               __STACKTRACE__
   end
 
@@ -298,7 +298,7 @@ defmodule WardrikOAuth do
   end
 
   defp over_current(vault, principal, name) do
-    case WardrikVault.lookup(vault, principal, name) do
+    case Wardrik.Vault.lookup(vault, principal, name) do
       {:ok, _kind, _value, vsn} -> [if_vsn: vsn]
       {:error, :not_found} -> [if_vsn: nil]
       _unreadable -> []

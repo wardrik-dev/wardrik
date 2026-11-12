@@ -20,7 +20,7 @@ defmodule Wardrik.Workspaces do
   """
 
   alias Wardrik.Error
-  alias WardrikWorkspace.Mount
+  alias Wardrik.Workspace.Mount
 
   @max_files 20
   @bytes 1_024..262_144
@@ -53,8 +53,8 @@ defmodule Wardrik.Workspaces do
 
       {:ok,
        [
-         capabilities: if(files?, do: [{WardrikWorkspace, base}], else: []),
-         middleware: if(context, do: [{WardrikWorkspace.Context, base ++ context}], else: [])
+         capabilities: if(files?, do: [{Wardrik.Workspace, base}], else: []),
+         middleware: if(context, do: [{Wardrik.Workspace.Context, base ++ context}], else: [])
        ]}
     end
   end

@@ -1,12 +1,12 @@
-defmodule WardrikEvents.RetentionTest do
+defmodule Wardrik.EventLog.RetentionTest do
   use ExUnit.Case, async: false
   use Mimic
 
   import ExUnit.CaptureLog
-  import WardrikEvents.Test.Events
+  import Wardrik.EventLog.Test.Events
 
-  alias WardrikEvents.Cursor
-  alias WardrikEvents.Retention
+  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Retention
 
   setup :start_events
 
@@ -19,7 +19,7 @@ defmodule WardrikEvents.RetentionTest do
 
   defp dropped(events, cursor) do
     {:ok, %{events: [%{"type" => "wardrik.events.dropped"} = dropped | _rest]}} =
-      WardrikEvents.page(events, ["agt_1"], after: Cursor.encode(cursor))
+      Wardrik.EventLog.page(events, ["agt_1"], after: Cursor.encode(cursor))
 
     dropped["data"]
   end
@@ -27,7 +27,7 @@ defmodule WardrikEvents.RetentionTest do
   test "drops the events written before the cutoff, and says so to a reader after them", %{
     events: events
   } do
-    :ok = WardrikEvents.trim(events, ~U[2000-01-03 00:00:00Z])
+    :ok = Wardrik.EventLog.trim(events, ~U[2000-01-03 00:00:00Z])
 
     assert sequences(events, ["agt_1"]) == ["wardrik.events.dropped", "000000000003"]
     assert dropped(events, %{}) == %{"after" => 0, "oldest" => 3}
@@ -38,9 +38,9 @@ defmodule WardrikEvents.RetentionTest do
   end
 
   test "drops what's already dropped once", %{events: events} do
-    :ok = WardrikEvents.trim(events, ~U[2000-01-02 00:00:00Z])
-    :ok = WardrikEvents.trim(events, ~U[2000-01-02 00:00:00Z])
-    :ok = WardrikEvents.trim(events, ~U[2000-01-03 00:00:00Z])
+    :ok = Wardrik.EventLog.trim(events, ~U[2000-01-02 00:00:00Z])
+    :ok = Wardrik.EventLog.trim(events, ~U[2000-01-02 00:00:00Z])
+    :ok = Wardrik.EventLog.trim(events, ~U[2000-01-03 00:00:00Z])
 
     assert dropped(events, %{}) == %{"after" => 0, "oldest" => 3}
   end
@@ -49,11 +49,11 @@ defmodule WardrikEvents.RetentionTest do
     events: events,
     store: store
   } do
-    :ok = WardrikEvents.trim(events, DateTime.add(DateTime.utc_now(), 1, :day))
-    assert {:ok, %{{"agt_1", nil} => 3}} = Cursor.decode(WardrikEvents.head(events, ["agt_1"]))
+    :ok = Wardrik.EventLog.trim(events, DateTime.add(DateTime.utc_now(), 1, :day))
+    assert {:ok, %{{"agt_1", nil} => 3}} = Cursor.decode(Wardrik.EventLog.head(events, ["agt_1"]))
 
-    stop_supervised!(WardrikEvents)
-    start_supervised!({WardrikEvents, name: events, store: store, deployment: "test"})
+    stop_supervised!(Wardrik.EventLog)
+    start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
     trimmed(events)
     stopped(events, "agt_1")
 
@@ -73,14 +73,14 @@ defmodule WardrikEvents.RetentionTest do
   end
 
   test "logs a trim it couldn't make", %{events: events} do
-    expect(WardrikStore, :put, fn _store, _key, _value, _opts -> {:error, :down} end)
+    expect(Wardrik.Store, :put, fn _store, _key, _value, _opts -> {:error, :down} end)
 
-    assert capture_log(fn -> WardrikEvents.trim(events, ~U[2000-01-03 00:00:00Z]) end) =~
+    assert capture_log(fn -> Wardrik.EventLog.trim(events, ~U[2000-01-03 00:00:00Z]) end) =~
              ~s(Couldn't trim {"agt_1", nil}'s events: :down)
   end
 
   test "keeps every event with infinite retention", %{store: store} do
-    start_supervised!({WardrikEvents, name: :infinite, store: store, retention: :infinity},
+    start_supervised!({Wardrik.EventLog, name: :infinite, store: store, retention: :infinity},
       id: :infinite
     )
 

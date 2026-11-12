@@ -1,9 +1,9 @@
-defmodule WardrikTesting.Script do
+defmodule Wardrik.Testing.Script do
   @moduledoc """
-  How `WardrikTesting.Server` answers messages.
+  How `Wardrik.Testing.Server` answers messages.
 
-  Answers are written to the conversation's log if the test started `WardrikEvents` under
-  `WardrikTesting.Server.events/1`.
+  Answers are written to the conversation's log if the test started `Wardrik.EventLog` under
+  `Wardrik.Testing.Server.events/1`.
 
   ## Messages
 
@@ -20,7 +20,7 @@ defmodule WardrikTesting.Script do
   """
 
   alias Wardrik.Scope
-  alias WardrikTesting.Server
+  alias Wardrik.Testing.Server
 
   @doc "Answers the message in `input`, as `agent.ask` does."
   @spec ask(Scope.t(), map()) :: {:ok, map()}
@@ -117,7 +117,7 @@ defmodule WardrikTesting.Script do
     events = Server.events(name)
 
     if Process.whereis(events),
-      do: :ok = WardrikEvents.append(events, conversation, {type, "runs/r1", data}),
+      do: :ok = Wardrik.EventLog.append(events, conversation, {type, "runs/r1", data}),
       else: :ok
   end
 end

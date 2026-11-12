@@ -1,8 +1,8 @@
-defmodule WardrikPolicy.Pattern do
+defmodule Wardrik.Policy.Pattern do
   @moduledoc false
 
-  alias WardrikPolicy.Condition
-  alias WardrikPolicy.Name
+  alias Wardrik.Policy.Condition
+  alias Wardrik.Policy.Name
 
   @enforce_keys [:source, :parts]
   defstruct [:source, :parts, :argument, :conditions]

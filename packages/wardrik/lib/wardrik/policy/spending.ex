@@ -1,12 +1,12 @@
 if Code.ensure_loaded?(WardrikCore.Context) do
-  defmodule WardrikPolicy.Spending do
+  defmodule Wardrik.Policy.Spending do
     @moduledoc false
 
+    alias Wardrik.Policy.Budget
+    alias Wardrik.Policy.Decision
     alias WardrikCore.Context
-    alias WardrikPolicy.Budget
-    alias WardrikPolicy.Decision
 
-    @spec start(Context.t(), [WardrikPolicy.t()]) :: Context.t()
+    @spec start(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def start(context, policies) do
       spent = spent(context)
 
@@ -18,7 +18,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
       Context.put_private(context, Budget, current)
     end
 
-    @spec explain(Context.t(), [WardrikPolicy.t()]) :: Decision.t()
+    @spec explain(Context.t(), [Wardrik.Policy.t()]) :: Decision.t()
     def explain(context, policies) do
       spent = spent(context)
 
@@ -29,16 +29,16 @@ if Code.ensure_loaded?(WardrikCore.Context) do
       |> Decision.strictest()
     end
 
-    @spec grant(Context.t(), [WardrikPolicy.t()]) :: Context.t()
+    @spec grant(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def grant(context, policies), do: update(context, policies, &Budget.grant/2)
 
-    @spec record(Context.t(), [WardrikPolicy.t()]) :: Context.t()
+    @spec record(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def record(context, policies) do
       gained = gained(context)
       count(context, policies, &spend(&1, &2, gained))
     end
 
-    @spec catch_up(Context.t(), [WardrikPolicy.t()]) :: Context.t()
+    @spec catch_up(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def catch_up(context, policies) do
       gained = gained(context)
 
@@ -54,7 +54,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
     end
 
     defp budgeted(policies) do
-      for {%WardrikPolicy{budget: %Budget{}} = policy, index} <- Enum.with_index(policies),
+      for {%Wardrik.Policy{budget: %Budget{}} = policy, index} <- Enum.with_index(policies),
           do: {policy.name || index, policy}
     end
 
@@ -70,7 +70,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
     defp current(_spent, period),
       do: %{period: period, usd: 0, tokens: 0, granted: %{}, unpriced: false}
 
-    defp decision(%WardrikPolicy{budget: %Budget{usd: usd, price: nil}} = policy, %{
+    defp decision(%Wardrik.Policy{budget: %Budget{usd: usd, price: nil}} = policy, %{
            unpriced: true
          })
          when usd != nil do

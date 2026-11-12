@@ -13,7 +13,7 @@ defmodule WardrikCore.Credo.Check.SupervisedProcesses do
           spawn(fn -> System.cmd("open", [url]) end)
 
           # the package's own supervisor holds it
-          Task.Supervisor.start_child(WardrikOAuth.Tasks, fn -> System.cmd("open", [url]) end)
+          Task.Supervisor.start_child(Wardrik.OAuth.Tasks, fn -> System.cmd("open", [url]) end)
 
       A process started outside the tree is never shut down with it, its crash
       is logged nowhere it would be looked for, and nothing can list it. Start

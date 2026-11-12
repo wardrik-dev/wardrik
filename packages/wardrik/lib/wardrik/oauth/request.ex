@@ -1,4 +1,4 @@
-defmodule WardrikOAuth.Request do
+defmodule Wardrik.OAuth.Request do
   @moduledoc """
   Sends a flow's requests to an authorization server.
 
@@ -6,7 +6,7 @@ defmodule WardrikOAuth.Request do
   must be `https`, or `http` on localhost.
   """
 
-  alias WardrikOAuth.Provider
+  alias Wardrik.OAuth.Provider
 
   @timeout :timer.seconds(15)
 

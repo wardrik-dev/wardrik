@@ -1,11 +1,11 @@
-defmodule WardrikOAuth.Resolver do
+defmodule Wardrik.OAuth.Resolver do
   @moduledoc """
   Says which OAuth app each user signs in with, by name.
 
-      {WardrikOAuth, name: MyApp.OAuth, resolver: {MyApp.OAuthApps, []}, ...}
+      {Wardrik.OAuth, name: MyApp.OAuth, resolver: {MyApp.OAuthApps, []}, ...}
 
       defmodule MyApp.OAuthApps do
-        @behaviour WardrikOAuth.Resolver
+        @behaviour Wardrik.OAuth.Resolver
 
         @impl true
         def provider(%{name: name, principal: %WardrikCore.Principal{id: id}}, _opts) do
@@ -15,7 +15,7 @@ defmodule WardrikOAuth.Resolver do
 
             app ->
               opts = [key: app.id, client_secret: MyApp.Secrets.read!(app.secret)] ++ app.options
-              {:ok, WardrikOAuth.Provider.new(name, opts)}
+              {:ok, Wardrik.OAuth.Provider.new(name, opts)}
           end
         end
       end
@@ -27,8 +27,8 @@ defmodule WardrikOAuth.Resolver do
     * An error stops the sign-in.
   """
 
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Resolver.Request
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Resolver.Request
 
   @doc "Returns the provider the request's principal signs in with by its name."
   @callback provider(Request.t(), opts :: term()) ::

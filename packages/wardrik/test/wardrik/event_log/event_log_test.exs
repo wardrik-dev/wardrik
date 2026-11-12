@@ -1,23 +1,23 @@
-defmodule WardrikEventsTest do
+defmodule Wardrik.EventLogTest do
   use ExUnit.Case, async: false
   use Mimic
 
   import ExUnit.CaptureLog
 
-  import WardrikEvents.Test.Events
-  import WardrikEvents.Test.Protocol
+  import Wardrik.EventLog.Test.Events
+  import Wardrik.EventLog.Test.Protocol
 
-  alias WardrikEvents.Cursor
-  alias WardrikEvents.Log
+  alias Wardrik.EventLog.Cursor
+  alias Wardrik.EventLog.Log
 
   setup :start_events
 
   defp failing_once do
-    stub(WardrikStore, :put, fn store, key, value, opts ->
-      call_original(WardrikStore, :put, [store, key, value, opts])
+    stub(Wardrik.Store, :put, fn store, key, value, opts ->
+      call_original(Wardrik.Store, :put, [store, key, value, opts])
     end)
 
-    expect(WardrikStore, :put, fn _store, _key, _value, _opts -> {:error, :down} end)
+    expect(Wardrik.Store, :put, fn _store, _key, _value, _opts -> {:error, :down} end)
   end
 
   test "keeps each agent's events in order, numbered from 1 with no gaps", %{events: events} do
@@ -39,8 +39,8 @@ defmodule WardrikEventsTest do
     stopped(events, "agt_1")
     stopped(events, "agt_1")
 
-    stop_supervised!(WardrikEvents)
-    start_supervised!({WardrikEvents, name: events, store: store, deployment: "test"})
+    stop_supervised!(Wardrik.EventLog)
+    start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
     stopped(events, "agt_1")
 
     assert sequences(events, ["agt_1"]) |> List.last() == "000000000003"
@@ -48,22 +48,25 @@ defmodule WardrikEventsTest do
 
   test "rebuilds activity from the log after a restart", %{events: events, store: store} do
     interrupted = %{"interrupts" => [%{"id" => "call_1"}]}
-    :ok = WardrikEvents.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
-    :ok = WardrikEvents.append(events, "agt_1", {"run.interrupted", "agents/agt_1", interrupted})
-    parked = WardrikEvents.activity(events, "agt_1")
+    :ok = Wardrik.EventLog.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
 
-    stop_supervised!(WardrikEvents)
-    start_supervised!({WardrikEvents, name: events, store: store, deployment: "test"})
+    :ok =
+      Wardrik.EventLog.append(events, "agt_1", {"run.interrupted", "agents/agt_1", interrupted})
 
-    assert WardrikEvents.activity(events, "agt_1") == parked
+    parked = Wardrik.EventLog.activity(events, "agt_1")
+
+    stop_supervised!(Wardrik.EventLog)
+    start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
+
+    assert Wardrik.EventLog.activity(events, "agt_1") == parked
     assert %{"pending" => 1, "doing" => [%{"interrupts" => [%{"id" => "call_1"}]}]} = parked
 
-    stop_supervised!(WardrikEvents)
-    start_supervised!({WardrikEvents, name: events, store: store, deployment: "test"})
-    :ok = WardrikEvents.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
+    stop_supervised!(Wardrik.EventLog)
+    start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
+    :ok = Wardrik.EventLog.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
 
     assert %{"pending" => 2, "doing" => [%{"type" => "wardrik.run.interrupted"}]} =
-             WardrikEvents.activity(events, "agt_1")
+             Wardrik.EventLog.activity(events, "agt_1")
   end
 
   test "follows a log another node writes to, as when an agent moves", %{
@@ -73,20 +76,22 @@ defmodule WardrikEventsTest do
     other = elsewhere(events, store)
     interrupted = %{"interrupts" => [%{"id" => "call_1"}]}
 
-    :ok = WardrikEvents.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
-    :ok = WardrikEvents.append(events, "agt_1", {"run.interrupted", "agents/agt_1", interrupted})
+    :ok = Wardrik.EventLog.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
+
+    :ok =
+      Wardrik.EventLog.append(events, "agt_1", {"run.interrupted", "agents/agt_1", interrupted})
 
     assert %{"doing" => [%{"interrupts" => _interrupts}]} =
-             WardrikEvents.activity(events, "agt_1")
+             Wardrik.EventLog.activity(events, "agt_1")
 
-    assert WardrikEvents.activity(other, "agt_1") == WardrikEvents.activity(events, "agt_1")
+    assert Wardrik.EventLog.activity(other, "agt_1") == Wardrik.EventLog.activity(events, "agt_1")
 
-    :ok = WardrikEvents.append(other, "agt_1", {"run.completed", "agents/agt_1", %{}})
-    assert %{"doing" => []} = WardrikEvents.activity(events, "agt_1")
+    :ok = Wardrik.EventLog.append(other, "agt_1", {"run.completed", "agents/agt_1", %{}})
+    assert %{"doing" => []} = Wardrik.EventLog.activity(events, "agt_1")
 
-    :ok = WardrikEvents.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
-    assert %{"pending" => 2} = WardrikEvents.activity(events, "agt_1")
-    assert WardrikEvents.activity(other, "agt_1") == WardrikEvents.activity(events, "agt_1")
+    :ok = Wardrik.EventLog.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
+    assert %{"pending" => 2} = Wardrik.EventLog.activity(events, "agt_1")
+    assert Wardrik.EventLog.activity(other, "agt_1") == Wardrik.EventLog.activity(events, "agt_1")
   end
 
   test "folds what retention kept when it dropped events this node never read", %{
@@ -94,54 +99,60 @@ defmodule WardrikEventsTest do
     store: store
   } do
     other = elsewhere(events, store)
-    :ok = WardrikEvents.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
-    assert %{"pending" => 1} = WardrikEvents.activity(events, "agt_1")
+    :ok = Wardrik.EventLog.append(events, "agt_1", {"message.created", "agents/agt_1", %{}})
+    assert %{"pending" => 1} = Wardrik.EventLog.activity(events, "agt_1")
 
-    :ok = WardrikEvents.append(other, "agt_1", {"message.created", "agents/agt_1", %{}})
-    WardrikEvents.trim(other, DateTime.add(DateTime.utc_now(), 1))
-    :ok = WardrikEvents.append(other, "agt_1", {"message.created", "agents/agt_1", %{}})
-    :ok = WardrikEvents.append(other, "agt_1", {"message.created", "agents/agt_1", %{}})
+    :ok = Wardrik.EventLog.append(other, "agt_1", {"message.created", "agents/agt_1", %{}})
+    Wardrik.EventLog.trim(other, DateTime.add(DateTime.utc_now(), 1))
+    :ok = Wardrik.EventLog.append(other, "agt_1", {"message.created", "agents/agt_1", %{}})
+    :ok = Wardrik.EventLog.append(other, "agt_1", {"message.created", "agents/agt_1", %{}})
 
-    assert %{"pending" => 2} = WardrikEvents.activity(events, "agt_1")
+    assert %{"pending" => 2} = Wardrik.EventLog.activity(events, "agt_1")
   end
 
   # A second events instance over the same store stands in for another node.
   defp elsewhere(events, store) do
     other = :"#{events} elsewhere"
-    start_supervised!({WardrikEvents, name: other, store: store, deployment: "test"}, id: other)
+
+    start_supervised!({Wardrik.EventLog, name: other, store: store, deployment: "test"},
+      id: other
+    )
+
     other
   end
 
   test "sends live events to the log's stream, and keeps them nowhere", %{events: events} do
-    :ok = WardrikEvents.subscribe(events, ["agt_1"])
+    :ok = Wardrik.EventLog.subscribe(events, ["agt_1"])
     span = WardrikCore.Span.root()
     emit(events, "agt_1", [:message, :delta], %{kind: :content, span: span, text: "Hi"})
 
-    assert_receive {WardrikEvents, {"agt_1", nil}, %{"type" => "wardrik.message.delta"} = delta}
+    assert_receive {Wardrik.EventLog, {"agt_1", nil},
+                    %{"type" => "wardrik.message.delta"} = delta}
+
     refute Map.has_key?(delta, "sequence")
     assert sequences(events, ["agt_1"]) == []
   end
 
   test "sends kept events to the stream with their place in the log", %{events: events} do
-    :ok = WardrikEvents.subscribe(events, ["agt_1"])
+    :ok = Wardrik.EventLog.subscribe(events, ["agt_1"])
     stopped(events, "agt_1")
 
-    assert_receive {WardrikEvents, {"agt_1", nil},
+    assert_receive {Wardrik.EventLog, {"agt_1", nil},
                     %{"type" => "wardrik.agent.stopped", "sequence" => "000000000001"}}
   end
 
   test "writes what the host appends into a log, as it writes core's", %{events: events} do
-    :ok = WardrikEvents.subscribe(events, ["agt_1"])
+    :ok = Wardrik.EventLog.subscribe(events, ["agt_1"])
     data = %{"trigger" => %{"name" => "daily"}, "status" => "asked"}
 
     assert :ok =
-             WardrikEvents.append(
+             Wardrik.EventLog.append(
                events,
                {"agt_1", nil},
                {"trigger.fired", "triggers/daily", data}
              )
 
-    assert_receive {WardrikEvents, {"agt_1", nil},
+    assert_receive {Wardrik.EventLog, {"agt_1", nil},
                     %{
                       "type" => "wardrik.trigger.fired",
                       "subject" => "triggers/daily",
@@ -155,10 +166,10 @@ defmodule WardrikEventsTest do
   end
 
   test "names the agent and conversation of a conversation's event", %{events: events} do
-    :ok = WardrikEvents.subscribe(events, ["a/b c%"])
+    :ok = Wardrik.EventLog.subscribe(events, ["a/b c%"])
     stopped(events, {"a/b c%", "C/1"})
 
-    assert_receive {WardrikEvents, {"a/b c%", "C/1"}, event}
+    assert_receive {Wardrik.EventLog, {"a/b c%", "C/1"}, event}
 
     assert %{
              "agent" => "a/b c%",
@@ -169,10 +180,10 @@ defmodule WardrikEventsTest do
 
   test "takes the next number when another writer took this one", %{events: events, store: store} do
     stopped(events, "agt_1")
-    taken = WardrikStore.scope(store, "wardrik_events")
+    taken = Wardrik.Store.scope(store, "wardrik_events")
 
     {:ok, _vsn} =
-      WardrikStore.put(
+      Wardrik.Store.put(
         taken,
         "events/agt_1/000000000002",
         %{"sequence" => "000000000002"},
@@ -189,12 +200,12 @@ defmodule WardrikEventsTest do
   } do
     taken = :counters.new(1, [])
 
-    stub(WardrikStore, :put, fn store, key, value, opts ->
+    stub(Wardrik.Store, :put, fn store, key, value, opts ->
       if String.starts_with?(key, "events/") and :counters.get(taken, 1) < 3 do
         :counters.add(taken, 1, 1)
         {:error, :conflict}
       else
-        call_original(WardrikStore, :put, [store, key, value, opts])
+        call_original(Wardrik.Store, :put, [store, key, value, opts])
       end
     end)
 
@@ -228,22 +239,22 @@ defmodule WardrikEventsTest do
 
   describe "covers?/2" do
     test "an agent covers its own log and its conversations'" do
-      assert WardrikEvents.covers?("agt_1", {"agt_1", nil})
-      assert WardrikEvents.covers?("agt_1", {"agt_1", "C1"})
-      refute WardrikEvents.covers?("agt_1", {"agt_10", nil})
-      refute WardrikEvents.covers?("agt_10", {"agt_1", "0"})
+      assert Wardrik.EventLog.covers?("agt_1", {"agt_1", nil})
+      assert Wardrik.EventLog.covers?("agt_1", {"agt_1", "C1"})
+      refute Wardrik.EventLog.covers?("agt_1", {"agt_10", nil})
+      refute Wardrik.EventLog.covers?("agt_10", {"agt_1", "0"})
     end
 
     test "a log covers only itself" do
-      assert WardrikEvents.covers?({"agt_1", "C1"}, {"agt_1", "C1"})
-      assert WardrikEvents.covers?({"agt_1", nil}, {"agt_1", nil})
-      refute WardrikEvents.covers?({"agt_1", nil}, {"agt_1", "C1"})
-      refute WardrikEvents.covers?({"agt_1", "C1"}, {"agt_1", "C2"})
+      assert Wardrik.EventLog.covers?({"agt_1", "C1"}, {"agt_1", "C1"})
+      assert Wardrik.EventLog.covers?({"agt_1", nil}, {"agt_1", nil})
+      refute Wardrik.EventLog.covers?({"agt_1", nil}, {"agt_1", "C1"})
+      refute Wardrik.EventLog.covers?({"agt_1", "C1"}, {"agt_1", "C2"})
     end
 
     test ":all covers every log" do
-      assert WardrikEvents.covers?(:all, {"agt_1", nil})
-      assert WardrikEvents.covers?(:all, {"agt_2", "C1"})
+      assert Wardrik.EventLog.covers?(:all, {"agt_1", nil})
+      assert Wardrik.EventLog.covers?(:all, {"agt_2", "C1"})
     end
   end
 
@@ -257,18 +268,22 @@ defmodule WardrikEventsTest do
     end
 
     test "starts a reader at the end of each log an agent covers", %{events: events} do
-      assert {:ok, head} = Cursor.decode(WardrikEvents.head(events, ["agt_1"]))
+      assert {:ok, head} = Cursor.decode(Wardrik.EventLog.head(events, ["agt_1"]))
       assert head == %{{"agt_1", nil} => 2, {"agt_1", "C1"} => 2}
 
       assert {:ok, %{events: []}} =
-               WardrikEvents.page(events, ["agt_1"], after: WardrikEvents.head(events, ["agt_1"]))
+               Wardrik.EventLog.page(events, ["agt_1"],
+                 after: Wardrik.EventLog.head(events, ["agt_1"])
+               )
     end
 
     test "pages through every log an agent covers, and no other agent's", %{events: events} do
-      assert {:ok, %{events: first, next: next}} = WardrikEvents.page(events, ["agt_1"], limit: 3)
+      assert {:ok, %{events: first, next: next}} =
+               Wardrik.EventLog.page(events, ["agt_1"], limit: 3)
+
       assert [_, _, _] = first
 
-      assert {:ok, %{events: rest}} = WardrikEvents.page(events, ["agt_1"], after: next)
+      assert {:ok, %{events: rest}} = Wardrik.EventLog.page(events, ["agt_1"], after: next)
       assert [_] = rest
 
       read = first ++ rest
@@ -292,7 +307,7 @@ defmodule WardrikEventsTest do
 
     test "says which events aren't started" do
       assert_raise ArgumentError, ~r/^MyApp.Missing isn't started/, fn ->
-        WardrikEvents.head(MyApp.Missing, ["agt_1"])
+        Wardrik.EventLog.head(MyApp.Missing, ["agt_1"])
       end
     end
 
@@ -302,7 +317,7 @@ defmodule WardrikEventsTest do
 
     test "refuses a cursor it didn't write", %{events: events} do
       assert {:error, :invalid_cursor} =
-               WardrikEvents.page(events, ["agt_1"], after: "not a cursor")
+               Wardrik.EventLog.page(events, ["agt_1"], after: "not a cursor")
 
       for json <- [
             ~s({"agt_1": 1}),
@@ -326,15 +341,15 @@ defmodule WardrikEventsTest do
     } do
       for log <- @odd, do: stopped(events, log)
 
-      assert store |> WardrikStore.scope("wardrik_events") |> Log.logs() |> Enum.sort() ==
+      assert store |> Wardrik.Store.scope("wardrik_events") |> Log.logs() |> Enum.sort() ==
                Enum.sort(@odd)
 
       for log <- @odd do
         assert sequences(events, [log]) == ["000000000001"]
-        assert {:ok, %{^log => 1}} = Cursor.decode(WardrikEvents.head(events, [log]))
+        assert {:ok, %{^log => 1}} = Cursor.decode(Wardrik.EventLog.head(events, [log]))
       end
 
-      assert {:ok, head} = Cursor.decode(WardrikEvents.head(events, @odd))
+      assert {:ok, head} = Cursor.decode(Wardrik.EventLog.head(events, @odd))
       assert head == Map.new(@odd, &{&1, 1})
       assert {:ok, ^head} = head |> Cursor.encode() |> Cursor.decode()
     end
@@ -344,7 +359,7 @@ defmodule WardrikEventsTest do
       store: store
     } do
       for log <- @odd, do: stopped(events, log)
-      logs = WardrikStore.scope(store, "wardrik_events")
+      logs = Wardrik.Store.scope(store, "wardrik_events")
 
       assert Enum.sort(Log.logs(logs, "a/b")) == [{"a/b", nil}, {"a/b", "c/d"}]
       assert Log.logs(logs, "a") == [{"a", "b/c"}]

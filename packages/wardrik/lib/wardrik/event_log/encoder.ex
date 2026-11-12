@@ -1,11 +1,11 @@
-defmodule WardrikEvents.Encoder do
+defmodule Wardrik.EventLog.Encoder do
   @moduledoc false
 
+  alias Wardrik.EventLog.CloudEvent
+  alias Wardrik.EventLog.Encoder.Value
   alias WardrikCore.Authorization
   alias WardrikCore.Event
   alias WardrikCore.Span
-  alias WardrikEvents.CloudEvent
-  alias WardrikEvents.Encoder.Value
 
   @envelope [:agent_id, :conversation, :span]
 

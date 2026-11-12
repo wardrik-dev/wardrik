@@ -1,12 +1,12 @@
-defmodule WardrikChannel.Test.Chat do
+defmodule Wardrik.Chat.Test.Chat do
   @moduledoc "A chat app that sends the test what it's asked to post."
 
-  use WardrikChannel
+  use Wardrik.Chat
 
   @impl Wardrik.Channel
   def request(%{body: body}, _opts), do: %{status: 200, headers: %{}, body: body}
 
-  @impl WardrikChannel
+  @impl Wardrik.Chat
   def deliver(%{body: {:reply, "Answered: skip" <> _rest, _answering}} = outbound, channel) do
     send(channel.options[:test], {:skipped, outbound})
     {:skip, "it was asked to"}
@@ -32,13 +32,13 @@ defmodule WardrikChannel.Test.Chat do
   end
 end
 
-defmodule WardrikChannel.Test.Members do
+defmodule Wardrik.Chat.Test.Members do
   @moduledoc "Knows the chat members of `:members` as their users, as a host's identities would."
 
-  @behaviour WardrikChannel.Identities
+  @behaviour Wardrik.Chat.Identities
 
-  @impl WardrikChannel.Identities
-  def identify(%WardrikChannel.Identities.Request{workspace: "T1", member: member}, opts) do
+  @impl Wardrik.Chat.Identities
+  def identify(%Wardrik.Chat.Identities.Request{workspace: "T1", member: member}, opts) do
     case Map.fetch(Keyword.fetch!(opts, :members), member) do
       {:ok, user} -> {:ok, %WardrikCore.Principal{id: user}}
       :error -> {:error, "Nobody here knows you yet."}
@@ -48,12 +48,12 @@ defmodule WardrikChannel.Test.Members do
   def identify(_request, _opts), do: {:error, "Nobody here knows you yet."}
 end
 
-defmodule WardrikChannel.Test do
+defmodule Wardrik.Chat.Test do
   @moduledoc "Runs a chat channel for a test, over a real store and events, on the test's own server."
 
   import ExUnit.Callbacks, only: [start_supervised!: 1]
 
-  alias WardrikTesting.Server
+  alias Wardrik.Testing.Server
 
   @members %{"U1" => "maria", "U2" => "jon", "U3" => "ana"}
 
@@ -80,14 +80,14 @@ defmodule WardrikChannel.Test do
     n = System.unique_integer([:positive])
     name = :"wardrik #{n}"
     channel = "chat-#{n}"
-    store = WardrikStore.ETS.new(name: :"store #{n}")
+    store = Wardrik.Store.ETS.new(name: :"store #{n}")
     events = Server.events(name)
     refusals = :counters.new(1, [])
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
-      {WardrikEvents, name: events, store: store, deployment: "test", retention: :infinity}
+      {Wardrik.EventLog, name: events, store: store, deployment: "test", retention: :infinity}
     )
 
     test = self()
@@ -106,14 +106,14 @@ defmodule WardrikChannel.Test do
       store: store,
       token: "xoxb-test",
       owner: "acme",
-      identities: {WardrikChannel.Test.Members, members: @members},
+      identities: {Wardrik.Chat.Test.Members, members: @members},
       test: self(),
       refusals: refusals
     ]
 
-    start_supervised!({WardrikChannel.Test.Chat, opts})
-    channel = WardrikChannel.channel(WardrikChannel.Test.Chat, opts)
-    {:ok, workspace} = WardrikChannel.workspace(channel, "T1")
+    start_supervised!({Wardrik.Chat.Test.Chat, opts})
+    channel = Wardrik.Chat.channel(Wardrik.Chat.Test.Chat, opts)
+    {:ok, workspace} = Wardrik.Chat.workspace(channel, "T1")
 
     %{
       name: name,

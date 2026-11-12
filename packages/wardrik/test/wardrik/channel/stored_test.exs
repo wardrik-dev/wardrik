@@ -4,15 +4,15 @@ defmodule Wardrik.Channel.StoredTest do
   import Wardrik.Test.Wardrik, only: [unsealed: 2]
 
   alias Wardrik.Channel.Installation
-  alias WardrikChannel.Channel
+  alias Wardrik.Chat.Channel
 
   setup context do
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     name = :"wardrik #{context.test}"
     members = {Wardrik.Test.Channel.Members, members: %{}}
     chat = [installations: :stored, identities: members, test: self()]
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
       {Wardrik,
@@ -21,7 +21,7 @@ defmodule Wardrik.Channel.StoredTest do
          resolver: {Wardrik.Test.Owned, name},
          name: name,
          store: store,
-         vault_keys: [WardrikVault.generate_key()],
+         vault_keys: [Wardrik.Vault.generate_key()],
          channels: [chat: {Wardrik.Test.Channel.Chat, chat}]
        )}
     )

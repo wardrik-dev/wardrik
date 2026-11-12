@@ -4,12 +4,12 @@ defmodule WardrikCore.Credo.Check.InitDoesNoIO do
     category: :design,
     param_defaults: [
       calls: [
-        "WardrikStore.get",
-        "WardrikStore.put",
-        "WardrikStore.lookup",
-        "WardrikStore.delete",
-        "WardrikStore.keys",
-        "WardrikStore.check",
+        "Wardrik.Store.get",
+        "Wardrik.Store.put",
+        "Wardrik.Store.lookup",
+        "Wardrik.Store.delete",
+        "Wardrik.Store.keys",
+        "Wardrik.Store.check",
         "Wardrik.Event.Log.Writer",
         "Req",
         "File",

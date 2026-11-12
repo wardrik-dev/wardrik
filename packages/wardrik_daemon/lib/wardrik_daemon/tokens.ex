@@ -42,7 +42,7 @@ defmodule WardrikDaemon.Tokens do
   @prefix "tokens/"
 
   @doc "Makes a token. Returns it with its secret, which isn't kept."
-  @spec create(WardrikStore.t(), keyword()) ::
+  @spec create(Wardrik.Store.t(), keyword()) ::
           {:ok, %{token: Token.t(), secret: String.t()}}
           | {:error, NimbleOptions.ValidationError.t()}
   def create(store, opts) do
@@ -51,7 +51,7 @@ defmodule WardrikDaemon.Tokens do
       secret = "wdk_#{id}_#{Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)}"
       token = struct!(Token, [id: id] ++ opts)
 
-      {:ok, _vsn} = WardrikStore.put(store, @prefix <> id, %{token: token, hash: hash(secret)})
+      {:ok, _vsn} = Wardrik.Store.put(store, @prefix <> id, %{token: token, hash: hash(secret)})
       {:ok, %{token: token, secret: secret}}
     end
   end
@@ -64,7 +64,7 @@ defmodule WardrikDaemon.Tokens do
 
   The token expires after 30 days. Set `"expires_in"` to change this.
   """
-  @spec issue(WardrikStore.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
+  @spec issue(Wardrik.Store.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
   def issue(store, input) do
     expires = DateTime.add(DateTime.utc_now(), Map.get(input, "expires_in", @expires_in), :second)
 
@@ -94,19 +94,19 @@ defmodule WardrikDaemon.Tokens do
   end
 
   @doc "Returns the tokens in `store`, by ID, without their secrets."
-  @spec list(WardrikStore.t()) :: [Token.t()]
+  @spec list(Wardrik.Store.t()) :: [Token.t()]
   def list(store),
-    do: for({_key, %{token: token}, _vsn} <- WardrikStore.entries(store, @prefix), do: token)
+    do: for({_key, %{token: token}, _vsn} <- Wardrik.Store.entries(store, @prefix), do: token)
 
   @doc "Stops the token `id` working. Returns `:ok`, also when there's none."
-  @spec revoke(WardrikStore.t(), String.t()) :: :ok
-  def revoke(store, id), do: WardrikStore.delete(store, @prefix <> id)
+  @spec revoke(Wardrik.Store.t(), String.t()) :: :ok
+  def revoke(store, id), do: Wardrik.Store.delete(store, @prefix <> id)
 
   @doc "Returns the token `secret` is, unless it's unknown, revoked or expired."
-  @spec verify(WardrikStore.t(), String.t()) :: {:ok, Token.t()} | :error
+  @spec verify(Wardrik.Store.t(), String.t()) :: {:ok, Token.t()} | :error
   def verify(store, secret) do
     with ["wdk", id, _random] <- String.split(secret, "_", parts: 3),
-         %{token: token, hash: hash} <- WardrikStore.get(store, @prefix <> id),
+         %{token: token, hash: hash} <- Wardrik.Store.get(store, @prefix <> id),
          true <- Plug.Crypto.secure_compare(hash(secret), hash),
          :gt <- DateTime.compare(token.expires, DateTime.utc_now()) do
       {:ok, token}

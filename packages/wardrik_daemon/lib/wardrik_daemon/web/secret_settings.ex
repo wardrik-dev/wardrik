@@ -5,11 +5,11 @@ defmodule WardrikDaemon.Web.SecretSettings do
 
   @behaviour WardrikWeb.Settings
 
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
   alias WardrikDaemon.Allowed
   alias WardrikDaemon.Secrets
   alias WardrikDaemon.Web.Settings
-  alias WardrikVault.Secret
 
   @impl true
   def owners(scope, _opts), do: WardrikDaemon.Settings.owners(Settings.daemon(), scope)

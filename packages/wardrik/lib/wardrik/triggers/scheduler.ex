@@ -1,12 +1,12 @@
-defmodule WardrikTriggers.Scheduler do
+defmodule Wardrik.Triggers.Scheduler do
   @moduledoc false
 
   use GenServer
 
-  alias WardrikTriggers.Clock
-  alias WardrikTriggers.Records
-  alias WardrikTriggers.Run
-  alias WardrikTriggers.Trigger
+  alias Wardrik.Triggers.Clock
+  alias Wardrik.Triggers.Records
+  alias Wardrik.Triggers.Run
+  alias Wardrik.Triggers.Trigger
 
   @longest :timer.hours(24)
 

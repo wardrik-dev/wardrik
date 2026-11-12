@@ -70,10 +70,10 @@ end
 A policy's `default` decides calls no rule names:
 
 ```elixir
-policy = WardrikPolicy.new!(default: [read_only: :allow, destructive: :ask, else: :ask])
+policy = Wardrik.Policy.new!(default: [read_only: :allow, destructive: :ask, else: :ask])
 
 for tool <- MyApp.Orders.tools(nil, []) do
-  %{tool: tool.name, decision: inspect(WardrikPolicy.decide(policy, tool.name, annotations: tool.annotations))}
+  %{tool: tool.name, decision: inspect(Wardrik.Policy.decide(policy, tool.name, annotations: tool.annotations))}
 end
 |> Kino.DataTable.new(keys: [:tool, :decision])
 ```

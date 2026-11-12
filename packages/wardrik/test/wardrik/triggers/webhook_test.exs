@@ -1,7 +1,7 @@
-defmodule WardrikTriggers.WebhookTest do
+defmodule Wardrik.Triggers.WebhookTest do
   use ExUnit.Case, async: true
 
-  alias WardrikTriggers.Webhook
+  alias Wardrik.Triggers.Webhook
 
   @now ~U[2026-10-22 09:00:00Z]
 

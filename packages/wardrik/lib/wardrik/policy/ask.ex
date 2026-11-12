@@ -1,6 +1,6 @@
-defmodule WardrikPolicy.Ask do
+defmodule Wardrik.Policy.Ask do
   @moduledoc """
-  What a call waits on when a policy asks. `WardrikPolicy.Middleware` parks on it.
+  What a call waits on when a policy asks. `Wardrik.Policy.Middleware` parks on it.
 
     * `:interrupt` - `"tool_approval"` or `"model_approval"`.
     * `:message` - the prompt for the person.

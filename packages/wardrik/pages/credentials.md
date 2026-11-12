@@ -24,12 +24,12 @@ end
 
 # Gives everyone the same GitHub app.
 defmodule MyApp.OAuthApps do
-  @behaviour WardrikOAuth.Resolver
+  @behaviour Wardrik.OAuth.Resolver
 
   @impl true
   def provider(%{name: "github"}, _opts) do
     {:ok,
-     WardrikOAuth.Provider.new("github",
+     Wardrik.OAuth.Provider.new("github",
        key: "github",
        authorization_endpoint: "https://github.com/login/oauth/authorize",
        token_endpoint: "https://github.com/login/oauth/access_token",
@@ -47,14 +47,14 @@ end
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
-    vault_keys: [WardrikVault.generate_key()],
+    vault_keys: [Wardrik.Vault.generate_key()],
     oauth: [page: "https://agents.example.com/oauth", resolver: {MyApp.OAuthApps, []}]
   )
 ```
 
 ## Vault keys
 
-`:vault_keys` seals every secret. Make one with `WardrikVault.generate_key/0`, and keep it out of your
+`:vault_keys` seals every secret. Make one with `Wardrik.Vault.generate_key/0`, and keep it out of your
 code:
 
 ```elixir
@@ -70,15 +70,15 @@ Wardrik's vault is `MyApp.AgentRuntime.Vault`. Seal a secret for a person, for o
 
 ```elixir
 {:ok, _vsn} =
-  WardrikVault.put(
+  Wardrik.Vault.put(
     MyApp.AgentRuntime.Vault,
-    %WardrikVault.Secret{principal: Wardrik.principal("maria"), name: "crm-key", value: "crm_..."},
+    %Wardrik.Vault.Secret{principal: Wardrik.principal("maria"), name: "crm-key", value: "crm_..."},
     kind: :header
   )
 ```
 
 - An agent's tools read only the secrets of the person it works for.
-- A secret is read only for its kind. See `t:WardrikVault.kind/0`.
+- A secret is read only for its kind. See `t:Wardrik.Vault.kind/0`.
 - To keep secrets elsewhere, set `credentials: {MyApp.Tokens, opts}`, a `WardrikCore.Credentials`.
 
 ## API keys
@@ -99,9 +99,9 @@ An option that holds a secret takes `{:secret, name}`, a secret sealed for the d
 
 ```elixir
 {:ok, _vsn} =
-  WardrikVault.put(
+  Wardrik.Vault.put(
     MyApp.AgentRuntime.Vault,
-    %WardrikVault.Secret{principal: WardrikVault.deployment(), name: "HOOK_SECRET", value: "s3cret"}
+    %Wardrik.Vault.Secret{principal: Wardrik.Vault.deployment(), name: "HOOK_SECRET", value: "s3cret"}
   )
 ```
 
@@ -118,7 +118,7 @@ config :my_app, MyApp.AgentRuntime,
 
 - Channels and notify targets read theirs each time they're used.
 - MCP servers read theirs as each connection starts. After changing one, call
-  `WardrikMCP.reconnect/2`.
+  `Wardrik.MCP.reconnect/2`.
 - A header takes the secret as sealed, as `"Bearer lin_api_..."`, or as
   `["Bearer ", {:secret, "LINEAR_TOKEN"}]`.
 - A secret sealed nowhere is `nil`, and logged. An MCP server waits until it's sealed.
@@ -151,13 +151,13 @@ browser:
 
 ```elixir
 Wardrik.sign_in_pages(MyApp.AgentRuntime, {MyApp.Session, :principal, []})
-#=> {WardrikOAuth.Plug, %{oauth: MyApp.AgentRuntime.OAuth, ...}}
+#=> {Wardrik.OAuth.Plug, %{oauth: MyApp.AgentRuntime.OAuth, ...}}
 
 # In a Phoenix router
-forward "/oauth", WardrikOAuth.Plug,
+forward "/oauth", Wardrik.OAuth.Plug,
   oauth: MyApp.AgentRuntime.OAuth,
   principal: {MyApp.Session, :principal, []}
 ```
 
 A sign-in finishes only for the person who started it. See
-[WardrikOAuth](https://hexdocs.pm/wardrik_oauth) for device sign-ins and renewal.
+`Wardrik.OAuth` for device sign-ins and renewal.

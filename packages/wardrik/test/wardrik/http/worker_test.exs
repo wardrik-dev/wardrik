@@ -32,7 +32,8 @@ defmodule Wardrik.HTTP.WorkerTest do
       answer("It shipped.")
     ])
 
-    :ok = WardrikEvents.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+    :ok =
+      Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
 
     request(context, "PUT", "/v1/agents/acme%2Ftriage", %{
       "model" => "anthropic:claude-haiku-4-5",
@@ -51,10 +52,10 @@ defmodule Wardrik.HTTP.WorkerTest do
       "result" => %{"content" => [%{"type" => "text", "text" => "Shipped."}]}
     })
 
-    assert_receive {WardrikEvents, _log,
+    assert_receive {Wardrik.EventLog, _log,
                     %{"type" => "wardrik.tool_call.completed", "data" => %{"status" => "ok"}}}
 
-    assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.completed"}}
+    assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.completed"}}
   end
 
   test "tells the worker when a call it runs is stopped", context do

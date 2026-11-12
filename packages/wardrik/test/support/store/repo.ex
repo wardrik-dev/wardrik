@@ -1,12 +1,12 @@
-defmodule WardrikStore.TestRepo do
-  @moduledoc "The repo `WardrikStore.Ecto`'s tests run on, over `DATABASE_URL`."
-  use Ecto.Repo, otp_app: :wardrik_store, adapter: Ecto.Adapters.Postgres
+defmodule Wardrik.Store.TestRepo do
+  @moduledoc "The repo `Wardrik.Store.Ecto`'s tests run on, over `DATABASE_URL`."
+  use Ecto.Repo, otp_app: :wardrik, adapter: Ecto.Adapters.Postgres
 end
 
-defmodule WardrikStore.TestMigration do
-  @moduledoc "Runs `WardrikStore.Ecto.Migration` in the tests."
+defmodule Wardrik.Store.TestMigration do
+  @moduledoc "Runs `Wardrik.Store.Ecto.Migration` in the tests."
   use Ecto.Migration
 
-  def up, do: WardrikStore.Ecto.Migration.up(version: 1)
-  def down, do: WardrikStore.Ecto.Migration.down(version: 1)
+  def up, do: Wardrik.Store.Ecto.Migration.up(version: 1)
+  def down, do: Wardrik.Store.Ecto.Migration.down(version: 1)
 end

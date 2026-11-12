@@ -23,7 +23,7 @@ defmodule Wardrik.DeploymentTest do
         policies: [careful: [ask: ["echo"]]]
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)

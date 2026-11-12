@@ -42,7 +42,7 @@ defmodule Wardrik.Operations.Snapshot do
   @spec summaries(Wardrik.t(), [Running.key()]) :: [map()]
   def summaries(wardrik, keys) do
     agents = keys |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
-    next_runs = WardrikTriggers.next_runs(Wardrik.triggers(wardrik), agents)
+    next_runs = Wardrik.Triggers.next_runs(Wardrik.triggers(wardrik), agents)
     spent = Wardrik.Spending.by_agent(wardrik, agents)
 
     for {agent, _conversation} = key <- keys,
@@ -50,7 +50,7 @@ defmodule Wardrik.Operations.Snapshot do
   end
 
   defp summarized(wardrik, {agent, conversation} = key, next_run, spent) do
-    activity = WardrikEvents.activity(Wardrik.events(wardrik), key)
+    activity = Wardrik.EventLog.activity(Wardrik.events(wardrik), key)
 
     conversation(
       %{
@@ -73,7 +73,7 @@ defmodule Wardrik.Operations.Snapshot do
   @doc "Returns each trigger's next run by name. Webhooks are `nil`."
   @spec next_runs(Wardrik.t(), String.t()) :: %{String.t() => String.t() | nil}
   def next_runs(wardrik, id) do
-    for {trigger, next_at} <- WardrikTriggers.list(Wardrik.triggers(wardrik), id),
+    for {trigger, next_at} <- Wardrik.Triggers.list(Wardrik.triggers(wardrik), id),
         into: %{},
         do: {trigger.name, next_at && DateTime.to_iso8601(next_at)}
   end
@@ -83,7 +83,7 @@ defmodule Wardrik.Operations.Snapshot do
   def next_run(wardrik, id) do
     wardrik
     |> Wardrik.triggers()
-    |> WardrikTriggers.list(id)
+    |> Wardrik.Triggers.list(id)
     |> Enum.map(fn {_trigger, next_at} -> next_at end)
     |> Enum.reject(&is_nil/1)
     |> Enum.min(DateTime, fn -> nil end)
@@ -128,22 +128,22 @@ defmodule Wardrik.Operations.Snapshot do
   def typed?(%{"type" => type}, types), do: type in types
 
   @doc "Returns a page of the given logs."
-  @spec page(Scope.t(), WardrikEvents.resources(), keyword()) ::
+  @spec page(Scope.t(), Wardrik.EventLog.resources(), keyword()) ::
           {:ok, map()} | {:error, Error.t()}
   def page(%Scope{wardrik: wardrik}, resources, opts) do
     wardrik
     |> Wardrik.events()
-    |> WardrikEvents.page(resources, Enum.reject(opts, &match?({_key, nil}, &1)))
+    |> Wardrik.EventLog.page(resources, Enum.reject(opts, &match?({_key, nil}, &1)))
     |> cursor_read()
   end
 
   @doc "Streams the given logs."
-  @spec stream(Scope.t(), WardrikEvents.resources(), keyword()) ::
+  @spec stream(Scope.t(), Wardrik.EventLog.resources(), keyword()) ::
           {:ok, Enumerable.t()} | {:error, Error.t()}
   def stream(%Scope{wardrik: wardrik}, resources, opts) do
     wardrik
     |> Wardrik.events()
-    |> WardrikEvents.stream(resources, Enum.reject(opts, &match?({_key, nil}, &1)))
+    |> Wardrik.EventLog.stream(resources, Enum.reject(opts, &match?({_key, nil}, &1)))
     |> cursor_read()
   end
 

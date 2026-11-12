@@ -1,8 +1,8 @@
-defmodule WardrikPolicy.RulesTest do
+defmodule Wardrik.Policy.RulesTest do
   use ExUnit.Case, async: true
 
   defp decide(rules, name, arguments) do
-    rules |> WardrikPolicy.new!() |> WardrikPolicy.decide(name, arguments: arguments)
+    rules |> Wardrik.Policy.new!() |> Wardrik.Policy.decide(name, arguments: arguments)
   end
 
   describe "conditions on arguments" do
@@ -97,15 +97,15 @@ defmodule WardrikPolicy.RulesTest do
 
   describe "what a call acts on" do
     test "an allow covers a call only where it names every resource" do
-      policy = WardrikPolicy.new!(allow: ["write_file(notes/*)"], default: :deny)
+      policy = Wardrik.Policy.new!(allow: ["write_file(notes/*)"], default: :deny)
 
       assert :allow =
-               WardrikPolicy.decide(policy, "write_file", resources: ["notes/a", "notes/b"])
+               Wardrik.Policy.decide(policy, "write_file", resources: ["notes/a", "notes/b"])
 
       assert {:deny, _} =
-               WardrikPolicy.decide(policy, "write_file", resources: ["notes/a", "secrets/key"])
+               Wardrik.Policy.decide(policy, "write_file", resources: ["notes/a", "secrets/key"])
 
-      assert {:deny, _} = WardrikPolicy.decide(policy, "write_file")
+      assert {:deny, _} = Wardrik.Policy.decide(policy, "write_file")
     end
   end
 
@@ -126,12 +126,12 @@ defmodule WardrikPolicy.RulesTest do
             {[deny: "pay"], ~r/is a list of tool patterns/},
             {[default: "sometimes"], ~r/default is allow, ask or deny/}
           ] do
-        assert_raise ArgumentError, message, fn -> WardrikPolicy.new!(rules) end
+        assert_raise ArgumentError, message, fn -> Wardrik.Policy.new!(rules) end
       end
     end
 
     test "decode/1 takes a map" do
-      assert {:error, _message} = WardrikPolicy.decode([:deny])
+      assert {:error, _message} = Wardrik.Policy.decode([:deny])
     end
   end
 end

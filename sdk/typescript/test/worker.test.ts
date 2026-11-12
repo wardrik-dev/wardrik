@@ -6,7 +6,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { z } from "zod";
 import { Wardrik, WardrikError } from "../src/index.ts";
 
-// Wardrik's side of a worker's socket: the MCP client, as WardrikHTTP.Worker is.
+// Wardrik's side of a worker's socket: the MCP client, as Wardrik.HTTP.Worker is.
 class Peer {
   readonly socket: WebSocket;
   readonly notifications: { method: string; params: unknown }[] = [];

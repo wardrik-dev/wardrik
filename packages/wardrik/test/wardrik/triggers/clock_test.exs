@@ -1,7 +1,7 @@
-defmodule WardrikTriggers.ClockTest do
+defmodule Wardrik.Triggers.ClockTest do
   use ExUnit.Case, async: true
 
-  alias WardrikTriggers.Clock
+  alias Wardrik.Triggers.Clock
 
   defp next(every, timezone, from) do
     {:ok, clock} = Clock.parse(every)

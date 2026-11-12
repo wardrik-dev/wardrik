@@ -1,6 +1,6 @@
 defmodule WardrikSlack.Messages do
   @moduledoc """
-  Passes messages posted in Slack channels to `WardrikChannel.received/2`, and reacts to them.
+  Passes messages posted in Slack channels to `Wardrik.Chat.received/2`, and reacts to them.
 
     * A message the agent takes gets :eyes:, then :white_check_mark: once it's answered.
     * A message the agent couldn't take gets a reply in its thread saying why.
@@ -8,9 +8,9 @@ defmodule WardrikSlack.Messages do
   Ignores edits, deletions, bots, direct messages, and people from another workspace.
   """
 
-  alias WardrikChannel.Inbound
-  alias WardrikChannel.Member
-  alias WardrikChannel.Workspace
+  alias Wardrik.Chat.Inbound
+  alias Wardrik.Chat.Member
+  alias Wardrik.Chat.Workspace
   alias WardrikSlack.API
 
   @posted [nil, "thread_broadcast", "file_share"]
@@ -49,7 +49,7 @@ defmodule WardrikSlack.Messages do
       mentioned?: String.contains?(text, mention)
     }
 
-    case WardrikChannel.received(workspace, inbound) do
+    case Wardrik.Chat.received(workspace, inbound) do
       {:asked, conversation} ->
         react(workspace, "reactions.add", room, ts, "eyes")
         {:asked, conversation}

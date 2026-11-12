@@ -29,7 +29,7 @@ end
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
-    vault_keys: [WardrikVault.generate_key()]
+    vault_keys: [Wardrik.Vault.generate_key()]
   )
 
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")
@@ -38,9 +38,9 @@ scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 hook_secret = "whsec_" <> Base.encode64(:crypto.strong_rand_bytes(24))
 
 {:ok, _vsn} =
-  WardrikVault.put(
+  Wardrik.Vault.put(
     MyApp.AgentRuntime.Vault,
-    %WardrikVault.Secret{principal: Wardrik.principal("maria"), name: "ORDERS_HOOK", value: hook_secret},
+    %Wardrik.Vault.Secret{principal: Wardrik.principal("maria"), name: "ORDERS_HOOK", value: hook_secret},
     kind: :signing_secret
   )
 ```

@@ -1,14 +1,14 @@
-defmodule WardrikOAuth.Renewal do
+defmodule Wardrik.OAuth.Renewal do
   @moduledoc """
   Refreshes expired tokens. A cluster-wide lock keeps two nodes from spending the same refresh
   token.
   """
 
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Request
+  alias Wardrik.OAuth.Token
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Request
-  alias WardrikOAuth.Token
-  alias WardrikVault.Secret
 
   @doc """
   Returns the access token of `:token`, refreshing it first with `:provider` if it has expired.
@@ -36,7 +36,7 @@ defmodule WardrikOAuth.Renewal do
       with {:ok, token, vsn} <- current(settings, name, principal) do
         value = Token.encode(Token.expire(token))
         expired = %Secret{principal: principal, name: name, value: value}
-        WardrikVault.put(settings.vault, expired, kind: :grant, if_vsn: vsn)
+        Wardrik.Vault.put(settings.vault, expired, kind: :grant, if_vsn: vsn)
       end
     end)
 
@@ -66,7 +66,7 @@ defmodule WardrikOAuth.Renewal do
         fresh = %{Token.carry_refresh(fresh, token) | provider: provider.key}
 
         secret = %Secret{principal: principal, name: provider.name, value: Token.encode(fresh)}
-        WardrikVault.put(settings.vault, secret, kind: :grant, if_vsn: vsn)
+        Wardrik.Vault.put(settings.vault, secret, kind: :grant, if_vsn: vsn)
 
         {:ok, fresh.access_token}
 
@@ -90,7 +90,7 @@ defmodule WardrikOAuth.Renewal do
   end
 
   defp current(settings, name, principal) do
-    with {:ok, :grant, value, vsn} <- WardrikVault.lookup(settings.vault, principal, name),
+    with {:ok, :grant, value, vsn} <- Wardrik.Vault.lookup(settings.vault, principal, name),
          {:ok, token} <- Token.decode(value) do
       {:ok, token, vsn}
     else
@@ -99,7 +99,7 @@ defmodule WardrikOAuth.Renewal do
   end
 
   defp locked(name, %Principal{id: id}, fun) do
-    case :global.trans({{WardrikOAuth, name, id}, self()}, fun, [node() | Node.list()], 20) do
+    case :global.trans({{Wardrik.OAuth, name, id}, self()}, fun, [node() | Node.list()], 20) do
       :aborted -> {:error, :renewing}
       result -> result
     end

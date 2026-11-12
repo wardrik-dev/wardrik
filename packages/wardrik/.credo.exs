@@ -50,11 +50,13 @@
       checks: %{
         enabled:
           [
-            {WardrikEvents.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
+            {Wardrik.EventLog.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
             #
             ## Consistency Checks
             #
-            {Credo.Check.Consistency.ExceptionNames, []},
+            # Each exception is named for what went wrong: Wardrik.MCP.Unavailable,
+            # Wardrik.Workers.Lost, Wardrik.Store.S3.Error.
+            {Credo.Check.Consistency.ExceptionNames, false},
             {Credo.Check.Consistency.LineEndings, []},
             {Credo.Check.Consistency.ParameterPatternMatching, []},
             {Credo.Check.Consistency.SpaceAroundOperators, []},

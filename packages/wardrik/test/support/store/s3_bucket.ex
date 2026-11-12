@@ -1,10 +1,10 @@
-defmodule WardrikStore.Test.S3Bucket do
+defmodule Wardrik.Store.Test.S3Bucket do
   @moduledoc """
   An S3 bucket in one ETS table, as a Plug for `Req.Test`: objects, ETags as
   S3 computes them, conditional PUT, GET, DELETE, and ListObjectsV2 in pages
   of two.
 
-      req_options: [plug: {WardrikStore.Test.S3Bucket, conditional_delete: true}]
+      req_options: [plug: {Wardrik.Store.Test.S3Bucket, conditional_delete: true}]
 
   With `conditional_delete: false` a DELETE ignores `if-match`, as some
   services do, and with `conditional_put: false` a PUT ignores both
@@ -22,7 +22,7 @@ defmodule WardrikStore.Test.S3Bucket do
   @page 2
 
   @doc """
-  The options `WardrikStore.S3.new/1` builds a store over this bucket from, with
+  The options `Wardrik.Store.S3.new/1` builds a store over this bucket from, with
   `bucket_opts` for the plug and `opts` over the store's own.
   """
   @spec store_opts(keyword(), keyword()) :: keyword()

@@ -1,7 +1,7 @@
 if Code.ensure_loaded?(Req) do
-  defmodule WardrikStore.S3.Error do
+  defmodule Wardrik.Store.S3.Error do
     @moduledoc """
-    What a bucket answered that `WardrikStore.S3` can't take as an answer: a status and the
+    What a bucket answered that `Wardrik.Store.S3` can't take as an answer: a status and the
     service's error code, or why no answer arrived.
     """
 

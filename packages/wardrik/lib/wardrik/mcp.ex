@@ -1,12 +1,12 @@
-defmodule WardrikMCP do
+defmodule Wardrik.MCP do
   @moduledoc """
   Gives WardrikCore agents the tools of any MCP server.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_mcp#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       children = [
-        {WardrikMCP,
+        {Wardrik.MCP,
          name: MyApp.MCP,
          servers: [
            github: [transport: {:stdio, command: "github-mcp-server", args: ["stdio"]}],
@@ -17,15 +17,15 @@ defmodule WardrikMCP do
       WardrikCore.start_agent(
         agent_id: "triage",
         model: "anthropic:claude-haiku-4-5",
-        capabilities: [{WardrikMCP, name: MyApp.MCP, servers: [:github, :linear]}]
+        capabilities: [{Wardrik.MCP, name: MyApp.MCP, servers: [:github, :linear]}]
       )
 
     * The model sees each tool as `github__search_issues`.
-    * Server options are in `WardrikMCP.Server`.
+    * Server options are in `Wardrik.MCP.Server`.
     * A server that's down offers no tools and is retried, up to a minute between tries.
     * Tools carry the server's hints as `WardrikCore.Tool` annotations. A tool is `gated` unless
       it's read-only.
-    * A transient failure raises `WardrikMCP.Unavailable`, so the tool runner can retry.
+    * A transient failure raises `Wardrik.MCP.Unavailable`, so the tool runner can retry.
     * An error the tool returns reaches the model as the call's error.
 
   ## Telemetry
@@ -46,12 +46,12 @@ defmodule WardrikMCP do
                type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
                default: [],
                doc:
-                 "Servers to start with, as a list of name and options. See `WardrikMCP.Server`."
+                 "Servers to start with, as a list of name and options. See `Wardrik.MCP.Server`."
              ],
              store: [
                type: :any,
                doc:
-                 "A `WardrikStore` for servers added at runtime. Without it, `add/3` only adds a server on this node."
+                 "A `Wardrik.Store` for servers added at runtime. Without it, `add/3` only adds a server on this node."
              ],
              reconcile: [
                type: {:or, [:pos_integer, {:in, [:infinity]}]},
@@ -74,11 +74,11 @@ defmodule WardrikMCP do
              ]
            )
 
-  alias WardrikMCP.Connection
-  alias WardrikMCP.Servers
+  alias Wardrik.MCP.Connection
+  alias Wardrik.MCP.Servers
 
   @doc """
-  Starts `WardrikMCP` and connects to its servers.
+  Starts `Wardrik.MCP` and connects to its servers.
 
   ## Options
 
@@ -91,10 +91,10 @@ defmodule WardrikMCP do
   end
 
   @doc """
-  Adds the server `name`. Options are as in `WardrikMCP.Server`, as data, not functions.
+  Adds the server `name`. Options are as in `Wardrik.MCP.Server`, as data, not functions.
 
       :ok =
-        WardrikMCP.add(MyApp.MCP, "linear",
+        Wardrik.MCP.add(MyApp.MCP, "linear",
           transport: {:streamable_http, url: "https://mcp.linear.app/mcp"},
           credential_name: "linear"
         )
@@ -113,7 +113,7 @@ defmodule WardrikMCP do
   @doc """
   Reconnects the servers whose headers name a secret. Call it after the secret changes.
 
-      :ok = WardrikMCP.reconnect(MyApp.MCP, owner: "acme", secret: "CRM_KEY")
+      :ok = Wardrik.MCP.reconnect(MyApp.MCP, owner: "acme", secret: "CRM_KEY")
 
   `owner: nil` matches servers with no `owner`.
   """
@@ -150,14 +150,14 @@ defmodule WardrikMCP do
   end
 
   defp scoped(nil), do: nil
-  defp scoped(store), do: WardrikStore.scope(store, "wardrik_mcp")
+  defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_mcp")
 
   @doc """
   Returns the tools of the named servers.
 
   ## Options
 
-    * `:name` - required. The `WardrikMCP` name.
+    * `:name` - required. The `Wardrik.MCP` name.
     * `:servers` - required. A server name or a list of them, as `:github` or
       `["github", "linear"]`.
   """
@@ -172,7 +172,7 @@ defmodule WardrikMCP do
   end
 end
 
-defmodule WardrikMCP.Unavailable do
+defmodule Wardrik.MCP.Unavailable do
   @moduledoc "Raised when an MCP server fails transiently. A retry may succeed."
   defexception [:message]
 end

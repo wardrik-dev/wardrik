@@ -1,12 +1,12 @@
-defmodule WardrikEvents.Listener do
+defmodule Wardrik.EventLog.Listener do
   @moduledoc """
   Calls your module for each agent event, one at a time.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_events#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       defmodule MyApp.Runs do
-        use WardrikEvents.Listener
+        use Wardrik.EventLog.Listener
 
         @impl true
         def handle(event, listener) do
@@ -26,8 +26,8 @@ defmodule WardrikEvents.Listener do
 
   ## Options
 
-    * `:events` - required. The name of your `WardrikEvents`.
-    * `:resources` - required. The logs to follow, as `WardrikEvents.stream/3` takes them.
+    * `:events` - required. The name of your `Wardrik.EventLog`.
+    * `:resources` - required. The logs to follow, as `Wardrik.EventLog.stream/3` takes them.
     * `:types` - the event types to take. Every type unless set.
     * `:after` - the cursor to start after, if you don't define `c:cursor/1`.
 
@@ -40,8 +40,8 @@ defmodule WardrikEvents.Listener do
     * So each event arrives at least once. Drop repeats by the event's `id`.
   """
 
-  alias WardrikEvents.CloudEvent
-  alias WardrikEvents.Cursor
+  alias Wardrik.EventLog.CloudEvent
+  alias Wardrik.EventLog.Cursor
 
   @enforce_keys [:events, :cursor, :options]
   defstruct [:events, :cursor, :options]
@@ -57,15 +57,15 @@ defmodule WardrikEvents.Listener do
 
   defmacro __using__(_opts) do
     quote do
-      @behaviour WardrikEvents.Listener
+      @behaviour Wardrik.EventLog.Listener
 
       @doc false
-      def child_spec(opts), do: WardrikEvents.Listener.child_spec(__MODULE__, opts)
+      def child_spec(opts), do: Wardrik.EventLog.Listener.child_spec(__MODULE__, opts)
 
       @doc false
-      def start_link(opts), do: WardrikEvents.Listener.start_link(__MODULE__, opts)
+      def start_link(opts), do: Wardrik.EventLog.Listener.start_link(__MODULE__, opts)
 
-      @impl WardrikEvents.Listener
+      @impl Wardrik.EventLog.Listener
       def cursor(listener), do: listener.options[:after]
 
       defoverridable child_spec: 1, cursor: 1
@@ -85,7 +85,7 @@ defmodule WardrikEvents.Listener do
     listener = %__MODULE__{events: Keyword.fetch!(opts, :events), cursor: nil, options: opts}
 
     {:ok, stream} =
-      WardrikEvents.stream(listener.events, Keyword.fetch!(opts, :resources),
+      Wardrik.EventLog.stream(listener.events, Keyword.fetch!(opts, :resources),
         after: module.cursor(listener),
         types: Keyword.get(opts, :types, :all)
       )

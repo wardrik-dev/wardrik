@@ -1,13 +1,13 @@
-defmodule WardrikEvents.EncoderTest do
+defmodule Wardrik.EventLog.EncoderTest do
   use ExUnit.Case, async: true
 
-  import WardrikEvents.Test.Protocol
+  import Wardrik.EventLog.Test.Protocol
 
+  alias Wardrik.EventLog.Encoder
   alias WardrikCore.Event
   alias WardrikCore.Principal
   alias WardrikCore.Span
   alias WardrikCore.ToolCall
-  alias WardrikEvents.Encoder
 
   @agent "acme/triage"
 
@@ -81,7 +81,7 @@ defmodule WardrikEvents.EncoderTest do
       event =
         core([:agent, :stop], %{reason: :normal})
         |> one()
-        |> WardrikEvents.CloudEvent.sequenced(42)
+        |> Wardrik.EventLog.CloudEvent.sequenced(42)
 
       assert event["sequence"] == "000000000042"
     end

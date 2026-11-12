@@ -1,4 +1,4 @@
-defmodule WardrikChannel.OwnersTest do
+defmodule Wardrik.Chat.OwnersTest do
   use ExUnit.Case, async: true
 
   test "no module reads an owner or an org from an ID: your app's identities and authorizer do" do
@@ -10,5 +10,10 @@ defmodule WardrikChannel.OwnersTest do
   end
 
   defp reading(pattern),
-    do: for(path <- Path.wildcard("lib/**/*.ex"), File.read!(path) =~ pattern, do: path)
+    do:
+      for(
+        path <- ["lib/wardrik/chat.ex" | Path.wildcard("lib/wardrik/chat/**/*.ex")],
+        File.read!(path) =~ pattern,
+        do: path
+      )
 end

@@ -1,4 +1,4 @@
-defmodule WardrikWorkspace.File do
+defmodule Wardrik.Workspace.File do
   @moduledoc """
   A file in a workspace.
 

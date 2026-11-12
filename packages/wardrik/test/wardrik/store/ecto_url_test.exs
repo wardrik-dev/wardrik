@@ -1,11 +1,12 @@
 if System.get_env("DATABASE_URL") do
-  defmodule WardrikStore.EctoURLTest do
+  defmodule Wardrik.Store.EctoURLTest do
     use ExUnit.Case, async: false
-    use WardrikStore.Conformance
+    use Wardrik.Store.Conformance
 
     alias Ecto.Adapters.Postgres
     alias Ecto.Adapters.SQL
-    alias WardrikStore.Ecto.Repo
+    alias Wardrik.Store
+    alias Wardrik.Store.Ecto.Repo
 
     setup_all do
       url =
@@ -20,13 +21,13 @@ if System.get_env("DATABASE_URL") do
       _dropped = Postgres.storage_down(database)
       :ok = Postgres.storage_up(database)
 
-      store = WardrikStore.Ecto.new(url: url)
-      start_supervised!({WardrikStore, store})
+      store = Store.Ecto.new(url: url)
+      start_supervised!({Wardrik.Store, store})
       %{store: store, url: url}
     end
 
     test "migrates its own table before it keeps anything, once", %{store: store, url: url} do
-      assert {:ok, _vsn} = WardrikStore.put(store, "a", 1)
+      assert {:ok, _vsn} = Wardrik.Store.put(store, "a", 1)
       assert Repo.migrate() == :ignore
 
       assert %{rows: [[1]]} =
@@ -49,8 +50,8 @@ if System.get_env("DATABASE_URL") do
     end
 
     test "takes a repo or a url, not both" do
-      assert_raise ArgumentError, fn -> WardrikStore.Ecto.new(repo: R, url: "postgres://x") end
-      assert_raise ArgumentError, fn -> WardrikStore.Ecto.new([]) end
+      assert_raise ArgumentError, fn -> Store.Ecto.new(repo: R, url: "postgres://x") end
+      assert_raise ArgumentError, fn -> Store.Ecto.new([]) end
     end
   end
 end

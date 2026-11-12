@@ -1,35 +1,21 @@
-# WardrikTriggers
+# Wardrik.Triggers
 
 Asks agents something on a clock, when a feed has new entries, or when a service sends a webhook.
 
 With [Wardrik](https://hexdocs.pm/wardrik), triggers live in an agent's definition and this is set
 up for you. See [Trigger agents](https://hexdocs.pm/wardrik/triggers.html).
 
-## Install
-
-```elixir
-def deps do
-  [
-    {:wardrik_triggers, "~> 0.1.0-rc.5"}
-  ]
-end
-```
-
 ## Start triggers
 
 Set `ANTHROPIC_API_KEY` before starting IEx. In a fresh session:
 
 ```elixir
-Mix.install([
-  {:wardrik_triggers, "~> 0.1.0-rc.5"},
-  {:wardrik_core, "~> 0.1.0-rc.4"},
-  {:wardrik_vault, "~> 0.1.0-rc.2"}
-])
+Mix.install([{:wardrik, "~> 0.1.0-rc.10"}])
 
 defmodule MyApp.Triggered do
-  @behaviour WardrikTriggers.Target
+  @behaviour Wardrik.Triggers.Target
 
-  alias WardrikTriggers.Target.{Ask, Fired, Secret}
+  alias Wardrik.Triggers.Target.{Ask, Fired, Secret}
 
   @impl true
   def ask(%Ask{agent: id, prompt: prompt, trigger: trigger, overlap: overlap}, _opts) do
@@ -62,7 +48,7 @@ defmodule MyApp.Triggered do
 
   @impl true
   def resolve_secret(%Secret{name: name}, _opts) do
-    case WardrikVault.fetch(MyApp.Vault, %WardrikCore.Principal{id: "acme"}, name,
+    case Wardrik.Vault.fetch(MyApp.Vault, %WardrikCore.Principal{id: "acme"}, name,
            kind: :signing_secret
          ) do
       {:ok, secret} -> {:ok, secret}
@@ -71,13 +57,13 @@ defmodule MyApp.Triggered do
   end
 end
 
-store = WardrikStore.ETS.new(name: MyApp.Store)
+store = Wardrik.Store.ETS.new(name: MyApp.Store)
 
 children = [
-  {WardrikStore, store},
-  {WardrikVault, name: MyApp.Vault, store: store, keys: [WardrikVault.generate_key()]},
-  {WardrikCore, backend: {WardrikStore.Durable, store: store}},
-  {WardrikTriggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
+  {Wardrik.Store, store},
+  {Wardrik.Vault, name: MyApp.Vault, store: store, keys: [Wardrik.Vault.generate_key()]},
+  {WardrikCore, backend: {Wardrik.Store.Durable, store: store}},
+  {Wardrik.Triggers, name: MyApp.Triggers, store: store, target: {MyApp.Triggered, []}}
 ]
 
 {:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
@@ -86,34 +72,34 @@ children = [
   WardrikCore.start_agent(agent_id: "agt_digest", model: "anthropic:claude-haiku-4-5")
 
 :ok =
-  WardrikTriggers.put(MyApp.Triggers, "agt_digest", [
+  Wardrik.Triggers.put(MyApp.Triggers, "agt_digest", [
     %{"name" => "daily", "every" => "0 9 * * *", "prompt" => "Write today's update."}
   ])
 ```
 
-The target implements message delivery, overlap handling, and webhook-secret lookup. See `WardrikTriggers.Target`.
+The target implements message delivery, overlap handling, and webhook-secret lookup. See `Wardrik.Triggers.Target`.
 
 ## Change triggers
 
 ```elixir
 :ok =
-  WardrikTriggers.put(MyApp.Triggers, "agt_digest", [%{"every" => "@daily", "prompt" => "Hi"}])
+  Wardrik.Triggers.put(MyApp.Triggers, "agt_digest", [%{"every" => "@daily", "prompt" => "Hi"}])
 
 {:ok, _trigger} =
-  WardrikTriggers.set(MyApp.Triggers, "agt_digest", %{
+  Wardrik.Triggers.set(MyApp.Triggers, "agt_digest", %{
     "name" => "weekly",
     "every" => "@weekly",
     "prompt" => "Recap"
   })
 
-:ok = WardrikTriggers.remove(MyApp.Triggers, agent_id: "agt_digest", name: "weekly")
+:ok = Wardrik.Triggers.remove(MyApp.Triggers, agent_id: "agt_digest", name: "weekly")
 
-WardrikTriggers.list(MyApp.Triggers, "agt_digest")
+Wardrik.Triggers.list(MyApp.Triggers, "agt_digest")
 
-# => [{%WardrikTriggers.Trigger{name: "trigger-1", every: "@daily", ...}, ~U[2026-11-03 00:00:00Z]}]
+# => [{%Wardrik.Triggers.Trigger{name: "trigger-1", every: "@daily", ...}, ~U[2026-11-03 00:00:00Z]}]
 ```
 
-Every key a trigger takes is in `WardrikTriggers.Trigger`.
+Every key a trigger takes is in `Wardrik.Triggers.Trigger`.
 
 ## Feeds
 
@@ -126,16 +112,16 @@ Continue in the same session to seal a signing secret and configure a webhook tr
 
 ```elixir
 {:ok, _version} =
-  WardrikVault.put(
+  Wardrik.Vault.put(
     MyApp.Vault,
-    %WardrikVault.Secret{
+    %Wardrik.Vault.Secret{
       principal: %WardrikCore.Principal{id: "acme"},
       name: "ISSUES_HOOK_SECRET",
       value: "example-hook-secret"
     }, kind: :signing_secret)
 
 {:ok, _trigger} =
-  WardrikTriggers.set(MyApp.Triggers, "agt_digest", %{
+  Wardrik.Triggers.set(MyApp.Triggers, "agt_digest", %{
     "name" => "issues",
     "webhook" => %{"secret" => "${ISSUES_HOOK_SECRET}"},
     "prompt" => "Summarize the issue in this webhook."
@@ -152,7 +138,7 @@ post "/hooks/:agent/:trigger" do
   {:ok, body, conn} = Plug.Conn.read_body(conn)
   request = %{body: body, headers: Map.new(conn.req_headers)}
 
-  case WardrikTriggers.deliver(MyApp.Triggers, agent_id: agent, name: trigger, request: request) do
+  case Wardrik.Triggers.deliver(MyApp.Triggers, agent_id: agent, name: trigger, request: request) do
     :ok -> send_resp(conn, 202, "")
     {:error, :not_found} -> send_resp(conn, 404, "")
     {:error, _busy} -> send_resp(conn, 503, "")
@@ -161,7 +147,7 @@ end
 ```
 
 - Read the body before `Plug.Parsers` does. A signature covers the exact bytes.
-- A request that fails to verify returns `{:error, :not_found}`. See `WardrikTriggers.Webhook`.
+- A request that fails to verify returns `{:error, :not_found}`. See `Wardrik.Triggers.Webhook`.
 - Each request is asked about once, keyed by `Idempotency-Key`, `webhook-id`, or its body.
 
 ## In a cluster

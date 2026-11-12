@@ -6,7 +6,7 @@ defmodule Wardrik.Operations.Triggers do
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Running
   alias Wardrik.Scope
-  alias WardrikTriggers.Trigger
+  alias Wardrik.Triggers.Trigger
 
   @doc "Sets one of the agent's triggers, and saves it in the agent's definition."
   @spec set(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
@@ -56,7 +56,7 @@ defmodule Wardrik.Operations.Triggers do
 
     delivery = [agent_id: id, name: name, request: request]
 
-    case WardrikTriggers.deliver(Wardrik.triggers(wardrik), delivery) do
+    case Wardrik.Triggers.deliver(Wardrik.triggers(wardrik), delivery) do
       :ok ->
         {:ok, nil}
 
@@ -70,7 +70,7 @@ defmodule Wardrik.Operations.Triggers do
   end
 
   defp set_trigger(wardrik, id, fields) do
-    case WardrikTriggers.set(Wardrik.triggers(wardrik), id, fields) do
+    case Wardrik.Triggers.set(Wardrik.triggers(wardrik), id, fields) do
       {:ok, trigger} ->
         {:ok, trigger}
 
@@ -83,7 +83,7 @@ defmodule Wardrik.Operations.Triggers do
   end
 
   defp removed(wardrik, id, name) do
-    case WardrikTriggers.remove(Wardrik.triggers(wardrik), agent_id: id, name: name) do
+    case Wardrik.Triggers.remove(Wardrik.triggers(wardrik), agent_id: id, name: name) do
       :ok ->
         :ok
 
@@ -108,7 +108,7 @@ defmodule Wardrik.Operations.Triggers do
        Error.new(:unavailable, "#{id}'s triggers weren't saved: #{inspect(reason)}. Try again.")}
 
   defp kept(wardrik, id, name) do
-    case Enum.find(WardrikTriggers.list(Wardrik.triggers(wardrik), id), fn {trigger, _next_at} ->
+    case Enum.find(Wardrik.Triggers.list(Wardrik.triggers(wardrik), id), fn {trigger, _next_at} ->
            trigger.name == name
          end) do
       {trigger, _next_at} -> {:ok, trigger}

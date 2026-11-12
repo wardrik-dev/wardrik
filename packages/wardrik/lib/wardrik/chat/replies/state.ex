@@ -1,4 +1,4 @@
-defmodule WardrikChannel.Replies.State do
+defmodule Wardrik.Chat.Replies.State do
   @moduledoc false
 
   @kept [:workspace, :room, :conversations, :cursor, :senders, :runs]
@@ -25,7 +25,7 @@ defmodule WardrikChannel.Replies.State do
           workspace: String.t(),
           room: String.t(),
           cursor: String.t() | nil,
-          channel: WardrikChannel.Channel.t() | nil,
+          channel: Wardrik.Chat.Channel.t() | nil,
           follower: pid() | nil,
           conversations: [conversation()],
           senders: %{String.t() => String.t()},
@@ -35,7 +35,7 @@ defmodule WardrikChannel.Replies.State do
 
   @typedoc """
   What an event asks to post in its thread. `:none` posts nothing. The rest match
-  `t:WardrikChannel.Outbound.body/0`, except `{:waiting, interrupt_ids, asked_by}`.
+  `t:Wardrik.Chat.Outbound.body/0`, except `{:waiting, interrupt_ids, asked_by}`.
   """
   @type post() ::
           {:reply, String.t(), [String.t()]}

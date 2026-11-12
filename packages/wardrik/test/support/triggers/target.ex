@@ -1,10 +1,10 @@
-defmodule WardrikTriggers.Test.Target do
+defmodule Wardrik.Triggers.Test.Target do
   @moduledoc "A target that tells the test what it was asked, and answers as the test says."
-  @behaviour WardrikTriggers.Target
+  @behaviour Wardrik.Triggers.Target
 
-  alias WardrikTriggers.Target.Ask
-  alias WardrikTriggers.Target.Fired
-  alias WardrikTriggers.Target.Secret
+  alias Wardrik.Triggers.Target.Ask
+  alias Wardrik.Triggers.Target.Fired
+  alias Wardrik.Triggers.Target.Secret
 
   @impl true
   def ask(%Ask{} = ask, %{test: test, answer: answer}) do

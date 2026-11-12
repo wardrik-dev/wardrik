@@ -1,13 +1,13 @@
-defmodule WardrikEvents.ListenerTest do
+defmodule Wardrik.EventLog.ListenerTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
-  import WardrikEvents.Test.Events
+  import Wardrik.EventLog.Test.Events
 
-  alias WardrikEvents.Cursor
+  alias Wardrik.EventLog.Cursor
 
   defmodule Told do
-    use WardrikEvents.Listener
+    use Wardrik.EventLog.Listener
 
     @impl true
     def handle(event, listener) do
@@ -17,7 +17,7 @@ defmodule WardrikEvents.ListenerTest do
   end
 
   defmodule Kept do
-    use WardrikEvents.Listener
+    use Wardrik.EventLog.Listener
 
     @impl true
     def handle(event, listener) do

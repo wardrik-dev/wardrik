@@ -1,8 +1,8 @@
-defmodule WardrikPolicy.Rule do
+defmodule Wardrik.Policy.Rule do
   @moduledoc false
 
-  alias WardrikPolicy.Call
-  alias WardrikPolicy.Pattern
+  alias Wardrik.Policy.Call
+  alias Wardrik.Policy.Pattern
 
   @enforce_keys [:effect, :pattern]
   defstruct [:effect, :pattern, :message, :after]

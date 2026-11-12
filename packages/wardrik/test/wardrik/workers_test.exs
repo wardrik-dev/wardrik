@@ -12,7 +12,7 @@ defmodule Wardrik.WorkersTest do
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{scope: owner(wardrik)}
   end
 
@@ -274,8 +274,8 @@ defmodule Wardrik.WorkersTest do
 
   defp until_completed do
     receive do
-      {WardrikEvents, _log, %{"type" => "wardrik.tool_call.completed"} = event} -> event
-      {WardrikEvents, _log, _event} -> until_completed()
+      {Wardrik.EventLog, _log, %{"type" => "wardrik.tool_call.completed"} = event} -> event
+      {Wardrik.EventLog, _log, _event} -> until_completed()
     after
       10_000 -> flunk("No wardrik.tool_call.completed came.")
     end

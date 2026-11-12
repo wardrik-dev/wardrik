@@ -1,6 +1,6 @@
-defmodule WardrikPolicy.Decision do
+defmodule Wardrik.Policy.Decision do
   @moduledoc """
-  What a policy decided about a call, and why. Returned by `WardrikPolicy.explain/3`.
+  What a policy decided about a call, and why. Returned by `Wardrik.Policy.explain/3`.
 
     * `:effect` - `:allow`, `:ask` or `:deny`.
     * `:message` - the prompt or refusal. `nil` for an allow.
@@ -45,7 +45,7 @@ defmodule WardrikPolicy.Decision do
   def strictness(:allow), do: 2
 
   @doc false
-  @spec outcome(t()) :: WardrikPolicy.decision()
+  @spec outcome(t()) :: Wardrik.Policy.decision()
   def outcome(%__MODULE__{effect: :allow}), do: :allow
   def outcome(%__MODULE__{effect: effect, message: message}), do: {effect, message}
 

@@ -1,7 +1,7 @@
-defmodule WardrikChannel.Channel do
+defmodule Wardrik.Chat.Channel do
   @moduledoc """
   One chat app Wardrik runs, under the name it's configured with. Adapters get it from
-  `WardrikChannel.channel/2`. See `WardrikChannel` for its options.
+  `Wardrik.Chat.channel/2`. See `Wardrik.Chat` for its options.
 
     * `:options` - the options left over for the adapter, such as Slack's `:signing_secret`.
     * `:vault` - where tokens are sealed. `nil` without Wardrik's `:vault_keys`.
@@ -9,9 +9,9 @@ defmodule WardrikChannel.Channel do
 
   alias Wardrik.Channel.Installation
   alias Wardrik.Channel.Installations.Request
-  alias WardrikChannel.Identities
-  alias WardrikChannel.Installations.Stored
-  alias WardrikChannel.Installations.Token
+  alias Wardrik.Chat.Identities
+  alias Wardrik.Chat.Installations.Stored
+  alias Wardrik.Chat.Installations.Token
 
   @options [
     token: [
@@ -34,7 +34,7 @@ defmodule WardrikChannel.Channel do
       type: :mod_arg,
       required: true,
       doc: """
-      The `WardrikChannel.Identities` that says who each member is in your app, as
+      The `Wardrik.Chat.Identities` that says who each member is in your app, as
       `{module, opts}`. A member it doesn't know can't ask or decide.
       """
     ],
@@ -72,7 +72,7 @@ defmodule WardrikChannel.Channel do
           events: atom(),
           vault: atom() | nil,
           adapter: module(),
-          store: WardrikStore.t(),
+          store: Wardrik.Store.t(),
           installations: {module(), term()},
           identities: {module(), term()},
           offering: String.t(),
@@ -94,7 +94,7 @@ defmodule WardrikChannel.Channel do
     named!(name)
     installations = installations!(name, own)
     vault = own[:vault]
-    store = WardrikStore.scope(own[:store], "wardrik_channel")
+    store = Wardrik.Store.scope(own[:store], "wardrik_channel")
 
     %__MODULE__{
       name: name,
@@ -123,7 +123,7 @@ defmodule WardrikChannel.Channel do
   @doc """
   Returns the channel's installations whose owner is exactly `owner`.
 
-      WardrikChannel.Channel.owned(channel, "acme")
+      Wardrik.Chat.Channel.owned(channel, "acme")
       #=> [%Wardrik.Channel.Installation{workspace: "T0123", owner: "acme", ...}]
   """
   @spec owned(t(), String.t()) :: [Installation.t()]
@@ -131,7 +131,7 @@ defmodule WardrikChannel.Channel do
     do: module.owned(%Request{channel: name, owner: owner}, config)
 
   @doc "Returns who `member` of `workspace` is in your app, or what to tell them if unknown."
-  @spec identify(t(), String.t(), WardrikChannel.Member.t()) ::
+  @spec identify(t(), String.t(), Wardrik.Chat.Member.t()) ::
           {:ok, WardrikCore.Principal.t()} | {:error, String.t()}
   def identify(%__MODULE__{name: name, identities: {module, config}}, workspace, member) do
     request = %Identities.Request{

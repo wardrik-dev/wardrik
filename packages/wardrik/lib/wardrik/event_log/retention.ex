@@ -1,11 +1,11 @@
-defmodule WardrikEvents.Retention do
+defmodule Wardrik.EventLog.Retention do
   @moduledoc false
 
   use GenServer
 
   require Logger
 
-  alias WardrikEvents.Log
+  alias Wardrik.EventLog.Log
 
   @every :timer.hours(1)
 
@@ -13,7 +13,7 @@ defmodule WardrikEvents.Retention do
   def start_link(settings), do: GenServer.start_link(__MODULE__, settings)
 
   @doc "Drops the events written before `cutoff` from every log in `store`."
-  @spec trim(WardrikStore.t(), DateTime.t()) :: :ok
+  @spec trim(Wardrik.Store.t(), DateTime.t()) :: :ok
   def trim(store, cutoff) do
     for log <- Log.logs(store), do: trim(store, log, cutoff)
     :ok

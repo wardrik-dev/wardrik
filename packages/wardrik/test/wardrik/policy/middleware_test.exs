@@ -1,13 +1,13 @@
-defmodule WardrikPolicy.MiddlewareTest do
+defmodule Wardrik.Policy.MiddlewareTest do
   use ExUnit.Case, async: true
   use Mimic
 
+  alias Wardrik.Policy.Ask
   alias WardrikCore.Context
-  alias WardrikPolicy.Ask
 
   setup do
     policy =
-      WardrikPolicy.new!(
+      Wardrik.Policy.new!(
         allow: ["write_file(notes/*)", "refund_order"],
         ask: ["books/*"],
         deny: %{"shell/*" => "No shell."}
@@ -22,7 +22,7 @@ defmodule WardrikPolicy.MiddlewareTest do
       tool("shell__exec")
     ]
 
-    %{context: Context.new(tools: tools, middleware: [{WardrikPolicy.Middleware, policy}])}
+    %{context: Context.new(tools: tools, middleware: [{Wardrik.Policy.Middleware, policy}])}
   end
 
   test "a call the rules allow runs", %{context: context} do
@@ -44,8 +44,10 @@ defmodule WardrikPolicy.MiddlewareTest do
   end
 
   test "the default turns on the tool's annotations", %{context: context} do
-    policy = WardrikPolicy.new!(allow: ["refund_order"], default: [read_only: :allow, else: :ask])
-    context = %{context | middleware: [{WardrikPolicy.Middleware, policy}]}
+    policy =
+      Wardrik.Policy.new!(allow: ["refund_order"], default: [read_only: :allow, else: :ask])
+
+    context = %{context | middleware: [{Wardrik.Policy.Middleware, policy}]}
 
     assert {:ok, _context} = run(context, "list_issues")
     assert {:ok, _context} = run(context, "refund_order")
@@ -58,16 +60,18 @@ defmodule WardrikPolicy.MiddlewareTest do
     assert {:ok, _context} = run(context, "write_file", %{path: "secrets/key"})
 
     strict =
-      put_in(context.middleware, [{WardrikPolicy.Middleware, WardrikPolicy.new!(default: :deny)}])
+      put_in(context.middleware, [
+        {Wardrik.Policy.Middleware, Wardrik.Policy.new!(default: :deny)}
+      ])
 
     assert {:ok, %Context{response: {:error, _message}}} =
              run(strict, "write_file", %{path: "secrets/key"})
   end
 
   test "takes several policies, and the strictest decision wins", %{context: context} do
-    org = WardrikPolicy.new!(deny: %{"books/*" => "Not in this org."})
-    agent = WardrikPolicy.new!(ask: ["books/*"])
-    context = %{context | middleware: [{WardrikPolicy.Middleware, [agent, org]}]}
+    org = Wardrik.Policy.new!(deny: %{"books/*" => "Not in this org."})
+    agent = Wardrik.Policy.new!(ask: ["books/*"])
+    context = %{context | middleware: [{Wardrik.Policy.Middleware, [agent, org]}]}
 
     assert {:ok, %Context{response: {:error, "Not in this org."}}} =
              run(context, "books__create_bill")
@@ -125,7 +129,7 @@ defmodule WardrikPolicy.MiddlewareTest do
                       %{
                         call: %{name: "shell__exec"},
                         labels: ["outside"],
-                        decision: %WardrikPolicy.Decision{effect: :deny, rule: "shell/*"}
+                        decision: %Wardrik.Policy.Decision{effect: :deny, rule: "shell/*"}
                       }}
     end
 
@@ -162,7 +166,7 @@ defmodule WardrikPolicy.MiddlewareTest do
     test "a person's answer is an event", %{context: context} do
       resume(context, "books__create_bill", %{"1" => {:approve, "Pay it Friday."}}, %{by: "maria"})
 
-      assert_receive {:decision, %{decision: %WardrikPolicy.Decision{effect: :ask}}}
+      assert_receive {:decision, %{decision: %Wardrik.Policy.Decision{effect: :ask}}}
 
       assert_receive {:answer,
                       %{
@@ -215,7 +219,7 @@ defmodule WardrikPolicy.MiddlewareTest do
 
     test "a call the policy now refuses is refused, approved or not", %{context: context} do
       context =
-        put_in(context.middleware, [{WardrikPolicy.Middleware, WardrikPolicy.new!(deny: ["*"])}])
+        put_in(context.middleware, [{Wardrik.Policy.Middleware, Wardrik.Policy.new!(deny: ["*"])}])
 
       assert {:ok, %Context{response: {:error, _message}}} =
                resume(context, "books__create_bill", %{"1" => :approve})
@@ -225,7 +229,7 @@ defmodule WardrikPolicy.MiddlewareTest do
   describe "judges" do
     setup %{context: context} do
       policy =
-        WardrikPolicy.new!(
+        Wardrik.Policy.new!(
           judge: [
             model: "typesafe:jev-latest",
             questions: [
@@ -235,7 +239,7 @@ defmodule WardrikPolicy.MiddlewareTest do
           ]
         )
 
-      %{context: put_in(context.middleware, [{WardrikPolicy.Middleware, policy}])}
+      %{context: put_in(context.middleware, [{Wardrik.Policy.Middleware, policy}])}
     end
 
     test "asks the model about each call, with WardrikCore.evaluate/2", %{context: context} do
@@ -268,7 +272,7 @@ defmodule WardrikPolicy.MiddlewareTest do
 
   describe "budgets" do
     setup do
-      policy = WardrikPolicy.new!(budget: [usd: 1.00, tokens: 1000])
+      policy = Wardrik.Policy.new!(budget: [usd: 1.00, tokens: 1000])
       %{context: metered(policy)}
     end
 
@@ -277,7 +281,7 @@ defmodule WardrikPolicy.MiddlewareTest do
       {:ok, context} = generate(context, usd: 0.25, tokens: 100)
 
       assert %{0 => %{usd: 0.65, tokens: 400, period: {:day, _today}}} =
-               Context.get_private(context, WardrikPolicy.Budget)
+               Context.get_private(context, Wardrik.Policy.Budget)
     end
 
     test "the call that crosses a limit runs, and the next one asks", %{context: context} do
@@ -306,7 +310,7 @@ defmodule WardrikPolicy.MiddlewareTest do
     end
 
     test "on_exhausted: :deny refuses without asking" do
-      policy = WardrikPolicy.new!(budget: [tokens: 10, on_exhausted: :deny])
+      policy = Wardrik.Policy.new!(budget: [tokens: 10, on_exhausted: :deny])
       context = metered(policy)
       {:ok, context} = generate(context, tokens: 20)
 
@@ -328,42 +332,42 @@ defmodule WardrikPolicy.MiddlewareTest do
       assert {:ok, context} = generate(context, usd: 0.10)
 
       assert %{0 => %{usd: 0.2, unpriced: false}} =
-               Context.get_private(context, WardrikPolicy.Budget)
+               Context.get_private(context, Wardrik.Policy.Budget)
     end
 
     test "a price stands in for a cost the model doesn't report" do
-      policy = WardrikPolicy.new!(budget: [usd: 1.00, price: [input: 1.0, output: 1.0]])
+      policy = Wardrik.Policy.new!(budget: [usd: 1.00, price: [input: 1.0, output: 1.0]])
       context = metered(policy)
       {:ok, context} = generate(context, usd: nil, tokens: 500_000)
 
-      assert %{0 => %{usd: 0.5}} = Context.get_private(context, WardrikPolicy.Budget)
+      assert %{0 => %{usd: 0.5}} = Context.get_private(context, Wardrik.Policy.Budget)
     end
 
     test "a price given once a call went unpriced lets the next one run", %{context: context} do
       {:ok, context} = generate(context, usd: nil, tokens: 10)
 
       priced =
-        WardrikPolicy.new!(budget: [usd: 1.00, tokens: 1000, price: [input: 1.0, output: 1.0]])
+        Wardrik.Policy.new!(budget: [usd: 1.00, tokens: 1000, price: [input: 1.0, output: 1.0]])
 
       assert {:ok, _context} =
-               generate(%{context | middleware: [{WardrikPolicy.Middleware, priced}]})
+               generate(%{context | middleware: [{Wardrik.Policy.Middleware, priced}]})
     end
 
     test "a new period starts the count over", %{context: context} do
-      context = Context.put_private(context, WardrikPolicy.Budget, %{0 => %{period: :yesterday}})
+      context = Context.put_private(context, Wardrik.Policy.Budget, %{0 => %{period: :yesterday}})
 
       assert {:ok, context} = generate(context, usd: 0.10)
-      assert %{0 => %{usd: 0.10}} = Context.get_private(context, WardrikPolicy.Budget)
+      assert %{0 => %{usd: 0.10}} = Context.get_private(context, Wardrik.Policy.Budget)
     end
 
     test "each policy's budget counts apart" do
-      org = WardrikPolicy.new!([budget: [usd: 100.00]], name: "acme")
-      agent = WardrikPolicy.new!([budget: [usd: 1.00, on_exhausted: :deny]], name: "books")
+      org = Wardrik.Policy.new!([budget: [usd: 100.00]], name: "acme")
+      agent = Wardrik.Policy.new!([budget: [usd: 1.00, on_exhausted: :deny]], name: "books")
       context = metered([org, agent])
       {:ok, context} = generate(context, usd: 2.00)
 
       assert {:error, "This agent has spent $2.00 of $1.00 today."} = generate(context)
-      assert %{"acme" => %{usd: 2.0}} = Context.get_private(context, WardrikPolicy.Budget)
+      assert %{"acme" => %{usd: 2.0}} = Context.get_private(context, Wardrik.Policy.Budget)
     end
   end
 
@@ -383,7 +387,7 @@ defmodule WardrikPolicy.MiddlewareTest do
   defp metered(policies),
     do:
       Context.new(
-        middleware: [{WardrikPolicy.Middleware, policies}],
+        middleware: [{Wardrik.Policy.Middleware, policies}],
         span: WardrikCore.Span.root()
       )
 

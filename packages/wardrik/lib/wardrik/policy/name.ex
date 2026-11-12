@@ -1,4 +1,4 @@
-defmodule WardrikPolicy.Name do
+defmodule Wardrik.Policy.Name do
   @moduledoc false
 
   @type glob() :: [String.t()]

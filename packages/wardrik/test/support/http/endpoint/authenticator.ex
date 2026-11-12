@@ -1,7 +1,7 @@
-defmodule WardrikHTTP.Test.Authenticator do
+defmodule Wardrik.HTTP.Test.Authenticator do
   @moduledoc "Takes the secrets a test gives it as `Authorization: Bearer`, each as `acme/@maria`, until one is revoked."
 
-  @behaviour WardrikHTTP.Authenticator
+  @behaviour Wardrik.HTTP.Authenticator
 
   import Plug.Conn, only: [get_req_header: 2]
 
@@ -20,7 +20,7 @@ defmodule WardrikHTTP.Test.Authenticator do
 
   def revoke(name, secret), do: Agent.update(secrets(name), &MapSet.delete(&1, secret))
 
-  @impl WardrikHTTP.Authenticator
+  @impl Wardrik.HTTP.Authenticator
   def authenticate(%{conn: conn, server: server, wardrik: wardrik}, _opts) do
     with ["Bearer " <> secret] <- get_req_header(conn, "authorization"),
          true <- Agent.get(secrets(wardrik), &MapSet.member?(&1, secret)) do

@@ -24,10 +24,10 @@ defmodule Wardrik.WorkspacesTest do
         store: store
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{scope: owner(wardrik)}
   end
 
@@ -130,11 +130,11 @@ defmodule Wardrik.WorkspacesTest do
         files: true
       )
 
-    assert {:ok, [capabilities: [{WardrikWorkspace, read}], middleware: []]} =
+    assert {:ok, [capabilities: [{Wardrik.Workspace, read}], middleware: []]} =
              resolve.("acme/@jon/notes", %{"acme/runbooks" => :read})
 
     assert [
-             %WardrikWorkspace.Mount{
+             %Wardrik.Workspace.Mount{
                name: "runbooks",
                tree: "agents/acme%2Frunbooks",
                mode: :read
@@ -142,10 +142,10 @@ defmodule Wardrik.WorkspacesTest do
            ] =
              read[:shared]
 
-    assert {:ok, [capabilities: [{WardrikWorkspace, written}], middleware: []]} =
+    assert {:ok, [capabilities: [{Wardrik.Workspace, written}], middleware: []]} =
              resolve.("acme/ops", %{"acme/runbooks" => :write})
 
-    assert [%WardrikWorkspace.Mount{mode: :write}] = written[:shared]
+    assert [%Wardrik.Workspace.Mount{mode: :write}] = written[:shared]
     assert written[:tree] == "agents/acme%2Fops"
 
     assert {:error, _error} = resolve.("acme/triage", %{"acme/other" => :write})

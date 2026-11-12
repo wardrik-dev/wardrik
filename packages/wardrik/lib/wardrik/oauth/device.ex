@@ -1,12 +1,12 @@
-defmodule WardrikOAuth.Device do
+defmodule Wardrik.OAuth.Device do
   @moduledoc """
   Device sign-in (RFC 8628): the user enters a code on any device.
   """
 
-  alias WardrikOAuth.Metadata
-  alias WardrikOAuth.Provider
-  alias WardrikOAuth.Request
-  alias WardrikOAuth.Token
+  alias Wardrik.OAuth.Metadata
+  alias Wardrik.OAuth.Provider
+  alias Wardrik.OAuth.Request
+  alias Wardrik.OAuth.Token
 
   @grant "urn:ietf:params:oauth:grant-type:device_code"
   @longest_seconds 1800

@@ -1,10 +1,10 @@
 if Code.ensure_loaded?(WardrikCore.Middleware) do
-  defmodule WardrikPolicy.Middleware do
+  defmodule Wardrik.Policy.Middleware do
     @moduledoc """
     A `WardrikCore.Middleware` that holds an agent to one or more policies.
 
-        middleware: [{WardrikPolicy.Middleware, WardrikPolicy.new!(deny: ["shell/*"])}]
-        middleware: [{WardrikPolicy.Middleware, [app_policy, agent_policy]}]
+        middleware: [{Wardrik.Policy.Middleware, Wardrik.Policy.new!(deny: ["shell/*"])}]
+        middleware: [{Wardrik.Policy.Middleware, [app_policy, agent_policy]}]
 
       * Decides each tool call by the rules and judge before it runs. A refusal becomes the call's
         error.
@@ -12,7 +12,7 @@ if Code.ensure_loaded?(WardrikCore.Middleware) do
 
     ## Answering an ask
 
-    A call that asks parks on a `WardrikPolicy.Ask`. Answer by tool call ID, or `"model"`:
+    A call that asks parks on a `Wardrik.Policy.Ask`. Answer by tool call ID, or `"model"`:
 
         WardrikCore.resume(agent, %{"call_123" => :approve}, %{by: "user:maria"})
         WardrikCore.resume(agent, %{"call_123" => {:approve, "Checked with finance."}})
@@ -36,16 +36,16 @@ if Code.ensure_loaded?(WardrikCore.Middleware) do
     """
     @behaviour WardrikCore.Middleware
 
+    alias Wardrik.Policy.Ask
+    alias Wardrik.Policy.Decision
+    alias Wardrik.Policy.Spending
     alias WardrikCore.Context
     alias WardrikCore.Resume
     alias WardrikCore.Tool
-    alias WardrikPolicy.Ask
-    alias WardrikPolicy.Decision
-    alias WardrikPolicy.Spending
 
     @impl WardrikCore.Middleware
     def call(%Context{step: {:tool_call, call}} = context, next, policies) do
-      decision = WardrikPolicy.explain(policies, call.name, decide_opts(context, call))
+      decision = Wardrik.Policy.explain(policies, call.name, decide_opts(context, call))
       emit(:decision, context, call, %{decision: decision})
       context = context |> decided(decision) |> Context.measure(decision.measurements)
       follow(decision, context, call, next, next)

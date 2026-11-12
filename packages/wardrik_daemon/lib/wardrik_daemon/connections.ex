@@ -163,7 +163,7 @@ defmodule WardrikDaemon.Connections do
   end
 
   defp held(%{wardrik: wardrik}, principal) do
-    wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault() |> WardrikVault.names(principal)
+    wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault() |> Wardrik.Vault.names(principal)
   end
 
   defp authorizing(%{wardrik: wardrik}, {principal, credential}, provider) do

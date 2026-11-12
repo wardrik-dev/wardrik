@@ -1,29 +1,29 @@
-defmodule WardrikWorkspace do
+defmodule Wardrik.Workspace do
   @moduledoc """
-  File tools for agents, kept in a `WardrikStore`.
+  File tools for agents, kept in a `Wardrik.Store`.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_workspace#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       WardrikCore.start_agent(
         agent_id: "agt_triage",
         model: "anthropic:claude-haiku-4-5",
-        capabilities: [{WardrikWorkspace, store: store, tree: "agents/agt_triage"}]
+        capabilities: [{Wardrik.Workspace, store: store, tree: "agents/agt_triage"}]
       )
 
   Gives `read_file`, `write_file`, `edit_file`, `list_files`, `search_files` and `delete_file`.
-  See `WardrikWorkspace.Tools`.
+  See `Wardrik.Workspace.Tools`.
 
   ## Options
 
-    * `:store` - required. The `WardrikStore` the files are kept in.
+    * `:store` - required. The `Wardrik.Store` the files are kept in.
     * `:tree` - required. The agent's own tree.
-    * `:shared` - `WardrikWorkspace.Mount`s for trees shared with the agent. `[]` unless set.
+    * `:shared` - `Wardrik.Workspace.Mount`s for trees shared with the agent. `[]` unless set.
   """
 
   @behaviour WardrikCore.Capability
 
   @impl WardrikCore.Capability
   def tools(_context, opts),
-    do: opts |> WardrikWorkspace.Spec.new() |> WardrikWorkspace.Tools.build()
+    do: opts |> Wardrik.Workspace.Spec.new() |> Wardrik.Workspace.Tools.build()
 end

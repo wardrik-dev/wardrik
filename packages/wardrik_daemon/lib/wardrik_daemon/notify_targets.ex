@@ -71,7 +71,7 @@ defmodule WardrikDaemon.NotifyTargets do
          :ok <- reachable(running, input["url"]),
          {:ok, secret} <- secret(running, owner, input["secret"]),
          target = %{owner: owner, name: name, url: input["url"], secret: secret},
-         {:ok, _vsn} <- WardrikStore.put(store, Owned.path(@kind, owner, name), target) do
+         {:ok, _vsn} <- Wardrik.Store.put(store, Owned.path(@kind, owner, name), target) do
       changed(running, "notify_target.added", {owner, name, %{"url" => input["url"]}}, actor)
       {:ok, listed(target)}
     end
@@ -81,12 +81,12 @@ defmodule WardrikDaemon.NotifyTargets do
   @spec remove(Servers.daemon(), {String.t(), String.t()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}
   def remove(%{wardrik: wardrik, store: store} = daemon, {owner, name}, actor) do
-    case WardrikStore.get(store, Owned.path(@kind, owner, name)) do
+    case Wardrik.Store.get(store, Owned.path(@kind, owner, name)) do
       nil ->
         not_removed(daemon, owner, name)
 
       target ->
-        :ok = WardrikStore.delete(store, Owned.path(@kind, owner, name))
+        :ok = Wardrik.Store.delete(store, Owned.path(@kind, owner, name))
 
         changed(
           Wardrik.Instance.fetch!(wardrik),
@@ -100,7 +100,7 @@ defmodule WardrikDaemon.NotifyTargets do
   end
 
   defp unused(%{store: store} = daemon, owner, name) do
-    if WardrikStore.get(store, Owned.path(@kind, owner, name)) == nil and
+    if Wardrik.Store.get(store, Owned.path(@kind, owner, name)) == nil and
          not configured?(daemon, owner, name),
        do: :ok,
        else: {:error, Error.new(:conflict, "#{owner} has a notify target #{name} already.")}
@@ -130,7 +130,7 @@ defmodule WardrikDaemon.NotifyTargets do
   defp secret(_running, _owner, nil), do: {:ok, nil}
 
   defp secret(running, owner, %{"name" => name}) do
-    if {owner, name, :signing_secret} in WardrikVault.list(Wardrik.vault(running)),
+    if {owner, name, :signing_secret} in Wardrik.Vault.list(Wardrik.vault(running)),
       do: {:ok, name},
       else:
         {:error,
@@ -157,6 +157,6 @@ defmodule WardrikDaemon.NotifyTargets do
       {type, "notify_targets/" <> name,
        %{"notify_target" => Map.put(data, "name", name), "owner" => owner}}
 
-    :ok = WardrikEvents.record(Wardrik.events(running), change, actor: actor)
+    :ok = Wardrik.EventLog.record(Wardrik.events(running), change, actor: actor)
   end
 end

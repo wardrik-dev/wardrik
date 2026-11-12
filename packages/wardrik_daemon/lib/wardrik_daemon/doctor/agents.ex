@@ -20,13 +20,15 @@ defmodule WardrikDaemon.Doctor.Agents do
 
   defp agents(config, dirs, policies) do
     files = dirs |> Dirs.config("agents") |> Path.join("*.md") |> Path.wildcard() |> Enum.sort()
-    store = WardrikStore.ETS.new(name: :"wardrik doctor #{System.unique_integer([:positive])}")
+    store = Wardrik.Store.ETS.new(name: :"wardrik doctor #{System.unique_integer([:positive])}")
     ulid = if Process.whereis(WardrikDaemon.ULID), do: [], else: [WardrikDaemon.ULID]
-    {:ok, running} = Supervisor.start_link([{WardrikStore, store} | ulid], strategy: :one_for_one)
+
+    {:ok, running} =
+      Supervisor.start_link([{Wardrik.Store, store} | ulid], strategy: :one_for_one)
 
     wardrik = wardrik(config, policies, store)
     schema = JSV.build!(WardrikProtocol.schema("agent_definition"))
-    records = WardrikStore.scope(store, "wardrik_daemon")
+    records = Wardrik.Store.scope(store, "wardrik_daemon")
     read = for path <- files, do: {path, recorded(records, AgentFile.read(path, config))}
     failures = Enum.flat_map(read, &unread(&1, records, wardrik, schema))
     :ok = Supervisor.stop(running)
@@ -76,7 +78,7 @@ defmodule WardrikDaemon.Doctor.Agents do
       policies: policies,
       wardrik: WardrikDaemon.Doctor,
       config: %{config | channels: []},
-      store: WardrikStore.scope(store, "wardrik_daemon")
+      store: Wardrik.Store.scope(store, "wardrik_daemon")
     }
   end
 
@@ -91,7 +93,7 @@ defmodule WardrikDaemon.Doctor.Agents do
   end
 
   defp wardrik(config, policies, store) do
-    daemon = WardrikStore.scope(store, "wardrik_daemon")
+    daemon = Wardrik.Store.scope(store, "wardrik_daemon")
 
     Wardrik.new(
       name: WardrikDaemon.Doctor,

@@ -1,4 +1,4 @@
-defmodule WardrikChannel do
+defmodule Wardrik.Chat do
   @moduledoc """
   Talk to Wardrik agents from chat apps, such as Slack. See the README to set one up.
 
@@ -16,29 +16,29 @@ defmodule WardrikChannel do
 
   Every channel takes these. Its adapter reads the rest.
 
-  #{NimbleOptions.docs(WardrikChannel.Channel.schema())}
+  #{NimbleOptions.docs(Wardrik.Chat.Channel.schema())}
 
   Give either `:token` and `:owner`, or `:installations`. The name is lower-case letters, digits
   and `-`, starting with a letter. Raises on start otherwise.
 
   ## Writing an adapter
 
-  An adapter speaks one chat app's protocol. It does `use WardrikChannel`, takes requests in
+  An adapter speaks one chat app's protocol. It does `use Wardrik.Chat`, takes requests in
   `c:Wardrik.Channel.request/2`, and posts in `c:deliver/2`:
 
       defmodule MyChat do
-        use WardrikChannel
+        use Wardrik.Chat
 
         @impl Wardrik.Channel
         def request(%{path: "events", body: body}, opts) do
-          channel = WardrikChannel.channel(__MODULE__, opts)
+          channel = Wardrik.Chat.channel(__MODULE__, opts)
           event = JSON.decode!(body)
 
-          with {:ok, workspace} <- WardrikChannel.workspace(channel, event["team"]) do
-            WardrikChannel.received(workspace, %WardrikChannel.Inbound{
+          with {:ok, workspace} <- Wardrik.Chat.workspace(channel, event["team"]) do
+            Wardrik.Chat.received(workspace, %Wardrik.Chat.Inbound{
               room: event["room"],
               id: event["id"],
-              sender: %WardrikChannel.Member{id: event["user"]},
+              sender: %Wardrik.Chat.Member{id: event["user"]},
               text: event["text"],
               mentioned?: event["mentioned"]
             })
@@ -47,28 +47,28 @@ defmodule WardrikChannel do
           %{status: 200, headers: %{}, body: ""}
         end
 
-        @impl WardrikChannel
-        def deliver(%WardrikChannel.Outbound{} = outbound, channel) do
+        @impl Wardrik.Chat
+        def deliver(%Wardrik.Chat.Outbound{} = outbound, channel) do
           # Post outbound.body in outbound.room, in outbound.thread
           :ok
         end
       end
 
     * Pass each approve or deny button press to `decide/2`.
-    * `use WardrikChannel` defines `child_spec/1`, `c:children/1` and
+    * `use Wardrik.Chat` defines `child_spec/1`, `c:children/1` and
       `c:Wardrik.Channel.notify/2`. Each can be overridden.
   """
 
   alias Wardrik.Channel.Installation
+  alias Wardrik.Chat.Answer
+  alias Wardrik.Chat.Binding
+  alias Wardrik.Chat.Channel
+  alias Wardrik.Chat.Inbound
+  alias Wardrik.Chat.Outbound
+  alias Wardrik.Chat.Replies
+  alias Wardrik.Chat.Rooms
+  alias Wardrik.Chat.Workspace
   alias Wardrik.Error
-  alias WardrikChannel.Answer
-  alias WardrikChannel.Binding
-  alias WardrikChannel.Channel
-  alias WardrikChannel.Inbound
-  alias WardrikChannel.Outbound
-  alias WardrikChannel.Replies
-  alias WardrikChannel.Rooms
-  alias WardrikChannel.Workspace
 
   @doc """
   Posts `outbound` in its thread. `{:skip, why}` declines it, as for a notice its thread already
@@ -80,14 +80,14 @@ defmodule WardrikChannel do
   @callback children(Channel.t()) :: [Supervisor.child_spec() | {module(), term()}]
 
   @doc "Returns the URL where someone adds the chat app to their workspace."
-  @callback install_url(WardrikChannel.Install.t(), Channel.t()) ::
+  @callback install_url(Wardrik.Chat.Install.t(), Channel.t()) ::
               {:ok, String.t()} | {:error, String.t()}
 
   @doc """
   Finishes adding the chat app from the redirect's `query`. Returns the installation and where
   to send the person next.
   """
-  @callback installed(WardrikChannel.Install.t(), Channel.t()) ::
+  @callback installed(Wardrik.Chat.Install.t(), Channel.t()) ::
               {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
 
   @doc "Removes the chat app from `workspace`, where the chat app allows it."
@@ -97,23 +97,23 @@ defmodule WardrikChannel do
 
   defmacro __using__(_opts) do
     quote do
-      @behaviour WardrikChannel
+      @behaviour Wardrik.Chat
       @behaviour Wardrik.Channel
 
       @impl Wardrik.Channel
       def child_spec(opts) do
         %{
           id: __MODULE__,
-          start: {WardrikChannel.Supervisor, :start_link, [{__MODULE__, opts}]},
+          start: {Wardrik.Chat.Supervisor, :start_link, [{__MODULE__, opts}]},
           type: :supervisor
         }
       end
 
-      @impl WardrikChannel
+      @impl Wardrik.Chat
       def children(_channel), do: []
 
       @impl Wardrik.Channel
-      def notify(notification, opts), do: WardrikChannel.notify(__MODULE__, notification, opts)
+      def notify(notification, opts), do: Wardrik.Chat.notify(__MODULE__, notification, opts)
 
       defoverridable child_spec: 1, children: 1, notify: 2
     end
@@ -213,7 +213,7 @@ defmodule WardrikChannel do
   @doc """
   Approves or denies a call the agent waits on, as the member who pressed the button.
 
-      WardrikChannel.decide(workspace, %WardrikChannel.Answer{
+      Wardrik.Chat.decide(workspace, %Wardrik.Chat.Answer{
         member: member,
         agent: "agt_01JF8X5RQ2",
         conversation: "slack.T0123.C024BE91L.1696.1234",
@@ -222,7 +222,7 @@ defmodule WardrikChannel do
       })
       #=> {:ok, %Wardrik.Decision{}}
 
-  Build the `WardrikChannel.Answer` from what the adapter put on the button. Returns
+  Build the `Wardrik.Chat.Answer` from what the adapter put on the button. Returns
   `{:error, message}` to tell the member, such as the channel's `:deciding` message if refused.
   """
   @spec decide(Workspace.t(), Answer.t()) :: {:ok, Wardrik.Decision.t()} | {:error, String.t()}

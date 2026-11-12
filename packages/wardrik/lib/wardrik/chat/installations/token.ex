@@ -1,4 +1,4 @@
-defmodule WardrikChannel.Installations.Token do
+defmodule Wardrik.Chat.Installations.Token do
   @moduledoc """
   The single installation a channel's `token:` makes, in the workspace that token reaches.
 

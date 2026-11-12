@@ -15,7 +15,7 @@ defmodule WardrikDaemon.Harnesses do
   alias WardrikDaemon.Owners
 
   @doc "Returns each harness by name, as Wardrik's `:capabilities` option takes them."
-  @spec capabilities(atom(), WardrikStore.t(), WardrikDaemon.Config.t()) ::
+  @spec capabilities(atom(), Wardrik.Store.t(), WardrikDaemon.Config.t()) ::
           [{String.t(), {module(), map()}}]
   def capabilities(wardrik, store, config) do
     for {name, _harness} <- config.harnesses,

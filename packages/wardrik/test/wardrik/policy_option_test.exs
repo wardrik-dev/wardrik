@@ -1,4 +1,4 @@
-defmodule Wardrik.PolicyTest do
+defmodule Wardrik.PolicyOptionTest do
   use ExUnit.Case, async: false
   use Mimic
 
@@ -19,11 +19,11 @@ defmodule Wardrik.PolicyTest do
         policy: [deny: ["inbox"]]
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = WardrikEvents.subscribe(Wardrik.events(wardrik), :all)
+    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -97,7 +97,7 @@ defmodule Wardrik.PolicyTest do
   end
 
   test "takes a policy built already" do
-    policy = WardrikPolicy.new!(deny: ["shell/*"])
+    policy = Wardrik.Policy.new!(deny: ["shell/*"])
 
     assert %Wardrik{policy: ^policy} =
              Wardrik.new(

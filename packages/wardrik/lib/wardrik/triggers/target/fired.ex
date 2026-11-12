@@ -1,8 +1,8 @@
-defmodule WardrikTriggers.Target.Fired do
+defmodule Wardrik.Triggers.Target.Fired do
   @moduledoc """
-  What `c:WardrikTriggers.Target.fired/2` is told: how a run of `agent`'s `trigger` went.
+  What `c:Wardrik.Triggers.Target.fired/2` is told: how a run of `agent`'s `trigger` went.
 
-      %WardrikTriggers.Target.Fired{agent: "agt_triage", trigger: "daily", status: :asked}
+      %Wardrik.Triggers.Target.Fired{agent: "agt_triage", trigger: "daily", status: :asked}
   """
 
   @enforce_keys [:agent, :trigger, :status]
@@ -11,6 +11,6 @@ defmodule WardrikTriggers.Target.Fired do
   @type t() :: %__MODULE__{
           agent: String.t(),
           trigger: String.t(),
-          status: WardrikTriggers.Trigger.status()
+          status: Wardrik.Triggers.Trigger.status()
         }
 end

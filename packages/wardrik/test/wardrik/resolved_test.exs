@@ -45,7 +45,7 @@ defmodule Wardrik.ResolvedTest do
         mcp: [{"down", [transport: {:stdio, command: "no-such-mcp-server"}]}]
       )
 
-    start_supervised!({WardrikStore, store})
+    start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
     %{scope: owner(wardrik)}
   end

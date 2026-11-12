@@ -1,9 +1,9 @@
-defmodule WardrikTriggers.Clock do
+defmodule Wardrik.Triggers.Clock do
   @moduledoc """
   Computes a trigger's next run from a cron expression in a time zone, or from an interval.
 
-      {:ok, clock} = WardrikTriggers.Clock.parse("0 18 * * *")
-      WardrikTriggers.Clock.next(clock, "Europe/Berlin", ~U[2026-10-22 09:00:00Z])
+      {:ok, clock} = Wardrik.Triggers.Clock.parse("0 18 * * *")
+      Wardrik.Triggers.Clock.next(clock, "Europe/Berlin", ~U[2026-10-22 09:00:00Z])
       #=> ~U[2026-10-22 16:00:00Z]
 
     * A time skipped by a clock change runs just after the gap.

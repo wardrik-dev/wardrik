@@ -1,13 +1,13 @@
-defmodule WardrikTriggers.Run do
+defmodule Wardrik.Triggers.Run do
   @moduledoc false
 
   require Logger
 
-  alias WardrikTriggers.Feed
-  alias WardrikTriggers.Records
-  alias WardrikTriggers.Target
-  alias WardrikTriggers.Trigger
-  alias WardrikTriggers.Webhook
+  alias Wardrik.Triggers.Feed
+  alias Wardrik.Triggers.Records
+  alias Wardrik.Triggers.Target
+  alias Wardrik.Triggers.Trigger
+  alias Wardrik.Triggers.Webhook
 
   @lateness 60
   @outside ["outside"]
@@ -36,7 +36,7 @@ defmodule WardrikTriggers.Run do
     fired(settings, agent_id, trigger.name, status)
   end
 
-  @doc "Asks the agent about a webhook request. See `WardrikTriggers.deliver/2`."
+  @doc "Asks the agent about a webhook request. See `Wardrik.Triggers.deliver/2`."
   @spec webhook(map(), agent_id: String.t(), name: String.t(), request: Webhook.request()) ::
           :ok | {:error, :not_found | :busy | :no_agent | :failed}
   def webhook(settings, args) do

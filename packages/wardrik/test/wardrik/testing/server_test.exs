@@ -1,21 +1,21 @@
-defmodule WardrikTesting.ServerTest do
+defmodule Wardrik.Testing.ServerTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Scope
-  alias WardrikTesting.Server
+  alias Wardrik.Testing.Server
 
   setup context do
     name = :"server #{context.test}"
-    store = WardrikStore.ETS.new(name: :"store #{context.test}")
-    start_supervised!({WardrikStore, store})
+    store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
+    start_supervised!({Wardrik.Store, store})
 
     start_supervised!(
-      {WardrikEvents,
+      {Wardrik.EventLog,
        name: Server.events(name), store: store, deployment: "test", retention: :infinity}
     )
 
     :ok = Server.start(name, authorize: &deciders/1, offered: [{"acme/triage", ["chat"]}])
-    :ok = WardrikEvents.subscribe(Server.events(name), :all)
+    :ok = Wardrik.EventLog.subscribe(Server.events(name), :all)
 
     %{name: name, scope: Scope.new(Server, wardrik: name, principal: "acme/@ana")}
   end
@@ -85,20 +85,22 @@ defmodule WardrikTesting.ServerTest do
 
     assert_received {:asked, {"acme/triage", "t1"}, "Hi", "acme/@ana"}
 
-    assert_receive {WardrikEvents, {"acme/triage", "t1"}, %{"type" => "wardrik.message.created"}}
-    assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.started"}}
-    assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.completed", "data" => data}}
+    assert_receive {Wardrik.EventLog, {"acme/triage", "t1"},
+                    %{"type" => "wardrik.message.created"}}
+
+    assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.started"}}
+    assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.completed", "data" => data}}
     assert [%{"parts" => [%{"content" => "Answered: Hi"}]}] = data["messages"]
 
     Wardrik.Agent.ask(scope, "acme/triage", "fail", conversation: "t2")
-    assert_receive {WardrikEvents, {"acme/triage", "t2"}, %{"type" => "wardrik.run.failed"}}
+    assert_receive {Wardrik.EventLog, {"acme/triage", "t2"}, %{"type" => "wardrik.run.failed"}}
   end
 
   test "waits on a call for a message saying echo, until it's decided or cancelled", %{
     scope: scope
   } do
     Wardrik.Agent.ask(scope, "acme/triage", "echo hi", conversation: "t1")
-    assert_receive {WardrikEvents, _log, %{"type" => "wardrik.run.interrupted"}}
+    assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.interrupted"}}
 
     assert {:ok, %Wardrik.Agent{status: :parked, interrupts: [%Wardrik.Interrupt{id: "call_1"}]}} =
              Wardrik.Agent.read(scope, "acme/triage", conversation: "t1")
@@ -120,7 +122,7 @@ defmodule WardrikTesting.ServerTest do
                conversation: "t1"
              )
 
-    assert_receive {WardrikEvents, _log,
+    assert_receive {Wardrik.EventLog, _log,
                     %{"type" => "wardrik.interrupt.resolved", "data" => %{"reason" => "No."}}}
 
     assert {:ok, %Wardrik.Agent{status: :idle}} =
@@ -129,7 +131,7 @@ defmodule WardrikTesting.ServerTest do
     Wardrik.Agent.ask(scope, "acme/triage", "echo", conversation: "t3")
     Wardrik.Agent.deny(decider, agent: "acme/triage", interrupt: "call_1", conversation: "t3")
 
-    assert_receive {WardrikEvents, {"acme/triage", "t3"},
+    assert_receive {Wardrik.EventLog, {"acme/triage", "t3"},
                     %{
                       "type" => "wardrik.interrupt.resolved",
                       "data" => %{"reason" => "Rejected."}
@@ -137,7 +139,7 @@ defmodule WardrikTesting.ServerTest do
 
     Wardrik.Agent.ask(scope, "acme/triage", "echo", conversation: "t2")
     assert :ok = Wardrik.Agent.cancel(scope, "acme/triage", conversation: "t2")
-    assert_receive {WardrikEvents, {"acme/triage", "t2"}, %{"type" => "wardrik.run.cancelled"}}
+    assert_receive {Wardrik.EventLog, {"acme/triage", "t2"}, %{"type" => "wardrik.run.cancelled"}}
   end
 
   test "streams an event and then follows quietly, or says why it can't", %{scope: scope} do

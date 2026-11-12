@@ -1,4 +1,4 @@
-defmodule WardrikMCPTest.Tokens do
+defmodule Wardrik.MCPTest.Tokens do
   @moduledoc "Credentials the tests give principals: a token each, or a sign-in."
   @behaviour WardrikCore.Credentials
 
@@ -11,7 +11,7 @@ defmodule WardrikMCPTest.Tokens do
   end
 end
 
-defmodule WardrikMCPTest.Rotating do
+defmodule Wardrik.MCPTest.Rotating do
   @moduledoc "Credentials that hand out the token an agent holds, and a new one once the old is refused."
   @behaviour WardrikCore.Credentials
 
@@ -27,23 +27,24 @@ defmodule WardrikMCPTest.Rotating do
   end
 end
 
-defmodule WardrikMCPTest do
+defmodule Wardrik.MCPTest do
   use ExUnit.Case, async: true
   use Mimic
 
+  alias Wardrik.MCP.Server
   alias WardrikCore.Context
   alias WardrikCore.Tool
   alias WardrikCore.ToolCall
-  alias WardrikMCP.Server
 
-  @mcp WardrikMCPTest.MCP
-  @stub {:stdio, command: "elixir", args: [Path.expand("support/stub_server.exs", __DIR__)]}
+  @mcp Wardrik.MCPTest.MCP
+  @stub {:stdio,
+         command: "elixir", args: [Path.expand("../../support/mcp/stub_server.exs", __DIR__)]}
 
   setup_all do
     listen()
 
     start_supervised!(
-      {WardrikMCP,
+      {Wardrik.MCP,
        name: @mcp,
        servers: [
          stub: [transport: @stub],
@@ -67,7 +68,7 @@ defmodule WardrikMCPTest do
 
   test "says which MCP isn't started" do
     assert_raise ArgumentError, ~r/^MyApp.Missing isn't started/, fn ->
-      WardrikMCP.servers(MyApp.Missing)
+      Wardrik.MCP.servers(MyApp.Missing)
     end
   end
 
@@ -86,7 +87,7 @@ defmodule WardrikMCPTest do
   end
 
   test "gives several servers' tools together" do
-    assert length(WardrikMCP.tools(context(), name: @mcp, servers: [:stub, :cheap])) ==
+    assert length(Wardrik.MCP.tools(context(), name: @mcp, servers: [:stub, :cheap])) ==
              length(tools(:stub)) + length(tools(:cheap))
   end
 
@@ -132,7 +133,7 @@ defmodule WardrikMCPTest do
   end
 
   test "a call that fails in passing raises, for the tool runner to try again" do
-    assert_raise WardrikMCP.Unavailable, ~r/hasty failed/, fn -> call(:hasty, "slow") end
+    assert_raise Wardrik.MCP.Unavailable, ~r/hasty failed/, fn -> call(:hasty, "slow") end
   end
 
   test "a server's cost is measured on the call's step" do
@@ -171,20 +172,20 @@ defmodule WardrikMCPTest do
     assert {:ok, "back", _context} = call(:flaky, "echo", %{"value" => "back"})
   end
 
-  test "keeps the servers of each WardrikMCP apart" do
+  test "keeps the servers of each Wardrik.MCP apart" do
     listen()
 
     start_supervised!(
-      {WardrikMCP,
-       name: WardrikMCPTest.Other, servers: [stub: [transport: @stub, only: ["echo"]]]},
+      {Wardrik.MCP,
+       name: Wardrik.MCPTest.Other, servers: [stub: [transport: @stub, only: ["echo"]]]},
       id: :other
     )
 
-    assert_receive {:tools, WardrikMCPTest.Other, "stub", %{count: 1}}, 10_000
+    assert_receive {:tools, Wardrik.MCPTest.Other, "stub", %{count: 1}}, 10_000
 
     assert ["stub__echo"] =
              Enum.map(
-               WardrikMCP.tools(context(), name: WardrikMCPTest.Other, servers: :stub),
+               Wardrik.MCP.tools(context(), name: Wardrik.MCPTest.Other, servers: :stub),
                & &1.name
              )
 
@@ -196,48 +197,52 @@ defmodule WardrikMCPTest do
       listen()
 
       assert :ok =
-               WardrikMCP.add(@mcp, "added", transport: @stub, only: ["echo"], prefix: "extra")
+               Wardrik.MCP.add(@mcp, "added", transport: @stub, only: ["echo"], prefix: "extra")
 
       assert_receive {:tools, @mcp, "added", %{count: 1}}, 10_000
 
-      assert "added" in WardrikMCP.servers(@mcp)
+      assert "added" in Wardrik.MCP.servers(@mcp)
       assert ["extra__echo"] = Enum.map(tools("added"), & &1.name)
 
-      assert :ok = WardrikMCP.remove(@mcp, "added")
-      refute "added" in WardrikMCP.servers(@mcp)
+      assert :ok = Wardrik.MCP.remove(@mcp, "added")
+      refute "added" in Wardrik.MCP.servers(@mcp)
       assert tools("added") == []
-      assert {:error, :not_found} = WardrikMCP.remove(@mcp, "added")
+      assert {:error, :not_found} = Wardrik.MCP.remove(@mcp, "added")
     end
 
     test "says why it can't add or remove a server" do
-      assert {:error, "stub is a server already"} = WardrikMCP.add(@mcp, "stub", transport: @stub)
-      assert {:error, "stub is a server the app starts with"} = WardrikMCP.remove(@mcp, "stub")
+      assert {:error, "stub is a server already"} =
+               Wardrik.MCP.add(@mcp, "stub", transport: @stub)
+
+      assert {:error, "stub is a server the app starts with"} = Wardrik.MCP.remove(@mcp, "stub")
 
       assert {:error, "unknown options [:colour]" <> _} =
-               WardrikMCP.add(@mcp, "odd", transport: @stub, colour: "blue")
+               Wardrik.MCP.add(@mcp, "odd", transport: @stub, colour: "blue")
 
       assert {:error, "a server added as the app runs takes its options as data"} =
-               WardrikMCP.add(@mcp, "priced", transport: @stub, cost: &Map.new/1)
+               Wardrik.MCP.add(@mcp, "priced", transport: @stub, cost: &Map.new/1)
     end
 
     test "reaches what another node added, through the store they share" do
       listen()
-      store = WardrikStore.ETS.new(name: WardrikMCPTest.Store)
-      start_supervised!({WardrikStore, store}, id: :store)
+      store = Wardrik.Store.ETS.new(name: Wardrik.MCPTest.Store)
+      start_supervised!({Wardrik.Store, store}, id: :store)
 
-      for {name, id} <- [{WardrikMCPTest.One, :one}, {WardrikMCPTest.Two, :two}] do
-        start_supervised!({WardrikMCP, name: name, store: store, reconcile: :infinity}, id: id)
+      for {name, id} <- [{Wardrik.MCPTest.One, :one}, {Wardrik.MCPTest.Two, :two}] do
+        start_supervised!({Wardrik.MCP, name: name, store: store, reconcile: :infinity}, id: id)
       end
 
-      assert :ok = WardrikMCP.add(WardrikMCPTest.One, "shared", transport: @stub, only: ["echo"])
-      assert :ok = WardrikMCP.reconcile(WardrikMCPTest.Two)
+      assert :ok =
+               Wardrik.MCP.add(Wardrik.MCPTest.One, "shared", transport: @stub, only: ["echo"])
 
-      assert_receive {:tools, WardrikMCPTest.Two, "shared", %{count: 1}}, 10_000
-      assert "shared" in WardrikMCP.servers(WardrikMCPTest.Two)
+      assert :ok = Wardrik.MCP.reconcile(Wardrik.MCPTest.Two)
 
-      assert :ok = WardrikMCP.remove(WardrikMCPTest.One, "shared")
-      assert :ok = WardrikMCP.reconcile(WardrikMCPTest.Two)
-      refute "shared" in WardrikMCP.servers(WardrikMCPTest.Two)
+      assert_receive {:tools, Wardrik.MCPTest.Two, "shared", %{count: 1}}, 10_000
+      assert "shared" in Wardrik.MCP.servers(Wardrik.MCPTest.Two)
+
+      assert :ok = Wardrik.MCP.remove(Wardrik.MCPTest.One, "shared")
+      assert :ok = Wardrik.MCP.reconcile(Wardrik.MCPTest.Two)
+      refute "shared" in Wardrik.MCP.servers(Wardrik.MCPTest.Two)
     end
   end
 
@@ -245,11 +250,11 @@ defmodule WardrikMCPTest do
     listen()
 
     for {name, path} <- [{"ending", "/mcp"}, {"nested", "/v1/tools/"}, {"root", "/"}] do
-      port = WardrikMCP.HTTPStub.start(self(), path)
+      port = Wardrik.MCP.HTTPStub.start(self(), path)
       url = "http://127.0.0.1:#{port}" <> if(path == "/", do: "", else: path)
 
-      :ok = WardrikMCP.add(@mcp, name, transport: {:streamable_http, url: url})
-      on_exit(fn -> WardrikMCP.remove(@mcp, name) end)
+      :ok = Wardrik.MCP.add(@mcp, name, transport: {:streamable_http, url: url})
+      on_exit(fn -> Wardrik.MCP.remove(@mcp, name) end)
       connected(name)
 
       assert ["#{name}__ping"] == name |> tools() |> Enum.map(& &1.name)
@@ -260,7 +265,7 @@ defmodule WardrikMCPTest do
 
   test "refuses a server over HTTP without an http or https URL" do
     transport = {:streamable_http, url: "mcp.example.com/mcp"}
-    assert {:error, _reason} = WardrikMCP.add(@mcp, "bad", transport: transport)
+    assert {:error, _reason} = Wardrik.MCP.add(@mcp, "bad", transport: transport)
   end
 
   describe "a server whose headers name secrets" do
@@ -277,8 +282,11 @@ defmodule WardrikMCPTest do
         end
       end
 
-      start_supervised!({WardrikMCP, name: WardrikMCPTest.Secrets, secret: secret}, id: :secrets)
-      port = WardrikMCP.HTTPStub.start(test, "/mcp")
+      start_supervised!({Wardrik.MCP, name: Wardrik.MCPTest.Secrets, secret: secret},
+        id: :secrets
+      )
+
+      port = Wardrik.MCP.HTTPStub.start(test, "/mcp")
       %{secrets: secrets, url: "http://127.0.0.1:#{port}/mcp"}
     end
 
@@ -293,16 +301,16 @@ defmodule WardrikMCPTest do
       url: url
     } do
       server = secured(url, "acme", ["Bearer ", {:secret, "KEY"}])
-      assert :ok = WardrikMCP.add(WardrikMCPTest.Secrets, "crm", server)
+      assert :ok = Wardrik.MCP.add(Wardrik.MCPTest.Secrets, "crm", server)
 
       assert_receive {:read, "acme", "KEY"}
       assert_receive {:authorization, "Bearer one"}, 5_000
 
       Agent.update(secrets, &Map.put(&1, {"acme", "KEY"}, "two"))
-      assert :ok = WardrikMCP.reconnect(WardrikMCPTest.Secrets, owner: "globex", secret: "KEY")
+      assert :ok = Wardrik.MCP.reconnect(Wardrik.MCPTest.Secrets, owner: "globex", secret: "KEY")
       refute_receive {:read, _owner, _name}, 200
 
-      assert :ok = WardrikMCP.reconnect(WardrikMCPTest.Secrets, owner: "acme", secret: "KEY")
+      assert :ok = Wardrik.MCP.reconnect(Wardrik.MCPTest.Secrets, owner: "acme", secret: "KEY")
       assert_receive {:authorization, "Bearer two"}, 5_000
     end
 
@@ -311,20 +319,20 @@ defmodule WardrikMCPTest do
       server = Server.new!("theirs", theirs)
 
       assert Server.resolved(server) ==
-               {:error, "the secret KEY can't be read: WardrikMCP was given no :secret"}
+               {:error, "the secret KEY can't be read: Wardrik.MCP was given no :secret"}
 
       assert Server.resolved(%{server | secret: fn _owner, _name -> {:error, :not_found} end}) ==
                {:error, "the secret KEY can't be read: :not_found"}
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          :ok = WardrikMCP.add(WardrikMCPTest.Secrets, "theirs", theirs)
+          :ok = Wardrik.MCP.add(Wardrik.MCPTest.Secrets, "theirs", theirs)
           assert_receive {:read, "globex", "KEY"}
-          :ok = WardrikMCP.remove(WardrikMCPTest.Secrets, "theirs")
+          :ok = Wardrik.MCP.remove(Wardrik.MCPTest.Secrets, "theirs")
         end)
 
       assert log =~ "The MCP server theirs is down: \"the secret KEY can't be read: :not_found\""
-      assert WardrikMCP.tools(context(), name: WardrikMCPTest.Secrets, servers: "theirs") == []
+      assert Wardrik.MCP.tools(context(), name: Wardrik.MCPTest.Secrets, servers: "theirs") == []
     end
   end
 
@@ -338,7 +346,7 @@ defmodule WardrikMCPTest do
         Agent.get_and_update(answers, &answered/1)
       end
 
-      start_supervised!({WardrikMCP, name: WardrikMCPTest.Checked, check: check}, id: :checked)
+      start_supervised!({Wardrik.MCP, name: Wardrik.MCPTest.Checked, check: check}, id: :checked)
       :ok
     end
 
@@ -346,7 +354,7 @@ defmodule WardrikMCPTest do
       url = "https://mcp.example.com/mcp"
 
       assert :ok =
-               WardrikMCP.add(WardrikMCPTest.Checked, "remote",
+               Wardrik.MCP.add(Wardrik.MCPTest.Checked, "remote",
                  transport: {:streamable_http, url: url}
                )
 
@@ -354,14 +362,14 @@ defmodule WardrikMCPTest do
       assert_receive {:checked, ^url}
 
       assert {:error, "https://mcp.example.com/mcp can't be reached: it's private"} =
-               WardrikMCP.add(WardrikMCPTest.Checked, "again",
+               Wardrik.MCP.add(Wardrik.MCPTest.Checked, "again",
                  transport: {:streamable_http, url: url}
                )
     end
 
     test "reaches a server added as the app runs over HTTP alone" do
       assert {:error, "a server added as the app runs is reached over HTTP"} =
-               WardrikMCP.add(WardrikMCPTest.Checked, "local", transport: @stub)
+               Wardrik.MCP.add(Wardrik.MCPTest.Checked, "local", transport: @stub)
     end
   end
 
@@ -373,11 +381,11 @@ defmodule WardrikMCPTest do
     {:stdio, opts} = @stub
 
     :ok =
-      WardrikMCP.add(@mcp, "isolated",
+      Wardrik.MCP.add(@mcp, "isolated",
         transport: {:stdio, [env: %{"STUB_SETTING" => "set"}] ++ opts}
       )
 
-    on_exit(fn -> WardrikMCP.remove(@mcp, "isolated") end)
+    on_exit(fn -> Wardrik.MCP.remove(@mcp, "isolated") end)
     connected("isolated")
 
     assert {:ok, env, _context} = call("isolated", "env")
@@ -397,11 +405,11 @@ defmodule WardrikMCPTest do
         only: ["whoami"]
       ]
 
-      :ok = WardrikMCP.add(@mcp, "own", server)
-      on_exit(fn -> WardrikMCP.remove(@mcp, "own") end)
+      :ok = Wardrik.MCP.add(@mcp, "own", server)
+      on_exit(fn -> Wardrik.MCP.remove(@mcp, "own") end)
     end
 
-    defp own(context), do: WardrikMCP.tools(context, name: @mcp, servers: "own")
+    defp own(context), do: Wardrik.MCP.tools(context, name: @mcp, servers: "own")
 
     defp ask(context, name) do
       call = %ToolCall{id: "1", name: "own__" <> name, arguments: %{}}
@@ -433,7 +441,7 @@ defmodule WardrikMCPTest do
 
     test "says when it can't be reached, or there's nothing to reach it with" do
       :ok =
-        WardrikMCP.add(@mcp, "broken",
+        Wardrik.MCP.add(@mcp, "broken",
           transport: {:stdio, command: "no-such-mcp-server"},
           credential_name: "stub"
         )
@@ -442,12 +450,12 @@ defmodule WardrikMCPTest do
       call = %ToolCall{id: "1", name: "broken__connect", arguments: %{}}
 
       assert {:error, "broken didn't connect" <> _} =
-               Tool.call(WardrikMCP.tools(ada, name: @mcp, servers: "broken"), call, ada)
+               Tool.call(Wardrik.MCP.tools(ada, name: @mcp, servers: "broken"), call, ada)
 
       bare = Context.new(agent_id: "mcp-test", principal: %WardrikCore.Principal{id: "ada"})
       assert {:error, "own didn't connect" <> _} = ask(bare, "connect")
 
-      :ok = WardrikMCP.remove(@mcp, "broken")
+      :ok = Wardrik.MCP.remove(@mcp, "broken")
     end
 
     test "reports a credential the server refuses, and calls again with it renewed" do
@@ -458,7 +466,7 @@ defmodule WardrikMCPTest do
         Context.new(
           agent_id: "mcp-test",
           principal: %WardrikCore.Principal{id: "ada"},
-          credentials: {WardrikMCPTest.Rotating, tokens}
+          credentials: {Wardrik.MCPTest.Rotating, tokens}
         )
 
       assert {:ok, "Connected to own." <> _} = ask(ada, "connect")
@@ -484,7 +492,7 @@ defmodule WardrikMCPTest do
       ada = context("ada", %{"ada" => "ada-token"})
       assert {:ok, "Connected to own." <> _} = ask(ada, "connect")
 
-      assert :ok = WardrikMCP.remove(@mcp, "own")
+      assert :ok = Wardrik.MCP.remove(@mcp, "own")
       assert own(ada) == []
     end
   end
@@ -502,7 +510,7 @@ defmodule WardrikMCPTest do
 
   defp flaky_client do
     [{connection, _hash}] =
-      Registry.lookup(WardrikMCP.Connection.registry(@mcp), {:connection, "flaky", nil})
+      Registry.lookup(Wardrik.MCP.Connection.registry(@mcp), {:connection, "flaky", nil})
 
     {:ok, :sys.get_state(connection).client}
   end
@@ -523,7 +531,7 @@ defmodule WardrikMCPTest do
     on_exit(fn -> :telemetry.detach(id) end)
   end
 
-  defp tools(server), do: WardrikMCP.tools(context(), name: @mcp, servers: server)
+  defp tools(server), do: Wardrik.MCP.tools(context(), name: @mcp, servers: server)
 
   defp tool(server, name), do: Enum.find(tools(server), &(&1.name == "#{server}__#{name}"))
 
@@ -543,6 +551,6 @@ defmodule WardrikMCPTest do
       Context.new(
         agent_id: "mcp-test",
         principal: %WardrikCore.Principal{id: principal},
-        credentials: {WardrikMCPTest.Tokens, tokens}
+        credentials: {Wardrik.MCPTest.Tokens, tokens}
       )
 end

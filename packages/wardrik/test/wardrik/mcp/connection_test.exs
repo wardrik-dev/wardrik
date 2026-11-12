@@ -1,8 +1,8 @@
-defmodule WardrikMCP.ConnectionTest do
+defmodule Wardrik.MCP.ConnectionTest do
   use ExUnit.Case, async: true
 
   alias Anubis.MCP.Error
-  alias WardrikMCP.Connection
+  alias Wardrik.MCP.Connection
 
   test "a refused credential is told apart, however the client names it" do
     for reason <- [{:authorization_required, %{}}, {:http_error, 401, ""}, {:http_error, 403, ""}] do

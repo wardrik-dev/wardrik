@@ -1,9 +1,9 @@
-defmodule WardrikTriggers.Trigger do
+defmodule Wardrik.Triggers.Trigger do
   @moduledoc """
   A trigger: when to ask an agent, and what. Decoded from a map with string keys.
 
       {:ok, trigger} =
-        WardrikTriggers.Trigger.decode(%{
+        Wardrik.Triggers.Trigger.decode(%{
           "name" => "daily",
           "every" => "0 9 * * *",
           "timezone" => "America/Los_Angeles",
@@ -17,7 +17,7 @@ defmodule WardrikTriggers.Trigger do
     * `every` - a cron expression, as `"0 9 * * 1"` or `"@daily"`, or an interval of at least a
       minute, as `"30m"`, `"2h"` or `"1d"`.
     * `webhook` - `%{"secret" => "${NAME}", "verify" => "shared"}`. `verify` is `"shared"`
-      (default) or `"standard"`. See `WardrikTriggers.Webhook`.
+      (default) or `"standard"`. See `Wardrik.Triggers.Webhook`.
     * `prompt` - what the agent is asked.
     * `prompt_file` - a file the agent is told to read and follow.
     * `name` - no `/`, `:` or whitespace. Defaults to `trigger-1`, `trigger-2`, ... by position.
@@ -30,7 +30,7 @@ defmodule WardrikTriggers.Trigger do
     * `feed` - an RSS or Atom feed URL, or a list of them. Asks only about new entries.
   """
 
-  alias WardrikTriggers.Clock
+  alias Wardrik.Triggers.Clock
 
   @enforce_keys [:name, :prompt]
   defstruct [

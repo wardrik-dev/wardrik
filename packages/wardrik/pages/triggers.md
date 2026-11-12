@@ -31,15 +31,15 @@ System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
     name: MyApp.AgentRuntime,
     authorizer: {MyApp.AllowAll, []},
     resolver: {MyApp.Agents, []},
-    vault_keys: [WardrikVault.generate_key()]
+    vault_keys: [Wardrik.Vault.generate_key()]
   )
 
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 
 {:ok, _vsn} =
-  WardrikVault.put(
+  Wardrik.Vault.put(
     MyApp.AgentRuntime.Vault,
-    %WardrikVault.Secret{principal: Wardrik.principal("maria"), name: "HOOK", value: "s3cret"},
+    %Wardrik.Vault.Secret{principal: Wardrik.principal("maria"), name: "HOOK", value: "s3cret"},
     kind: :signing_secret
   )
 ```
@@ -61,7 +61,7 @@ Wardrik.Agent.define(scope, "agt_digest",
 - A triggered run is an ordinary message. It wakes a sleeping agent.
 - Each run writes `wardrik.trigger.fired` to the agent's log.
 
-See `WardrikTriggers.Trigger` for trigger fields, defaults, and accepted values.
+See `Wardrik.Triggers.Trigger` for trigger fields, defaults, and accepted values.
 
 - `settle` cancels a turn waiting on an answer nobody gave, then asks. It skips a turn still working.
   The audit gets `wardrik.agent.cancelled` with the trigger's name.

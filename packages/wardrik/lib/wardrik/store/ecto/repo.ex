@@ -1,14 +1,14 @@
 if Code.ensure_loaded?(Ecto.Adapters.Postgres) do
-  defmodule WardrikStore.Ecto.Repo do
+  defmodule Wardrik.Store.Ecto.Repo do
     @moduledoc """
-    The repo a `WardrikStore.Ecto` store starts when given a `:url`. A VM runs at most one.
+    The repo a `Wardrik.Store.Ecto` store starts when given a `:url`. A VM runs at most one.
 
     Its migrations run under a Postgres advisory lock, so nodes migrate one at a time.
     """
 
-    use Ecto.Repo, otp_app: :wardrik_store, adapter: Ecto.Adapters.Postgres
+    use Ecto.Repo, otp_app: :wardrik, adapter: Ecto.Adapters.Postgres
 
-    @migrations [{1, WardrikStore.Ecto.Repo.V1}]
+    @migrations [{1, Wardrik.Store.Ecto.Repo.V1}]
 
     @doc "Returns the repo's start options for `url`. Adds TLS options if `url` has `ssl=true`."
     @spec options(String.t()) :: keyword()
@@ -45,11 +45,11 @@ if Code.ensure_loaded?(Ecto.Adapters.Postgres) do
     end
   end
 
-  defmodule WardrikStore.Ecto.Repo.V1 do
+  defmodule Wardrik.Store.Ecto.Repo.V1 do
     @moduledoc false
     use Ecto.Migration
 
-    def up, do: WardrikStore.Ecto.Migration.up(version: 1)
-    def down, do: WardrikStore.Ecto.Migration.down(version: 1)
+    def up, do: Wardrik.Store.Ecto.Migration.up(version: 1)
+    def down, do: Wardrik.Store.Ecto.Migration.down(version: 1)
   end
 end

@@ -1,4 +1,4 @@
-defmodule WardrikChannel.Binding do
+defmodule Wardrik.Chat.Binding do
   @moduledoc """
   The agent that answers in a room, and when.
 

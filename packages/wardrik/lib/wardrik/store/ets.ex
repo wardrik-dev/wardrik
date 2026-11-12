@@ -1,17 +1,17 @@
-defmodule WardrikStore.ETS do
+defmodule Wardrik.Store.ETS do
   @moduledoc """
   Keeps keys in memory. They're gone when the store's process stops.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_store#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
-      store = WardrikStore.ETS.new(name: MyApp.Store)
-      children = [{WardrikStore, store}]
+      store = Wardrik.Store.ETS.new(name: MyApp.Store)
+      children = [{Wardrik.Store, store}]
 
   Use it for tests, development and data your app can rebuild.
   """
 
-  @behaviour WardrikStore.Adapter
+  @behaviour Wardrik.Store.Adapter
 
   use GenServer
 
@@ -22,21 +22,21 @@ defmodule WardrikStore.ETS do
 
     * `:name` - required. The name of the store's process and table.
   """
-  @spec new(keyword()) :: WardrikStore.t()
-  def new(opts), do: WardrikStore.new(__MODULE__, Keyword.fetch!(opts, :name))
+  @spec new(keyword()) :: Wardrik.Store.t()
+  def new(opts), do: Wardrik.Store.new(__MODULE__, Keyword.fetch!(opts, :name))
 
   @doc "Starts the store with an empty table, both named `name`."
   @spec start_link(atom()) :: GenServer.on_start()
   def start_link(name) when is_atom(name), do: GenServer.start_link(__MODULE__, name, name: name)
 
-  @impl WardrikStore.Adapter
+  @impl Wardrik.Store.Adapter
   def child_spec(name), do: %{id: name, start: {__MODULE__, :start_link, [name]}}
 
-  @impl WardrikStore.Adapter
+  @impl Wardrik.Store.Adapter
   def put(name, path, value, opts),
     do: GenServer.call(name, {:put, path, value, Keyword.fetch(opts, :if_vsn)})
 
-  @impl WardrikStore.Adapter
+  @impl Wardrik.Store.Adapter
   def lookup(name, path) do
     case :ets.lookup(name, path) do
       [{^path, value, vsn}] -> {value, vsn}
@@ -44,11 +44,11 @@ defmodule WardrikStore.ETS do
     end
   end
 
-  @impl WardrikStore.Adapter
+  @impl Wardrik.Store.Adapter
   def delete(name, path, opts),
     do: GenServer.call(name, {:delete, path, Keyword.fetch(opts, :if_vsn)})
 
-  @impl WardrikStore.Adapter
+  @impl Wardrik.Store.Adapter
   def keys(name, prefix) do
     name
     |> first_at_or_after(prefix)
@@ -59,7 +59,7 @@ defmodule WardrikStore.ETS do
     |> Enum.take_while(&String.starts_with?(&1, prefix))
   end
 
-  @impl WardrikStore.Adapter
+  @impl Wardrik.Store.Adapter
   def versions(name, prefix) do
     for path <- keys(name, prefix),
         [{^path, vsn}] <- [:ets.select(name, [{{path, :_, :"$1"}, [], [{{path, :"$1"}}]}])],

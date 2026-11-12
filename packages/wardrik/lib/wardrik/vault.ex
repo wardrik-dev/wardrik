@@ -1,20 +1,20 @@
-defmodule WardrikVault do
+defmodule Wardrik.Vault do
   @moduledoc """
-  Keeps credentials sealed in a `WardrikStore`, and gives them to WardrikCore agents' tools.
+  Keeps credentials sealed in a `Wardrik.Store`, and gives them to WardrikCore agents' tools.
 
   Application integration fragment. Start the required processes before calling these functions.
-  See the [package README](https://github.com/wardrik-dev/wardrik/tree/main/packages/wardrik_vault#readme) for complete setup.
+  See the [package README](https://hexdocs.pm/wardrik) for complete setup.
 
       children = [
-        {WardrikStore, store},
-        {WardrikVault, name: MyApp.Vault, store: store, keys: [System.fetch_env!("VAULT_KEY")]}
+        {Wardrik.Store, store},
+        {Wardrik.Vault, name: MyApp.Vault, store: store, keys: [System.fetch_env!("VAULT_KEY")]}
       ]
 
       WardrikCore.start_agent(
         agent_id: "digest",
         model: "anthropic:claude-haiku-4-5",
         principal: %WardrikCore.Principal{id: "user:jon"},
-        credentials: {WardrikVault, MyApp.Vault}
+        credentials: {Wardrik.Vault, MyApp.Vault}
       )
 
     * A tool gets only what the agent's principal holds.
@@ -27,11 +27,11 @@ defmodule WardrikVault do
 
   require Logger
 
+  alias Wardrik.Vault.Grants
+  alias Wardrik.Vault.Sealed
+  alias Wardrik.Vault.Secret
   alias WardrikCore.Credentials
   alias WardrikCore.Principal
-  alias WardrikVault.Grants
-  alias WardrikVault.Sealed
-  alias WardrikVault.Secret
 
   @typedoc "A vault, by the name your app gave it."
   @type t() :: atom()
@@ -64,7 +64,7 @@ defmodule WardrikVault do
                    store: [
                      type: :any,
                      required: true,
-                     doc: "The WardrikStore used for encrypted credentials."
+                     doc: "The Wardrik.Store used for encrypted credentials."
                    ],
                    keys: [
                      type: {:list, :string},
@@ -75,14 +75,14 @@ defmodule WardrikVault do
                    grants: [
                      type: {:or, [:mod_arg, nil]},
                      default: nil,
-                     doc: "A WardrikVault.Grants callback module and options."
+                     doc: "A Wardrik.Vault.Grants callback module and options."
                    ]
                  )
 
   @doc """
   Starts the vault.
 
-      WardrikVault.start_link(
+      Wardrik.Vault.start_link(
         name: MyApp.Vault,
         store: store,
         keys: [System.fetch_env!("VAULT_KEY"), System.fetch_env!("OLD_VAULT_KEY")]
@@ -110,7 +110,7 @@ defmodule WardrikVault do
   Seals a secret. Returns `{:ok, vsn}`, or `{:error, :no_key}` without keys.
 
       {:ok, vsn} =
-        WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
+        Wardrik.Vault.put(MyApp.Vault, %Wardrik.Vault.Secret{
           principal: principal,
           name: "github",
           value: "ghp_..."
@@ -119,10 +119,10 @@ defmodule WardrikVault do
   ## Options
 
     * `:kind` - what it's for. See `t:kind/0`. `:secret` unless set.
-    * `:if_vsn` - writes only over this version. See `WardrikStore.put/4`.
+    * `:if_vsn` - writes only over this version. See `Wardrik.Store.put/4`.
   """
-  @spec put(t(), Secret.t(), kind: kind(), if_vsn: WardrikStore.vsn()) ::
-          {:ok, WardrikStore.vsn()} | {:error, term()}
+  @spec put(t(), Secret.t(), kind: kind(), if_vsn: Wardrik.Store.vsn()) ::
+          {:ok, Wardrik.Store.vsn()} | {:error, term()}
   def put(vault, secret, opts \\ [])
 
   def put(vault, %Secret{principal: %Principal{} = principal, name: name, value: value}, opts)
@@ -134,7 +134,7 @@ defmodule WardrikVault do
 
     case keys do
       [key | _rest] ->
-        WardrikStore.put(store, path, Sealed.seal(value, key: key, path: path, kind: kind), opts)
+        Wardrik.Store.put(store, path, Sealed.seal(value, key: key, path: path, kind: kind), opts)
 
       [] ->
         {:error, :no_key}
@@ -144,7 +144,7 @@ defmodule WardrikVault do
   @doc """
   Returns the value `principal` holds as `name`, unsealed.
 
-      WardrikVault.fetch(MyApp.Vault, principal, "github")
+      Wardrik.Vault.fetch(MyApp.Vault, principal, "github")
       #=> {:ok, "ghp_..."}
 
   Returns `{:error, :not_found}` if there's none, and `{:error, :no_key}` without keys.
@@ -168,13 +168,13 @@ defmodule WardrikVault do
   @doc """
   Returns what `principal` holds as `name`, unsealed, with its kind and version.
 
-      WardrikVault.lookup(MyApp.Vault, principal, "github")
+      Wardrik.Vault.lookup(MyApp.Vault, principal, "github")
       #=> {:ok, :secret, "ghp_...", vsn}
 
   Returns `{:error, kind, reason}` if the value is there but won't unseal.
   """
   @spec lookup(t(), Principal.t(), String.t()) ::
-          {:ok, kind(), binary(), WardrikStore.vsn()}
+          {:ok, kind(), binary(), Wardrik.Store.vsn()}
           | {:error, term()}
           | {:error, kind(), term()}
   def lookup(vault, %Principal{} = principal, name) do
@@ -182,7 +182,7 @@ defmodule WardrikVault do
     path = path(principal, name)
 
     with :ok <- has_keys(keys),
-         {%Sealed{} = sealed, vsn} <- WardrikStore.lookup(store, path) do
+         {%Sealed{} = sealed, vsn} <- Wardrik.Store.lookup(store, path) do
       unsealed(Sealed.unseal(sealed, keys, path), sealed.kind, vsn)
     else
       nil -> {:error, :not_found}
@@ -193,16 +193,16 @@ defmodule WardrikVault do
   @doc """
   Returns the value `principal` holds as `name`, without a running vault, such as in config.
 
-      WardrikVault.read(store, principal, "github", keys: [System.fetch_env!("VAULT_KEY")])
+      Wardrik.Vault.read(store, principal, "github", keys: [System.fetch_env!("VAULT_KEY")])
       #=> {:ok, "ghp_..."}
   """
-  @spec read(WardrikStore.t(), Principal.t(), String.t(), keys: [String.t()]) ::
+  @spec read(Wardrik.Store.t(), Principal.t(), String.t(), keys: [String.t()]) ::
           {:ok, binary()} | {:error, term()}
   def read(store, %Principal{} = principal, name, args) do
     keys = Keyword.fetch!(args, :keys)
     path = path(principal, name)
 
-    case WardrikStore.lookup(WardrikStore.scope(store, "wardrik_vault"), path) do
+    case Wardrik.Store.lookup(Wardrik.Store.scope(store, "wardrik_vault"), path) do
       {%Sealed{} = sealed, _vsn} -> Sealed.unseal(sealed, Sealed.decode_keys(keys), path)
       nil -> {:error, :not_found}
     end
@@ -213,8 +213,8 @@ defmodule WardrikVault do
   `{:secret, name}`. No agent works for it.
 
       {:ok, _vsn} =
-        WardrikVault.put(MyApp.Vault, %WardrikVault.Secret{
-          principal: WardrikVault.deployment(),
+        Wardrik.Vault.put(MyApp.Vault, %Wardrik.Vault.Secret{
+          principal: Wardrik.Vault.deployment(),
           name: "SLACK_SIGNING_SECRET",
           value: secret
         })
@@ -225,10 +225,10 @@ defmodule WardrikVault do
   @doc """
   Returns the secret an option holds.
 
-      WardrikVault.value(MyApp.Vault, {:secret, "SLACK_SIGNING_SECRET"})
+      Wardrik.Vault.value(MyApp.Vault, {:secret, "SLACK_SIGNING_SECRET"})
       #=> {:ok, "8f14..."}
 
-      WardrikVault.value(MyApp.Vault, "8f14...")
+      Wardrik.Vault.value(MyApp.Vault, "8f14...")
       #=> {:ok, "8f14..."}
 
   `{:secret, name}` is read on each call, so a new secret takes effect at once. A string or `nil`
@@ -239,7 +239,7 @@ defmodule WardrikVault do
   def value(_vault, value) when is_binary(value) or is_nil(value), do: {:ok, value}
 
   @doc "Like `value/2`, without a running vault. See `read/4`."
-  @spec read_value(WardrikStore.t(), [String.t()], value()) ::
+  @spec read_value(Wardrik.Store.t(), [String.t()], value()) ::
           {:ok, String.t() | nil} | {:error, term()}
   def read_value(store, keys, {:secret, name}) when is_binary(name),
     do: read(store, @deployment, name, keys: keys)
@@ -249,7 +249,7 @@ defmodule WardrikVault do
   @doc "Removes what `principal` holds as `name`. Returns `:ok` even if there's nothing."
   @spec delete(t(), Principal.t(), String.t()) :: :ok | {:error, term()}
   def delete(vault, %Principal{} = principal, name),
-    do: vault |> settings() |> Map.fetch!(:store) |> WardrikStore.delete(path(principal, name))
+    do: vault |> settings() |> Map.fetch!(:store) |> Wardrik.Store.delete(path(principal, name))
 
   @doc "Returns the names `principal` holds. Needs no key."
   @spec names(t(), Principal.t()) :: [String.t()]
@@ -263,7 +263,7 @@ defmodule WardrikVault do
   @doc """
   Returns every credential as `{principal_id, name, kind}`. Needs no key.
 
-      WardrikVault.list(MyApp.Vault)
+      Wardrik.Vault.list(MyApp.Vault)
       #=> [{"user:jon", "github", :secret}]
 
   Names aren't sealed. Anyone who can read the store sees who holds which name.
@@ -273,7 +273,7 @@ defmodule WardrikVault do
     %{store: store} = settings(vault)
 
     store
-    |> WardrikStore.keys()
+    |> Wardrik.Store.keys()
     |> Enum.flat_map(fn path -> listed(store, path) end)
   end
 
@@ -328,7 +328,7 @@ defmodule WardrikVault do
     if length(decoded) < length(keys), do: Logger.warning("A vault key isn't 32 bytes of base64")
 
     settings = %{
-      store: opts |> Keyword.fetch!(:store) |> WardrikStore.scope("wardrik_vault"),
+      store: opts |> Keyword.fetch!(:store) |> Wardrik.Store.scope("wardrik_vault"),
       keys: decoded,
       grants: Keyword.fetch!(opts, :grants)
     }
@@ -350,7 +350,7 @@ defmodule WardrikVault do
   rescue
     ArgumentError ->
       reraise ArgumentError,
-              "#{inspect(vault)} isn't started. Add {WardrikVault, name: #{inspect(vault)}, store: store, keys: keys} to your supervision tree, ahead of what uses it.",
+              "#{inspect(vault)} isn't started. Add {Wardrik.Vault, name: #{inspect(vault)}, store: store, keys: keys} to your supervision tree, ahead of what uses it.",
               __STACKTRACE__
   end
 
@@ -381,7 +381,7 @@ defmodule WardrikVault do
   defp nothing_granted(_renew_or_ask), do: {:error, :not_found}
 
   defp listed(store, path) do
-    case {String.split(path, "/"), WardrikStore.lookup(store, path)} do
+    case {String.split(path, "/"), Wardrik.Store.lookup(store, path)} do
       {[id, name], {%Sealed{kind: kind}, _vsn}} -> [{decode(id), decode(name), kind}]
       _other -> []
     end

@@ -1,14 +1,14 @@
-defmodule WardrikStore.DurableTest do
+defmodule Wardrik.Store.DurableTest do
   use ExUnit.Case, async: true
-  use WardrikStore.DurableConformance
+  use Wardrik.Store.DurableConformance
 
-  alias WardrikStore.Counter
+  alias Wardrik.Store.Counter
 
   @moduletag :capture_log
 
   setup_all do
-    store = WardrikStore.ETS.new(name: __MODULE__)
-    start_supervised!({WardrikStore, store})
+    store = Wardrik.Store.ETS.new(name: __MODULE__)
+    start_supervised!({Wardrik.Store, store})
     %{store: store}
   end
 

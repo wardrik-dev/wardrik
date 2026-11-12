@@ -1,4 +1,4 @@
-defmodule WardrikEvents.Test.Sink do
+defmodule Wardrik.EventLog.Test.Sink do
   @moduledoc "An events sink that sends each event to the process its options name."
   @behaviour WardrikCore.Events
 
@@ -6,7 +6,7 @@ defmodule WardrikEvents.Test.Sink do
   def handle_event(event, test), do: send(test, {:event, event})
 end
 
-defmodule WardrikEvents.Test.Echo do
+defmodule Wardrik.EventLog.Test.Echo do
   @moduledoc "A capability with one tool, `echo`."
   @behaviour WardrikCore.Capability
 
@@ -23,7 +23,7 @@ defmodule WardrikEvents.Test.Echo do
   end
 end
 
-defmodule WardrikEvents.Test.LLM do
+defmodule Wardrik.EventLog.Test.LLM do
   @moduledoc "Model answers the tests stub ReqLLM with."
 
   def answer(text), do: response(ReqLLM.Context.assistant(text))

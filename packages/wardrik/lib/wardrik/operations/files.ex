@@ -8,9 +8,9 @@ defmodule Wardrik.Operations.Files do
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Snapshot
   alias Wardrik.Scope
-  alias WardrikWorkspace.File
-  alias WardrikWorkspace.Files
-  alias WardrikWorkspace.Path
+  alias Wardrik.Workspace.File
+  alias Wardrik.Workspace.Files
+  alias Wardrik.Workspace.Path
 
   @max_listed 500
   @max_bytes 4 * 1024 * 1024

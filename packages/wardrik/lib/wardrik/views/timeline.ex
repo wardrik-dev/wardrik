@@ -35,7 +35,7 @@ defmodule Wardrik.Views.Timeline do
       tool calls it made, `:answer` and `:error`. `:status` is `:running`, `:ok` or `:error`.
   """
 
-  alias WardrikEvents.Timeline
+  alias Wardrik.EventLog.Timeline
 
   @type t() :: Timeline.t()
 
