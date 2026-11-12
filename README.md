@@ -10,7 +10,7 @@ up for you. See [Trigger agents](https://hexdocs.pm/wardrik/triggers.html).
 ```elixir
 def deps do
   [
-    {:wardrik_triggers, "~> 0.1.0-rc.4"}
+    {:wardrik_triggers, "~> 0.1.0-rc.5"}
   ]
 end
 ```
@@ -21,7 +21,7 @@ Set `ANTHROPIC_API_KEY` before starting IEx. In a fresh session:
 
 ```elixir
 Mix.install([
-  {:wardrik_triggers, "~> 0.1.0-rc.4"},
+  {:wardrik_triggers, "~> 0.1.0-rc.5"},
   {:wardrik_core, "~> 0.1.0-rc.4"},
   {:wardrik_vault, "~> 0.1.0-rc.2"}
 ])

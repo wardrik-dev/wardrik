@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.5 (2026-11-11)
+
+- The start options are documented from one NimbleOptions schema, and the moduledoc links the
+  README for setup. They take the same options as before.
+
 ## 0.1.0-rc.4 (2026-11-04)
 
 - `overlap: "settle"`, the default except for webhooks. A run that finds the agent waiting on an
