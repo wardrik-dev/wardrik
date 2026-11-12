@@ -5,7 +5,7 @@ Encrypts credentials at rest, for [WardrikCore](https://hexdocs.pm/wardrik_core)
 ## Install
 
 ```elixir
-{:wardrik_vault, "~> 0.1.0-rc.2"}
+{:wardrik_vault, "~> 0.1.0-rc.3"}
 ```
 
 ## Start the vault
@@ -13,7 +13,7 @@ Encrypts credentials at rest, for [WardrikCore](https://hexdocs.pm/wardrik_core)
 Run in a fresh IEx session:
 
 ```elixir
-Mix.install([{:wardrik_vault, "~> 0.1.0-rc.2"}])
+Mix.install([{:wardrik_vault, "~> 0.1.0-rc.3"}])
 
 keys = [WardrikVault.generate_key()]
 store = WardrikStore.ETS.new(name: MyApp.Store)

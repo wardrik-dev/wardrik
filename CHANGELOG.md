@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.3 (2026-11-11)
+
+- The start options are documented from one NimbleOptions schema, and the moduledoc links the
+  README for setup. They take the same options as before.
+
 ## 0.1.0-rc.2 (2026-11-02)
 
 - Kinds that say what a secret is for: `:api_key`, `:client_secret`, `:header`,
