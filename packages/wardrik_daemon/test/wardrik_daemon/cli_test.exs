@@ -111,7 +111,9 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ "Wrote " <> config
     assert output =~ "policies/coding.yaml"
     assert output =~ "npm install -g @agentclientprotocol/claude-agent-acp"
-    assert File.read!(config) =~ "harnesses:\n  claude:\n    command: claude-agent-acp\n"
+
+    assert {:ok, %{"harnesses" => %{"claude" => %{"command" => "claude-agent-acp"}}}} =
+             YamlElixir.read_from_file(config)
 
     assert failing(context, @init ++ ~w(--set coding)) =~ "--set coding: is KEY=VALUE"
   end

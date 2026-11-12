@@ -1,35 +1,33 @@
-defmodule WardrikDaemon.Setup.Coding do
+defmodule WardrikDaemon.Setup.ClaudeCode do
   @moduledoc """
   Offers Claude Code to agents as the `claude` harness, when `claude` or its ACP adapter,
-  `claude-agent-acp`, is on `PATH`.
+  `claude-agent-acp`, is on `PATH` and `config.yaml` has no `claude` harness.
 
-  Asks `coding.claude`. On yes, it adds `harnesses` to `config.yaml` and writes
-  `policies/coding.yaml`, where every change asks a person and deletes are refused.
+  Asks `coding.claude`. See `WardrikDaemon.Setup.Harness` for what a yes writes.
 
     * The harness runs the adapter with `PATH` as `wardrik init` found it, since a daemon under
       systemd starts with a shorter one, without Node.js.
     * Without the adapter, it shows the command that installs it. It never runs one.
     * Claude Code signs in with its own login. Without `~/.claude/.credentials.json`, an
       `ANTHROPIC_API_KEY` set here is passed to it.
-    * A `config.yaml` with `harnesses` is left as it is.
   """
 
   @behaviour WardrikDaemon.Setup.Step
 
   alias WardrikDaemon.EnvFile
+  alias WardrikDaemon.Setup.Harness
   alias WardrikDaemon.Setup.Machine
   alias WardrikDaemon.Setup.Question
 
   @adapter "claude-agent-acp"
-  @install "npm install -g @agentclientprotocol/claude-agent-acp"
   @key "ANTHROPIC_API_KEY"
 
   @impl WardrikDaemon.Setup.Step
   def detect(%Machine{} = machine) do
-    claude = Machine.executable(machine, "claude")
     adapter = Machine.executable(machine, @adapter)
+    found? = adapter || Machine.executable(machine, "claude")
 
-    if (claude || adapter) && not Map.has_key?(Machine.config(machine), "harnesses") do
+    if found? && Harness.missing?(machine, "claude") do
       %{
         adapter: adapter,
         path: Map.get(machine.env, "PATH", ""),
@@ -55,43 +53,26 @@ defmodule WardrikDaemon.Setup.Coding do
 
   @impl WardrikDaemon.Setup.Step
   def plan(found, %{"coding.claude" => true}) do
-    [
-      {:section, "config.yaml", "harnesses", harnesses(found)},
-      {:write, "policies/coding.yaml", policy()}
-    ] ++ installed(found)
+    Harness.added("claude", """
+    command: #{found.adapter || @adapter}
+    env:
+      PATH: #{inspect(found.path)}#{key(found)}
+    meta: {claudeCode: {options: {settingSources: []}}}
+    options: {mode: default}
+    context: [CLAUDE.md, AGENTS.md]
+    """) ++ installed(found)
   end
 
   def plan(_found, _answers), do: []
 
-  defp installed(%{adapter: nil}),
-    do: [{:command, @install, "Claude Code works with Wardrik through its ACP adapter."}]
-
-  defp installed(_found), do: []
-
-  defp harnesses(found) do
-    """
-    # Coding agents, each a tool of the same name, as tools: [claude]. Each piece of work runs in a
-    # worktree of a checkout, on a branch of its own. List the repositories under checkouts, as
-    # checkouts: {app: ~/src/app}.
-    harnesses:
-      claude:
-        command: #{found.adapter || @adapter}
-        env:
-          PATH: #{inspect(found.path)}#{key(found)}
-        meta: {claudeCode: {options: {settingSources: []}}}
-        options: {mode: default}
-        context: [CLAUDE.md, AGENTS.md]
-    """
-  end
-
-  defp key(%{key?: true}), do: "\n      #{@key}: ${#{@key}}"
+  defp key(%{key?: true}), do: "\n  #{@key}: ${#{@key}}"
   defp key(_found), do: ""
 
-  defp policy do
-    """
-    # For workers that code: reading runs, each change asks a person, and deleting is refused.
-    deny: [claude/delete]
-    default: {read_only: allow, else: ask}
-    """
-  end
+  defp installed(%{adapter: nil}),
+    do: [
+      {:command, "npm install -g @agentclientprotocol/claude-agent-acp",
+       "Claude Code works with Wardrik through its ACP adapter."}
+    ]
+
+  defp installed(_found), do: []
 end

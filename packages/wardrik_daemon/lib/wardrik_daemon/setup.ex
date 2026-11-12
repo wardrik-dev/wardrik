@@ -6,8 +6,9 @@ defmodule WardrikDaemon.Setup do
   `apply/2` makes them. A change is one of:
 
     * `{:write, path, text}` - writes a file in the config directory, unless one is there.
-    * `{:section, path, key, text}` - adds `text` to a YAML file in the config directory, unless it
-      has `key` at its top level.
+    * `{:entry, path, section, name, text}` - adds `name`, holding the YAML `text`, under the
+      top-level `section` of a YAML file in the config directory, unless `name` is there. A section
+      written on one line, as `harnesses: {}`, takes no entry: `apply/2` says to add it by hand.
     * `{:command, command, why}` - a command for a person to run. Setup never runs one: it
       changes Wardrik's directories alone.
   """
@@ -18,7 +19,7 @@ defmodule WardrikDaemon.Setup do
 
   @type change() ::
           {:write, Path.t(), String.t()}
-          | {:section, Path.t(), String.t(), String.t()}
+          | {:entry, Path.t(), String.t(), String.t(), String.t()}
           | {:command, String.t(), String.t()}
 
   @typedoc "What `apply/2` did with a change."
@@ -27,7 +28,7 @@ defmodule WardrikDaemon.Setup do
   @typedoc "Answers a question, or says why it can't."
   @type answer() :: (Question.t() -> {:ok, term()} | {:error, String.t()})
 
-  @steps [WardrikDaemon.Setup.Coding]
+  @steps [WardrikDaemon.Setup.ClaudeCode]
 
   @doc "Returns the steps `wardrik init` takes, in order."
   @spec steps() :: [module()]
@@ -69,9 +70,20 @@ defmodule WardrikDaemon.Setup do
     end)
   end
 
-  @doc "Makes `changes` in `dirs`. Returns what each did."
-  @spec apply([change()], Dirs.t()) :: [done()]
-  def apply(changes, %Dirs{} = dirs), do: Enum.map(changes, &made(&1, dirs))
+  @doc "Makes `changes` in `dirs`. Returns what each did, or why one can't be made."
+  @spec apply([change()], Dirs.t()) :: {:ok, [done()]} | {:error, String.t()}
+  def apply(changes, %Dirs{} = dirs) do
+    with {:ok, done} <- made(changes, dirs, []), do: {:ok, Enum.reverse(done)}
+  end
+
+  defp made([], _dirs, done), do: {:ok, done}
+
+  defp made([change | changes], dirs, done) do
+    case made(change, dirs) do
+      {:error, _why} = error -> error
+      made -> made(changes, dirs, [made | done])
+    end
+  end
 
   defp made({:write, name, text}, dirs) do
     path = config(dirs, name)
@@ -85,23 +97,48 @@ defmodule WardrikDaemon.Setup do
     end
   end
 
-  defp made({:section, name, key, text}, dirs) do
+  defp made({:entry, name, section, key, text}, dirs) do
     path = config(dirs, name)
     written = File.read!(path)
+    {:ok, read} = YamlElixir.read_from_string(written)
+    entry = indented("#{key}:\n" <> indented(text))
 
-    case YamlElixir.read_from_string(written) do
-      {:ok, %{^key => _section}} ->
+    case Map.get(read || %{}, section) do
+      %{^key => _entry} ->
         {:kept, path}
 
-      {:ok, _other} ->
-        File.write!(path, [written, ended(written), "\n", text])
+      nil ->
+        File.write!(path, [written, ended(written), "\n#{section}:\n", entry])
         {:wrote, path}
+
+      _section ->
+        case Regex.split(~r/^#{section}:[ \t]*(#.*)?\n/m, written,
+               parts: 2,
+               include_captures: true
+             ) do
+          [before, line, rest] ->
+            File.write!(path, [before, line, entry, rest])
+            {:wrote, path}
+
+          [_one_line] ->
+            {:error,
+             "#{path} writes #{section} on one line. Add this under it by hand:\n\n" <> entry}
+        end
     end
   end
 
   defp made({:command, command, why}, _dirs), do: {:command, command, why}
 
   defp ended(text), do: if(String.ends_with?(text, "\n"), do: "", else: "\n")
+
+  defp indented(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map_join("\n", fn
+      "" -> ""
+      line -> "  " <> line
+    end)
+  end
 
   defp config(dirs, name) do
     {:ok, safe} = Path.safe_relative(name)

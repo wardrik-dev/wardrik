@@ -68,12 +68,9 @@ defmodule WardrikDaemon.CLI.Init do
     machine = Setup.Machine.new(cx.env, cx.dirs)
 
     with {:ok, changes, asked} <-
-           Setup.plan(Setup.steps(), machine, Answers.answer(cx, given, flags)) do
-      for line <- Answers.unasked(given, asked),
-          do: Context.puts(cx, [Owl.Data.tag("! ", :yellow), line])
-
-      done = Setup.apply(changes, cx.dirs)
-
+           Setup.plan(Setup.steps(), machine, Answers.answer(cx, given, flags)),
+         :ok <- unasked(cx, Answers.unasked(given, asked)),
+         {:ok, done} <- Setup.apply(changes, cx.dirs) do
       for {said, path} when said in [:wrote, :kept] <- done,
           do: Context.puts(cx, said(said, path))
 
@@ -81,6 +78,9 @@ defmodule WardrikDaemon.CLI.Init do
        for({:command, command, why} <- done, do: {command, why})}
     end
   end
+
+  defp unasked(cx, lines),
+    do: Enum.each(lines, &Context.puts(cx, [Owl.Data.tag("! ", :yellow), &1]))
 
   defp said(:wrote, path), do: [Owl.Data.tag("Wrote", :green), " ", path]
   defp said(:kept, path), do: [Owl.Data.tag("Kept ", :light_black), " ", path]

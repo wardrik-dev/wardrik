@@ -20,7 +20,7 @@ defmodule WardrikDaemon.Setup.Step do
 
         @impl true
         def plan(path, %{"tool.use" => true}),
-          do: [{:section, "config.yaml", "tool", "tool:\\n  command: \#{path}\\n"}]
+          do: [{:entry, "config.yaml", "tools", "tool", "command: \#{path}\\n"}]
 
         def plan(_path, _answers), do: []
       end
