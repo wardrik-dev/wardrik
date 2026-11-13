@@ -48,13 +48,17 @@ The agent gets `ga4__properties_runReport` and `ga4__properties_getMetadata`.
   call waits for them. A refused token is refreshed once.
 - `{:key, name}` - a key from `WardrikCore.Keys`, such as one an org pasted.
 
-`headers` adds headers the description doesn't name, such as a developer token. Secrets go only
+`headers` adds headers the description doesn't name, such as a developer token. `schemes` adds
+schemes it doesn't name, such as `%{"token" => :bearer}` for an API that documents its sign-in
+elsewhere. Secrets go only
 to `base_url`, and never into arguments, answers or errors.
 
 ## Formats
 
 A source is a reader and what it reads, as `{WardrikRest.Discovery, url: url}`.
 
+- OpenAPI 3.0 and 3.1, in JSON or YAML: `WardrikRest.OpenAPI`, from a `url`, a `path` or a decoded
+  `document`. JSON and form-encoded bodies are sent; file uploads and HTTP basic aren't yet.
 - Google Discovery documents: `WardrikRest.Discovery`, from a `url` or a decoded `document`.
 - Other formats: a module with the `WardrikRest.Reader` behaviour, whose `read/1` returns a
   `WardrikRest.Spec`. Its schemas refer to the spec's `types` by name, and tools are fitted from

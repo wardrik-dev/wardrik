@@ -37,7 +37,8 @@ defmodule WardrikDaemon.RestTest do
 
   defp entry(discovery) do
     %Config.Rest{
-      discovery: discovery,
+      reader: :discovery,
+      location: discovery,
       options: [base_url: "https://notes.test/", auth: %{"oauth2" => {:credential, "notes"}}]
     }
   end
@@ -89,6 +90,29 @@ defmodule WardrikDaemon.RestTest do
     assert [{"notes", _capability}] = capabilities
     assert offered(context, capabilities, "growth") == ["notes__notes_list"]
     assert offered(context, capabilities, "platform") == []
+  end
+
+  test "reads an OpenAPI document in YAML, with a scheme it doesn't name", context do
+    File.write!(Path.join(context.dir, "notes.yaml"), """
+    openapi: 3.1.0
+    info: {title: Notes}
+    paths:
+      /notes:
+        get: {operationId: notes.list}
+    """)
+
+    entry = %Config.Rest{
+      reader: :openapi,
+      location: "notes.yaml",
+      options: [
+        base_url: "https://notes.test/v1",
+        schemes: %{"token" => :bearer},
+        auth: %{"token" => {:credential, "notes"}}
+      ]
+    }
+
+    capabilities = started(context, [{"notes", entry}])
+    assert offered(context, capabilities, "growth") == ["notes__notes_list"]
   end
 
   test "fetches a description from its URL", context do

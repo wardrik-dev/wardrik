@@ -395,8 +395,10 @@ defmodule WardrikDaemon.ConfigTest do
                """
              )
 
-    assert [{"ga4", %Config.Rest{discovery: discovery, options: opts}}] = config.rest
-    assert discovery == "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta"
+    assert [{"ga4", %Config.Rest{reader: :discovery, location: location, options: opts}}] =
+             config.rest
+
+    assert location == "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta"
     assert opts[:auth] == %{"oauth2" => {:credential, "google"}}
 
     assert opts[:headers] == %{
@@ -411,6 +413,27 @@ defmodule WardrikDaemon.ConfigTest do
     assert opts[:max_schema_bytes] == 8_192
     assert opts[:argument_headers] == %{"login-customer-id" => "The manager account's ID."}
     assert config.orgs["growth"].rest == ["ga4"]
+  end
+
+  test "reads an OpenAPI description, with schemes it doesn't name", context do
+    assert {:ok, config} =
+             read(
+               context,
+               """
+               rest:
+                 gh:
+                   openapi: specs/github.yaml
+                   base_url: https://api.github.com
+                   schemes: {token: bearer, version: {header: X-GitHub-Api-Version}}
+                   auth: {token: {credential: github}, version: {key: GH_VERSION}}
+               """
+             )
+
+    assert [{"gh", %Config.Rest{reader: :openapi, location: "specs/github.yaml", options: opts}}] =
+             config.rest
+
+    assert opts[:schemes] == %{"token" => :bearer, "version" => {:header, "X-GitHub-Api-Version"}}
+    assert opts[:auth]["token"] == {:credential, "github"}
   end
 
   test "says where a key doesn't read", context do
@@ -437,7 +460,11 @@ defmodule WardrikDaemon.ConfigTest do
        "harnesses.c.zzz_colour: isn't an option"},
       {"harnesses: {c: 1}", "harnesses.c: is a harness's keys, with a command"},
       {"checkouts: {c: 1}", "checkouts.c: is a repository's path"},
-      {"rest: {a: {base_url: https://a.test}}", "rest.a: is an API's keys, with the discovery"},
+      {"rest: {a: {base_url: https://a.test}}", "rest.a: is an API's keys, with one discovery"},
+      {"rest: {a: {discovery: d.json, openapi: o.yaml, base_url: x}}",
+       "rest.a: is an API's keys, with one discovery"},
+      {"rest: {a: {openapi: o.yaml, base_url: x, schemes: {t: basic}}}",
+       "rest.a.schemes.t: is bearer, {header: NAME} or {query: NAME}"},
       {"rest: {a: {discovery: d.json}}", "rest.a: required :base_url option not found"},
       {"rest: {a: {discovery: d.json, base_url: x, auth: {oauth2: google}}}",
        "rest.a.auth.oauth2: is {credential: NAME} or {key: NAME}"},

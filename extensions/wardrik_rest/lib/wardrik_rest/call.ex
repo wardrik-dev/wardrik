@@ -126,10 +126,34 @@ defmodule WardrikRest.Call do
     do: for(%{in: :header, name: name} <- given, do: {name, to_string(args[name])})
 
   defp body(operation, given, args) do
-    if Enum.any?(operation.parameters, &(&1.in == :body)),
-      do: [json: Map.new(for %{in: :body, name: name} <- given, do: {name, args[name]})],
-      else: []
+    cond do
+      payload = Enum.find(given, &(&1.in == :payload)) -> sent(operation, args[payload.name])
+      Enum.any?(operation.parameters, &(&1.in == :body)) -> sent(operation, fields(given, args))
+      true -> []
+    end
   end
+
+  defp fields(given, args),
+    do: Map.new(for %{in: :body, name: name} <- given, do: {name, args[name]})
+
+  defp sent(%Operation{encoding: :json}, body), do: [json: body]
+  defp sent(%Operation{encoding: :form}, body), do: [form: form(body, nil)]
+
+  # Nested as card[number]=4242 and items[0][price]=p_1, as form-encoded APIs such as Stripe's take.
+  defp form(%{} = map, prefix),
+    do: Enum.flat_map(Enum.sort(map), fn {key, value} -> form(value, nested(prefix, key)) end)
+
+  defp form(list, prefix) when is_list(list),
+    do:
+      list
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {value, i} -> form(value, nested(prefix, i)) end)
+
+  defp form(nil, _prefix), do: []
+  defp form(value, prefix), do: [{prefix, to_string(value)}]
+
+  defp nested(nil, key), do: to_string(key)
+  defp nested(prefix, key), do: "#{prefix}[#{key}]"
 
   defp header({:bearer, token}), do: [{"authorization", "Bearer " <> token}]
   defp header({{:header, name}, value}), do: [{name, value}]

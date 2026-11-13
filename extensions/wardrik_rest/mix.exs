@@ -64,6 +64,7 @@ defmodule WardrikRest.MixProject do
       sibling(:wardrik_core, "~> 0.1.0-rc.4"),
       {:req, "~> 0.7"},
       {:nimble_options, "~> 1.1"},
+      {:yaml_elixir, "~> 2.12"},
       {:plug, "~> 1.16", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

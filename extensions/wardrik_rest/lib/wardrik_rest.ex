@@ -75,7 +75,7 @@ defmodule WardrikRest do
       WardrikCore.Tool.new!(
         name: API.describe(api),
         description:
-          "Gives the fields of a type #{api.name}'s tools name instead of listing, as #{example}.",
+          "Gives the fields of an object #{api.name}'s tools name instead of listing, as #{example}.",
         schema: %{
           "type" => "object",
           "properties" => %{"type" => %{"type" => "string", "description" => "As #{example}."}},
@@ -88,7 +88,13 @@ defmodule WardrikRest do
   end
 
   defp described(api, type) do
-    case WardrikRest.Schema.describe(api.types, type, API.describe(api)) do
+    tools =
+      Map.new(api.operations, fn operation ->
+        properties = Map.new(operation.parameters, &{&1.name, &1.schema})
+        {API.tool_name(api.name, operation), %{"type" => "object", "properties" => properties}}
+      end)
+
+    case WardrikRest.Schema.describe(api.types, tools, type, API.describe(api)) do
       {:ok, schema} ->
         {:ok, schema}
 
