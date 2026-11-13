@@ -1,16 +1,19 @@
-# Builds the site and deploys it to Cloudflare Pages on every push to main that
-# changes docs/ or the SDK it documents. Needs the CLOUDFLARE_API_TOKEN and
-# CLOUDFLARE_ACCOUNT_ID secrets.
+# Builds the site and deploys it to Cloudflare Pages. A daemon or SDK release tag deploys the
+# site people read, so it documents what they install; a push to main that changes docs/ or the
+# SDK deploys a preview at next.wardrik-docs.pages.dev. Run by hand on a tag, it redeploys the
+# site. Needs the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets.
 name: Docs
 
 on:
   push:
     branches: [main]
+    # GitHub doesn't apply paths to tag pushes, so every release tag deploys.
+    tags: ["wardrik_daemon-v*", "typescript-v*"]
     paths: ["docs/**", "sdk/typescript/**"]
   workflow_dispatch:
 
 concurrency:
-  group: docs
+  group: docs-${{ github.ref_type }}
   cancel-in-progress: true
 
 jobs:
@@ -35,10 +38,11 @@ jobs:
       - run: npm run build
         working-directory: docs
 
+      # Cloudflare serves its production branch, main, as the site; any other is a preview.
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: docs
-          command: pages deploy dist --project-name=wardrik-docs --branch=main
+          command: pages deploy dist --project-name=wardrik-docs --branch=${{ github.ref_type == 'tag' && 'main' || 'next' }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
