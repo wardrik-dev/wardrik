@@ -110,6 +110,60 @@ defmodule WardrikRestTest do
                API.load(%Discovery{document: %{}}, name: "x", base_url: "https://x.test")
     end
 
+    test "fits a long schema into max_schema_bytes, naming deeper types for describe to give" do
+      tools =
+        tools(
+          auth: %{"oauth2" => {:credential, "google"}},
+          only: ["properties_runReport", "properties_getMetadata"],
+          max_schema_bytes: 6_000
+        )
+
+      report = tools["ga4__properties_runReport"]
+      assert byte_size(JSON.encode!(report.schema)) <= 6_000
+      assert report.schema["required"] == ["property"]
+
+      assert %{"type" => "object", "description" => "Dimension filters" <> named} =
+               report.schema["properties"]["dimensionFilter"]
+
+      assert named =~ "A FilterExpression; ga4__describe gives its fields."
+
+      describe = tools["ga4__describe"]
+      assert describe.annotations[:read_only] and not describe.annotations[:gated]
+      assert describe.description =~ "as "
+
+      assert {:ok, %{"properties" => %{"andGroup" => and_group, "filter" => filter}}} =
+               describe.run.(%{"type" => "FilterExpression"}, context())
+
+      assert and_group["description"] =~ "The FilterExpressions in and_group"
+      assert and_group["description"] =~ "A FilterExpressionList; ga4__describe gives its fields."
+      assert filter["type"] == "object"
+
+      assert {:ok, %{"properties" => %{"expressions" => expressions}}} =
+               describe.run.(%{"type" => "FilterExpressionList"}, context())
+
+      assert expressions["items"]["description"] ==
+               "A FilterExpression; ga4__describe gives its fields."
+
+      assert {:error, "ga4 has no type Nothing. Its tools name " <> names} =
+               describe.run.(%{"type" => "Nothing"}, context())
+
+      assert names =~ "FilterExpression"
+    end
+
+    test "inlines a schema that fits whole, and its types that refer to themselves" do
+      tools = tools(auth: %{"oauth2" => {:credential, "google"}}, only: ["properties_runReport"])
+      refute Map.has_key?(tools, "ga4__describe")
+
+      filter = tools["ga4__properties_runReport"].schema["properties"]["dimensionFilter"]
+
+      assert filter["properties"]["andGroup"]["properties"]["expressions"]["items"] == %{
+               "type" => "object",
+               "description" => "A FilterExpression, as above."
+             }
+
+      refute Map.has_key?(filter["properties"]["filter"], "description")
+    end
+
     test "names no scheme when the description has none" do
       notes = %Discovery{document: %{"kind" => "discovery#restDescription", "name" => "notes"}}
 
@@ -129,6 +183,7 @@ defmodule WardrikRestTest do
           [
             auth: %{"oauth2" => {:credential, "google"}},
             headers: %{"x-goog-user-project" => {:key, "PROJECT"}, "x-client" => "wardrik"},
+            argument_headers: %{"login-customer-id" => "The manager account's ID."},
             only: [
               "properties_runReport",
               "properties_getMetadata",
@@ -156,8 +211,14 @@ defmodule WardrikRestTest do
         Req.Test.json(conn, %{"rows" => [%{"metricValues" => [%{"value" => "12"}]}]})
       end)
 
+      assert tools["ga4__properties_runReport"].schema["properties"]["login-customer-id"] == %{
+               "type" => "string",
+               "description" => "The manager account's ID."
+             }
+
       args = %{
         "property" => "properties/123",
+        "login-customer-id" => 42,
         "metrics" => [%{"name" => "conversions"}],
         "dateRanges" => [%{"startDate" => "28daysAgo", "endDate" => "today"}]
       }
@@ -171,6 +232,7 @@ defmodule WardrikRestTest do
       assert {"authorization", "Bearer t0k3n"} in headers
       assert {"x-goog-user-project", "mode-prod"} in headers
       assert {"x-client", "wardrik"} in headers
+      assert {"login-customer-id", "42"} in headers
 
       assert JSON.decode!(body) == %{
                "metrics" => [%{"name" => "conversions"}],

@@ -30,21 +30,50 @@ defmodule WardrikRest.DiscoveryTest do
     refute "property" in body
   end
 
-  test "inlines references, cuts cycles and keeps descriptions for arguments only" do
+  test "keeps schemas as types, referred to by name, with their fields' descriptions" do
     {:ok, spec} = read(@analytics)
     report = operation(spec, "properties_runReport")
     filter = Enum.find(report.parameters, &(&1.name == "dimensionFilter")).schema
 
-    assert filter["description"] =~ "Dimension filters"
+    assert %{"$ref" => "FilterExpression", "description" => "Dimension filters" <> _rest} = filter
 
-    assert filter["properties"]["andGroup"]["properties"]["expressions"]["items"] == %{
-             "type" => "object"
+    assert %{"properties" => %{"andGroup" => %{"$ref" => "FilterExpressionList"}}} =
+             spec.types["FilterExpression"]
+
+    assert spec.types["FilterExpressionList"]["properties"]["expressions"] == %{
+             "type" => "array",
+             "description" => "A list of filter expressions.",
+             "items" => %{"$ref" => "FilterExpression"}
            }
+  end
 
-    refute Map.has_key?(filter["properties"]["filter"], "description")
+  test "shortens Google's long type names where they stay unique, and drops placeholder enums" do
+    {:ok, spec} =
+      read(%{
+        "kind" => "discovery#restDescription",
+        "name" => "ads",
+        "schemas" => %{
+          "Ads__Campaign" => %{
+            "properties" => %{
+              "status" => %{"type" => "string", "enum" => ["UNSPECIFIED", "UNKNOWN", "PAUSED"]},
+              "shopping" => %{"$ref" => "Ads_Campaign_ShoppingSetting"},
+              "kind" => %{"type" => "string", "enum" => ["UNKNOWN"]}
+            }
+          },
+          "Ads_Campaign_ShoppingSetting" => %{"type" => "object"},
+          "Ads__Label" => %{"type" => "object"},
+          "Other__Label" => %{"type" => "object"}
+        }
+      })
 
-    size = report.parameters |> Map.new(&{&1.name, &1.schema}) |> JSON.encode!() |> byte_size()
-    assert size < 12_000
+    assert Map.keys(spec.types) |> Enum.sort() ==
+             ["Ads__Label", "Campaign", "Campaign_ShoppingSetting", "Other__Label"]
+
+    assert spec.types["Campaign"]["properties"] == %{
+             "status" => %{"type" => "string", "enum" => ["PAUSED"]},
+             "shopping" => %{"$ref" => "Campaign_ShoppingSetting"},
+             "kind" => %{"type" => "string", "enum" => ["UNKNOWN"]}
+           }
   end
 
   test "reads a service path, repeated parameters, read-only fields and methods without scopes" do

@@ -2,11 +2,15 @@
 
 ## Unreleased
 
+- A sign-in an agent asked for, while waiting on it, finishes from the browser like one
+  `wardrik connection connect` started: its page shows the code to pair. It showed "Sign-in not
+  found" before.
 - `wardrik doctor` fails for each agent whose saved state the running daemon can't read, and
   says why. `wardrik reload` starts such agents over and says so. `wardrik ls` shows them as
   `unreadable`, `attention` includes them, and `wardrik agent show` gives the reason.
 - `rest` in `config.yaml`: HTTP APIs from their Google Discovery documents, each a tool group of
-  its name, with sign-in from `oauth` and keys from the vault. Orgs list them as `rest`.
+  its name, with sign-in from `oauth` and keys from the vault. Orgs list them as `rest`. Each
+  takes `max_schema_bytes` and `argument_headers`.
 
 ## 0.1.0-rc.12 (2026-11-12)
 

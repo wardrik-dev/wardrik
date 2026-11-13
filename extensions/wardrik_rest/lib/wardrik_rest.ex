@@ -27,6 +27,8 @@ defmodule WardrikRest do
     * `GET`s and the operations given as `:read_only` are read-only; the rest need a person's
       approval unless the policy allows them.
     * Answers are labelled `"outside"` unless the API is `:trusted`.
+    * A tool whose schema is over the API's `:max_schema_bytes` names its deeper types instead
+      of listing their fields, and `<api>__describe` gives them.
 
   Descriptions are read by a `WardrikRest.Reader`. See `WardrikRest.Discovery` and
   `WardrikRest.API`.
@@ -41,7 +43,9 @@ defmodule WardrikRest do
 
   @impl WardrikCore.Capability
   def tools(_context, opts) do
-    for api <- Keyword.fetch!(opts, :apis), operation <- api.operations, do: tool(api, operation)
+    Enum.flat_map(Keyword.fetch!(opts, :apis), fn api ->
+      Enum.map(api.operations, &tool(api, &1)) ++ describing(api)
+    end)
   end
 
   @doc "Returns the tool for `operation` of `api`."
@@ -52,7 +56,7 @@ defmodule WardrikRest do
     WardrikCore.Tool.new!(
       name: API.tool_name(api.name, operation),
       description: operation.description,
-      schema: schema(operation),
+      schema: Map.fetch!(api.schemas, operation.name),
       run: fn args, context -> Call.run(api, operation, args, context) end,
       annotations:
         annotations ++
@@ -65,13 +69,33 @@ defmodule WardrikRest do
     )
   end
 
-  defp schema(operation) do
-    required = for %{required: true, name: name} <- operation.parameters, do: name
+  defp describing(%API{described: []}), do: []
 
-    %{
-      "type" => "object",
-      "properties" => Map.new(operation.parameters, &{&1.name, &1.schema})
-    }
-    |> Map.merge(if required == [], do: %{}, else: %{"required" => Enum.sort(required)})
+  defp describing(%API{described: [example | _more]} = api) do
+    [
+      WardrikCore.Tool.new!(
+        name: API.describe(api),
+        description:
+          "Gives the fields of a type #{api.name}'s tools name instead of listing, as #{example}.",
+        schema: %{
+          "type" => "object",
+          "properties" => %{"type" => %{"type" => "string", "description" => "As #{example}."}},
+          "required" => ["type"]
+        },
+        run: fn %{"type" => type}, _context -> described(api, type) end,
+        annotations: [read_only: true, idempotent: true, gated: false, timeout: @margin]
+      )
+    ]
+  end
+
+  defp described(api, type) do
+    case WardrikRest.Schema.describe(api.types, type, API.describe(api)) do
+      {:ok, schema} ->
+        {:ok, schema}
+
+      :error ->
+        {:error,
+         "#{api.name} has no type #{type}. Its tools name #{Enum.join(Enum.take(api.described, 20), ", ")}."}
+    end
   end
 end

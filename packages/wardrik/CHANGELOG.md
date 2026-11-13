@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Wardrik.started_sign_in/2` returns the browser sign-in a callback's `state` belongs to, whoever
+  started it.
 - A saved state this release can't read is never replaced quietly. The agent's status is
   `unreadable` with the reason, such as the modules it names that the release doesn't have, and
   messages to it return a `conflict` error. `agent.define` starts it over and answers `reset`.

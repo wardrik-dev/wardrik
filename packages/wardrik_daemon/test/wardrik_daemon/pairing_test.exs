@@ -148,6 +148,24 @@ defmodule WardrikDaemon.PairingTest do
     refute connected?(context, "payments/@bo", "crm")
   end
 
+  test "pairs a sign-in an agent started while waiting on it, for the person it's for", context do
+    ana = %Principal{id: "payments/@ana"}
+    assert {:ok, %{url: url}} = Wardrik.sign_in(context.running, "crm", ana)
+    state = URI.decode_query(URI.parse(url).query)["state"]
+
+    code = code(callback(context, %{"state" => state, "code" => "from-crm"}))
+    assert code =~ ~r/\A[A-Z]{4}-[A-Z]{4}\z/
+
+    assert {:error, "invalid_request", _message} =
+             pair(client(context, "user:payments/@bo"), "crm", code)
+
+    assert {:ok, %{"provider" => "crm", "connected" => true}} =
+             pair(client(context, "user:payments/@ana"), "crm", code)
+
+    assert connected?(context, "payments/@ana", "crm")
+    assert Wardrik.started_sign_in(context.running, state) == :error
+  end
+
   test "a code expires after 10 minutes", context do
     ana = client(context, "user:payments/@ana")
     state = started(ana, "crm")

@@ -146,6 +146,20 @@ defmodule Wardrik.OAuth do
   end
 
   @doc """
+  Describes the browser sign-in whose URL carries `state`, for an app to pair the callback with
+  whoever started it, such as one an agent started while waiting for a sign-in.
+
+  Returns `{:ok, map}` with `:provider`, `:principal` and `:url`, or `:error` if it has ended.
+  """
+  @spec started(atom(), String.t()) :: {:ok, map()} | :error
+  def started(oauth, state) do
+    case Registry.lookup(registry(oauth), {:state, state}) do
+      [{pid, _value}] -> described(pid)
+      [] -> :error
+    end
+  end
+
+  @doc """
   Returns whether `principal`'s sign-in to the provider `name` is under way.
 
       Wardrik.OAuth.signing_in?(MyApp.OAuth, "github", principal)

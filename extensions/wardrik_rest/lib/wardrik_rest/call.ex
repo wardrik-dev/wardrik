@@ -3,7 +3,7 @@ defmodule WardrikRest.Call do
   Makes one call to an operation for an agent.
 
     * The credentials of the operation's first scheme alternative the API has sources for go in
-      as its description says, with the API's `:headers`.
+      as its description says, with the API's `:headers` and the header arguments given.
     * A `401` tells the agent's `WardrikCore.Credentials` the token was refused, then the call is
       made once more with a fresh one.
     * A `429`, a `5xx` or no answer raises `WardrikRest.Unavailable`, so the tool runner retries.
@@ -101,7 +101,7 @@ defmodule WardrikRest.Call do
         method: operation.method,
         url: api.base_url <> path(operation, args),
         params: query(given, args) ++ for({{:query, name}, value} <- secrets, do: {name, value}),
-        headers: Map.new(headers ++ Enum.flat_map(secrets, &header/1)),
+        headers: Map.new(argued(given, args) ++ headers ++ Enum.flat_map(secrets, &header/1)),
         receive_timeout: api.timeout,
         retry: false
       ] ++ body(operation, given, args) ++ api.req_options
@@ -121,6 +121,9 @@ defmodule WardrikRest.Call do
   defp query(given, args) do
     for %{in: :query, name: name} <- given, value <- List.wrap(args[name]), do: {name, value}
   end
+
+  defp argued(given, args),
+    do: for(%{in: :header, name: name} <- given, do: {name, to_string(args[name])})
 
   defp body(operation, given, args) do
     if Enum.any?(operation.parameters, &(&1.in == :body)),
