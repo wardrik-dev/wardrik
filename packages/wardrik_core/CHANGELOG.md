@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A message's `:sent_at` metadata, now by default, is shown to the model after its text, as
+  `(Sent Thursday 2026-11-12 23:40 UTC.)`, so the model knows the date. The history keeps the
+  message as asked.
+
 - `WardrikCore.saved_key/2` returns the key an agent's state is saved under in the backend.
 
 ## 0.1.0-rc.6 (2026-11-11)

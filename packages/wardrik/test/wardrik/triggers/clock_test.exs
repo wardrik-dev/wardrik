@@ -45,6 +45,42 @@ defmodule Wardrik.Triggers.ClockTest do
     assert {:error, "often is neither" <> _} = Clock.parse("often")
   end
 
+  describe "at a single time" do
+    defp at(at, timezone, from) do
+      {:ok, clock} = Clock.parse_at(at)
+      Clock.next(clock, timezone, from)
+    end
+
+    test "reads a time on a time zone's clock, or at its offset" do
+      assert at("2026-11-17T09:00", "America/Los_Angeles", ~U[2026-11-12 00:00:00Z]) ==
+               ~U[2026-11-17 17:00:00Z]
+
+      assert at("2026-11-17T09:00:00+01:00", "Etc/UTC", ~U[2026-11-12 00:00:00Z]) ==
+               ~U[2026-11-17 08:00:00Z]
+
+      assert at("2026-11-17T17:00:00Z", "Etc/UTC", ~U[2026-11-12 00:00:00Z]) ==
+               ~U[2026-11-17 17:00:00Z]
+    end
+
+    test "runs once, so a time that's past has no next run" do
+      assert at("2026-11-17T09:00", "Etc/UTC", ~U[2026-11-17 09:00:00Z]) == nil
+      assert at("2026-11-17T09:00", "Etc/UTC", ~U[2026-11-18 00:00:00Z]) == nil
+    end
+
+    test "runs a time the clocks skip just after the gap, and one they repeat on its first pass" do
+      assert at("2026-03-29T02:30", "Europe/Berlin", ~U[2026-03-28 00:00:00Z]) ==
+               ~U[2026-03-29 01:00:00Z]
+
+      assert at("2026-10-25T02:30", "Europe/Berlin", ~U[2026-10-24 00:00:00Z]) ==
+               ~U[2026-10-25 00:30:00Z]
+    end
+
+    test "says what it can't read" do
+      assert {:error, "\"tuesday\" is not a time" <> _} = Clock.parse_at("tuesday")
+      assert {:error, "7 is not a time" <> _} = Clock.parse_at(7)
+    end
+  end
+
   test "knows a time zone by its name" do
     assert Clock.zone?("Europe/Berlin")
     refute Clock.zone?("Mars/Olympus")

@@ -88,11 +88,12 @@ wardrik approval deny triage toolu_01 --reason "Not this quarter." --conversatio
 | Command | Does |
 | --- | --- |
 | `trigger ls AGENT` | lists triggers and their next run |
-| `trigger set AGENT NAME [--every E] [--timezone TZ] [--prompt P \| --prompt-file F] [--feed URL] [--overlap skip\|queue\|settle]` | sets a trigger |
+| `trigger set AGENT NAME [--every E \| --at T] [--timezone TZ] [--prompt P \| --prompt-file F] [--feed URL] [--overlap skip\|queue\|settle]` | sets a trigger |
 | `trigger rm AGENT NAME` | removes a trigger |
 
 ```sh
 wardrik trigger set triage standup --every "0 9 * * 1-5" --timezone Europe/Berlin --prompt "Summarise yesterday."
+wardrik trigger set triage launch --at 2026-11-17T09:00 --timezone America/Los_Angeles --prompt "Publish drafts/launch.md."
 ```
 
 For a file-defined agent, the next reload resets triggers to those in the file.

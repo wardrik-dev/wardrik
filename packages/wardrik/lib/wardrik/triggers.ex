@@ -1,7 +1,7 @@
 defmodule Wardrik.Triggers do
   @moduledoc """
-  Asks agents something on a clock, when a feed has new entries, or when a service sends a
-  webhook.
+  Asks agents something on a clock, once at a set time, when a feed has new entries, or when a
+  service sends a webhook.
 
   Application integration fragment. Start the required processes before calling these functions.
   See the [package README](https://hexdocs.pm/wardrik) for complete setup.
@@ -22,6 +22,7 @@ defmodule Wardrik.Triggers do
 
   use Supervisor
 
+  alias Wardrik.Triggers.Clock
   alias Wardrik.Triggers.Records
   alias Wardrik.Triggers.Run
   alias Wardrik.Triggers.Scheduler
@@ -105,10 +106,13 @@ defmodule Wardrik.Triggers do
           "every" => "@daily",
           "prompt" => "Hi"
         })
+
+  An `at` that's past returns `{:error, message}`. `put/3` keeps one, and never runs it.
   """
   @spec set(atom(), String.t(), map()) :: {:ok, Trigger.t()} | {:error, String.t() | term()}
   def set(triggers, agent_id, fields) do
     with {:ok, trigger} <- Trigger.decode(fields),
+         :ok <- ahead(trigger, DateTime.utc_now()),
          do: GenServer.call(scheduler(triggers), {:set, agent_id, trigger})
   end
 
@@ -125,7 +129,10 @@ defmodule Wardrik.Triggers do
     GenServer.call(scheduler(triggers), {:remove, agent_id, name})
   end
 
-  @doc "Returns the triggers of `agent_id`, each with its next run. A webhook's next run is `nil`."
+  @doc """
+  Returns the triggers of `agent_id`, each with its next run. The next run of a webhook, or of an
+  `at` that has run, is `nil`.
+  """
   @spec list(atom(), String.t()) :: [{Trigger.t(), DateTime.t() | nil}]
   def list(triggers, agent_id) do
     for record <- Records.records(settings(triggers).store, agent_id),
@@ -206,6 +213,17 @@ defmodule Wardrik.Triggers do
               "#{inspect(triggers)} isn't started. Add {Wardrik.Triggers, name: #{inspect(triggers)}, store: store, target: target} to your supervision tree, ahead of what uses it.",
               __STACKTRACE__
   end
+
+  defp ahead(%Trigger{clock: {:at, _at} = clock, timezone: timezone} = trigger, now) do
+    if Clock.next(clock, timezone, now),
+      do: :ok,
+      else: {:error, "at #{trigger.at}#{zoned(trigger)} has passed"}
+  end
+
+  defp ahead(_trigger, _now), do: :ok
+
+  defp zoned(%Trigger{clock: clock, timezone: timezone}),
+    do: if(Clock.instant?(clock), do: "", else: " " <> timezone)
 
   defp decode_all(fields) do
     fields

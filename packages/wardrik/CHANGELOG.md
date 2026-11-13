@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A trigger with `at` runs once, at a time in its `timezone` or with an offset, then it's removed
+  from the agent. It queues behind a busy turn by default. `agent.trigger_set` refuses a time
+  that has passed, and answers with the trigger's next run as `next_at`. Agents set one with
+  `self_trigger_set` or `agent_trigger_set`.
+- `Wardrik.Triggers.Target.Fired` has `last`, `true` after an `at` trigger runs.
+
 - A saved state this release can't read is never replaced quietly. The agent's status is
   `unreadable` with the reason, such as the modules it names that the release doesn't have, and
   messages to it return a `conflict` error. `agent.define` starts it over and answers `reset`.

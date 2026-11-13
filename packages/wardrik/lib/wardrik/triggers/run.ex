@@ -33,7 +33,12 @@ defmodule Wardrik.Triggers.Run do
     due = Keyword.fetch!(args, :due)
 
     status = ran(settings, agent_id, trigger, DateTime.diff(now, due) > @lateness)
-    fired(settings, agent_id, trigger.name, status)
+
+    fired(
+      settings,
+      %Target.Fired{agent: agent_id, trigger: trigger.name, status: status},
+      trigger
+    )
   end
 
   @doc "Asks the agent about a webhook request. See `Wardrik.Triggers.deliver/2`."
@@ -177,7 +182,12 @@ defmodule Wardrik.Triggers.Run do
 
   defp delivered(settings, agent_id, trigger, id, request) do
     status = ask(settings, agent_id, trigger, Webhook.prompt(prompt(trigger), request), @outside)
-    fired(settings, agent_id, trigger.name, status)
+
+    fired(
+      settings,
+      %Target.Fired{agent: agent_id, trigger: trigger.name, status: status},
+      trigger
+    )
 
     if status == :asked do
       remember =
@@ -214,15 +224,16 @@ defmodule Wardrik.Triggers.Run do
   defp prompt(%Trigger{prompt: nil, prompt_file: file}), do: "Read #{file}, and do what it says."
   defp prompt(%Trigger{prompt: prompt}), do: prompt
 
-  defp fired(%{target: {module, opts}}, agent_id, name, status) do
-    :ok = module.fired(%Target.Fired{agent: agent_id, trigger: name, status: status}, opts)
+  defp fired(%{target: {module, opts}}, %Target.Fired{} = fired, trigger) do
+    fired = %{fired | last: match?({:at, _at}, trigger.clock)}
+    :ok = module.fired(fired, opts)
 
     :telemetry.execute([:wardrik_triggers, :fired], %{}, %{
-      agent_id: agent_id,
-      trigger: name,
-      status: status
+      agent_id: fired.agent,
+      trigger: fired.trigger,
+      status: fired.status
     })
 
-    status
+    fired.status
   end
 end

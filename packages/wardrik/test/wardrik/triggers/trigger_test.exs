@@ -58,15 +58,44 @@ defmodule Wardrik.Triggers.TriggerTest do
              Trigger.decode(%{"every" => "30m", "prompt_file" => "HEARTBEAT.md"})
   end
 
+  test "reads a single time, which queues by default and keeps its time as given" do
+    fields = %{"at" => "2026-11-17T09:00", "timezone" => "America/Los_Angeles", "prompt" => "Go."}
+
+    assert {:ok, %Trigger{at: "2026-11-17T09:00", overlap: :queue} = trigger} =
+             Trigger.decode(fields)
+
+    assert %{"at" => "2026-11-17T09:00", "timezone" => "America/Los_Angeles"} =
+             Trigger.encode(trigger)
+  end
+
+  test "says what's wrong with a single time" do
+    at = %{"at" => "2026-11-17T09:00", "prompt" => "Go."}
+
+    assert {:error, "a trigger has one of every, at or a webhook"} =
+             Trigger.decode(Map.put(at, "every", "1d"))
+
+    assert {:error, "at has an offset, so it takes no timezone"} =
+             Trigger.decode(
+               %{at | "at" => "2026-11-17T17:00:00Z"}
+               |> Map.put("timezone", "Etc/UTC")
+             )
+
+    assert {:error, "a trigger with at has no feed"} =
+             Trigger.decode(Map.put(at, "feed", "https://example.com/feed.xml"))
+
+    assert {:error, "\"soon\" is not a time" <> _} = Trigger.decode(%{at | "at" => "soon"})
+  end
+
   test "says what's wrong with a trigger it can't read" do
     base = %{"every" => "1h", "prompt" => "Go."}
 
     assert {:error, "colour is not a setting of a trigger"} =
              Trigger.decode(Map.put(base, "colour", "blue"))
 
-    assert {:error, "a trigger has every, or a webhook"} = Trigger.decode(%{"prompt" => "Go."})
+    assert {:error, "a trigger has every, at, or a webhook"} =
+             Trigger.decode(%{"prompt" => "Go."})
 
-    assert {:error, "a webhook trigger has no every"} =
+    assert {:error, "a trigger has one of every, at or a webhook"} =
              Trigger.decode(Map.put(base, "webhook", %{"secret" => "${S}"}))
 
     assert {:error, "a webhook names its secret" <> _} =

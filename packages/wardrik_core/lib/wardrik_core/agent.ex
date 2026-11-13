@@ -32,7 +32,13 @@ defmodule WardrikCore.Agent do
   @impl true
   def handle_call({:ask, text, metadata}, _from, %State{} = state) do
     if state.state == :running, do: Turn.yield(state.task.pid)
-    message = ReqLLM.Context.user(text, Map.put_new_lazy(metadata, :id, &message_id/0))
+
+    metadata =
+      metadata
+      |> Map.put_new_lazy(:id, &message_id/0)
+      |> Map.put_new_lazy(:sent_at, fn -> DateTime.truncate(DateTime.utc_now(), :second) end)
+
+    message = ReqLLM.Context.user(text, metadata)
     state = State.queue(state, message)
 
     emit(state, [:message, :queued], %{queued: length(state.pending_messages)}, %{

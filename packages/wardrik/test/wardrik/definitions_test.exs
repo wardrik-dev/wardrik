@@ -806,6 +806,39 @@ defmodule Wardrik.DefinitionsTest do
                       %{"type" => "wardrik.trigger.fired", "data" => %{"status" => ^status}}}
     end
 
+    test "sets a one-off trigger, says when it runs in its zone, and drops it once it has run",
+         %{wardrik: wardrik, scope: scope} do
+      answers([answer("Posted.")])
+      define(scope, "acme/digest", %{"model" => @model})
+
+      at = DateTime.utc_now() |> DateTime.add(86_400) |> DateTime.truncate(:second)
+      local = DateTime.shift_zone!(at, "America/Los_Angeles", Tz.TimeZoneDatabase)
+
+      assert %{"name" => "launch", "next_at" => next_at} =
+               run!(scope, "agent.trigger_set", %{
+                 "agent" => "acme/digest",
+                 "trigger" => "launch",
+                 "at" => local |> DateTime.to_naive() |> NaiveDateTime.to_iso8601(),
+                 "timezone" => "America/Los_Angeles",
+                 "prompt" => "Post it."
+               })
+
+      assert next_at == DateTime.to_iso8601(local)
+
+      trigger_due(wardrik, "acme/digest", "launch")
+      fired("asked")
+
+      assert_receive {:prompted, messages}
+
+      assert %{role: :user, content: [%{text: "Post it."}, %{text: "(Sent " <> _sent}]} =
+               List.last(messages)
+
+      assert Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+
+      assert {:ok, definition} = Wardrik.Definitions.fetch(wardrik, "acme/digest")
+      assert Map.get(definition, "triggers", []) == []
+    end
+
     test "asks an agent with files to follow its prompt_file", %{wardrik: wardrik, scope: scope} do
       answers([answer("Done.")])
 
@@ -821,7 +854,7 @@ defmodule Wardrik.DefinitionsTest do
 
       assert %{"data" => %{"status" => "asked"}} = until("wardrik.trigger.fired")
       assert_receive {:prompted, messages}
-      assert %{role: :user, content: [%{text: text}]} = List.last(messages)
+      assert %{role: :user, content: [%{text: text} | _]} = List.last(messages)
       assert text =~ "Read HEARTBEAT.md"
       until("wardrik.run.completed")
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:trigger_definition",
   "title": "A trigger's definition",
-  "description": "A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. Add timezone for cron expressions outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for webhooks), missed run_once and jitter 0.",
+  "description": "A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. A one-off trigger has at, runs once, and is then removed. Add timezone for cron expressions and times outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for at and webhooks), missed run_once and jitter 0.",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -14,9 +14,19 @@
       "type": "string",
       "description": "A cron expression, or an interval such as 30m."
     },
+    "at": {
+      "type": "string",
+      "description": "Use instead of every. A single time to run once, as 2026-11-17T09:00, read in timezone, or with an offset, as 2026-11-17T17:00:00Z, and no timezone. The trigger is removed after it runs. Setting a time that has passed is refused."
+    },
     "timezone": {
       "type": "string",
-      "description": "The IANA time zone for a cron expression in every, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval."
+      "description": "The IANA time zone for a cron expression in every, or for at, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval."
+    },
+    "next_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "When the trigger runs next, in its time zone. agent.trigger_set returns it. A webhook, or an at that has run, has none."
     },
     "prompt": {
       "type": "string",
@@ -95,6 +105,11 @@
       "every": "0 18 * * 1-5",
       "timezone": "Europe/Berlin",
       "prompt": "Write up what happened today."
+    },
+    {
+      "at": "2026-11-17T09:00",
+      "timezone": "America/Los_Angeles",
+      "prompt": "Publish the post in drafts/launch.md."
     },
     {
       "webhook": {

@@ -47,7 +47,7 @@ issues need an engineer.
 | [`model_options`](#model_options) | sampling and timeouts for its model calls |
 | [`compaction`](#compaction) | when older history is summarised, or `false` |
 | [`digest`](#digest) | whether it writes a digest of each conversation before it sleeps; default `true` |
-| [`triggers`](#triggers) | scheduled, feed and webhook messages |
+| [`triggers`](#triggers) | scheduled, one-off, feed and webhook messages |
 | [`notify`](#notify) | notice targets for paused, failed or finished turns |
 | `channels` | the [`channels`](/reference/config/#channels) it's available in, as `[slack]` |
 
@@ -197,6 +197,10 @@ triggers:
   - name: sweep
     every: "*/30 * * * *"
     prompt: Check the incident queue.
+  - name: launch
+    at: "2026-11-17T09:00"
+    timezone: America/Los_Angeles
+    prompt: Publish the post in drafts/launch.md.
   - name: rivals
     every: 1h
     feed: https://rivalco.example/changelog.rss
@@ -210,10 +214,11 @@ triggers:
 | --- | --- | --- |
 | `name` | `trigger-1`, `trigger-2`... | the trigger's name |
 | `every` | | a cron expression, or an interval like `30m` |
-| `timezone` | `Etc/UTC` | the IANA time zone for the cron expression |
+| `at` | | instead of `every`: a time to run once, like `2026-11-17T09:00`; removed after it runs |
+| `timezone` | `Etc/UTC` | the IANA time zone for `every` or `at` |
 | `prompt` | | the message sent to the agent |
 | `prompt_file` | | instead of `prompt`, a workspace file to read the message from |
-| `overlap` | `settle` | `skip`, `queue`, or `settle` a run while the agent is busy; webhooks default to `queue` |
+| `overlap` | `settle` | `skip`, `queue`, or `settle` a run while the agent is busy; `at` and webhooks default to `queue` |
 | `missed` | `run_once` | `run_once` or `skip` runs missed while the daemon was down |
 | `jitter` | `0` | maximum random delay in seconds |
 | `feed` | | RSS or Atom URLs; sends only when a feed has new entries |

@@ -129,7 +129,7 @@ defmodule Wardrik.TriggersTest do
       assert {:error, :not_found} =
                Wardrik.Triggers.remove(triggers, agent_id: @agent, name: "hook")
 
-      assert {:error, "a trigger has every, or a webhook"} =
+      assert {:error, "a trigger has every, at, or a webhook"} =
                Wardrik.Triggers.set(triggers, @agent, %{"prompt" => "Go."})
 
       assert {:error, "a trigger has every" <> _} =
@@ -218,6 +218,87 @@ defmodule Wardrik.TriggersTest do
       due(store, triggers, "daily", 600)
 
       assert_receive {:fired, @agent, "daily", :missed}
+      refute_received {:asked, _agent, _prompt, _opts}
+    end
+  end
+
+  describe "once, at a time" do
+    defp ahead(seconds),
+      do: DateTime.utc_now() |> DateTime.add(seconds) |> DateTime.truncate(:second)
+
+    test "asks the agent once, queued, and never again", %{triggers: triggers, store: store} do
+      at = ahead(3600)
+
+      assert {:ok, %Trigger{overlap: :queue}} =
+               Wardrik.Triggers.set(triggers, @agent, %{
+                 "name" => "launch",
+                 "at" => DateTime.to_iso8601(at),
+                 "prompt" => "Post it."
+               })
+
+      assert [{_launch, ^at}] = Wardrik.Triggers.list(triggers, @agent)
+
+      due(store, triggers, "launch", 5)
+
+      assert_receive {:asked, @agent, "Post it.",
+                      [trigger: "launch", overlap: :queue, labels: []]}
+
+      assert_receive {:fired, @agent, "launch", :asked}
+      assert_receive {:last, @agent, "launch"}
+
+      assert [{_launch, nil}] = Wardrik.Triggers.list(triggers, @agent)
+      :ok = Wardrik.Triggers.reconcile(triggers)
+      refute_receive {:asked, _agent, _prompt, _opts}, 100
+    end
+
+    test "moves its run when its time changes", %{triggers: triggers} do
+      fields = %{"name" => "launch", "at" => DateTime.to_iso8601(ahead(3600)), "prompt" => "Go."}
+      {:ok, _trigger} = Wardrik.Triggers.set(triggers, @agent, fields)
+
+      later = ahead(7200)
+
+      {:ok, _trigger} =
+        Wardrik.Triggers.set(triggers, @agent, %{fields | "at" => DateTime.to_iso8601(later)})
+
+      assert [{_launch, ^later}] = Wardrik.Triggers.list(triggers, @agent)
+    end
+
+    test "refuses a time that's past, but keeps one a definition still holds", %{
+      triggers: triggers
+    } do
+      past = %{
+        "name" => "launch",
+        "at" => "2026-01-05T09:00",
+        "timezone" => "Europe/Berlin",
+        "prompt" => "Go."
+      }
+
+      assert {:error, "at 2026-01-05T09:00 Europe/Berlin has passed"} =
+               Wardrik.Triggers.set(triggers, @agent, past)
+
+      assert {:error, "at 2026-01-05T08:00:00Z has passed"} =
+               Wardrik.Triggers.set(triggers, @agent, %{
+                 "at" => "2026-01-05T08:00:00Z",
+                 "prompt" => "Go."
+               })
+
+      assert :ok = Wardrik.Triggers.put(triggers, @agent, [past])
+      assert [{%Trigger{name: "launch"}, nil}] = Wardrik.Triggers.list(triggers, @agent)
+    end
+
+    test "lets a late run go when it says so", %{triggers: triggers, store: store} do
+      {:ok, _trigger} =
+        Wardrik.Triggers.set(triggers, @agent, %{
+          "name" => "launch",
+          "at" => DateTime.to_iso8601(ahead(3600)),
+          "missed" => "skip",
+          "prompt" => "Go."
+        })
+
+      due(store, triggers, "launch", 600)
+
+      assert_receive {:fired, @agent, "launch", :missed}
+      assert_receive {:last, @agent, "launch"}
       refute_received {:asked, _agent, _prompt, _opts}
     end
   end

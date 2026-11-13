@@ -670,7 +670,7 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "sets and removes a trigger, and runs an agent", context do
-      assert {0, "Set hourly.\n"} =
+      assert {0, "Set hourly. It runs next at " <> _next} =
                wardrik(context, [
                  "trigger",
                  "set",
@@ -686,6 +686,23 @@ defmodule WardrikDaemon.CLITest do
       assert listed =~ ~r/hourly\s+every 1h\s+in \d+m\s+Look\./
 
       assert {0, "Removed hourly.\n"} = wardrik(context, ["trigger", "rm", "triage", "hourly"])
+
+      assert {0, "Set launch. It runs next at 2099-11-17T09:00:00-08:00.\n"} =
+               wardrik(context, [
+                 "trigger",
+                 "set",
+                 "triage",
+                 "launch",
+                 "--at",
+                 "2099-11-17T09:00",
+                 "--timezone",
+                 "America/Los_Angeles",
+                 "--prompt",
+                 "Post it."
+               ])
+
+      assert {0, listed} = wardrik(context, ["trigger", "ls", "triage"])
+      assert listed =~ ~r/launch\s+once at 2099-11-17T09:00 \(America\/Los_Angeles\)\s+in \S+/
       assert {0, "Stopped triage.\n"} = wardrik(context, ["agent", "stop", "triage"])
       assert {0, "Started triage.\n"} = wardrik(context, ["agent", "start", "triage"])
       assert {0, "It runs no tool calls now.\n"} = wardrik(context, ["agent", "calls", "triage"])

@@ -87,7 +87,7 @@ defmodule Wardrik.Triggers.Scheduler do
     kept = Records.trigger(record)
 
     next_at =
-      if {kept.every, kept.timezone} == {trigger.every, trigger.timezone},
+      if {kept.every, kept.at, kept.timezone} == {trigger.every, trigger.at, trigger.timezone},
         do: record["next_at"],
         else: upcoming(trigger, now)
 
@@ -123,7 +123,7 @@ defmodule Wardrik.Triggers.Scheduler do
 
     claimed = %{
       record
-      | "next_at" => upcoming(trigger, now),
+      | "next_at" => following(trigger, now),
         "last_at" => DateTime.to_iso8601(now)
     }
 
@@ -141,13 +141,16 @@ defmodule Wardrik.Triggers.Scheduler do
     end
   end
 
+  defp following(%Trigger{clock: {:at, _at}}, _now), do: nil
+  defp following(trigger, now), do: upcoming(trigger, now)
+
   defp upcoming(%Trigger{clock: nil}, _now), do: nil
 
   defp upcoming(%Trigger{clock: clock, timezone: timezone, jitter: jitter}, now) do
-    clock
-    |> Clock.next(timezone, now)
-    |> DateTime.add(jittered(jitter))
-    |> DateTime.to_iso8601()
+    case Clock.next(clock, timezone, now) do
+      nil -> nil
+      next -> next |> DateTime.add(jittered(jitter)) |> DateTime.to_iso8601()
+    end
   end
 
   defp jittered(0), do: 0

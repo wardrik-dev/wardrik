@@ -1,11 +1,12 @@
 ---
 title: Trigger an agent
-description: Send an agent a message on a schedule, when a feed has new entries, or when a service sends a webhook.
+description: Send an agent a message on a schedule, once at a set time, when a feed has new entries, or when a service sends a webhook.
 sidebar:
   order: 5
 ---
 
-Start agent tasks on a schedule, when an RSS or Atom feed changes, or when a webhook arrives.
+Start agent tasks on a schedule, once at a set time, when an RSS or Atom feed changes, or when a
+webhook arrives.
 Define triggers in the agent file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
@@ -49,6 +50,24 @@ every: 2h                # an interval: s, m, h or d, at least a minute
   and `jitter` change that. See [triggers](/reference/agent-files/#triggers).
 - By default, if the previous turn is still waiting for approval, the next scheduled run
   cancels it and starts a new turn. Set `overlap: skip` to preserve the pending turn.
+
+## Once, at a set time
+
+```yaml
+triggers:
+  - name: launch
+    at: "2026-11-17T09:00"
+    timezone: America/Los_Angeles
+    prompt: Publish the post in drafts/launch.md.
+```
+
+- `at` is read in `timezone`, or takes an offset, as `2026-11-17T17:00:00Z`, without `timezone`.
+- The trigger runs once, then it's removed from the agent.
+- If the agent is busy, the run waits for its turn. A run missed while the daemon was down runs
+  when it starts. Set `missed: skip` to drop it.
+- Setting a time that has passed is refused.
+- With `self/*`, an agent can schedule its own follow-ups. Each message tells the model when it was
+  sent, so it can work out a time like "Tuesday at 9".
 
 ## When a feed has new entries
 
@@ -111,7 +130,8 @@ curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json
 ```
 
 - `wardrik reload` sets a file-defined agent's triggers to those in the file, and removes the rest.
-- With `self/*` in its tools, an agent can set its own triggers. Each change needs approval.
+- With `self/*` in its tools, an agent can set its own triggers. With `agents/*`, it can set
+  another agent's. Each change needs approval.
 - `prompt_file: HEARTBEAT.md` reads the prompt from the agent's [files](/concepts/files-and-memory/),
   so the agent can edit it.
 - `notify: {to: [ops], on: [finished]}` sends each run's reply to a target. See

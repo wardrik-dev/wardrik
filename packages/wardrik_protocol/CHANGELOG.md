@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A trigger's `at` runs it once. `agent.trigger_set` returns `next_at`.
+
 - An agent's `status` can be `unreadable`, with `problem` saying why its saved state can't be
   read. `agent.define` answers `reset` when it started such a state over.
 

@@ -90,7 +90,7 @@ defmodule Wardrik.AgentTools do
       ),
       change(
         "agent_trigger_set",
-        "Set one of an agent's triggers: every, with a prompt, or a feed or webhook.",
+        "Set one of an agent's triggers: every, or once at a time, with a prompt; or a feed or webhook. It answers with the next run, if any, as next_at.",
         [agent: @agent, trigger: @trigger, fields: trigger_fields()],
         &set(me, &1.agent, &1)
       ),
@@ -121,7 +121,7 @@ defmodule Wardrik.AgentTools do
       end),
       change(
         "self_trigger_set",
-        "Set one of your own triggers.",
+        "Set one of your own triggers, to ask yourself something later: once at a time, or every so often. It answers with the next run, if any, as next_at.",
         [trigger: @trigger, fields: trigger_fields()],
         &set(me, self, &1)
       ),
@@ -144,7 +144,7 @@ defmodule Wardrik.AgentTools do
       type: :map,
       required: true,
       doc:
-        ~s(The trigger, as {"every": "0 9 * * *", "timezone": "America/Los_Angeles", "prompt": "..."})
+        ~s(The trigger, as {"every": "0 9 * * *", "timezone": "America/Los_Angeles", "prompt": "..."}, or {"at": "2026-11-17T09:00", "timezone": "America/Los_Angeles", "prompt": "..."} to run once. An at trigger is removed after it runs.)
     ]
 
   defp read(name, description, schema, run),
