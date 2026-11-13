@@ -6,9 +6,9 @@ defmodule WardrikRestTest do
   alias WardrikRest.API
   alias WardrikRest.Discovery
 
-  @analytics %Discovery{
-    document: "test/fixtures/analyticsdata-v1beta.json" |> File.read!() |> JSON.decode!()
-  }
+  @analytics {Discovery,
+              document:
+                "test/fixtures/analyticsdata-v1beta.json" |> File.read!() |> JSON.decode!()}
 
   defp load(opts) do
     defaults = [name: "ga4", base_url: "https://analyticsdata.googleapis.com"]
@@ -107,7 +107,7 @@ defmodule WardrikRestTest do
       assert load(egress: fn _url -> {:error, "not here"} end) == {:error, "not here"}
 
       assert {:error, "It isn't a Discovery document."} =
-               API.load(%Discovery{document: %{}}, name: "x", base_url: "https://x.test")
+               API.load({Discovery, document: %{}}, name: "x", base_url: "https://x.test")
     end
 
     test "fits a long schema into max_schema_bytes, naming deeper types for describe to give" do
@@ -165,7 +165,7 @@ defmodule WardrikRestTest do
     end
 
     test "names no scheme when the description has none" do
-      notes = %Discovery{document: %{"kind" => "discovery#restDescription", "name" => "notes"}}
+      notes = {Discovery, document: %{"kind" => "discovery#restDescription", "name" => "notes"}}
 
       assert API.load(notes,
                name: "notes",
@@ -260,29 +260,29 @@ defmodule WardrikRestTest do
     end
 
     test "encodes a plain path parameter whole", %{test: test, test_pid: pid} do
-      notes = %Discovery{
-        document: %{
-          "kind" => "discovery#restDescription",
-          "name" => "notes",
-          "parameters" => %{"key" => %{"type" => "string", "location" => "query"}},
-          "auth" => %{"oauth2" => %{}},
-          "resources" => %{
-            "notes" => %{
-              "methods" => %{
-                "get" => %{
-                  "id" => "notes.notes.get",
-                  "httpMethod" => "GET",
-                  "path" => "notes/{id}",
-                  "scopes" => ["notes"],
-                  "parameters" => %{
-                    "id" => %{"type" => "string", "location" => "path", "required" => true}
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      notes =
+        {Discovery,
+         document: %{
+           "kind" => "discovery#restDescription",
+           "name" => "notes",
+           "parameters" => %{"key" => %{"type" => "string", "location" => "query"}},
+           "auth" => %{"oauth2" => %{}},
+           "resources" => %{
+             "notes" => %{
+               "methods" => %{
+                 "get" => %{
+                   "id" => "notes.notes.get",
+                   "httpMethod" => "GET",
+                   "path" => "notes/{id}",
+                   "scopes" => ["notes"],
+                   "parameters" => %{
+                     "id" => %{"type" => "string", "location" => "path", "required" => true}
+                   }
+                 }
+               }
+             }
+           }
+         }}
 
       {:ok, api} =
         API.load(

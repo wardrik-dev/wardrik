@@ -108,7 +108,7 @@ defmodule WardrikDaemon.Rest do
 
   defp fetched(settings, url) do
     with :ok <- settings.egress.(url),
-         do: Discovery.fetch(url, req_options: settings.req_options)
+         do: {:ok, {Discovery, url: url, req_options: settings.req_options}}
   end
 
   defp file(settings, path) do
@@ -116,7 +116,7 @@ defmodule WardrikDaemon.Rest do
 
     with {:ok, text} <- File.read(full),
          {:ok, document} <- JSON.decode(text) do
-      {:ok, %Discovery{document: document}}
+      {:ok, {Discovery, document: document}}
     else
       {:error, reason} -> {:error, "#{full} doesn't read: #{inspect(reason)}."}
     end

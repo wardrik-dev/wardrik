@@ -1,11 +1,19 @@
 defmodule WardrikRest.Discovery do
   @moduledoc """
-  A Google Discovery document, the format Google describes its APIs in.
+  Reads Google Discovery documents, the format Google describes its APIs in.
 
       {:ok, analytics} =
-        WardrikRest.Discovery.fetch("https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta")
+        WardrikRest.API.load(
+          {WardrikRest.Discovery,
+           url: "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta"},
+          name: "ga4",
+          base_url: "https://analyticsdata.googleapis.com/"
+        )
 
-  Or from a file: `%WardrikRest.Discovery{document: path |> File.read!() |> JSON.decode!()}`.
+  ## Options
+
+    * `:url` - where the document is. `:req_options` are merged into its request.
+    * `:document` - the document itself, decoded, as from a file.
 
   Each method becomes an operation named by its resources, as `properties_runReport`. Its body's
   fields become arguments beside its path and query parameters; a body field named like a
@@ -14,23 +22,39 @@ defmodule WardrikRest.Discovery do
   `WardrikRest.Discovery.Schema`.
   """
 
-  @enforce_keys [:document]
-  defstruct [:document]
+  @behaviour WardrikRest.Reader
 
-  @type t() :: %__MODULE__{document: map()}
+  alias WardrikRest.Discovery.Schema
+  alias WardrikRest.Operation
+  alias WardrikRest.Parameter
+  alias WardrikRest.Spec
 
-  @doc """
-  Fetches the document at `url`. `:req_options` are merged into the request.
+  @locations %{"path" => :path, "query" => :query}
 
-  Returns `{:error, reason}` if it can't be fetched or isn't a Discovery document.
-  """
-  @spec fetch(String.t(), keyword()) :: {:ok, t()} | {:error, String.t()}
-  def fetch(url, opts \\ []) do
-    options = [retry: false] ++ Keyword.get(opts, :req_options, [])
+  @methods %{
+    "GET" => :get,
+    "POST" => :post,
+    "PUT" => :put,
+    "PATCH" => :patch,
+    "DELETE" => :delete
+  }
 
-    case Req.get(url, options) do
+  @impl WardrikRest.Reader
+  def read(opts) do
+    with {:ok, document} <- document(opts), do: spec(document)
+  end
+
+  defp document(opts) do
+    case Keyword.fetch(opts, :document) do
+      {:ok, document} -> {:ok, document}
+      :error -> fetch(Keyword.fetch!(opts, :url), Keyword.get(opts, :req_options, []))
+    end
+  end
+
+  defp fetch(url, req_options) do
+    case Req.get(url, [retry: false] ++ req_options) do
       {:ok, %Req.Response{status: 200, body: %{"kind" => "discovery#restDescription"} = body}} ->
-        {:ok, %__MODULE__{document: body}}
+        {:ok, body}
 
       {:ok, %Req.Response{status: 200}} ->
         {:error, "#{url} isn't a Discovery document."}
@@ -43,86 +67,69 @@ defmodule WardrikRest.Discovery do
     end
   end
 
-  defimpl WardrikRest.Reader do
-    alias WardrikRest.Discovery.Schema
-    alias WardrikRest.Operation
-    alias WardrikRest.Parameter
-    alias WardrikRest.Spec
+  defp spec(%{"kind" => "discovery#restDescription"} = document) do
+    keyed = Map.has_key?(Map.get(document, "parameters", %{}), "key")
+    schemas = Map.get(document, "schemas", %{})
+    names = Schema.names(schemas)
+    read = %{document: document, keyed: keyed, schemas: schemas, names: names}
 
-    @locations %{"path" => :path, "query" => :query}
+    {:ok,
+     %Spec{
+       title: Map.get(document, "title", document["name"]),
+       operations: document |> methods() |> Enum.map(&operation(&1, read)),
+       schemes: schemes(document, keyed),
+       types: Schema.types(schemas)
+     }}
+  end
 
-    @methods %{
-      "GET" => :get,
-      "POST" => :post,
-      "PUT" => :put,
-      "PATCH" => :patch,
-      "DELETE" => :delete
+  defp spec(_document), do: {:error, "It isn't a Discovery document."}
+
+  defp methods(resource) do
+    Map.values(Map.get(resource, "methods", %{})) ++
+      Enum.flat_map(Map.values(Map.get(resource, "resources", %{})), &methods/1)
+  end
+
+  defp operation(method, %{document: document} = read) do
+    params = parameters(method)
+    taken = MapSet.new(params, & &1.name)
+
+    %Operation{
+      name: method["id"] |> String.split(".") |> tl() |> Enum.join("_"),
+      method: Map.fetch!(@methods, method["httpMethod"]),
+      path: Map.get(document, "servicePath", "") <> method["path"],
+      description: Map.get(method, "description", method["id"]),
+      parameters: params ++ body(method, read, taken),
+      security: security(method, read.keyed)
     }
+  end
 
-    def read(%{document: %{"kind" => "discovery#restDescription"} = document}) do
-      keyed = Map.has_key?(Map.get(document, "parameters", %{}), "key")
-      schemas = Map.get(document, "schemas", %{})
-      names = Schema.names(schemas)
-      read = %{document: document, keyed: keyed, schemas: schemas, names: names}
-
-      {:ok,
-       %Spec{
-         title: Map.get(document, "title", document["name"]),
-         operations: document |> methods() |> Enum.map(&operation(&1, read)),
-         schemes: schemes(document, keyed),
-         types: Schema.types(schemas)
-       }}
-    end
-
-    def read(_discovery), do: {:error, "It isn't a Discovery document."}
-
-    defp methods(resource) do
-      Map.values(Map.get(resource, "methods", %{})) ++
-        Enum.flat_map(Map.values(Map.get(resource, "resources", %{})), &methods/1)
-    end
-
-    defp operation(method, %{document: document} = read) do
-      params = parameters(method)
-      taken = MapSet.new(params, & &1.name)
-
-      %Operation{
-        name: method["id"] |> String.split(".") |> tl() |> Enum.join("_"),
-        method: Map.fetch!(@methods, method["httpMethod"]),
-        path: Map.get(document, "servicePath", "") <> method["path"],
-        description: Map.get(method, "description", method["id"]),
-        parameters: params ++ body(method, read, taken),
-        security: security(method, read.keyed)
+  defp parameters(method) do
+    for {name, param} <- Map.get(method, "parameters", %{}) do
+      %Parameter{
+        name: name,
+        in: Map.fetch!(@locations, param["location"]),
+        schema: Schema.parameter(param),
+        required: param["required"] == true,
+        reserved: String.contains?(method["path"], "{+#{name}}")
       }
     end
+  end
 
-    defp parameters(method) do
-      for {name, param} <- Map.get(method, "parameters", %{}) do
-        %Parameter{
-          name: name,
-          in: Map.fetch!(@locations, param["location"]),
-          schema: Schema.parameter(param),
-          required: param["required"] == true,
-          reserved: String.contains?(method["path"], "{+#{name}}")
-        }
-      end
-    end
+  defp body(%{"request" => request}, read, taken) do
+    for {name, field} <- Schema.fields(request, read.schemas, read.names),
+        not MapSet.member?(taken, name),
+        do: %Parameter{name: name, in: :body, schema: field}
+  end
 
-    defp body(%{"request" => request}, read, taken) do
-      for {name, field} <- Schema.fields(request, read.schemas, read.names),
-          not MapSet.member?(taken, name),
-          do: %Parameter{name: name, in: :body, schema: field}
-    end
+  defp body(_method, _document, _taken), do: []
 
-    defp body(_method, _document, _taken), do: []
+  defp security(%{"scopes" => [_scope | _more]}, true), do: [["oauth2"], ["key"]]
+  defp security(%{"scopes" => [_scope | _more]}, false), do: [["oauth2"]]
+  defp security(_method, _keyed), do: [[]]
 
-    defp security(%{"scopes" => [_scope | _more]}, true), do: [["oauth2"], ["key"]]
-    defp security(%{"scopes" => [_scope | _more]}, false), do: [["oauth2"]]
-    defp security(_method, _keyed), do: [[]]
-
-    defp schemes(document, keyed) do
-      oauth = if get_in(document, ["auth", "oauth2"]), do: [{"oauth2", :bearer}], else: []
-      key = if keyed, do: [{"key", {:query, "key"}}], else: []
-      Map.new(oauth ++ key)
-    end
+  defp schemes(document, keyed) do
+    oauth = if get_in(document, ["auth", "oauth2"]), do: [{"oauth2", :bearer}], else: []
+    key = if keyed, do: [{"key", {:query, "key"}}], else: []
+    Map.new(oauth ++ key)
   end
 end

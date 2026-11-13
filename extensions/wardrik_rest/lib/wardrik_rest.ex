@@ -3,11 +3,10 @@ defmodule WardrikRest do
   Tools for agents from an HTTP API's description: one tool per operation, with the API's own
   sign-in and keys.
 
-      {:ok, discovery} =
-        WardrikRest.Discovery.fetch("https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta")
-
       {:ok, analytics} =
-        WardrikRest.API.load(discovery,
+        WardrikRest.API.load(
+          {WardrikRest.Discovery,
+           url: "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta"},
           name: "ga4",
           base_url: "https://analyticsdata.googleapis.com/",
           auth: %{"oauth2" => {:credential, "google"}},
