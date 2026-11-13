@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `connections.list`, `connections.connect` and `connections.disconnect` let a principal see,
+  start and forget their own sign-ins, at `/v1/connections`, as `Wardrik.Connections`, offering
+  each OAuth app they may use. Authorized on `{:connection, principal_id}`.
 - `servers.list`, `servers.add` and `servers.remove` keep an owner's MCP servers, at
   `/v1/owners/{owner}/servers`, as `Wardrik.Servers`. Each runs as its reference, as
   `acme:crm`. Defining an agent checks `mcp_server.use` for each server the resolver gives it

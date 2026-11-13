@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `connections.list`, `connections.connect` and `connections.disconnect`, with
+  `Wardrik.Connections`, `Wardrik.Connection` and `Wardrik.Connecting`.
 - `servers.list`, `servers.add` and `servers.remove`, with `Wardrik.Servers`,
   `Wardrik.MCPServer` and `Wardrik.ServerAdded`. `agent_resolved` servers carry an `owner`.
 - `providers.list`, `providers.add` and `providers.remove`, with `Wardrik.Providers` and

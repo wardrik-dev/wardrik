@@ -865,6 +865,43 @@ export interface ChannelResponse {
   body: string;
 }
 /**
+ * What connections.connect answers: that the caller holds the account already, or where they sign in to it.
+ */
+export interface Connecting {
+  /**
+   * The account's name: an OAuth app's, or an MCP server's that makes its own sign-in.
+   */
+  provider: string;
+  /**
+   * Whether the caller holds it already.
+   */
+  connected: boolean;
+  authorization?: Authorization;
+}
+/**
+ * An account the caller can connect, by its provider's name, whether they hold it, and whether a sign-in to it is under way. A value is never answered.
+ */
+export interface Connection {
+  /**
+   * The account's name: an OAuth app's, or an MCP server's that makes its own sign-in.
+   */
+  provider: string;
+  /**
+   * Whether the caller holds it, which is what a call of an agent acting for them would use.
+   */
+  connected: boolean;
+  /**
+   * In connections.list: whether a sign-in the caller started is under way. It turns false once the sign-in is granted, declined or expires.
+   */
+  signing_in?: boolean;
+}
+/**
+ * What connections.list answers: the accounts the caller can connect, and whether they hold each. A value is never answered.
+ */
+export interface Connections {
+  connections: Connection[];
+}
+/**
  * What events.head answers: the cursor at the end of every log the agents cover.
  */
 export interface Cursor {

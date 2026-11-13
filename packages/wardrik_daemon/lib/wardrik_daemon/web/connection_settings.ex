@@ -11,15 +11,13 @@ defmodule WardrikDaemon.Web.ConnectionSettings do
 
   @impl true
   def list(scope, _opts) do
-    with :ok <- allowed(scope, "connection.read"),
-         do: {:ok, Connections.list(Settings.daemon(), scope.principal)}
+    with {:ok, %{"connections" => connections}} <- Wardrik.run(scope, "connections.list", %{}),
+         do: {:ok, connections}
   end
 
   @impl true
-  def connect(scope, provider, _opts) do
-    with :ok <- allowed(scope, "connection.connect"),
-         do: Connections.connect(Settings.daemon(), scope.principal, provider)
-  end
+  def connect(scope, provider, _opts),
+    do: Wardrik.run(scope, "connections.connect", %{"provider" => provider})
 
   @impl true
   def pair(scope, provider, code, _opts) do
@@ -31,8 +29,8 @@ defmodule WardrikDaemon.Web.ConnectionSettings do
 
   @impl true
   def disconnect(scope, provider, _opts) do
-    with :ok <- allowed(scope, "connection.delete"),
-         do: Connections.disconnect(Settings.daemon(), scope.principal, provider)
+    with {:ok, nil} <- Wardrik.run(scope, "connections.disconnect", %{"provider" => provider}),
+         do: :ok
   end
 
   defp allowed(scope, action),

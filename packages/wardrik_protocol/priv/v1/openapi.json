@@ -2979,6 +2979,124 @@
           }
         }
       }
+    },
+    "/v1/connections": {
+      "get": {
+        "operationId": "connections.list",
+        "summary": "List the caller's accounts",
+        "description": "Each OAuth app the caller signs in with, and each MCP server's own sign-in, by the server's name. Says whether the caller holds each, and whether a sign-in to it is under way. Only the caller's own.",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-action": "connection.read",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "connection",
+        "responses": {
+          "200": {
+            "description": "The caller's connections.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:connections"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/connections/{provider}": {
+      "post": {
+        "operationId": "connections.connect",
+        "summary": "Sign the caller in to an account",
+        "description": "Answers that the caller holds it already, or where they sign in: the page, and for a device sign-in the code to enter there.",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-action": "connection.connect",
+        "x-wardrik-effect": "change",
+        "x-wardrik-subject": "connection",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/connection_provider"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account, or where to sign in to it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:connecting"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "connections.disconnect",
+        "summary": "Forget the caller's account",
+        "description": "The next call that needs it asks the caller to sign in again. not_found where the caller holds no such account. Recorded in the audit.",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-action": "connection.delete",
+        "x-wardrik-effect": "destructive",
+        "x-wardrik-subject": "connection",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/connection_provider"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Forgotten."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3210,6 +3328,16 @@
         "schema": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"
+        }
+      },
+      "connection_provider": {
+        "name": "provider",
+        "in": "path",
+        "required": true,
+        "description": "The account's name, as connections.list answers it.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[^/\\s]+$"
         }
       }
     },

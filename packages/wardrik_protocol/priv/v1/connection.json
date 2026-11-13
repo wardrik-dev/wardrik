@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:connection",
+  "title": "A connection",
+  "description": "An account the caller can connect, by its provider's name, whether they hold it, and whether a sign-in to it is under way. A value is never answered.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "connected"
+  ],
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "The account's name: an OAuth app's, or an MCP server's that makes its own sign-in."
+    },
+    "connected": {
+      "type": "boolean",
+      "description": "Whether the caller holds it, which is what a call of an agent acting for them would use."
+    },
+    "signing_in": {
+      "type": "boolean",
+      "description": "In connections.list: whether a sign-in the caller started is under way. It turns false once the sign-in is granted, declined or expires."
+    }
+  },
+  "examples": [
+    {
+      "provider": "github",
+      "connected": true,
+      "signing_in": false
+    }
+  ]
+}

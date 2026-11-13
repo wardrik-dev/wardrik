@@ -101,7 +101,7 @@ defmodule WardrikProtocolTest do
                agent.kill agent.move agent.read agent.resolved agent.runs agent.runtime
                agent.spawn agent.stop agent.timeline
                agent.trigger_remove agent.trigger_set agents.cancel agents.forget agents.list
-               audit.list channel.deliver
+               audit.list channel.deliver connections.connect connections.disconnect connections.list
                deployment.nodes deployment.reload deployment.runtime events.head events.list
                hook.deliver
                hook.deliver_with_secret interrupts.list providers.add providers.list providers.remove secrets.delete secrets.list secrets.put servers.add servers.list servers.remove
@@ -130,7 +130,7 @@ defmodule WardrikProtocolTest do
       for operation <- WardrikProtocol.operations() do
         assert operation.effect in ~w(read change destructive)
 
-        assert operation.subject in ~w(agent agents channel deployment hook mcp_server provider secret)
+        assert operation.subject in ~w(agent agents channel connection deployment hook mcp_server provider secret)
 
         assert is_binary(operation.action)
 

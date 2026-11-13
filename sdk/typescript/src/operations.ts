@@ -21,6 +21,8 @@ import type {
   Authorization,
   Calls,
   Cancelled,
+  Connecting,
+  Connections,
   Cursor,
   DecidedBody,
   Decisions,
@@ -404,6 +406,28 @@ export const operations = {
     query: [],
     body: false,
   },
+  "connections.list": {
+    method: "GET",
+    path: "/v1/connections",
+    path_params: [],
+    query: [],
+    body: false,
+    unwrap: "connections",
+  },
+  "connections.connect": {
+    method: "POST",
+    path: "/v1/connections/{provider}",
+    path_params: ["provider"],
+    query: [],
+    body: false,
+  },
+  "connections.disconnect": {
+    method: "DELETE",
+    path: "/v1/connections/{provider}",
+    path_params: ["provider"],
+    query: [],
+    body: false,
+  },
 } as const;
 
 /** An operation's id, as `agent.ask`. */
@@ -674,6 +698,15 @@ export interface Inputs {
     /** The server's name. */
     name: string;
   };
+  "connections.list": {};
+  "connections.connect": {
+    /** The account's name, as connections.list answers it. */
+    provider: string;
+  };
+  "connections.disconnect": {
+    /** The account's name, as connections.list answers it. */
+    provider: string;
+  };
 }
 
 /** What each operation answers, an answer of one property being that property. */
@@ -724,6 +757,9 @@ export interface Outputs {
   "servers.list": Servers["servers"];
   "servers.add": ServerAdded;
   "servers.remove": Server;
+  "connections.list": Connections["connections"];
+  "connections.connect": Connecting;
+  "connections.disconnect": void;
 }
 
 /** The `agent.*` operations. */
@@ -1477,6 +1513,46 @@ export class ServersOperations {
   }
 }
 
+/** The `connections.*` operations. */
+export class ConnectionsOperations {
+  readonly #runner: Runner;
+
+  /** @internal */
+  constructor(runner: Runner) {
+    this.#runner = runner;
+  }
+
+  /**
+   * List the caller's accounts.
+   *
+   * Each OAuth app the caller signs in with, and each MCP server's own sign-in, by the server's name. Says whether the caller holds each, and whether a sign-in to it is under way. Only the caller's own.
+   */
+  list(options: CallOptions = {}): Promise<Outputs["connections.list"]> {
+    return this.#runner.call("connections.list", {}, options);
+  }
+
+  /**
+   * Sign the caller in to an account.
+   *
+   * Answers that the caller holds it already, or where they sign in: the page, and for a device sign-in the code to enter there.
+   */
+  connect(provider: string, options: CallOptions = {}): Promise<Outputs["connections.connect"]> {
+    return this.#runner.call("connections.connect", { provider }, options);
+  }
+
+  /**
+   * Forget the caller's account.
+   *
+   * The next call that needs it asks the caller to sign in again. not_found where the caller holds no such account. Recorded in the audit.
+   */
+  disconnect(
+    provider: string,
+    options: CallOptions = {},
+  ): Promise<Outputs["connections.disconnect"]> {
+    return this.#runner.call("connections.disconnect", { provider }, options);
+  }
+}
+
 /** Every operation but an agent's, by its namespace. */
 export class Operations {
   /** The `agents.*` operations. */
@@ -1495,6 +1571,8 @@ export class Operations {
   readonly providers: ProvidersOperations;
   /** The `servers.*` operations. */
   readonly servers: ServersOperations;
+  /** The `connections.*` operations. */
+  readonly connections: ConnectionsOperations;
 
   /** @internal */
   constructor(runner: Runner) {
@@ -1506,5 +1584,6 @@ export class Operations {
     this.secrets = new SecretsOperations(runner);
     this.providers = new ProvidersOperations(runner);
     this.servers = new ServersOperations(runner);
+    this.connections = new ConnectionsOperations(runner);
   }
 }
