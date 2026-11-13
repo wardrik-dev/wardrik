@@ -94,7 +94,11 @@ defmodule Wardrik.ChildrenTest do
       )
 
     start_supervised!({Wardrik, wardrik}, id: :placed)
-    agents = Module.concat(Wardrik.agents(wardrik), Agents)
+
+    agents =
+      wardrik
+      |> Wardrik.agents()
+      |> Module.concat(Agents)
 
     assert %{total: %{limit: 2}} = DurableServer.Supervisor.current_capacity(agents)
     assert %{hibernate_after: 1_000} = DurableServer.Supervisor.__get_config__(agents)
@@ -118,30 +122,28 @@ defmodule Wardrik.ChildrenTest do
 
     start_supervised!({Wardrik, wardrik}, id: :mcp)
 
-    assert Process.whereis(Wardrik.mcp(wardrik))
+    mcp = Wardrik.mcp(wardrik)
+    assert Process.whereis(mcp)
 
-    assert Wardrik.MCP.tools(nil, name: Wardrik.mcp(wardrik), servers: :down) == []
+    assert Wardrik.MCP.tools(nil, name: mcp, servers: :down) == []
   end
 
   test "keeps no secret without keys to seal it with", %{test: test} do
+    keyless = :"keyless #{test}"
+
     start_supervised!(
       {Wardrik,
-       name: :"keyless #{test}",
+       name: keyless,
        authorizer: {Wardrik.Test.Allow, []},
-       resolver: {Wardrik.Test.Owned, :"keyless #{test}"}},
+       resolver: {Wardrik.Test.Owned, keyless}},
       id: :keyless
     )
 
-    assert {:error, :no_keys} =
-             Lookup.fetch(:"keyless #{test}", owner: "acme", name: "HOOK")
+    assert {:error, :no_keys} = Lookup.fetch(keyless, owner: "acme", name: "HOOK")
 
-    assert Lookup.list(:"keyless #{test}") == []
+    assert Lookup.list(keyless) == []
 
-    refute Lookup.holds?(:"keyless #{test}",
-             owner: "acme",
-             name: "HOOK",
-             kind: :secret
-           )
+    refute Lookup.holds?(keyless, owner: "acme", name: "HOOK", kind: :secret)
   end
 
   defp linear(url),

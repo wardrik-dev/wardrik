@@ -35,8 +35,11 @@ defmodule Wardrik.HTTP.Response do
 
   @doc "Sends `error` with the HTTP status for its type, as `404` for `:not_found`."
   @spec error(Plug.Conn.t(), Error.t()) :: Plug.Conn.t()
-  def error(conn, %Error{type: type} = error),
-    do: conn |> challenge(type) |> json(Map.fetch!(@statuses, type), Error.json(error))
+  def error(conn, %Error{type: type} = error) do
+    conn
+    |> challenge(type)
+    |> json(Map.fetch!(@statuses, type), Error.json(error))
+  end
 
   @doc "Sends `body` as JSON."
   @spec json(Plug.Conn.t(), pos_integer(), term()) :: Plug.Conn.t()

@@ -35,8 +35,6 @@ defmodule Wardrik.EventLog do
 
   use Supervisor
 
-  require Logger
-
   alias Wardrik.EventLog.Activity
   alias Wardrik.EventLog.Audit
   alias Wardrik.EventLog.CloudEvent
@@ -48,6 +46,8 @@ defmodule Wardrik.EventLog do
   alias Wardrik.EventLog.Retention
   alias Wardrik.EventLog.Subscribers
   alias Wardrik.EventLog.Tail
+
+  require Logger
 
   @typedoc "One conversation's log. `conversation` is `nil` for the agent's main one."
   @type log() :: {agent :: String.t(), conversation :: String.t() | nil}
@@ -182,8 +182,11 @@ defmodule Wardrik.EventLog do
 
   @doc "Returns the cursor after the last event. Pass it as `:after` to read only newer events."
   @spec head(atom(), resources()) :: String.t()
-  def head(events, resources),
-    do: settings(events).store |> Reader.head(resources) |> Cursor.encode()
+  def head(events, resources) do
+    settings(events).store
+    |> Reader.head(resources)
+    |> Cursor.encode()
+  end
 
   @doc """
   Returns a page of kept events, oldest first, or newest first with `order: :newest`.
@@ -212,7 +215,10 @@ defmodule Wardrik.EventLog do
   @spec page(atom(), resources(), keyword()) ::
           {:ok, %{events: [map()], next: String.t()}} | {:error, :invalid_cursor}
   def page(events, resources, opts \\ []) do
-    limit = opts |> Keyword.get(:limit, @default_limit) |> min(@max_limit)
+    limit =
+      opts
+      |> Keyword.get(:limit, @default_limit)
+      |> min(@max_limit)
 
     case Keyword.get(opts, :order, :oldest) do
       :oldest -> forward(events, resources, opts[:after], limit)
@@ -222,7 +228,8 @@ defmodule Wardrik.EventLog do
 
   defp backward(events, resources, before, limit) do
     with {:ok, cursor} <- before_cursor(before) do
-      {read, next} = Reader.page_back(settings(events), resources, before: cursor, limit: limit)
+      settings = settings(events)
+      {read, next} = Reader.page_back(settings, resources, before: cursor, limit: limit)
 
       {:ok,
        %{events: for({_log, _sequence, event} <- read, do: event), next: Cursor.encode(next)}}
@@ -234,7 +241,8 @@ defmodule Wardrik.EventLog do
 
   defp forward(events, resources, after_text, limit) do
     with {:ok, cursor} <- after_cursor(after_text) do
-      {read, next} = Reader.page(settings(events), resources, after: cursor, limit: limit)
+      settings = settings(events)
+      {read, next} = Reader.page(settings, resources, after: cursor, limit: limit)
 
       {:ok,
        %{events: for({_log, _sequence, event} <- read, do: event), next: Cursor.encode(next)}}
@@ -266,8 +274,10 @@ defmodule Wardrik.EventLog do
   def stream(events, resources, opts \\ []) do
     opts = Keyword.validate!(opts, [:after, types: :all])
 
-    with {:ok, cursor} <- stream_cursor(opts[:after]),
-         do: {:ok, Tail.stream(settings(events), resources, after: cursor, types: opts[:types])}
+    with {:ok, cursor} <- stream_cursor(opts[:after]) do
+      settings = settings(events)
+      {:ok, Tail.stream(settings, resources, after: cursor, types: opts[:types])}
+    end
   end
 
   @doc """
@@ -278,7 +288,11 @@ defmodule Wardrik.EventLog do
       #=> %{"doing" => [...], "since" => "2026-10-22T09:00:03.000000Z", "pending" => 1}
   """
   @spec activity(atom(), agent()) :: map()
-  def activity(events, agent), do: events |> settings() |> loaded(logged(agent))
+  def activity(events, agent) do
+    events
+    |> settings()
+    |> loaded(logged(agent))
+  end
 
   @doc """
   Folds a log's kept events into a `Wardrik.EventLog.View`. Returns its state and the cursor after.
@@ -332,8 +346,13 @@ defmodule Wardrik.EventLog do
   """
   @spec audit(atom(), keyword()) :: %{events: [map()], next: non_neg_integer()}
   def audit(events, opts \\ []) do
-    limit = opts |> Keyword.get(:limit, @default_limit) |> min(@max_limit)
-    {changes, next} = Audit.page(settings(events), Keyword.get(opts, :after, 0), limit)
+    limit =
+      opts
+      |> Keyword.get(:limit, @default_limit)
+      |> min(@max_limit)
+
+    settings = settings(events)
+    {changes, next} = Audit.page(settings, Keyword.get(opts, :after, 0), limit)
     %{events: changes, next: next}
   end
 
@@ -432,13 +451,18 @@ defmodule Wardrik.EventLog do
         refolded(settings, log)
 
       [_newer] ->
-        settings |> Reader.all(log, after: sequence) |> Enum.reduce(cached, &taken/2)
+        settings
+        |> Reader.all(log, after: sequence)
+        |> Enum.reduce(cached, &taken/2)
     end
   end
 
   # Retention dropped events this node never folded, so fold what's left, as after a restart.
-  defp refolded(settings, log),
-    do: settings |> Reader.all(log) |> Enum.reduce({0, Activity.init([])}, &taken/2)
+  defp refolded(settings, log) do
+    settings
+    |> Reader.all(log)
+    |> Enum.reduce({0, Activity.init([])}, &taken/2)
+  end
 
   defp taken({_log, sequence, event}, {_sequence, activity}),
     do: {sequence, Activity.handle_event(event, activity)}
@@ -468,7 +492,8 @@ defmodule Wardrik.EventLog do
   end
 
   defp settings(events) do
-    Heads.settings(Module.concat(events, "Heads"))
+    heads = Module.concat(events, "Heads")
+    Heads.settings(heads)
   rescue
     ArgumentError ->
       reraise ArgumentError,

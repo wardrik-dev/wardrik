@@ -112,8 +112,11 @@ defmodule Wardrik.Triggers do
   @spec set(atom(), String.t(), map()) :: {:ok, Trigger.t()} | {:error, String.t() | term()}
   def set(triggers, agent_id, fields) do
     with {:ok, trigger} <- Trigger.decode(fields),
-         :ok <- ahead(trigger, DateTime.utc_now()),
-         do: GenServer.call(scheduler(triggers), {:set, agent_id, trigger})
+         :ok <- ahead(trigger, DateTime.utc_now()) do
+      triggers
+      |> scheduler()
+      |> GenServer.call({:set, agent_id, trigger})
+    end
   end
 
   @doc """
@@ -126,7 +129,10 @@ defmodule Wardrik.Triggers do
   def remove(triggers, args) do
     agent_id = Keyword.fetch!(args, :agent_id)
     name = Keyword.fetch!(args, :name)
-    GenServer.call(scheduler(triggers), {:remove, agent_id, name})
+
+    triggers
+    |> scheduler()
+    |> GenServer.call({:remove, agent_id, name})
   end
 
   @doc """
@@ -177,11 +183,19 @@ defmodule Wardrik.Triggers do
           name: String.t(),
           request: Wardrik.Triggers.Webhook.request()
         ) :: :ok | {:error, :not_found | :busy | :no_agent | :failed}
-  def deliver(triggers, args), do: Run.webhook(settings(triggers), args)
+  def deliver(triggers, args) do
+    triggers
+    |> settings()
+    |> Run.webhook(args)
+  end
 
   @doc "Re-reads every trigger from the store now."
   @spec reconcile(atom()) :: :ok
-  def reconcile(triggers), do: GenServer.call(scheduler(triggers), :reconcile)
+  def reconcile(triggers) do
+    triggers
+    |> scheduler()
+    |> GenServer.call(:reconcile)
+  end
 
   @impl Supervisor
   def init(opts) do
@@ -194,8 +208,9 @@ defmodule Wardrik.Triggers do
       scheduler: scheduler(opts.name)
     }
 
-    :ets.new(table(opts.name), [:named_table, :protected, read_concurrency: true])
-    true = :ets.insert(table(opts.name), {:settings, settings})
+    table = table(opts.name)
+    :ets.new(table, [:named_table, :protected, read_concurrency: true])
+    true = :ets.insert(table, {:settings, settings})
 
     children = [{Task.Supervisor, name: settings.tasks}, {Scheduler, settings}]
     Supervisor.init(children, strategy: :rest_for_one)
@@ -205,7 +220,8 @@ defmodule Wardrik.Triggers do
   defp table(triggers), do: Module.concat(triggers, "Settings")
 
   defp settings(triggers) do
-    [{:settings, settings}] = :ets.lookup(table(triggers), :settings)
+    table = table(triggers)
+    [{:settings, settings}] = :ets.lookup(table, :settings)
     settings
   rescue
     ArgumentError ->
@@ -252,7 +268,8 @@ defmodule Wardrik.Triggers do
   defp remove_others(triggers, agent_id, keeping) do
     store = settings(triggers).store
 
-    Records.of(store, agent_id)
+    store
+    |> Records.of(agent_id)
     |> Enum.reject(&(&1 in keeping))
     |> Enum.reduce_while(:ok, fn name, :ok ->
       case remove(triggers, agent_id: agent_id, name: name) do

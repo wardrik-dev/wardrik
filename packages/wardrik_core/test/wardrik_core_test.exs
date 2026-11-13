@@ -29,7 +29,9 @@ defmodule WardrikCoreTest do
   describe "generate/1" do
     test "calls the model through the middleware, streaming nothing, and measures it" do
       stub(ReqLLM.StreamResponse, :process_stream, fn response, opts ->
-        opts[:on_chunk].(ReqLLM.StreamChunk.text("A summary."))
+        on_chunk = opts[:on_chunk]
+        chunk = ReqLLM.StreamChunk.text("A summary.")
+        on_chunk.(chunk)
         {:ok, response}
       end)
 
@@ -100,9 +102,11 @@ defmodule WardrikCoreTest do
          }}
       end)
 
+      context = WardrikCore.Context.new([])
+
       assert {:ok, %{"urgent" => %{"probability" => 0.9}},
               %{input_tokens: 12, output_tokens: 1, usd: 0.001}} =
-               WardrikCore.evaluate(WardrikCore.Context.new([]),
+               WardrikCore.evaluate(context,
                  model: "anthropic:claude-haiku-4-5",
                  state: "The site is down.",
                  questions: questions
@@ -112,8 +116,10 @@ defmodule WardrikCoreTest do
     test "passes on why the model couldn't answer" do
       expect(ReqLLM, :evaluate, fn _model, _state, _questions, _opts -> {:error, :timeout} end)
 
+      context = WardrikCore.Context.new([])
+
       assert {:error, :timeout} =
-               WardrikCore.evaluate(WardrikCore.Context.new([]),
+               WardrikCore.evaluate(context,
                  model: "typesafe:jev-latest",
                  state: "x",
                  questions: %{}

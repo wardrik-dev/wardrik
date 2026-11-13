@@ -42,7 +42,9 @@ defmodule WardrikRest do
 
   @impl WardrikCore.Capability
   def tools(_context, opts) do
-    Enum.flat_map(Keyword.fetch!(opts, :apis), fn api ->
+    opts
+    |> Keyword.fetch!(:apis)
+    |> Enum.flat_map(fn api ->
       Enum.map(api.operations, &tool(api, &1)) ++ describing(api)
     end)
   end

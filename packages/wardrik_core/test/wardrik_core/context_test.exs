@@ -18,7 +18,8 @@ defmodule WardrikCore.ContextTest do
 
     @impl true
     def call(context, next, label) do
-      next.(update_in(context.metadata[:trail], &[label | &1 || []]))
+      context = update_in(context.metadata[:trail], &[label | &1 || []])
+      next.(context)
     end
   end
 
@@ -60,9 +61,10 @@ defmodule WardrikCore.ContextTest do
 
   test "run/3 keeps chunk handlers to the step that added them" do
     handler = fn _chunk -> :ok end
+    context = Context.new([])
 
     assert {:ok, %Context{on_chunk: [], step: nil}} =
-             Context.run(Context.new([]), :generate, fn context ->
+             Context.run(context, :generate, fn context ->
                {:ok, %{context | on_chunk: [handler | context.on_chunk]}}
              end)
   end
@@ -90,7 +92,8 @@ defmodule WardrikCore.ContextTest do
         ReqLLM.Context.assistant("on it")
       ]
 
-      assert ^maria = Context.acting_for(Context.new(principal: agent, messages: messages))
+      context = Context.new(principal: agent, messages: messages)
+      assert ^maria = Context.acting_for(context)
     end
 
     test "is the agent itself when no one signed the message", %{agent: agent, maria: maria} do
@@ -99,8 +102,11 @@ defmodule WardrikCore.ContextTest do
         ReqLLM.Context.user("now", %{})
       ]
 
-      assert ^agent = Context.acting_for(Context.new(principal: agent, messages: messages))
-      assert nil == Context.acting_for(Context.new(messages: []))
+      context = Context.new(principal: agent, messages: messages)
+      assert ^agent = Context.acting_for(context)
+
+      empty = Context.new(messages: [])
+      assert nil == Context.acting_for(empty)
     end
   end
 
@@ -115,8 +121,11 @@ defmodule WardrikCore.ContextTest do
         }
       ]
 
-      assert Context.labels(Context.new(messages: messages)) == ["books", "outside"]
-      assert Context.labels(Context.new(messages: [ReqLLM.Context.user("hi")])) == []
+      context = Context.new(messages: messages)
+      assert Context.labels(context) == ["books", "outside"]
+
+      unlabeled = Context.new(messages: [ReqLLM.Context.user("hi")])
+      assert Context.labels(unlabeled) == []
       assert Context.labels(messages) == ["books", "outside"]
     end
   end

@@ -98,8 +98,12 @@ defmodule Wardrik.Store.DurableConformance do
           prefix = unique_key(context) <> "/"
           {:ok, _object} = Durable.put_object(backend, prefix <> "a", 1, [])
 
-          assert [%{key: key} = listed] =
-                   backend |> Durable.list_all_objects_stream(prefix, []) |> Enum.to_list()
+          objects =
+            backend
+            |> Durable.list_all_objects_stream(prefix, [])
+            |> Enum.to_list()
+
+          assert [%{key: key} = listed] = objects
 
           assert key == prefix <> "a"
           refute Map.has_key?(listed, :body)
@@ -129,8 +133,8 @@ defmodule Wardrik.Store.DurableConformance do
           stored = %StoredState{vsn: 1, state: %{}, meta: %Meta{}}
           unreadable = %{"vsn" => 1, "state" => <<131, 100, 0, 3, "zzq">>, "meta" => "x"}
           why = "it isn't in a form this release can read"
-
-          {:ok, _vsn} = Wardrik.Store.put(Wardrik.Store.scope(store, "durable"), key, unreadable)
+          durable = Wardrik.Store.scope(store, "durable")
+          {:ok, _vsn} = Wardrik.Store.put(durable, key, unreadable)
 
           log =
             capture_log(fn ->

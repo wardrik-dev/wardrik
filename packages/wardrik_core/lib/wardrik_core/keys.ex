@@ -68,7 +68,7 @@ defmodule WardrikCore.Keys do
 
   def key_name(spec) when is_binary(spec) do
     case String.split(spec, ":", parts: 2) do
-      [provider, _model] -> provider |> existing_atom() |> env_key()
+      [provider, _model] -> env_key(existing_atom(provider))
       _unnamed -> nil
     end
   end

@@ -65,8 +65,16 @@ defmodule WardrikCore.EventTest do
 
   test "text streams to the sink as it arrives", %{context: context} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, opts ->
-      opts[:on_chunk].(ReqLLM.StreamChunk.text("Hel"))
-      opts[:on_chunk].(ReqLLM.StreamChunk.text("lo"))
+      on_chunk = opts[:on_chunk]
+
+      "Hel"
+      |> ReqLLM.StreamChunk.text()
+      |> on_chunk.()
+
+      "lo"
+      |> ReqLLM.StreamChunk.text()
+      |> on_chunk.()
+
       {:ok, response}
     end)
 

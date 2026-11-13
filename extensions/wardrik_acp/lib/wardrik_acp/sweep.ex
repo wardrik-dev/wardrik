@@ -30,7 +30,9 @@ defmodule WardrikACP.Sweep do
         worktree.path
       end
 
-    Enum.each(Map.values(settings.checkouts), &Worktree.prune/1)
+    settings.checkouts
+    |> Map.values()
+    |> Enum.each(&Worktree.prune/1)
 
     :telemetry.execute([:wardrik_acp, :sweep], %{removed: length(removed)}, %{
       acp: settings.acp,
@@ -42,8 +44,10 @@ defmodule WardrikACP.Sweep do
 
   # A coding agent with nothing to do is stopped, so its worktree can go.
   defp idle?(acp, path) do
+    registry = Connection.registry(acp)
+
     stopped =
-      case Registry.lookup(Connection.registry(acp), path) do
+      case Registry.lookup(registry, path) do
         [] -> :ok
         [{pid, _value}] -> Connection.stop_idle(pid)
       end

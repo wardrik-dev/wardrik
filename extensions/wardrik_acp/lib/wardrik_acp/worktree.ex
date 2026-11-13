@@ -109,7 +109,9 @@ defmodule WardrikACP.Worktree do
   end
 
   defp add(%__MODULE__{checkout: checkout} = worktree) do
-    File.mkdir_p!(Path.dirname(worktree.path))
+    worktree.path
+    |> Path.dirname()
+    |> File.mkdir_p!()
 
     with :ok <- fetch(checkout) do
       args =

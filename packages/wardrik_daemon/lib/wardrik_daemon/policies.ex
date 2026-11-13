@@ -14,9 +14,8 @@ defmodule WardrikDaemon.Policies do
   @doc "Returns each policy in `dir` by name, or the reason one doesn't read. A missing directory holds none."
   @spec read(Path.t()) :: {:ok, %{String.t() => Wardrik.Policy.t()}} | {:error, String.t()}
   def read(dir) do
-    read =
-      for path <- Path.wildcard(Path.join(dir, "*.{yaml,yml}")),
-          do: {path |> Path.basename() |> Path.rootname(), policy(path)}
+    pattern = Path.join(dir, "*.{yaml,yml}")
+    read = for path <- Path.wildcard(pattern), do: {name(path), policy(path)}
 
     case Enum.find(read, &match?({_name, {:error, _why}}, &1)) do
       nil -> {:ok, Map.new(read, fn {name, {:ok, policy}} -> {name, policy} end)}
@@ -24,8 +23,14 @@ defmodule WardrikDaemon.Policies do
     end
   end
 
+  defp name(path) do
+    path
+    |> Path.basename()
+    |> Path.rootname()
+  end
+
   defp policy(path) do
-    name = path |> Path.basename() |> Path.rootname()
+    name = name(path)
 
     with {:ok, fields} <- fields(path),
          {:ok, policy} <- Wardrik.Policy.decode(fields, name: name) do

@@ -28,11 +28,14 @@ defmodule Wardrik.EventLog.Encoder do
 
   def encode(%Event{}, _deployment), do: []
 
-  defp described(%Event{name: [:wardrik, noun, verb], metadata: metadata}),
-    do: [
-      {"#{noun}.#{verb}", subject(noun, metadata),
-       metadata |> Map.drop(@envelope) |> Value.json()}
-    ]
+  defp described(%Event{name: [:wardrik, noun, verb], metadata: metadata}) do
+    data =
+      metadata
+      |> Map.drop(@envelope)
+      |> Value.json()
+
+    [{"#{noun}.#{verb}", subject(noun, metadata), data}]
+  end
 
   defp described(%Event{name: [:wardrik_core | name]} = event), do: core(name, event)
   defp described(_event), do: []
@@ -81,11 +84,10 @@ defmodule Wardrik.EventLog.Encoder do
   defp core([:message, :retrying], %{metadata: metadata}),
     do: [about_message("message.retrying", metadata.span, retried(metadata))]
 
-  defp core([:tool_call, :retrying], %{metadata: %{call: call} = metadata}),
-    do: [
-      {"tool_call.retrying", "tool_calls/" <> call.id,
-       Map.put(retried(metadata), "tool", tool(call))}
-    ]
+  defp core([:tool_call, :retrying], %{metadata: %{call: call} = metadata}) do
+    retried = retried(metadata)
+    [{"tool_call.retrying", "tool_calls/" <> call.id, Map.put(retried, "tool", tool(call))}]
+  end
 
   defp core([:step, :start], %{metadata: metadata}), do: step_started(metadata.step, metadata)
   defp core([:step, :stop], event), do: step_stopped(event.metadata.step, event)
@@ -191,9 +193,8 @@ defmodule Wardrik.EventLog.Encoder do
   defp step_started(:generate, %{span: span, model: model}) do
     {provider, name} = model_parts(model)
 
-    data =
-      %{"request" => %{"model" => name}, "decided" => default()}
-      |> Value.put("provider", provider && %{"name" => provider})
+    started = %{"request" => %{"model" => name}, "decided" => default()}
+    data = Value.put(started, "provider", provider && %{"name" => provider})
 
     [about_message("message.started", span, data)]
   end
@@ -329,8 +330,11 @@ defmodule Wardrik.EventLog.Encoder do
   defp status(data, %{status: :ok}), do: Map.put(data, "status", "ok")
   defp status(data, metadata), do: error_status(data, metadata[:reason])
 
-  defp error_status(data, reason),
-    do: data |> Map.put("status", "error") |> Map.put("error", Value.error(reason))
+  defp error_status(data, reason) do
+    data
+    |> Map.put("status", "error")
+    |> Map.put("error", Value.error(reason))
+  end
 
   defp exited(:killed), do: "The call was stopped before it finished."
   defp exited(reason), do: {:exit, reason}

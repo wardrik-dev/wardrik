@@ -33,7 +33,11 @@ defmodule WardrikACP.RPC do
   """
   @spec split(binary()) :: {[message()], binary()}
   def split(buffer) do
-    {lines, [rest]} = buffer |> String.split("\n") |> Enum.split(-1)
+    {lines, [rest]} =
+      buffer
+      |> String.split("\n")
+      |> Enum.split(-1)
+
     {Enum.flat_map(lines, &decode/1), rest}
   end
 

@@ -4,7 +4,12 @@ defmodule WardrikDaemon.Console.Ansi do
   @doc "Returns `data` as chardata: with its styles as escape sequences if `colour?`, or plain if not."
   @spec chardata(Owl.Data.t(), boolean()) :: IO.chardata()
   def chardata(data, false), do: plain(data)
-  def chardata(data, true), do: data |> ansi([]) |> IO.ANSI.format(true)
+
+  def chardata(data, true) do
+    data
+    |> ansi([])
+    |> IO.ANSI.format(true)
+  end
 
   # Owl.Data.untag/1 leaves a tag inside another tag's list, so every one is
   # taken off here.

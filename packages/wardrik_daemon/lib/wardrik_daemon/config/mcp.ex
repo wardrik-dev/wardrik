@@ -37,7 +37,10 @@ defmodule WardrikDaemon.Config.MCP do
 
     with :ok <- managed(own, path),
          {:ok, transport} <- transport(transport, path),
-         {:ok, own} <- Options.convert(renamed(own), [], path),
+         {:ok, own} <-
+           own
+           |> renamed()
+           |> Options.convert([], path),
          opts = [transport: transport] ++ Enum.map(own, &option/1),
          {:ok, _server} <- Options.built(fn -> Wardrik.MCP.Server.new!(name, opts) end, path) do
       {:ok, opts}
@@ -55,8 +58,11 @@ defmodule WardrikDaemon.Config.MCP do
     end
   end
 
-  defp renamed(%{"credential" => name} = own),
-    do: own |> Map.delete("credential") |> Map.put("credential_name", name)
+  defp renamed(%{"credential" => name} = own) do
+    own
+    |> Map.delete("credential")
+    |> Map.put("credential_name", name)
+  end
 
   defp renamed(own), do: own
 

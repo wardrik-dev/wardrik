@@ -62,7 +62,8 @@ defmodule Wardrik.EventLog.RetentionTest do
     store: store
   } do
     :ok = Wardrik.EventLog.trim(events, DateTime.add(DateTime.utc_now(), 1, :day))
-    assert {:ok, %{{"agt_1", nil} => 3}} = Cursor.decode(Wardrik.EventLog.head(events, ["agt_1"]))
+    cursor = Wardrik.EventLog.head(events, ["agt_1"])
+    assert {:ok, %{{"agt_1", nil} => 3}} = Cursor.decode(cursor)
 
     stop_supervised!(Wardrik.EventLog)
     start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
@@ -76,7 +77,9 @@ defmodule Wardrik.EventLog.RetentionTest do
     events: events
   } do
     {Retention, retention, :worker, _modules} =
-      events |> Supervisor.which_children() |> List.keyfind(Retention, 0)
+      events
+      |> Supervisor.which_children()
+      |> List.keyfind(Retention, 0)
 
     send(retention, :trim)
     trimmed(events)
@@ -96,6 +99,7 @@ defmodule Wardrik.EventLog.RetentionTest do
       id: :infinite
     )
 
-    refute :infinite |> Supervisor.which_children() |> List.keyfind(Retention, 0)
+    children = Supervisor.which_children(:infinite)
+    refute List.keyfind(children, Retention, 0)
   end
 end

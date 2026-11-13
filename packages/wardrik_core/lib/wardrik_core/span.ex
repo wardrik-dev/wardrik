@@ -27,11 +27,16 @@ defmodule WardrikCore.Span do
   defp id(_parent, nil), do: random(8)
 
   defp id(parent, key) do
-    :sha256
-    |> :crypto.hash([parent.trace, key])
+    digest = :crypto.hash(:sha256, [parent.trace, key])
+
+    digest
     |> binary_part(0, 8)
     |> Base.encode16(case: :lower)
   end
 
-  defp random(bytes), do: bytes |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+  defp random(bytes) do
+    bytes
+    |> :crypto.strong_rand_bytes()
+    |> Base.encode16(case: :lower)
+  end
 end

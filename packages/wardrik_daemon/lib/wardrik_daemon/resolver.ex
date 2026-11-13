@@ -61,7 +61,9 @@ defmodule WardrikDaemon.Resolver do
 
   # The owner's own installation, then its org's, then one config.yaml gives every org.
   defp workspace(wardrik, channel, owner) do
-    Enum.find_value(Enum.uniq([owner, Owners.org(owner), "*"]), fn holder ->
+    [owner, Owners.org(owner), "*"]
+    |> Enum.uniq()
+    |> Enum.find_value(fn holder ->
       case Wardrik.Channels.owned(wardrik, channel: channel, owner: holder) do
         [installation | _rest] -> installation.workspace
         [] -> nil
@@ -110,7 +112,9 @@ defmodule WardrikDaemon.Resolver do
           Wardrik.Operations.NotifyTargets.reached(running, %Principal{id: owner})
 
         :error ->
-          Map.new(Keyword.get(config.notify, :targets, []), fn {name, _target} ->
+          config.notify
+          |> Keyword.get(:targets, [])
+          |> Map.new(fn {name, _target} ->
             {to_string(name), to_string(name)}
           end)
       end

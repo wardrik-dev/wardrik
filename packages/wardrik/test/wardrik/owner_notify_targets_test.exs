@@ -18,7 +18,8 @@ defmodule Wardrik.OwnerNotifyTargetsTest do
   end
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     # Anyone may use the deployment's targets, Ana acme's too, and nobody globex's.
     decide = fn

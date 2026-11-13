@@ -17,7 +17,11 @@ defmodule Wardrik.EventLog.TailTest do
   end
 
   defp written(store, sequence) do
-    number = sequence |> Integer.to_string() |> String.pad_leading(12, "0")
+    number =
+      sequence
+      |> Integer.to_string()
+      |> String.pad_leading(12, "0")
+
     event = %{"type" => "wardrik.agent.stopped", "sequence" => number}
     {:ok, _vsn} = Wardrik.Store.put(store, "events/agt_1/" <> number, event)
     send(self(), {Wardrik.EventLog, {"agt_1", nil}, event})
@@ -82,7 +86,10 @@ defmodule Wardrik.EventLog.TailTest do
 
       {:ok, stream} = Wardrik.EventLog.stream(events, ["agt_1"], after: cursor)
 
-      taken = stream |> following(events, "000000000002") |> Enum.take(2)
+      taken =
+        stream
+        |> following(events, "000000000002")
+        |> Enum.take(2)
 
       assert Enum.map(taken, &sequence/1) == ["000000000002", "000000000003"]
       assert {_event, %{{"agt_1", nil} => 3}} = List.last(taken)
@@ -137,7 +144,10 @@ defmodule Wardrik.EventLog.TailTest do
 
       {:ok, stream} = Wardrik.EventLog.stream(events, ["agt_1"], after: Cursor.encode(%{}))
 
-      taken = stream |> following(events, "000000000001") |> Enum.take(2)
+      taken =
+        stream
+        |> following(events, "000000000001")
+        |> Enum.take(2)
 
       assert Enum.map(taken, &sequence/1) == ["000000000001", "000000000002"]
     end
@@ -175,7 +185,9 @@ defmodule Wardrik.EventLog.TailTest do
           types: ["wardrik.message.delta"]
         )
 
-      assert stream |> Enum.take(2) |> Enum.map(&sequence/1) ==
+      taken = Enum.take(stream, 2)
+
+      assert Enum.map(taken, &sequence/1) ==
                ["wardrik.events.dropped", "wardrik.message.delta"]
     end
 

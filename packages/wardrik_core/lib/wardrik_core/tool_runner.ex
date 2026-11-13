@@ -56,8 +56,9 @@ defmodule WardrikCore.ToolRunner do
   defp retried(supervisor, context, call, opts) do
     timeout = Keyword.get_lazy(opts, :timeout, fn -> timeout(context.tools, call) end)
     attempt = fn -> attempt(supervisor, context, call, timeout) end
+    retries = retries(context, call)
 
-    case Retry.run(retries(context, call), attempt,
+    case Retry.run(retries, attempt,
            transient: &failed/1,
            announce: &retrying(context, call, &1)
          ) do

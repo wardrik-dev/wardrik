@@ -75,7 +75,11 @@ defmodule WardrikCore.Tool do
   @spec new!(keyword()) :: t()
   def new!(opts) do
     {annotations, opts} = Keyword.pop(opts, :annotations, [])
-    tool = __MODULE__ |> struct!(Keyword.put(opts, :req_llm, nil)) |> annotate(annotations)
+
+    tool =
+      __MODULE__
+      |> struct!(Keyword.put(opts, :req_llm, nil))
+      |> annotate(annotations)
 
     req_llm =
       ReqLLM.Tool.new!(

@@ -54,7 +54,7 @@ defmodule Wardrik.EventLog.AgentLogTest do
       )
 
     :ok = WardrikCore.ask(agent, "Say hi")
-    {kept_streamed, live} = streamed() |> Enum.split_with(&Map.has_key?(&1, "sequence"))
+    {kept_streamed, live} = Enum.split_with(streamed(), &Map.has_key?(&1, "sequence"))
 
     assert {:ok, %{events: kept}} = Wardrik.EventLog.page(:agent_log_events, ["agt_1"])
     assert kept == kept_streamed
@@ -70,7 +70,12 @@ defmodule Wardrik.EventLog.AgentLogTest do
 
     assert Enum.map(kept, &String.to_integer(&1["sequence"])) == Enum.to_list(1..6)
 
-    assert live |> Enum.map(&valid!/1) |> Enum.map(&doing/1) == [
+    activities =
+      live
+      |> Enum.map(&valid!/1)
+      |> Enum.map(&doing/1)
+
+    assert activities == [
              [],
              ["wardrik.run.started"],
              ["wardrik.message.started"]

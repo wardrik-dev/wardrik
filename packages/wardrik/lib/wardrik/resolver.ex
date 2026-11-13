@@ -37,8 +37,11 @@ defmodule Wardrik.Resolver do
   Returns what the request's agent gets, with each policy built, or an error.
   """
   @spec resolve(Wardrik.t(), Request.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
-  def resolve(%Wardrik{resolver: {module, opts}} = wardrik, %Request{agent: id} = request),
-    do: request |> module.resolve(opts) |> read(wardrik, id)
+  def resolve(%Wardrik{resolver: {module, opts}} = wardrik, %Request{agent: id} = request) do
+    request
+    |> module.resolve(opts)
+    |> read(wardrik, id)
+  end
 
   @doc "Returns what the agent `id` gets, as defined now."
   @spec defined(Wardrik.t(), String.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
@@ -120,7 +123,9 @@ defmodule Wardrik.Resolver do
   defp policies(wardrik, policies, unread) do
     named = Map.new(policies, fn {name, rules} -> {to_string(name), rules} end)
 
-    case Enum.find(Map.keys(named), &Map.has_key?(wardrik.policies, &1)) do
+    names = Map.keys(named)
+
+    case Enum.find(names, &Map.has_key?(wardrik.policies, &1)) do
       nil -> each(named, &policy("policy #{&1}", &2, unread))
       name -> {:error, unread.("its policy #{name} has the name of one of the deployment's")}
     end

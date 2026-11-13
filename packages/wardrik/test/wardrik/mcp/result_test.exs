@@ -34,8 +34,7 @@ defmodule Wardrik.MCP.ResultTest do
 
     refute Result.passing?(error)
 
-    assert Result.passing?(
-             Error.transport(:send_failure, %{original_reason: {:http_error, 503, ""}})
-           )
+    unavailable = Error.transport(:send_failure, %{original_reason: {:http_error, 503, ""}})
+    assert Result.passing?(unavailable)
   end
 end

@@ -33,9 +33,17 @@ defmodule WardrikACP.Connection do
   @doc "Returns the connection for `spec.key`, started if it isn't running."
   @spec open(atom(), spec()) :: {:ok, pid()} | {:error, term()}
   def open(acp, spec) do
-    case Registry.lookup(registry(acp), spec.key) do
-      [{pid, _value}] -> {:ok, pid}
-      [] -> started(DynamicSupervisor.start_child(supervisor(acp), {__MODULE__, {acp, spec}}))
+    registry = registry(acp)
+
+    case Registry.lookup(registry, spec.key) do
+      [{pid, _value}] ->
+        {:ok, pid}
+
+      [] ->
+        acp
+        |> supervisor()
+        |> DynamicSupervisor.start_child({__MODULE__, {acp, spec}})
+        |> started()
     end
   end
 
@@ -365,7 +373,10 @@ defmodule WardrikACP.Connection do
 
   defp attached({pid, _tag}, state) do
     state = cancel_idle(%{state | reader: pid, monitor: Process.monitor(pid)})
-    Enum.each(Enum.reverse(state.outbox), &send(pid, {WardrikACP, self(), &1}))
+
+    state.outbox
+    |> Enum.reverse()
+    |> Enum.each(&send(pid, {WardrikACP, self(), &1}))
 
     state.pending
     |> Enum.sort()
@@ -452,10 +463,16 @@ defmodule WardrikACP.Connection do
   end
 
   defp save(state) do
+    pending =
+      state.pending
+      |> Enum.sort()
+      |> Enum.map(&elem(&1, 1))
+      |> List.first()
+
     saved = %{
       "session" => state.session,
       "cost" => state.cost,
-      "pending" => state.pending |> Enum.sort() |> Enum.map(&elem(&1, 1)) |> List.first()
+      "pending" => pending
     }
 
     File.write!(state.spec.file, JSON.encode!(saved))
@@ -474,7 +491,8 @@ defmodule WardrikACP.Connection do
   defp instructions(spec) do
     files =
       for name <- spec.harness.context,
-          {:ok, body} <- [File.read(Path.join(spec.worktree.path, name))],
+          path = Path.join(spec.worktree.path, name),
+          {:ok, body} <- [File.read(path)],
           do: "#{name}:\n\n#{body}"
 
     case Enum.reject([spec.harness.instructions | files], &is_nil/1) do
@@ -491,10 +509,15 @@ defmodule WardrikACP.Connection do
   end
 
   defp env(given) do
-    kept = Map.merge(Map.take(System.get_env(), @inherited), given)
+    env = System.get_env()
+
+    kept =
+      env
+      |> Map.take(@inherited)
+      |> Map.merge(given)
 
     unset =
-      for {name, _value} <- System.get_env(), not Map.has_key?(kept, name), do: {name, false}
+      for {name, _value} <- env, not Map.has_key?(kept, name), do: {name, false}
 
     Enum.map(Map.to_list(kept) ++ unset, fn {name, value} -> {~c"#{name}", charlist(value)} end)
   end
@@ -506,5 +529,8 @@ defmodule WardrikACP.Connection do
   defp put_present(map, _key, empty) when empty == %{}, do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)
 
-  defp version, do: :wardrik_acp |> Application.spec(:vsn) |> to_string()
+  defp version do
+    vsn = Application.spec(:wardrik_acp, :vsn)
+    to_string(vsn)
+  end
 end

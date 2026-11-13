@@ -49,7 +49,11 @@ defmodule WardrikDaemon.Doctor do
   @doc "Prints `checks`, a line each. Returns how many failed."
   @spec print([check()]) :: non_neg_integer()
   def print(checks) do
-    Enum.each(lines(checks), &IO.puts(Owl.Data.untag(&1)))
+    checks
+    |> lines()
+    |> Enum.map(&Owl.Data.untag/1)
+    |> Enum.each(&IO.puts/1)
+
     failed(checks)
   end
 
@@ -57,7 +61,9 @@ defmodule WardrikDaemon.Doctor do
   @spec lines([check()]) :: [Owl.Data.t()]
   def lines(checks) do
     width =
-      checks |> Enum.map(fn {_status, name, _found} -> String.length(name) end) |> Enum.max()
+      checks
+      |> Enum.map(fn {_status, name, _found} -> String.length(name) end)
+      |> Enum.max()
 
     for {status, name, found} <- checks,
         do: [label(status), "  ", String.pad_trailing(name, width), "  ", found]
@@ -94,10 +100,13 @@ defmodule WardrikDaemon.Doctor do
 
   # Saved states are the running daemon's to read; with none running, the other checks say so.
   defp saved(dirs, req_options) do
-    with {:ok, %{url: url, secret: secret}} <-
-           CLIToken.read(Dirs.data_home(dirs, "cli_token")),
+    path = Dirs.data_home(dirs, "cli_token")
+
+    with {:ok, %{url: url, secret: secret}} <- CLIToken.read(path),
          {:ok, agents} <- listed(%Client{url: url, secret: secret, req_options: req_options}, %{}) do
-      agents |> Enum.filter(&(&1["status"] == "unreadable")) |> unreadable_checks()
+      agents
+      |> Enum.filter(&(&1["status"] == "unreadable"))
+      |> unreadable_checks()
     else
       _unreached -> []
     end
@@ -166,7 +175,9 @@ defmodule WardrikDaemon.Doctor do
   defp configured(dirs, env, _config) do
     path = Dirs.config(dirs, "config.yaml")
 
-    case Enum.reject(Config.sealable(dirs), &Map.has_key?(env, &1)) do
+    sealable = Config.sealable(dirs)
+
+    case Enum.reject(sealable, &Map.has_key?(env, &1)) do
       [] -> {:ok, "config", "#{path} reads"}
       names -> {:ok, "config", "#{path} reads; the vault must hold #{Enum.join(names, ", ")}"}
     end
@@ -263,7 +274,8 @@ defmodule WardrikDaemon.Doctor do
   end
 
   defp mcp(name, {:streamable_http, opts}) do
-    %URI{host: host, port: port} = URI.parse(Keyword.fetch!(opts, :url))
+    url = Keyword.fetch!(opts, :url)
+    %URI{host: host, port: port} = URI.parse(url)
 
     case reachable(host, port) do
       :ok -> {:ok, "mcp #{name}", "answers at #{host}:#{port}"}
@@ -272,7 +284,9 @@ defmodule WardrikDaemon.Doctor do
   end
 
   defp reachable(host, port) do
-    case :gen_tcp.connect(to_charlist(host), port, [], @connect_timeout) do
+    address = to_charlist(host)
+
+    case :gen_tcp.connect(address, port, [], @connect_timeout) do
       {:ok, socket} -> :gen_tcp.close(socket)
       {:error, reason} -> {:error, :inet.format_error(reason)}
     end
@@ -298,7 +312,9 @@ defmodule WardrikDaemon.Doctor do
         {:ok, "its tokens are checked as the daemon starts, since the vault holds them"}
 
       Code.ensure_loaded?(adapter) and function_exported?(adapter, :check, 1) ->
-        adapter.check(Keyword.put(opts, :req_options, req_options))
+        opts
+        |> Keyword.put(:req_options, req_options)
+        |> adapter.check()
 
       true ->
         {:ok, "its tokens aren't checked"}

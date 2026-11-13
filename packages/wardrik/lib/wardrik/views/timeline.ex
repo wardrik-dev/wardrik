@@ -49,7 +49,11 @@ defmodule Wardrik.Views.Timeline do
 
   @doc "Folds one more event into `timeline`."
   @spec apply(t(), Wardrik.Event.t() | map()) :: t()
-  def apply(timeline, event), do: Timeline.handle_event(Wardrik.Views.json(event), timeline)
+  def apply(timeline, event) do
+    event
+    |> Wardrik.Views.json()
+    |> Timeline.handle_event(timeline)
+  end
 
   @doc "Returns the items, oldest first."
   @spec items(t()) :: [map()]

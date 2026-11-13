@@ -119,11 +119,16 @@ defmodule Wardrik.Workspace.Writes do
        do: Tools.failed(:too_large, "#{Spec.shown(mount, path)} would be over 4 MiB")
 
   defp written(spec, mount, path, content, version, context, kept) do
+    labels =
+      (kept ++ Context.labels(context))
+      |> Enum.uniq()
+      |> Enum.sort()
+
     file = %File{
       content: content,
       by: context.agent_id,
       at: DateTime.utc_now(),
-      labels: Enum.sort(Enum.uniq(kept ++ Context.labels(context)))
+      labels: labels
     }
 
     with {:ok, version} <-

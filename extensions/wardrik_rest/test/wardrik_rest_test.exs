@@ -6,9 +6,11 @@ defmodule WardrikRestTest do
   alias WardrikRest.API
   alias WardrikRest.Discovery
 
-  @analytics {Discovery,
-              document:
-                "test/fixtures/analyticsdata-v1beta.json" |> File.read!() |> JSON.decode!()}
+  @document "test/fixtures/analyticsdata-v1beta.json"
+            |> File.read!()
+            |> JSON.decode!()
+
+  @analytics {Discovery, document: @document}
 
   defp load(opts) do
     defaults = [name: "ga4", base_url: "https://analyticsdata.googleapis.com"]
@@ -17,7 +19,8 @@ defmodule WardrikRestTest do
 
   defp tools(opts) do
     {:ok, api} = load(opts)
-    Map.new(WardrikRest.tools(nil, apis: [api]), &{&1.name, &1})
+    listed = WardrikRest.tools(nil, apis: [api])
+    Map.new(listed, &{&1.name, &1})
   end
 
   defp context(opts \\ []) do
@@ -43,8 +46,12 @@ defmodule WardrikRestTest do
           read_only: ["properties_runReport"]
         )
 
-      assert tools |> Map.keys() |> Enum.sort() ==
-               ["ga4__properties_getMetadata", "ga4__properties_runReport"]
+      names =
+        tools
+        |> Map.keys()
+        |> Enum.sort()
+
+      assert names == ["ga4__properties_getMetadata", "ga4__properties_runReport"]
 
       report = tools["ga4__properties_runReport"]
       assert report.annotations[:read_only] and report.annotations[:idempotent]

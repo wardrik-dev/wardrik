@@ -54,7 +54,12 @@ defmodule WardrikDaemon.Allowed do
   @doc "Checks that the daemon runs `owner`'s org."
   @spec kept(String.t(), map()) :: :ok | {:error, Error.t()}
   def kept("deployment", _orgs), do: :ok
-  def kept(owner, orgs), do: WardrikDaemon.Orgs.known(Owners.org(owner), orgs)
+
+  def kept(owner, orgs) do
+    owner
+    |> Owners.org()
+    |> WardrikDaemon.Orgs.known(orgs)
+  end
 
   defp described({:agents, owner}), do: "agents of #{owner}"
   defp described({:secret, owner}), do: "secrets of #{owner}"

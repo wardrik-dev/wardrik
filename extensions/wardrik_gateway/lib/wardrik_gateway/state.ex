@@ -140,5 +140,9 @@ defmodule WardrikGateway.State do
 
   @doc ~s(Returns the provider of a model spec, as `"anthropic"` for `"anthropic:claude-haiku-4-5"`.)
   @spec provider(String.t()) :: String.t()
-  def provider(model), do: model |> String.split(":", parts: 2) |> hd()
+  def provider(model) do
+    model
+    |> String.split(":", parts: 2)
+    |> hd()
+  end
 end

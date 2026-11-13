@@ -91,7 +91,10 @@ defmodule WardrikDaemon.Setup do
     if File.exists?(path) do
       {:kept, path}
     else
-      File.mkdir_p!(Path.dirname(path))
+      path
+      |> Path.dirname()
+      |> File.mkdir_p!()
+
       File.write!(path, text)
       {:wrote, path}
     end

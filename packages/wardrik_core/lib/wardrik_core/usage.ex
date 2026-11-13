@@ -10,11 +10,12 @@ defmodule WardrikCore.Usage do
   def measurements(%ReqLLM.Response{} = response, model, prices) do
     usage = ReqLLM.Response.usage(response) || %{}
 
-    %{
+    tokens = %{
       input_tokens: Map.get(usage, :input_tokens, 0),
       output_tokens: Map.get(usage, :output_tokens, 0)
     }
-    |> put_dollars(dollars(usage, model, prices))
+
+    put_dollars(tokens, dollars(usage, model, prices))
   end
 
   @spec price(LLMDB.Model.t() | String.t()) :: price() | nil

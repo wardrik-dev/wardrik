@@ -31,11 +31,17 @@ defmodule WardrikDaemon.Web.SignIn do
          {:ok, token} <- Tokens.verify(store, secret),
          do: Tokens.revoke(store, token.id)
 
-    conn |> configure_session(drop: true) |> page(:out)
+    conn
+    |> configure_session(drop: true)
+    |> page(:out)
   end
 
-  defp redirect(conn, to),
-    do: conn |> put_resp_header("location", to) |> send_resp(302, "") |> halt()
+  defp redirect(conn, to) do
+    conn
+    |> put_resp_header("location", to)
+    |> send_resp(302, "")
+    |> halt()
+  end
 
   defp page(conn, why) do
     note =

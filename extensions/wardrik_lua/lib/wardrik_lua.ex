@@ -39,7 +39,10 @@ defmodule WardrikLua do
 
   @impl WardrikCore.Capability
   def tools(_context, opts) do
-    limits = opts |> Keyword.get(:limits, []) |> Limits.new()
+    limits =
+      opts
+      |> Keyword.get(:limits, [])
+      |> Limits.new()
 
     [
       WardrikCore.Tool.new!(
@@ -52,7 +55,11 @@ defmodule WardrikLua do
             doc: "The Lua chunk to run, ending in `return <value>`"
           ]
         ],
-        run: fn %{code: code}, _context -> code |> Sandbox.run(limits) |> answer() end,
+        run: fn %{code: code}, _context ->
+          code
+          |> Sandbox.run(limits)
+          |> answer()
+        end,
         annotations: [read_only: true, idempotent: true]
       )
     ]

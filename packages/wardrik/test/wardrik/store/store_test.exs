@@ -6,8 +6,12 @@ defmodule Wardrik.StoreTest do
   end
 
   test "nests scopes", %{store: store} do
-    assert %Wardrik.Store{scope: "mode/wardrik_vault"} =
-             store |> Wardrik.Store.scope("mode") |> Wardrik.Store.scope("wardrik_vault")
+    nested =
+      store
+      |> Wardrik.Store.scope("mode")
+      |> Wardrik.Store.scope("wardrik_vault")
+
+    assert %Wardrik.Store{scope: "mode/wardrik_vault"} = nested
   end
 
   test "refuses a scope name that could be mistaken for a key", %{store: store} do

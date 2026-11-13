@@ -16,7 +16,10 @@ defmodule WardrikDaemon.CLIToken do
         expires: DateTime.add(DateTime.utc_now(), 365, :day)
       )
 
-    File.mkdir_p!(Path.dirname(path))
+    path
+    |> Path.dirname()
+    |> File.mkdir_p!()
+
     File.write!(path, JSON.encode!(%{id: token.id, secret: secret, url: url}))
     File.chmod!(path, 0o600)
   end

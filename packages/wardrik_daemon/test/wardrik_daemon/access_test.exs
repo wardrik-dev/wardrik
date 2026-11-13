@@ -151,7 +151,7 @@ defmodule WardrikDaemon.AccessTest do
              Client.run(
                admin,
                "agents.create",
-               Map.merge(made, %{shares | "name" => "far"}) |> Map.put("owner", "growth")
+               Map.put(Map.merge(made, %{shares | "name" => "far"}), "owner", "growth")
              )
 
     assert message =~ "workspace.shared.team: names no agent of growth"

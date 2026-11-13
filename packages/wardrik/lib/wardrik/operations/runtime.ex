@@ -16,7 +16,11 @@ defmodule Wardrik.Operations.Runtime do
   @spec deployment(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def deployment(%Wardrik.Scope{wardrik: wardrik}, input) do
     agents = Wardrik.agents(wardrik)
-    running = agents |> WardrikCore.running() |> Enum.group_by(fn {_key, pid} -> node(pid) end)
+
+    running =
+      agents
+      |> WardrikCore.running()
+      |> Enum.group_by(fn {_key, pid} -> node(pid) end)
 
     nodes =
       Enum.uniq(
@@ -51,7 +55,9 @@ defmodule Wardrik.Operations.Runtime do
     key = Running.key(input)
 
     with {:ok, pid} <- Snapshot.running(wardrik, key) do
-      case :erpc.call(node(pid), __MODULE__, :processes, [[{key, pid}]], @timeout) do
+      node = node(pid)
+
+      case :erpc.call(node, __MODULE__, :processes, [[{key, pid}]], @timeout) do
         [measured] -> {:ok, measured}
         [] -> {:error, Wardrik.Error.new(:not_found, "#{Running.describe(key)} sleeps.")}
       end
@@ -107,7 +113,7 @@ defmodule Wardrik.Operations.Runtime do
       |> Enum.uniq_by(fn {id, _size, _refs} -> id end)
       |> Enum.sum_by(fn {_id, size, _refs} -> size end)
 
-    %{
+    stats = %{
       "agent" => agent,
       "node" => to_string(node()),
       "memory_bytes" => Enum.sum_by(infos, & &1[:memory]),
@@ -116,7 +122,8 @@ defmodule Wardrik.Operations.Runtime do
       "message_queue" => root[:message_queue_len],
       "reductions" => Enum.sum_by(infos, & &1[:reductions])
     }
-    |> put_present("conversation", conversation)
+
+    put_present(stats, "conversation", conversation)
   end
 
   defp put_present(map, _key, nil), do: map
@@ -169,9 +176,10 @@ defmodule Wardrik.Operations.Runtime do
     second = :erlang.statistics(:scheduler_wall_time)
     normal = :erlang.system_info(:schedulers)
 
+    sorted = Enum.sort(first)
+
     {active, total} =
-      for {{id, active1, total1}, {id, active2, total2}} <-
-            Enum.zip(Enum.sort(first), Enum.sort(second)),
+      for {{id, active1, total1}, {id, active2, total2}} <- Enum.zip(sorted, Enum.sort(second)),
           id <= normal,
           reduce: {0, 0} do
         {active, total} -> {active + active2 - active1, total + total2 - total1}
@@ -223,12 +231,13 @@ defmodule Wardrik.Operations.Runtime do
     end)
     |> Enum.group_by(fn {module, _memory} -> module end, fn {_module, memory} -> memory end)
     |> Enum.map(fn {module, memories} ->
-      %{
+      stats = %{
         "module" => inspect(module),
         "processes" => length(memories),
         "memory_bytes" => Enum.sum(memories)
       }
-      |> put_present("application", owners[module] && Atom.to_string(owners[module]))
+
+      put_present(stats, "application", owners[module] && Atom.to_string(owners[module]))
     end)
     |> Enum.sort_by(&{-&1["processes"], &1["module"]})
   end

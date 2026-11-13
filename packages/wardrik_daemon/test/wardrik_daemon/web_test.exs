@@ -5,9 +5,9 @@ defmodule WardrikDaemon.WebTest do
   import Phoenix.LiveViewTest
   import WardrikDaemon.Test
 
-  @endpoint WardrikDaemon.Web.Endpoint
-
   alias WardrikDaemon.Client
+
+  @endpoint WardrikDaemon.Web.Endpoint
 
   defp daemon(context, web) do
     context = dirs(context)
@@ -60,7 +60,7 @@ defmodule WardrikDaemon.WebTest do
     assert signed_in.status == 302
     assert Req.Response.get_header(signed_in, "location") == ["/web"]
     [cookie] = Req.Response.get_header(signed_in, "set-cookie")
-    cookie = cookie |> String.split(";") |> hd()
+    cookie = hd(String.split(cookie, ";"))
 
     assert fetch(context.url <> "/web", cookie).body =~
              "All agents and conversations you can access."
@@ -125,12 +125,10 @@ defmodule WardrikDaemon.WebTest do
     assert render_submit(tokens, "create", %{"input" => input}) =~ "laptop"
     render_click(tokens, "dismiss", %{})
 
+    issued = WardrikDaemon.Tokens.list(context.daemon_store)
+
     [%{"id" => id}] =
-      for token <-
-            Enum.map(
-              WardrikDaemon.Tokens.list(context.daemon_store),
-              &WardrikDaemon.Tokens.json/1
-            ),
+      for token <- Enum.map(issued, &WardrikDaemon.Tokens.json/1),
           token["name"] == "laptop",
           do: token
 

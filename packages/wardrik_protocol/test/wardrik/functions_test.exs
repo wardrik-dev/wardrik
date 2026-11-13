@@ -6,7 +6,8 @@ defmodule Wardrik.FunctionsTest do
 
   test "does every operation with a function taking its path parameters" do
     for operation <- WardrikProtocol.operations(), not named?(operation) do
-      module = Functions.module(Functions.prefix(operation))
+      prefix = Functions.prefix(operation)
+      module = Functions.module(prefix)
       # An operation with input of its own takes it after its path parameters, optionally.
       input = if Types.fields(operation) == [], do: 0, else: 1
       arity = 1 + length(Functions.path(operation)) + input
@@ -76,7 +77,9 @@ defmodule Wardrik.FunctionsTest do
 
   test "names two or more path parameters in the input" do
     for operation <- WardrikProtocol.operations(), named?(operation) do
-      module = Code.ensure_loaded!(Functions.module(Functions.prefix(operation)))
+      prefix = Functions.prefix(operation)
+      name = Functions.module(prefix)
+      module = Code.ensure_loaded!(name)
 
       assert function_exported?(module, Functions.name(operation), 2), operation.id
       refute function_exported?(module, Functions.name(operation), 3), operation.id
@@ -100,7 +103,8 @@ defmodule Wardrik.FunctionsTest do
 
   test "streams every operation that can be streamed, and nothing else" do
     for operation <- WardrikProtocol.operations() do
-      module = Functions.module(Functions.prefix(operation))
+      prefix = Functions.prefix(operation)
+      module = Functions.module(prefix)
       arity = 2 + length(Functions.path(operation))
       name = :"stream_#{Functions.name(operation)}"
       Code.ensure_loaded!(module)
@@ -110,14 +114,19 @@ defmodule Wardrik.FunctionsTest do
   end
 
   test "defines the same functions again from the protocol" do
-    for prefix <- Enum.uniq(Enum.map(WardrikProtocol.operations(), &Functions.prefix/1)) do
+    operations = WardrikProtocol.operations()
+    prefixes = Enum.map(operations, &Functions.prefix/1)
+
+    for prefix <- Enum.uniq(prefixes) do
       module = Module.concat(__MODULE__, Macro.camelize(prefix))
       using = quote(do: use(Wardrik.Operations.Functions, prefix: unquote(prefix)))
 
       Module.create(module, using, Macro.Env.location(__ENV__))
 
-      generated = MapSet.new(module.__info__(:functions))
-      assert MapSet.subset?(generated, MapSet.new(Functions.module(prefix).__info__(:functions)))
+      functions = module.__info__(:functions)
+      generated = MapSet.new(functions)
+      defined = Functions.module(prefix).__info__(:functions)
+      assert MapSet.subset?(generated, MapSet.new(defined))
       assert MapSet.size(generated) > 0
     end
   end
@@ -147,23 +156,25 @@ defmodule Wardrik.FunctionsTest do
             into: MapSet.new(),
             do: hd(path)
 
-      assert read == MapSet.new(Map.keys(properties)), inspect(type)
+      keys = Map.keys(properties)
+      assert read == MapSet.new(keys), inspect(type)
     end
   end
 
   defp wardriks?(%DateTime{}), do: true
   defp wardriks?(%Date{}), do: true
 
-  defp wardriks?(%module{} = value),
-    do:
-      String.starts_with?(Atom.to_string(module), "Elixir.Wardrik.") and
-        wardriks?(Map.from_struct(value))
+  defp wardriks?(%module{} = value) do
+    name = Atom.to_string(module)
+    fields = Map.from_struct(value)
+    String.starts_with?(name, "Elixir.Wardrik.") and wardriks?(fields)
+  end
 
   defp wardriks?(value) when is_map(value),
     do: Enum.all?(value, fn {_key, item} -> wardriks?(item) end)
 
   defp wardriks?(value) when is_list(value), do: Enum.all?(value, &wardriks?/1)
-  defp wardriks?(value) when is_tuple(value), do: value |> Tuple.to_list() |> wardriks?()
+  defp wardriks?(value) when is_tuple(value), do: wardriks?(Tuple.to_list(value))
   defp wardriks?(_value), do: true
 
   test "writes each type back as the protocol's JSON it was read from" do

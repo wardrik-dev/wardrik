@@ -57,7 +57,11 @@ defmodule WardrikDaemon.SecretsTest do
 
   defp list(client, owner), do: Client.run(client, "secrets.list", %{"owner" => owner})
 
-  defp vault(context), do: context.wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()
+  defp vault(context) do
+    context.wardrik
+    |> Wardrik.Instance.fetch!()
+    |> Wardrik.vault()
+  end
 
   test "a token bound in one org reaches no other org's secrets, nor the deployment's", context do
     admin = client(context, "user:admin")
@@ -126,10 +130,10 @@ defmodule WardrikDaemon.SecretsTest do
     assert key.("ANTHROPIC_API_KEY") == {:ok, "sk-ANTHROPIC_API_KEY"}
     assert key.("MCP_TOKEN") == {:error, :not_found}
 
+    vault = vault(context)
+
     assert {:ok, "sk-MCP_TOKEN"} =
-             Wardrik.Vault.fetch(vault(context), %Principal{id: "growth"}, "MCP_TOKEN",
-               kind: :header
-             )
+             Wardrik.Vault.fetch(vault, %Principal{id: "growth"}, "MCP_TOKEN", kind: :header)
   end
 
   test "reconnects the owner's servers whose headers read a secret it seals or removes",

@@ -12,16 +12,17 @@ defmodule WardrikDaemon.Rest do
   See `WardrikDaemon.Config.Rest` and `WardrikRest`.
   """
 
-  use GenServer
-
   @behaviour WardrikCore.Capability
 
-  require Logger
+  use GenServer
 
   alias WardrikDaemon.Config
   alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Config.Rest, as: Entry
   alias WardrikDaemon.Owners
+
+  require Logger
+
   @readers %{discovery: WardrikRest.Discovery, openapi: WardrikRest.OpenAPI}
 
   @retry :timer.minutes(1)

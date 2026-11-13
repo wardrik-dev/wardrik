@@ -14,11 +14,19 @@ defmodule Wardrik.MCP.Servers do
 
   @doc "Adds the server `name`. With a store, every node reaches it."
   @spec add(atom(), String.t(), keyword()) :: :ok | {:error, String.t()}
-  def add(mcp, name, opts), do: GenServer.call(name(mcp), {:add, name, opts})
+  def add(mcp, name, opts) do
+    mcp
+    |> name()
+    |> GenServer.call({:add, name, opts})
+  end
 
   @doc "Removes the server `name`. Only servers added at runtime can be removed."
   @spec remove(atom(), String.t()) :: :ok | {:error, :not_found | String.t()}
-  def remove(mcp, name), do: GenServer.call(name(mcp), {:remove, name})
+  def remove(mcp, name) do
+    mcp
+    |> name()
+    |> GenServer.call({:remove, name})
+  end
 
   @doc "Returns every server, by name. Raises `ArgumentError` if `mcp` isn't started."
   @spec all(atom()) :: %{String.t() => Server.t()}
@@ -35,24 +43,36 @@ defmodule Wardrik.MCP.Servers do
 
   @doc "Stores the tools listed by a server reached with a credential."
   @spec listed(atom(), String.t(), [map()]) :: :ok
-  def listed(mcp, name, definitions), do: GenServer.call(name(mcp), {:listed, name, definitions})
+  def listed(mcp, name, definitions) do
+    mcp
+    |> name()
+    |> GenServer.call({:listed, name, definitions})
+  end
 
   @doc "Reconnects each server of `:owner` whose headers name the `:secret`."
   @spec reconnect(atom(), owner: String.t() | nil, secret: String.t()) :: :ok
   def reconnect(mcp, args) do
     owner = Keyword.fetch!(args, :owner)
     secret = Keyword.fetch!(args, :secret)
-    GenServer.call(name(mcp), {:reconnect, owner, secret})
+
+    mcp
+    |> name()
+    |> GenServer.call({:reconnect, owner, secret})
   end
 
   @doc "Re-reads the servers in the store now."
   @spec reconcile(atom()) :: :ok
-  def reconcile(mcp), do: GenServer.call(name(mcp), :reconcile)
+  def reconcile(mcp) do
+    mcp
+    |> name()
+    |> GenServer.call(:reconcile)
+  end
 
   @impl GenServer
   def init(settings) do
-    :ets.new(name(settings.mcp), [:named_table, :protected, read_concurrency: true])
-    true = :ets.insert(name(settings.mcp), {:store, settings.store})
+    table = name(settings.mcp)
+    :ets.new(table, [:named_table, :protected, read_concurrency: true])
+    true = :ets.insert(table, {:store, settings.store})
     static = MapSet.new(settings.servers, fn {name, _opts} -> to_string(name) end)
     {:ok, %{settings: settings, static: static, servers: %{}}, {:continue, :start}}
   end
@@ -109,7 +129,8 @@ defmodule Wardrik.MCP.Servers do
     if settings.store,
       do: {:ok, _vsn} = Wardrik.Store.put(settings.store, "tools/" <> name, definitions)
 
-    true = :ets.insert(name(settings.mcp), {{:listed, name}, definitions})
+    table = name(settings.mcp)
+    true = :ets.insert(table, {{:listed, name}, definitions})
     {:reply, :ok, state}
   end
 
@@ -140,7 +161,9 @@ defmodule Wardrik.MCP.Servers do
   end
 
   defp read(mcp, key) do
-    case :ets.lookup(table(mcp), key) do
+    table = table(mcp)
+
+    case :ets.lookup(table, key) do
       [{^key, value}] -> value
       [] -> nil
     end
@@ -157,7 +180,9 @@ defmodule Wardrik.MCP.Servers do
   end
 
   defp built(settings, name, opts) do
-    if Enum.any?(Keyword.values(opts), &is_function/1),
+    values = Keyword.values(opts)
+
+    if Enum.any?(values, &is_function/1),
       do: {:error, "a server added as the app runs takes its options as data"},
       else: {:ok, added(settings, name, opts)}
   rescue
@@ -189,15 +214,15 @@ defmodule Wardrik.MCP.Servers do
     server = %{server | mcp: settings.mcp, secret: settings.secret}
 
     if server.credential_name == nil, do: connect(settings.mcp, server)
-    true = :ets.insert(name(settings.mcp), {{:server, server.name}, server})
+    table = name(settings.mcp)
+    true = :ets.insert(table, {{:server, server.name}, server})
     %{state | servers: Map.put(state.servers, server.name, server)}
   end
 
   defp connect(mcp, server) do
-    case DynamicSupervisor.start_child(
-           Connection.supervisor(mcp),
-           {Connection, {server, nil, nil}}
-         ) do
+    supervisor = Connection.supervisor(mcp)
+
+    case DynamicSupervisor.start_child(supervisor, {Connection, {server, nil, nil}}) do
       {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
     end
@@ -205,8 +230,9 @@ defmodule Wardrik.MCP.Servers do
 
   defp stopped(state, name) do
     :ok = Connection.close(state.settings.mcp, name)
-    true = :ets.delete(name(state.settings.mcp), {:server, name})
-    true = :ets.delete(name(state.settings.mcp), {:listed, name})
+    table = name(state.settings.mcp)
+    true = :ets.delete(table, {:server, name})
+    true = :ets.delete(table, {:listed, name})
     %{state | servers: Map.delete(state.servers, name)}
   end
 
@@ -214,10 +240,9 @@ defmodule Wardrik.MCP.Servers do
 
   defp reconciled(%{settings: settings} = state) do
     kept =
-      Map.new(
-        Wardrik.Store.keys(settings.store, "servers/"),
-        &{String.replace_prefix(&1, "servers/", ""), &1}
-      )
+      settings.store
+      |> Wardrik.Store.keys("servers/")
+      |> Map.new(&{String.replace_prefix(&1, "servers/", ""), &1})
 
     state =
       Enum.reduce(kept, state, fn {name, key}, state ->

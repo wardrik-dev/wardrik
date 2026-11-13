@@ -21,8 +21,10 @@ defmodule Wardrik.Triggers.Agents do
     data = %{"trigger" => %{"name" => trigger}, "status" => Atom.to_string(status)}
     if fired.last, do: Wardrik.Operations.Triggers.ended(wardrik, agent_id, trigger)
 
+    events = Wardrik.events(wardrik)
+
     Wardrik.EventLog.append(
-      Wardrik.events(wardrik),
+      events,
       {agent_id, nil},
       {"trigger.fired", "triggers/" <> trigger, data}
     )
@@ -35,8 +37,8 @@ defmodule Wardrik.Triggers.Agents do
   def resolve_secret(%Secret{agent: agent_id, name: name}, wardrik) do
     with {:ok, %Wardrik.Resolved{principal: %WardrikCore.Principal{} = principal}} <-
            Wardrik.Resolver.defined(wardrik, agent_id),
-         {:ok, secret} <-
-           Wardrik.Vault.fetch(Wardrik.vault(wardrik), principal, name, kind: :signing_secret) do
+         vault = Wardrik.vault(wardrik),
+         {:ok, secret} <- Wardrik.Vault.fetch(vault, principal, name, kind: :signing_secret) do
       {:ok, secret}
     else
       _none -> :error
@@ -64,9 +66,11 @@ defmodule Wardrik.Triggers.Agents do
   end
 
   defp cancelled(%Ask{agent: agent_id, trigger: trigger}, wardrik) do
+    events = Wardrik.events(wardrik)
+
     :ok =
       Wardrik.EventLog.record(
-        Wardrik.events(wardrik),
+        events,
         {"agent.cancelled", Wardrik.EventLog.CloudEvent.subject(agent_id),
          %{"agent" => %{"id" => agent_id}, "trigger" => trigger}}
       )

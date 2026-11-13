@@ -7,7 +7,11 @@ defmodule WardrikGateway.StateTest do
   @haiku "anthropic:claude-haiku-4-5-20251001"
   @mini "openai:gpt-4o-mini"
 
-  defp state(opts), do: State.new(Settings.new!(opts))
+  defp state(opts) do
+    opts
+    |> Settings.new!()
+    |> State.new()
+  end
 
   defp failed(state, model, times),
     do:
@@ -16,8 +20,11 @@ defmodule WardrikGateway.StateTest do
       end)
 
   test "plans a model's fallbacks after it" do
-    assert {[@haiku, @mini], 600_000} = State.plan(state(fallbacks: %{@haiku => [@mini]}), @haiku)
-    assert {[@mini], 600_000} = State.plan(state([]), @mini)
+    state = state(fallbacks: %{@haiku => [@mini]})
+    assert {[@haiku, @mini], 600_000} = State.plan(state, @haiku)
+
+    state = state([])
+    assert {[@mini], 600_000} = State.plan(state, @mini)
   end
 
   test "opens a model's breaker after its failures, and skips to the next model" do
@@ -71,7 +78,8 @@ defmodule WardrikGateway.StateTest do
   end
 
   test "holds a provider that answered 429 for as long as it asked" do
-    {[], state} = State.report(state([]), @haiku, {:limited, 5_000}, 0)
+    state = state([])
+    {[], state} = State.report(state, @haiku, {:limited, 5_000}, 0)
     assert {{:wait, 5_000}, _state} = State.admit(state, [@haiku], 0, 0)
     assert {{:go, @haiku, 5_000}, _state} = State.admit(state, [@haiku], 5_000, 0)
   end

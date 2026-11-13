@@ -112,8 +112,11 @@ defmodule Wardrik.OAuth.GitHub do
   defp answer(conn, "POST", "/login/oauth/access_token", _device, polls, _test),
     do: Req.Test.json(conn, Agent.get_and_update(polls, &next_poll/1))
 
-  defp answer(conn, _method, _path, _form, _polls, _test),
-    do: conn |> Plug.Conn.put_status(404) |> Req.Test.json(%{})
+  defp answer(conn, _method, _path, _form, _polls, _test) do
+    conn
+    |> Plug.Conn.put_status(404)
+    |> Req.Test.json(%{})
+  end
 
   defp next_poll([next | rest]), do: {next, rest}
   defp next_poll([]), do: {%{"error" => "authorization_pending"}, []}

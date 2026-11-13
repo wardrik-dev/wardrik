@@ -36,8 +36,11 @@ defmodule Wardrik.OAuth.Resolver do
 
   @doc "Returns the provider the request's principal signs in with by its name, or why there's none."
   @spec resolve(map(), Request.t()) :: {:ok, Provider.t()} | {:error, term()}
-  def resolve(%{resolver: {module, opts}}, %Request{name: name} = request),
-    do: request |> module.provider(opts) |> read(name)
+  def resolve(%{resolver: {module, opts}}, %Request{name: name} = request) do
+    request
+    |> module.provider(opts)
+    |> read(name)
+  end
 
   defp read({:ok, %Provider{name: name, key: key, client_secret: secret} = provider}, name)
        when is_binary(key) and key != "" and (is_binary(secret) or is_nil(secret)),

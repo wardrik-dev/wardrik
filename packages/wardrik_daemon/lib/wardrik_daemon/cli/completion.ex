@@ -17,14 +17,26 @@ defmodule WardrikDaemon.CLI.Completion do
   def script(_shell, _commands), do: :error
 
   defp bash(commands) do
-    cases =
-      Enum.map(sorted(commands), fn command ->
-        patterns = Enum.map_join(names(command), "|", &~s("#{&1}"|"#{&1} "*))
+    command_cases =
+      commands
+      |> sorted()
+      |> Enum.map(fn command ->
+        patterns =
+          command
+          |> names()
+          |> Enum.map_join("|", &~s("#{&1}"|"#{&1} "*))
+
         ~s(    #{patterns}\) words="#{Enum.join(flags(command), " ")}" ;;)
-      end) ++
-        Enum.map(prefixes(commands), fn prefix ->
-          ~s(    "#{prefix}"\) words="#{Enum.join(next(commands, prefix), " ")}" ;;)
-        end)
+      end)
+
+    prefix_cases =
+      commands
+      |> prefixes()
+      |> Enum.map(fn prefix ->
+        ~s(    "#{prefix}"\) words="#{Enum.join(next(commands, prefix), " ")}" ;;)
+      end)
+
+    cases = command_cases ++ prefix_cases
 
     """
     _wardrik() {
@@ -93,7 +105,12 @@ defmodule WardrikDaemon.CLI.Completion do
     commands
     |> Enum.flat_map(fn command ->
       words = Command.words(command)
-      for count <- 0..(length(words) - 1), do: Enum.join(Enum.take(words, count), " ")
+
+      for count <- 0..(length(words) - 1) do
+        words
+        |> Enum.take(count)
+        |> Enum.join(" ")
+      end
     end)
     |> Enum.uniq()
   end
@@ -104,7 +121,8 @@ defmodule WardrikDaemon.CLI.Completion do
 
     words =
       for command <- commands,
-          {^taken, [word | _rest]} <- [Enum.split(Command.words(command), depth)],
+          command_words = Command.words(command),
+          {^taken, [word | _rest]} <- [Enum.split(command_words, depth)],
           do: word
 
     shortcuts =

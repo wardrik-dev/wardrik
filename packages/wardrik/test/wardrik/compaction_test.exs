@@ -40,11 +40,16 @@ defmodule Wardrik.CompactionTest do
   defp run(context, opts \\ @opts), do: Compaction.call(context, &{:ok, &1}, opts)
 
   defp history do
+    a = String.duplicate("a", 100)
+    b = String.duplicate("b", 100)
+    c = String.duplicate("c", 100)
+    d = String.duplicate("d", 100)
+
     [
-      ReqLLM.Context.user(String.duplicate("a", 100), %{labels: ["outside"]}),
-      ReqLLM.Context.assistant(String.duplicate("b", 100)),
-      ReqLLM.Context.user(String.duplicate("c", 100)),
-      ReqLLM.Context.assistant(String.duplicate("d", 100)),
+      ReqLLM.Context.user(a, %{labels: ["outside"]}),
+      ReqLLM.Context.assistant(b),
+      ReqLLM.Context.user(c),
+      ReqLLM.Context.assistant(d),
       ReqLLM.Context.user("What now?")
     ]
   end
@@ -80,7 +85,8 @@ defmodule Wardrik.CompactionTest do
   test "keeps the latest turn whole, however long it is" do
     expect(ReqLLM, :stream_text, fn _model, _messages, _opts -> {:ok, answer("Earlier.")} end)
 
-    messages = history() ++ [ReqLLM.Context.assistant(String.duplicate("e", 400))]
+    long = String.duplicate("e", 400)
+    messages = history() ++ [ReqLLM.Context.assistant(long)]
 
     assert {:ok, %{messages: [_summary, %{role: :user}, %{role: :assistant}]}} =
              run(turn(messages))
@@ -91,7 +97,8 @@ defmodule Wardrik.CompactionTest do
     short = [ReqLLM.Context.user("Hi.")]
     assert {:ok, %{messages: ^short}} = run(turn(short))
 
-    one_turn = [ReqLLM.Context.user(String.duplicate("a", 400))]
+    long = String.duplicate("a", 400)
+    one_turn = [ReqLLM.Context.user(long)]
     assert {:ok, %{messages: ^one_turn}} = run(turn(one_turn))
 
     resumed = turn(history(), resume: %WardrikCore.Resume{reason: :spend?, input: :approve})
@@ -113,7 +120,8 @@ defmodule Wardrik.CompactionTest do
   end
 
   test "is on unless a definition turns it off", context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(

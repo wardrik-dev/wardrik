@@ -17,12 +17,15 @@ defmodule WardrikDaemon.Console.Table do
   @doc "Returns a table. Short rows are padded with empty cells. Missing alignments are `:left`."
   @spec new([Owl.Data.t()], [[Owl.Data.t()]], [alignment()]) :: t()
   def new(header, rows, alignments \\ []) when is_list(header) and is_list(rows) do
-    columns = [header | rows] |> Enum.map(&length/1) |> Enum.max()
+    columns =
+      [header | rows]
+      |> Enum.map(&length/1)
+      |> Enum.max()
 
     %__MODULE__{
       header: square(header, columns),
       rows: Enum.map(rows, &square(&1, columns)),
-      alignments: alignments |> Enum.take(columns) |> square(columns, :left)
+      alignments: square(Enum.take(alignments, columns), columns, :left)
     }
   end
 
@@ -43,17 +46,24 @@ defmodule WardrikDaemon.Console.Table do
   @doc "Returns the table as boxed lines no wider than `width`. Cells wrap inside their column."
   @spec lines(t(), pos_integer()) :: [Owl.Data.t()]
   def lines(%__MODULE__{rows: []} = table, _width) do
-    [[indent(table), Owl.Data.tag(Enum.intersperse(table.header, " │ "), :bright)]]
+    header = Enum.intersperse(table.header, " │ ")
+    [[indent(table), Owl.Data.tag(header, :bright)]]
   end
 
   def lines(%__MODULE__{} = table, width) when is_integer(width) and width > 0 do
     columns = Enum.to_list(0..(length(table.header) - 1))
-    header = columns |> Enum.zip(table.header) |> Map.new()
+    header = keyed(columns, table.header)
+
+    heading = fn column ->
+      header
+      |> Map.fetch!(column)
+      |> Owl.Data.tag(:bright)
+    end
 
     table.rows
-    |> Enum.map(&(columns |> Enum.zip(&1) |> Map.new()))
+    |> Enum.map(&keyed(columns, &1))
     |> Owl.Table.new(
-      render_cell: [header: &Owl.Data.tag(Map.fetch!(header, &1), :bright), body: & &1],
+      render_cell: [header: heading, body: & &1],
       border_style: :solid_rounded,
       padding_x: 1,
       word_wrap: :normal,
@@ -61,6 +71,12 @@ defmodule WardrikDaemon.Console.Table do
     )
     |> Owl.Data.lines()
     |> Enum.map(&[indent(table), &1])
+  end
+
+  defp keyed(columns, cells) do
+    columns
+    |> Enum.zip(cells)
+    |> Map.new()
   end
 
   defp indent(%__MODULE__{indent: indent}), do: String.duplicate(" ", indent)

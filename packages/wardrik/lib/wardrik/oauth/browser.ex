@@ -80,8 +80,13 @@ defmodule Wardrik.OAuth.Browser do
          do: Token.from_response(status, body, metadata.token_endpoint)
   end
 
-  defp challenge(verifier),
-    do: :sha256 |> :crypto.hash(verifier) |> Base.url_encode64(padding: false)
+  defp challenge(verifier) do
+    digest = :crypto.hash(:sha256, verifier)
+    Base.url_encode64(digest, padding: false)
+  end
 
-  defp random, do: 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+  defp random do
+    bytes = :crypto.strong_rand_bytes(32)
+    Base.url_encode64(bytes, padding: false)
+  end
 end

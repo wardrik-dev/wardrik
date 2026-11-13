@@ -51,7 +51,10 @@ defmodule WardrikDaemon.Config.Channels do
 
     with :ok <- named(name, path),
          {:ok, adapter} <- typed(type, path),
-         {:ok, opts} <- Options.validate(Map.delete(channel, "type"), schema(adapter), path) do
+         {:ok, opts} <-
+           channel
+           |> Map.delete("type")
+           |> Options.validate(schema(adapter), path) do
       {members, opts} = Keyword.split(opts, Keyword.keys(@members))
 
       identities =

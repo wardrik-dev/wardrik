@@ -13,7 +13,8 @@ defmodule Wardrik.OperationsTest do
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{scope: owner(wardrik)}
   end
 
@@ -71,15 +72,18 @@ defmodule Wardrik.OperationsTest do
       %{"events" => all} = run!(scope, "agent.events", %{"agent" => "acme/triage"})
       newest = %{"agent" => "acme/triage", "order" => "newest", "limit" => 3}
 
-      pages =
-        Stream.unfold(run!(scope, "agent.events", newest), fn
+      first_page = run!(scope, "agent.events", newest)
+
+      paged =
+        Stream.unfold(first_page, fn
           %{"events" => []} ->
             nil
 
           %{"events" => events, "next" => before} ->
             {events, run!(scope, "agent.events", Map.put(newest, "before", before))}
         end)
-        |> Enum.to_list()
+
+      pages = Enum.to_list(paged)
 
       assert List.flatten(pages) == Enum.reverse(all)
       assert Enum.all?(pages, &(Enum.count_until(&1, 4) <= 3))
@@ -303,9 +307,12 @@ defmodule Wardrik.OperationsTest do
       both = %{"agents" => ["acme/triage", "globex/triage"]}
       %{"events" => events, "next" => next} = run!(reader, "events.list", both)
 
-      assert events |> Enum.map(&Visible.agent_id/1) |> Enum.uniq() == [
-               "acme/triage"
-             ]
+      agents =
+        events
+        |> Enum.map(&Visible.agent_id/1)
+        |> Enum.uniq()
+
+      assert agents == ["acme/triage"]
 
       assert {:ok, %{{"acme/triage", nil} => _sequence} = cursor} = Cursor.decode(next)
       assert map_size(cursor) == 1
@@ -319,8 +326,12 @@ defmodule Wardrik.OperationsTest do
           "types" => ["wardrik.run.completed"]
         })
 
-      assert completed |> Enum.map(&Visible.agent_id/1) |> Enum.sort() ==
-               ["acme/@jon/books", "acme/triage"]
+      agents =
+        completed
+        |> Enum.map(&Visible.agent_id/1)
+        |> Enum.sort()
+
+      assert agents == ["acme/@jon/books", "acme/triage"]
     end
 
     test "follows only their events", %{scope: scope, reader: reader} do
@@ -384,7 +395,12 @@ defmodule Wardrik.OperationsTest do
             route,
             do: operation
 
-      assert routed |> Enum.map(& &1.id) |> Enum.sort() ==
+      ids =
+        routed
+        |> Enum.map(& &1.id)
+        |> Enum.sort()
+
+      assert ids ==
                ~w(agent.approve agent.ask agent.authorization agent.calls agent.cancel agent.clear
                   agent.decide agent.deny agent.events agent.kill agent.move agent.read agent.runs
                   agent.stop agent.timeline)
@@ -509,7 +525,8 @@ defmodule Wardrik.OperationsTest do
 
   test "reads the audit", %{wardrik: wardrik, scope: scope} do
     change = {"agent.forgotten", "agents/acme%2Ftriage", %{"agent" => %{"id" => "acme/triage"}}}
-    :ok = Wardrik.EventLog.record(Wardrik.events(wardrik), change, actor: maria())
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.record(event_log, change, actor: maria())
 
     assert %{"events" => [%{"type" => "wardrik.agent.forgotten"}], "next" => next} =
              run!(scope, "audit.list", %{"limit" => 10})

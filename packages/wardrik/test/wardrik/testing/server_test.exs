@@ -15,7 +15,8 @@ defmodule Wardrik.Testing.ServerTest do
     )
 
     :ok = Server.start(name, authorize: &deciders/1, offered: [{"acme/triage", ["chat"]}])
-    :ok = Wardrik.EventLog.subscribe(Server.events(name), :all)
+    event_log = Server.events(name)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
 
     %{name: name, scope: Scope.new(Server, wardrik: name, principal: "acme/@ana")}
   end

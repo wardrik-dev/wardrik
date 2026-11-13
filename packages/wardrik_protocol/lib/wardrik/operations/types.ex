@@ -84,7 +84,13 @@ defmodule Wardrik.Operations.Types do
   @doc "Converts an Elixir caller's `input` to the operation's JSON input."
   @spec encode(String.t(), term()) :: map()
   def encode("agent.define", %Definition{} = definition), do: Definition.to_json(definition)
-  def encode("agent.define", fields), do: fields |> Definition.new!() |> Definition.to_json()
+
+  def encode("agent.define", fields) do
+    fields
+    |> Definition.new!()
+    |> Definition.to_json()
+  end
+
   def encode("agent.ask", text) when is_binary(text), do: %{"content" => text}
 
   def encode("agent.decide", input) when is_list(input) do
@@ -120,7 +126,11 @@ defmodule Wardrik.Operations.Types do
   def named(id, input, keys) do
     input = interrupted(input)
     path = Map.new(keys, &{Atom.to_string(&1), path(Keyword.fetch!(input, &1))})
-    {held, rest} = Keyword.split(Keyword.drop(input, keys), held(id))
+
+    {held, rest} =
+      input
+      |> Keyword.drop(keys)
+      |> Keyword.split(held(id))
 
     id
     |> encode(rest)
@@ -154,7 +164,7 @@ defmodule Wardrik.Operations.Types do
   """
   @spec checked(String.t(), map()) :: map()
   def checked(id, input) do
-    case id |> WardrikProtocol.operation() |> fields() do
+    case fields(WardrikProtocol.operation(id)) do
       :any ->
         input
 
@@ -201,7 +211,8 @@ defmodule Wardrik.Operations.Types do
 
   def decode(id, output) when id in @listed do
     {key, type, read} = Map.fetch!(@lists, id)
-    {:ok, Enum.map(Map.fetch!(output, key), &apply(type, read, [&1]))}
+    items = Map.fetch!(output, key)
+    {:ok, Enum.map(items, &apply(type, read, [&1]))}
   end
 
   def decode(id, %{"agent" => agent}) when id in ~w(agent.spawn agent.stop agent.move),

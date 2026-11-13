@@ -40,7 +40,11 @@ defmodule WardrikDaemon.Server do
     env = EnvFile.load(dirs.env_file, given)
     System.put_env(env)
 
-    boot = WardrikDaemon.ok!(Config.bootstrap(dirs, env))
+    boot =
+      dirs
+      |> Config.bootstrap(env)
+      |> WardrikDaemon.ok!()
+
     if why = Cluster.refusal(boot.cluster, node()), do: raise(ArgumentError, why)
 
     store =
@@ -82,7 +86,11 @@ defmodule WardrikDaemon.Server do
 
       {:error, :enoent} ->
         key = Wardrik.Vault.generate_key()
-        File.mkdir_p!(Path.dirname(path))
+
+        path
+        |> Path.dirname()
+        |> File.mkdir_p!()
+
         File.write!(path, key)
         File.chmod!(path, 0o600)
         key

@@ -95,9 +95,8 @@ defmodule WardrikDaemon.CLI.Files do
   end
 
   defp searched([agent | words], flags, cx) do
-    input =
-      %{"query" => Enum.join(words, " "), "glob" => flags[:glob], "limit" => flags[:limit]}
-      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+    fields = %{"query" => Enum.join(words, " "), "glob" => flags[:glob], "limit" => flags[:limit]}
+    input = Map.reject(fields, fn {_key, value} -> is_nil(value) end)
 
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, %{"hits" => hits} = answer} <-
@@ -111,7 +110,7 @@ defmodule WardrikDaemon.CLI.Files do
   end
 
   defp first_line(excerpt) do
-    line = excerpt |> String.split("\n", parts: 2) |> hd()
+    line = hd(String.split(excerpt, "\n", parts: 2))
     if String.length(line) > 60, do: String.slice(line, 0, 59) <> "…", else: line
   end
 
@@ -160,7 +159,10 @@ defmodule WardrikDaemon.CLI.Files do
     do: Context.call(cx, "agent.file_put", %{"agent" => id, "path" => path, "content" => content})
 
   defp synced([agent, dir], flags, cx) do
-    prefix = flags |> Map.get(:to, "") |> String.trim("/")
+    prefix =
+      flags
+      |> Map.get(:to, "")
+      |> String.trim("/")
 
     with :ok <- directory(dir),
          {:ok, id} <- Context.agent(cx, agent),
@@ -199,7 +201,10 @@ defmodule WardrikDaemon.CLI.Files do
       dir
       |> walk("")
       |> Enum.sort()
-      |> Enum.map(&{&1, File.read!(Path.join(dir, &1))})
+      |> Enum.map(fn relative ->
+        path = Path.join(dir, relative)
+        {relative, File.read!(path)}
+      end)
       |> Enum.split_with(fn {_relative, content} -> String.valid?(content) end)
 
     {Map.new(text, fn {relative, content} -> {joined(prefix, relative), content} end),
@@ -213,7 +218,8 @@ defmodule WardrikDaemon.CLI.Files do
     |> Enum.reject(&String.starts_with?(&1, "."))
     |> Enum.flat_map(fn name ->
       inner = joined(relative, name)
-      if File.dir?(Path.join(dir, inner)), do: walk(dir, inner), else: [inner]
+      path = Path.join(dir, inner)
+      if File.dir?(path), do: walk(dir, inner), else: [inner]
     end)
   end
 
@@ -248,8 +254,12 @@ defmodule WardrikDaemon.CLI.Files do
 
   defp deleting(_there, _local, nil), do: []
 
-  defp deleting(there, local, true),
-    do: there |> Map.keys() |> Enum.reject(&Map.has_key?(local, &1)) |> Enum.sort()
+  defp deleting(there, local, true) do
+    there
+    |> Map.keys()
+    |> Enum.reject(&Map.has_key?(local, &1))
+    |> Enum.sort()
+  end
 
   defp said(cx, answer) do
     counts =

@@ -34,7 +34,9 @@ defmodule Wardrik.Test.Channel.Members do
 
   @impl Wardrik.Chat.Identities
   def identify(%Wardrik.Chat.Identities.Request{member: member, name: name}, opts) do
-    case Map.fetch(Keyword.fetch!(opts, :members), member) do
+    members = Keyword.fetch!(opts, :members)
+
+    case Map.fetch(members, member) do
       {:ok, user} -> {:ok, %WardrikCore.Principal{id: user, attributes: %{name: name}}}
       :error -> {:error, "Nobody here knows you yet."}
     end
@@ -61,13 +63,13 @@ end
 defmodule Wardrik.Test.Channel do
   @moduledoc "Starts a Wardrik with a chat channel for a test, and stubs the model's answers."
 
+  import ExUnit.Callbacks, only: [start_supervised!: 1]
+
   @doc "Returns the channel the Wardrik `wardrik` runs as `name`, as the Wardrik builds it."
   def fetch(wardrik, name) do
     with {:ok, {adapter, opts}} <- Wardrik.Operations.Channels.fetch(wardrik, name),
          do: {:ok, Wardrik.Chat.channel(adapter, opts)}
   end
-
-  import ExUnit.Callbacks, only: [start_supervised!: 1]
 
   @model "anthropic:claude-haiku-4-5"
 

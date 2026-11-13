@@ -19,14 +19,14 @@ defmodule WardrikDaemon.Running do
 
   use Supervisor
 
-  require Logger
-
   alias WardrikCore.Principal
   alias WardrikDaemon.Agents
   alias WardrikDaemon.CLIToken
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.Policies
+
+  require Logger
 
   @doc "Starts it, with the options `WardrikDaemon.Server` passes."
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -168,8 +168,10 @@ defmodule WardrikDaemon.Running do
   end
 
   defp read(dirs, env, vault) do
+    path = Dirs.config(dirs, "policies")
+
     with {:ok, config} <- Config.read(dirs, env, vault),
-         {:ok, policies} <- Policies.read(Dirs.config(dirs, "policies")),
+         {:ok, policies} <- Policies.read(path),
          do: {:ok, {config, policies}}
   end
 

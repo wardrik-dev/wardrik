@@ -225,7 +225,13 @@ defmodule Wardrik.Store.Conformance do
       describe "a Wardrik.Store scoped" do
         setup %{store: store} do
           run = "run#{System.unique_integer([:positive])}"
-          %{outer: store |> Wardrik.Store.scope("conformance") |> Wardrik.Store.scope(run)}
+
+          outer =
+            store
+            |> Wardrik.Store.scope("conformance")
+            |> Wardrik.Store.scope(run)
+
+          %{outer: outer}
         end
 
         test "keeps the same key apart in two scopes", %{outer: outer} = context do

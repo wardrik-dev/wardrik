@@ -39,7 +39,9 @@ defmodule Wardrik.Chat.Test.Members do
 
   @impl Wardrik.Chat.Identities
   def identify(%Wardrik.Chat.Identities.Request{workspace: "T1", member: member}, opts) do
-    case Map.fetch(Keyword.fetch!(opts, :members), member) do
+    members = Keyword.fetch!(opts, :members)
+
+    case Map.fetch(members, member) do
       {:ok, user} -> {:ok, %WardrikCore.Principal{id: user}}
       :error -> {:error, "Nobody here knows you yet."}
     end

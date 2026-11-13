@@ -1,13 +1,13 @@
 defmodule Wardrik.OAuthTest do
   use ExUnit.Case, async: false
 
-  defp credential(name, principal),
-    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
-
   alias Wardrik.OAuth.GitHub
   alias Wardrik.OAuth.Token
   alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
+
+  defp credential(name, principal),
+    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
 
   @jon %Principal{id: "user:jon"}
   @acme_jon %Principal{id: "acme/@jon"}
@@ -99,7 +99,11 @@ defmodule Wardrik.OAuthTest do
   end
 
   defp flow_ended(oauth, name, %Principal{id: id}) do
-    [{pid, _value}] = Registry.lookup(Module.concat(oauth, Registry), {:flow, name, id})
+    [{pid, _value}] =
+      oauth
+      |> Module.concat(Registry)
+      |> Registry.lookup({:flow, name, id})
+
     ref = Process.monitor(pid)
     {:DOWN, ref, :process, pid, :normal}
   end
@@ -116,8 +120,10 @@ defmodule Wardrik.OAuthTest do
 
   defp state({:authorize, url}), do: URI.decode_query(URI.parse(url).query)["state"]
 
-  defp challenge(verifier),
-    do: :sha256 |> :crypto.hash(verifier) |> Base.url_encode64(padding: false)
+  defp challenge(verifier) do
+    hash = :crypto.hash(:sha256, verifier)
+    Base.url_encode64(hash, padding: false)
+  end
 
   defp keep(vault, token) do
     secret = %Secret{principal: @jon, name: "github", value: Token.encode(token)}
@@ -247,14 +253,16 @@ defmodule Wardrik.OAuthTest do
   describe "signing in on another device" do
     @tag polls: [%{"error" => "authorization_pending"}, @granted]
     test "shows the code, then keeps the grant once it's entered", %{vault: vault, oauth: oauth} do
+      github = credential("github", @jon)
+
       assert {:authorize, "https://agents.test/oauth/device/" <> id = url} =
-               Wardrik.Vault.resolve(credential("github", @jon), vault)
+               Wardrik.Vault.resolve(github, vault)
 
       assert {:ok,
               %{user_code: "WDJB-MJHT", verification_uri: "https://github.test/login/device"}} =
                Wardrik.OAuth.flow(oauth, id)
 
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:authorize, url}
+      assert Wardrik.Vault.resolve(github, vault) == {:authorize, url}
 
       assert Wardrik.OAuth.authorize(oauth, "github", @jon) ==
                {:ok, %{url: "https://github.test/login/device", code: "WDJB-MJHT"}}
@@ -266,21 +274,25 @@ defmodule Wardrik.OAuthTest do
       assert_receive {:granted, "github", "user:jon"}
       assert_receive {:done, :granted}
       assert_receive ^ended
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "gho_granted"}
+      assert Wardrik.Vault.resolve(github, vault) == {:ok, "gho_granted"}
       assert Wardrik.OAuth.flow(oauth, id) == :error
       refute Wardrik.OAuth.signing_in?(oauth, "github", @jon)
     end
 
     @tag polls: [%{"error" => "access_denied"}]
     test "ends when the principal refuses", %{vault: vault} do
-      assert {:authorize, _url} = Wardrik.Vault.resolve(credential("github", @jon), vault)
+      github = credential("github", @jon)
+
+      assert {:authorize, _url} = Wardrik.Vault.resolve(github, vault)
 
       assert_receive {:done, {:error, :access_denied}}
       refute_received {:granted, _name, _id}
     end
 
     test "finds the issuer from the resource's metadata", %{vault: vault} do
-      assert {:authorize, _url} = Wardrik.Vault.resolve(credential("copilot", @jon), vault)
+      copilot = credential("copilot", @jon)
+
+      assert {:authorize, _url} = Wardrik.Vault.resolve(copilot, vault)
       assert_receive {:granted, "copilot", "user:jon"}
     end
 
@@ -290,13 +302,17 @@ defmodule Wardrik.OAuthTest do
     end
 
     test "asks nothing for a name it has no provider for", %{vault: vault} do
-      assert Wardrik.Vault.resolve(credential("asana", @jon), vault) == {:error, :not_found}
+      asana = credential("asana", @jon)
+
+      assert Wardrik.Vault.resolve(asana, vault) == {:error, :not_found}
     end
 
     @tag polls: []
     test "shows the code on its page", %{vault: vault, oauth: oauth} do
+      github = credential("github", @jon)
+
       {:authorize, "https://agents.test/oauth/device/" <> id} =
-        Wardrik.Vault.resolve(credential("github", @jon), vault)
+        Wardrik.Vault.resolve(github, vault)
 
       conn = get(oauth, "/device/" <> id)
       assert conn.status == 200
@@ -311,7 +327,9 @@ defmodule Wardrik.OAuthTest do
   describe "signing in in a browser" do
     test "sends the principal to the service, and keeps the grant when they come back",
          %{vault: vault, oauth: oauth} do
-      assert {:authorize, url} = Wardrik.Vault.resolve(credential("google", @jon), vault)
+      google = credential("google", @jon)
+
+      assert {:authorize, url} = Wardrik.Vault.resolve(google, vault)
       %URI{host: "accounts.test", path: "/authorize", query: query} = URI.parse(url)
       params = URI.decode_query(query)
 
@@ -325,7 +343,7 @@ defmodule Wardrik.OAuthTest do
                "code_challenge_method" => "S256"
              } = params
 
-      assert Wardrik.Vault.resolve(credential("google", @jon), vault) == {:authorize, url}
+      assert Wardrik.Vault.resolve(google, vault) == {:authorize, url}
 
       callback = "/callback?" <> URI.encode_query(%{state: params["state"], code: "the-code"})
       conn = get(oauth, callback)
@@ -336,7 +354,7 @@ defmodule Wardrik.OAuthTest do
       assert form["client_secret"] == "google-secret"
       assert challenge(verifier) == params["code_challenge"]
       assert_receive {:granted, "google", "user:jon"}
-      assert Wardrik.Vault.resolve(credential("google", @jon), vault) == {:ok, "browser_token"}
+      assert Wardrik.Vault.resolve(google, vault) == {:ok, "browser_token"}
 
       replayed = get(oauth, callback)
       assert replayed.status == 400
@@ -347,8 +365,10 @@ defmodule Wardrik.OAuthTest do
       vault: vault,
       oauth: oauth
     } do
+      linear = credential("linear", @jon)
+
       assert {:authorize, "https://linear.test/oauth/authorize?" <> query} =
-               Wardrik.Vault.resolve(credential("linear", @jon), vault)
+               Wardrik.Vault.resolve(linear, vault)
 
       state = URI.decode_query(query)["state"]
 
@@ -359,7 +379,9 @@ defmodule Wardrik.OAuthTest do
     end
 
     test "sends the secret in the form by default", %{vault: vault, oauth: oauth} do
-      state = state(Wardrik.Vault.resolve(credential("linear", @jon), vault))
+      linear = credential("linear", @jon)
+
+      state = state(Wardrik.Vault.resolve(linear, vault))
 
       {:ok, %{provider: "linear"}} =
         Wardrik.OAuth.finish(oauth, %{"state" => state, "code" => "c"}, as: @jon)
@@ -369,7 +391,9 @@ defmodule Wardrik.OAuthTest do
     end
 
     test "sends the secret in a Basic header when the app asks", %{vault: vault, oauth: oauth} do
-      state = state(Wardrik.Vault.resolve(credential("notion", @jon), vault))
+      notion = credential("notion", @jon)
+
+      state = state(Wardrik.Vault.resolve(notion, vault))
 
       {:ok, %{provider: "notion"}} =
         Wardrik.OAuth.finish(oauth, %{"state" => state, "code" => "c"}, as: @jon)
@@ -384,20 +408,24 @@ defmodule Wardrik.OAuthTest do
       vault: vault,
       oauth: oauth
     } do
-      state = state(Wardrik.Vault.resolve(credential("github_web", @jon), vault))
+      github_web = credential("github_web", @jon)
+
+      state = state(Wardrik.Vault.resolve(github_web, vault))
       evil = %{"state" => state, "code" => "c", "iss" => "https://evil.test"}
 
       assert {:error, :wrong_issuer} = Wardrik.OAuth.finish(oauth, evil, as: @jon)
       assert_receive {:done, {:error, :wrong_issuer}}
       refute_received {:exchanged, _form}
 
-      state = state(Wardrik.Vault.resolve(credential("github_web", @jon), vault))
+      state = state(Wardrik.Vault.resolve(github_web, vault))
       honest = %{"state" => state, "code" => "c", "iss" => GitHub.issuer()}
       assert {:ok, %{provider: "github_web"}} = Wardrik.OAuth.finish(oauth, honest, as: @jon)
     end
 
     test "ends when the principal declines", %{vault: vault, oauth: oauth} do
-      state = state(Wardrik.Vault.resolve(credential("google", @jon), vault))
+      google = credential("google", @jon)
+
+      state = state(Wardrik.Vault.resolve(google, vault))
 
       conn = get(oauth, "/callback?" <> URI.encode_query(%{state: state, error: "access_denied"}))
       assert conn.status == 400
@@ -409,7 +437,9 @@ defmodule Wardrik.OAuthTest do
       vault: vault,
       oauth: oauth
     } do
-      state = state(Wardrik.Vault.resolve(credential("linear", @jon), vault))
+      linear = credential("linear", @jon)
+
+      state = state(Wardrik.Vault.resolve(linear, vault))
       someone = %Principal{id: "acme/@mallory"}
 
       assert {:error, :wrong_principal} =
@@ -421,7 +451,8 @@ defmodule Wardrik.OAuthTest do
                )
 
       refute_received {:exchanged, _form}
-      assert Wardrik.Vault.resolve(credential("linear", someone), vault) != {:ok, "browser_token"}
+      theirs = credential("linear", someone)
+      assert Wardrik.Vault.resolve(theirs, vault) != {:ok, "browser_token"}
 
       assert {:ok, %{provider: "linear", principal: @jon}} =
                Wardrik.OAuth.finish(oauth, %{"state" => state, "code" => "c"}, as: @jon)
@@ -431,7 +462,9 @@ defmodule Wardrik.OAuthTest do
       vault: vault,
       oauth: oauth
     } do
-      state = state(Wardrik.Vault.resolve(credential("google", @jon), vault))
+      google = credential("google", @jon)
+
+      state = state(Wardrik.Vault.resolve(google, vault))
       callback = "/callback?" <> URI.encode_query(%{state: state, code: "the-code"})
 
       assert %{status: 401, resp_body: body} = get(oauth, callback, nil)
@@ -447,26 +480,32 @@ defmodule Wardrik.OAuthTest do
     end
 
     test "needs a state, and a code", %{vault: vault, oauth: oauth} do
+      google = credential("google", @jon)
+
       assert Wardrik.OAuth.finish(oauth, %{"code" => "c"}, as: @jon) == {:error, :no_such_flow}
 
-      state = state(Wardrik.Vault.resolve(credential("google", @jon), vault))
+      state = state(Wardrik.Vault.resolve(google, vault))
       assert Wardrik.OAuth.finish(oauth, %{"state" => state}, as: @jon) == {:error, :no_code}
     end
   end
 
   describe "renewing a grant" do
     test "gives a fresh token as it is", %{vault: vault} do
+      github = credential("github", @jon)
+
       {:ok, _vsn} =
         keep(vault, token(access_token: "still good", refresh_token: "rt", expires_at: nil))
 
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "still good"}
+      assert Wardrik.Vault.resolve(github, vault) == {:ok, "still good"}
       refute_received {:refreshed, _token}
     end
 
     test "refreshes an expired one, keeping its refresh token", %{vault: vault} do
+      github = credential("github", @jon)
+
       {:ok, _vsn} = keep(vault, token(access_token: "old", refresh_token: "rt", expires_at: 0))
 
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "fresh"}
+      assert Wardrik.Vault.resolve(github, vault) == {:ok, "fresh"}
       assert_received {:refreshed, "rt"}
 
       {:ok, json} = Wardrik.Vault.fetch(vault, @jon, "github")
@@ -476,29 +515,35 @@ defmodule Wardrik.OAuthTest do
     end
 
     test "asks again when the refresh token is spent, or there is none", %{vault: vault} do
+      github = credential("github", @jon)
+
       {:ok, _vsn} = keep(vault, token(access_token: "old", refresh_token: "spent", expires_at: 0))
-      assert {:authorize, _url} = Wardrik.Vault.resolve(credential("github", @jon), vault)
+      assert {:authorize, _url} = Wardrik.Vault.resolve(github, vault)
       assert_receive {:granted, "github", "user:jon"}
 
       {:ok, _vsn} = keep(vault, token(access_token: "old", expires_at: 0))
-      assert {:authorize, _url} = Wardrik.Vault.resolve(credential("github", @jon), vault)
+      assert {:authorize, _url} = Wardrik.Vault.resolve(github, vault)
     end
 
     test "refreshes a grant a service refused", %{vault: vault} do
+      github = credential("github", @jon)
+
       {:ok, _vsn} =
         keep(vault, token(access_token: "revoked", refresh_token: "rt", expires_at: nil))
 
-      assert :ok = Wardrik.Vault.refused(credential("github", @jon), vault)
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "fresh"}
+      assert :ok = Wardrik.Vault.refused(github, vault)
+      assert Wardrik.Vault.resolve(github, vault) == {:ok, "fresh"}
     end
 
     test "asks again for a grant it can't read", %{vault: vault} do
+      github = credential("github", @jon)
+
       {:ok, _vsn} =
         Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "not json"},
           kind: :grant
         )
 
-      assert {:authorize, _url} = Wardrik.Vault.resolve(credential("github", @jon), vault)
+      assert {:authorize, _url} = Wardrik.Vault.resolve(github, vault)
     end
   end
 
@@ -511,24 +556,26 @@ defmodule Wardrik.OAuthTest do
     end
 
     test "alone renews it", %{vault: vault} do
+      github_web = credential("github_web", @acme_jon)
+
       keep_web(vault, provider: "fixed/github_web")
-      assert Wardrik.Vault.resolve(credential("github_web", @acme_jon), vault) == {:ok, "fresh"}
+      assert Wardrik.Vault.resolve(github_web, vault) == {:ok, "fresh"}
 
       keep_web(vault, provider: "acme/github_web")
 
       assert {:authorize, _url} =
-               Wardrik.Vault.resolve(credential("github_web", @acme_jon), vault)
+               Wardrik.Vault.resolve(github_web, vault)
 
       keep_web(vault, provider: nil)
 
       assert {:authorize, _url} =
-               Wardrik.Vault.resolve(credential("github_web", @acme_jon), vault)
+               Wardrik.Vault.resolve(github_web, vault)
     end
   end
 
   defp keep_web(vault, fields) do
-    value =
-      Token.encode(token([access_token: "old", refresh_token: "rt", expires_at: 0] ++ fields))
+    token = token([access_token: "old", refresh_token: "rt", expires_at: 0] ++ fields)
+    value = Token.encode(token)
 
     secret = %Secret{principal: @acme_jon, name: "github_web", value: value}
     {:ok, _vsn} = Wardrik.Vault.put(vault, secret, kind: :grant)

@@ -35,12 +35,18 @@ defmodule WardrikDaemon.Setup.Machine do
 
   @doc "Returns `path` in the home directory, as `~/.claude`."
   @spec home(t(), Path.t()) :: Path.t()
-  def home(%__MODULE__{env: env}, path), do: Path.join(Map.get(env, "HOME", "/"), path)
+  def home(%__MODULE__{env: env}, path) do
+    env
+    |> Map.get("HOME", "/")
+    |> Path.join(path)
+  end
 
   @doc "Returns `config.yaml` as written, with `${NAME}`s unfilled. `%{}` without one."
   @spec config(t()) :: map()
   def config(%__MODULE__{dirs: dirs}) do
-    case YamlElixir.read_from_file(Dirs.config(dirs, "config.yaml")) do
+    path = Dirs.config(dirs, "config.yaml")
+
+    case YamlElixir.read_from_file(path) do
       {:ok, %{} = config} -> config
       _none -> %{}
     end

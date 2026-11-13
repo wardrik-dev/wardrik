@@ -9,7 +9,11 @@ defmodule Wardrik.Policy.Default do
   @type by_annotation() :: %{String.t() => effect()}
 
   @spec decode(term()) :: {:ok, {effect(), by_annotation()}} | {:error, String.t()}
-  def decode(defaults) when is_map(defaults), do: defaults |> Map.to_list() |> decode()
+  def decode(defaults) when is_map(defaults) do
+    defaults
+    |> Map.to_list()
+    |> decode()
+  end
 
   def decode([{_annotation, _effect} | _defaults] = defaults) do
     {fallback, by_annotation} =
@@ -59,8 +63,8 @@ defmodule Wardrik.Policy.Default do
   defp strictest(effects, _fallback), do: Enum.min_by(effects, &Decision.strictness/1)
 
   defp effects(by_annotation) do
-    with {:ok, pairs} <- by_annotation |> Enum.map(&annotated/1) |> Read.all(),
-         do: {:ok, Map.new(pairs)}
+    annotated = Enum.map(by_annotation, &annotated/1)
+    with {:ok, pairs} <- Read.all(annotated), do: {:ok, Map.new(pairs)}
   end
 
   defp annotated({annotation, effect}) do

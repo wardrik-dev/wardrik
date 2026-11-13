@@ -3,9 +3,17 @@ defmodule WardrikDaemon.Console.TableTest do
 
   alias WardrikDaemon.Console.Table
 
-  defp plain(data), do: data |> Owl.Data.untag() |> IO.chardata_to_string()
+  defp plain(data) do
+    data
+    |> Owl.Data.untag()
+    |> IO.chardata_to_string()
+  end
 
-  defp lines(table, width), do: table |> Table.lines(width) |> Enum.map(&plain/1)
+  defp lines(table, width) do
+    table
+    |> Table.lines(width)
+    |> Enum.map(&plain/1)
+  end
 
   defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
@@ -53,7 +61,8 @@ defmodule WardrikDaemon.Console.TableTest do
   end
 
   test "lines/2 draws the header bright" do
-    [_top, header | _rest] = Table.lines(Table.new(["Name"], [["x"]]), 80)
+    table = Table.new(["Name"], [["x"]])
+    [_top, header | _rest] = Table.lines(table, 80)
 
     assert :bright in sequences(header)
   end

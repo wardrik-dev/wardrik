@@ -42,7 +42,13 @@ defmodule Wardrik.ListenerTest do
 
   setup do
     start_supervised!(Instance)
-    %{events: Wardrik.events(Wardrik.Instance.fetch!(Instance))}
+
+    events =
+      Instance
+      |> Wardrik.Instance.fetch!()
+      |> Wardrik.events()
+
+    %{events: events}
   end
 
   test "hands each event over with the cursor past it, then follows", %{events: events} do

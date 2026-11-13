@@ -43,6 +43,8 @@ defmodule WardrikDaemon.Config.Access do
     ]
   ]
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Reads `config.yaml`'s `roles` and `bindings`: who may do what, as in Kubernetes RBAC.
 
@@ -105,7 +107,10 @@ defmodule WardrikDaemon.Config.Access do
   def read(roles, bindings, orgs, home \\ nil) do
     with {:ok, roles} <- roles(roles),
          :ok <- reserved(roles),
-         roles = roles |> Map.put_new("operator", [@everything]) |> Map.put(@admin, [@everything]),
+         roles =
+           roles
+           |> Map.put_new("operator", [@everything])
+           |> Map.put(@admin, [@everything]),
          {:ok, bindings} <- bindings(bindings, roles, orgs) do
       admin = %{org: "*", role: @admin, subjects: ["user:" <> @admin]}
       {:ok, %{roles: roles, bindings: [admin | bindings], home: home}}
@@ -113,6 +118,7 @@ defmodule WardrikDaemon.Config.Access do
   end
 
   @doc false
+  @spec subject(term()) :: {:ok, String.t()} | {:error, String.t()}
   def subject("user:" <> id = subject) do
     if id == @admin or Owners.user?(id),
       do: {:ok, subject},

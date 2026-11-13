@@ -36,9 +36,9 @@ defmodule WardrikGateway do
     * `[:wardrik_gateway, :breaker_opened]` and `[:wardrik_gateway, :breaker_closed]` - `model`.
   """
 
-  use GenServer
-
   @behaviour WardrikCore.Middleware
+
+  use GenServer
 
   alias WardrikCore.Context
   alias WardrikGateway.Settings
@@ -141,7 +141,11 @@ defmodule WardrikGateway do
     tried(call.context, call.next, call.gateway, rest, deadline, reason)
   end
 
-  defp after_model(models, model), do: models |> Enum.drop_while(&(&1 != model)) |> tl()
+  defp after_model(models, model) do
+    models
+    |> Enum.drop_while(&(&1 != model))
+    |> tl()
+  end
 
   defp outcome(%{status: 429} = reason), do: {:limited, retry_after(reason)}
   defp outcome(reason), do: if(WardrikCore.Retry.transient?(reason), do: :failed, else: :hopeless)

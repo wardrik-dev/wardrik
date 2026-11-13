@@ -32,10 +32,20 @@ defmodule Wardrik.Policy.Condition do
 
   defp read(piece), do: Regex.run(@condition, String.trim(piece), capture: :all_but_first)
 
-  defp classify(read), do: read |> Enum.split_with(&is_nil/1) |> classified()
+  defp classify(read) do
+    read
+    |> Enum.split_with(&is_nil/1)
+    |> classified()
+  end
 
   defp classified({_resources, []}), do: :resource
-  defp classified({[], conditions}), do: conditions |> Enum.map(&condition/1) |> Read.all()
+
+  defp classified({[], conditions}) do
+    conditions
+    |> Enum.map(&condition/1)
+    |> Read.all()
+  end
+
   defp classified(_mixed), do: {:error, @mixed}
 
   defp condition([path, ":", value]),
@@ -66,7 +76,11 @@ defmodule Wardrik.Policy.Condition do
 
   defp comparison(operator), do: Map.fetch!(@comparisons, operator)
 
-  defp glob(text), do: text |> String.downcase() |> Name.glob()
+  defp glob(text) do
+    text
+    |> String.downcase()
+    |> Name.glob()
+  end
 
   defp literal_number("\"" <> _quoted, _text), do: nil
   defp literal_number(_value, text), do: number(text)

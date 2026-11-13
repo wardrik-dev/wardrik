@@ -47,7 +47,8 @@ defmodule WardrikLua.Sandbox do
   @doc "Evaluates `code` in this process, under only the step and depth limits."
   @spec evaluate(String.t(), Limits.t()) :: result()
   def evaluate(code, %Limits{} = limits) do
-    {results, _lua} = Lua.eval!(vm(limits), code)
+    vm = vm(limits)
+    {results, _lua} = Lua.eval!(vm, code)
     {:ok, value(results)}
   rescue
     error in [Lua.RuntimeException, Lua.CompilerException] -> {:error, Exception.message(error)}

@@ -6,8 +6,8 @@ defmodule Wardrik.MCP.ServerTest do
   test "sends a credential in a header over HTTP, as its scheme says" do
     http = {:streamable_http, url: "https://mcp.test/mcp", headers: %{"x-app" => "1"}}
 
-    assert {:streamable_http, opts} =
-             Server.transport(Server.new!("a", transport: http, credential_name: "a"), "tok")
+    server = Server.new!("a", transport: http, credential_name: "a")
+    assert {:streamable_http, opts} = Server.transport(server, "tok")
 
     assert opts[:headers] == %{"x-app" => "1", "authorization" => "Bearer tok"}
 
@@ -36,12 +36,12 @@ defmodule Wardrik.MCP.ServerTest do
   test "sends a credential in a variable to a command, where it names one" do
     stdio = {:stdio, command: "server"}
 
-    assert {:stdio, opts} =
-             Server.transport(Server.new!("a", transport: stdio, credential_env: "TOKEN"), "tok")
-
+    server = Server.new!("a", transport: stdio, credential_env: "TOKEN")
+    assert {:stdio, opts} = Server.transport(server, "tok")
     assert opts[:env] == %{"TOKEN" => "tok"}
 
-    assert {:stdio, opts} = Server.transport(Server.new!("a", transport: stdio), "tok")
+    server = Server.new!("a", transport: stdio)
+    assert {:stdio, opts} = Server.transport(server, "tok")
     assert opts[:env] == %{}
   end
 
@@ -50,24 +50,26 @@ defmodule Wardrik.MCP.ServerTest do
     on_exit(fn -> System.delete_env("SERVER_TEST_SENTINEL") end)
 
     stdio = {:stdio, command: "server", args: ["stdio"], env: %{"SERVER_TEST_SENTINEL" => "mine"}}
-    assert {:stdio, opts} = Server.transport(Server.new!("a", transport: stdio), nil)
+    server = Server.new!("a", transport: stdio)
+    assert {:stdio, opts} = Server.transport(server, nil)
 
     assert opts[:command] == "env"
     assert ["--", "server", "stdio"] = Enum.take(opts[:args], -3)
     refute "SERVER_TEST_SENTINEL" in opts[:args]
     refute "PATH" in opts[:args]
 
-    assert {:stdio, opts} =
-             Server.transport(Server.new!("a", transport: {:stdio, command: "server"}), nil)
+    server = Server.new!("a", transport: {:stdio, command: "server"})
+    assert {:stdio, opts} = Server.transport(server, nil)
 
     assert "SERVER_TEST_SENTINEL" in opts[:args]
   end
 
   test "names its tools under its prefix, or its name" do
-    assert Server.prefix(Server.new!(:github, transport: {:stdio, command: "x"})) == "github"
+    github = Server.new!(:github, transport: {:stdio, command: "x"})
+    assert Server.prefix(github) == "github"
 
-    assert Server.prefix(Server.new!("gh", transport: {:stdio, command: "x"}, prefix: "github")) ==
-             "github"
+    gh = Server.new!("gh", transport: {:stdio, command: "x"}, prefix: "github")
+    assert Server.prefix(gh) == "github"
   end
 
   test "refuses a transport it can't start" do
@@ -95,7 +97,8 @@ defmodule Wardrik.MCP.ServerTest do
     assert Server.names?(server, "KEY")
     assert Server.names?(server, "TEAM")
     refute Server.names?(server, "OTHER")
-    refute Server.names?(Server.new!("b", transport: {:stdio, command: "x"}), "KEY")
+    other = Server.new!("b", transport: {:stdio, command: "x"})
+    refute Server.names?(other, "KEY")
 
     assert_raise NimbleOptions.ValidationError, ~r/:headers/, fn ->
       Server.new!("c",

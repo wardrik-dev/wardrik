@@ -56,6 +56,7 @@ defmodule Wardrik.Children do
 
   # The deployment's servers read the deployment's secrets, each owner's server its owner's.
   @doc false
+  @spec mcp_spec(Wardrik.t()) :: Supervisor.child_spec()
   def mcp_spec(wardrik) do
     servers =
       for {name, opts} <- wardrik.mcp,
@@ -71,6 +72,7 @@ defmodule Wardrik.Children do
   end
 
   @doc false
+  @spec start_built({module(), atom(), [term()]}) :: Supervisor.on_start()
   def start_built({module, function, args}) do
     %{start: {start_module, start_function, start_args}} = apply(module, function, args)
     apply(start_module, start_function, start_args)
@@ -117,8 +119,11 @@ defmodule Wardrik.Children do
   end
 
   @doc false
-  def channel_spec(wardrik, name, module, opts),
-    do: module.child_spec(Wardrik.Operations.Channels.options(wardrik, name, opts))
+  @spec channel_spec(Wardrik.t(), String.t(), module(), keyword()) :: Supervisor.child_spec()
+  def channel_spec(wardrik, name, module, opts) do
+    options = Wardrik.Operations.Channels.options(wardrik, name, opts)
+    module.child_spec(options)
+  end
 
   defp listeners(wardrik), do: Enum.map(wardrik.listeners, &listener(&1, wardrik.name))
 

@@ -49,7 +49,7 @@ defmodule WardrikWeb.SettingsLive do
 
   def handle_params(params, _uri, socket) do
     owner = params["owner"] || List.first(socket.assigns.owners)
-    {:noreply, socket |> assign(:owner, owner) |> load()}
+    {:noreply, load(assign(socket, :owner, owner))}
   end
 
   @impl true
@@ -84,7 +84,7 @@ defmodule WardrikWeb.SettingsLive do
     %{source: {module, opts}, scope: scope, owner: owner} = socket.assigns
 
     case module.remove(scope, owner, name, opts) do
-      :ok -> {:noreply, socket |> put_flash(:info, "Removed #{name}.") |> load()}
+      :ok -> {:noreply, load(put_flash(socket, :info, "Removed #{name}."))}
       {:error, error} -> {:noreply, put_flash(socket, :error, message(error))}
     end
   end
@@ -108,7 +108,11 @@ defmodule WardrikWeb.SettingsLive do
 
   defp removable?(item, owner), do: !item["fixed"] and (item["owner"] || owner) == owner
 
-  defp more?(schema, common), do: Enum.any?(Map.keys(schema["properties"]), &(&1 not in common))
+  defp more?(schema, common) do
+    schema["properties"]
+    |> Map.keys()
+    |> Enum.any?(&(&1 not in common))
+  end
 
   defp cell(value) when is_list(value), do: Enum.join(value, " ")
   defp cell(nil), do: "—"

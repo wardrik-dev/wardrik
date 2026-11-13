@@ -72,7 +72,8 @@ defmodule WardrikDaemon.ServersTest do
 
   defp seal(context, owner, name, kind) do
     secret = %Secret{principal: %Principal{id: owner}, name: name, value: "sk-" <> name}
-    {:ok, _vsn} = Wardrik.Vault.put(Wardrik.vault(context.running), secret, kind: kind)
+    vault = Wardrik.vault(context.running)
+    {:ok, _vsn} = Wardrik.Vault.put(vault, secret, kind: kind)
   end
 
   test "an owner's server reaches only the agents the resolver gives it to", context do
@@ -89,11 +90,15 @@ defmodule WardrikDaemon.ServersTest do
     assert servers(context, "growth/@cy/leads")["crm"] == "growth:crm"
     assert servers(context, "growth/leads")["wiki"] == "deployment:wiki"
 
-    for id <- ["payments/triage", "payments/@ana/notes"],
-        do: refute("growth:crm" in Map.values(servers(context, id)))
+    for id <- ["payments/triage", "payments/@ana/notes"] do
+      reached = servers(context, id)
+      refute "growth:crm" in Map.values(reached)
+    end
 
-    assert "search" in Map.keys(servers(context, "payments/triage"))
-    refute "search" in Map.keys(servers(context, "growth/leads"))
+    triage = servers(context, "payments/triage")
+    leads = servers(context, "growth/leads")
+    assert "search" in Map.keys(triage)
+    refute "search" in Map.keys(leads)
 
     assert {:ok, %{"servers" => listed}} = list(admin, "payments/@ana")
 
@@ -116,8 +121,9 @@ defmodule WardrikDaemon.ServersTest do
       assert {:error, "not_found", _message} = remove(ana, owner, "crm")
     end
 
-    assert "growth:crm" in Wardrik.MCP.servers(mcp(context))
-    refute "growth:mine" in Wardrik.MCP.servers(mcp(context))
+    mcp = mcp(context)
+    assert "growth:crm" in Wardrik.MCP.servers(mcp)
+    refute "growth:mine" in Wardrik.MCP.servers(mcp)
 
     cy = client(context, "user:growth/@cy")
     assert {:ok, _added} = add(cy, "growth/@cy", server("notes"))
@@ -138,8 +144,13 @@ defmodule WardrikDaemon.ServersTest do
     seal(context, "growth", "CRM_KEY", :header)
     assert {:ok, %{"connected" => true}} = add(admin, "growth", input)
 
+    servers =
+      context
+      |> mcp()
+      |> Wardrik.MCP.Servers.all()
+
     assert %Wardrik.MCP.Server{transport: {:streamable_http, http}, owner: "growth"} =
-             Wardrik.MCP.Servers.all(mcp(context))["growth:crm"]
+             servers["growth:crm"]
 
     assert http[:headers] == %{"authorization" => ["Token ", {:secret, "CRM_KEY"}]}
 
@@ -147,11 +158,12 @@ defmodule WardrikDaemon.ServersTest do
     assert %{"name" => "crm", "auth" => "secret"} = hd(listed)
     refute JSON.encode!(answer) =~ "sk-"
 
-    stored = :erlang.term_to_binary(Wardrik.Store.entries(context.daemon_store, "servers/"))
+    entries = Wardrik.Store.entries(context.daemon_store, "servers/")
+    stored = :erlang.term_to_binary(entries)
     refute stored =~ "sk-CRM_KEY"
 
-    refute :erlang.term_to_binary(Wardrik.Store.entries(context.running.store, "")) =~
-             "sk-CRM_KEY"
+    saved = Wardrik.Store.entries(context.running.store, "")
+    refute :erlang.term_to_binary(saved) =~ "sk-CRM_KEY"
   end
 
   test "refuses a URL the egress check refuses, and a server it doesn't read", context do
@@ -165,12 +177,14 @@ defmodule WardrikDaemon.ServersTest do
 
     assert {:error, "invalid_request", message} = add(admin, "growth", inside)
     assert message == "The server can't be reached: 169.254.169.254 is a private address."
-    refute "growth:inside" in Wardrik.MCP.servers(mcp(context))
+    mcp = mcp(context)
+    refute "growth:inside" in Wardrik.MCP.servers(mcp)
+    server = server("x")
 
     for input <- [
-          Map.delete(server("x"), "auth"),
-          %{server("x") | "name" => "a__b:c"},
-          Map.put(server("x"), "headers", %{"authorization" => "Bearer x"}),
+          Map.delete(server, "auth"),
+          %{server | "name" => "a__b:c"},
+          Map.put(server, "headers", %{"authorization" => "Bearer x"}),
           server("x", %{"oauth" => %{"provider" => "google", "client_id" => "app"}})
         ] do
       assert {:error, "invalid_request", _message} = add(admin, "growth", input)
@@ -239,8 +253,12 @@ defmodule WardrikDaemon.ServersTest do
             %{"connected" => false, "authorization" => %{"url" => "https://google.test" <> _}}} =
              add(admin, "growth/@cy", ads)
 
-    assert %Wardrik.MCP.Server{credential_name: "growth:google"} =
-             Wardrik.MCP.Servers.all(mcp(context))["growth%2F%40cy:ads"]
+    servers =
+      context
+      |> mcp()
+      |> Wardrik.MCP.Servers.all()
+
+    assert %Wardrik.MCP.Server{credential_name: "growth:google"} = servers["growth%2F%40cy:ads"]
 
     assert {:error, "invalid_request", "payments has no OAuth app google."} =
              add(admin, "payments", ads)
@@ -268,7 +286,8 @@ defmodule WardrikDaemon.ServersTest do
     assert Wardrik.MCP.servers(other) == ["growth:crm", "payments:docs"]
 
     assert {:ok, %{"name" => "crm"}} = remove(admin, "growth", "crm")
-    refute "growth:crm" in Wardrik.MCP.servers(mcp(context))
+    mcp = mcp(context)
+    refute "growth:crm" in Wardrik.MCP.servers(mcp)
     :ok = Wardrik.MCP.reconcile(other)
     assert Wardrik.MCP.servers(other) == ["payments:docs"]
 

@@ -45,7 +45,12 @@ defmodule Wardrik.Workspace.Context do
   def call(context, next, _opts), do: next.(context)
 
   defp labelled(context, read) do
-    case read |> Enum.flat_map(&Map.get(&1, :labels, [])) |> Enum.uniq() do
+    labels =
+      read
+      |> Enum.flat_map(&Map.get(&1, :labels, []))
+      |> Enum.uniq()
+
+    case labels do
       [] -> context
       labels -> %{context | messages: last_labelled(context.messages, labels)}
     end
@@ -114,7 +119,7 @@ defmodule Wardrik.Workspace.Context do
 
     if byte_size(content) <= share,
       do: file,
-      else: %{file | state: :cut} |> Map.merge(ends(content, share))
+      else: Map.merge(%{file | state: :cut}, ends(content, share))
   end
 
   defp cut(file, _shares), do: file

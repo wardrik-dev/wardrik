@@ -1,18 +1,22 @@
 defmodule Wardrik.Store.S3Test do
   use ExUnit.Case, async: false
+  use Wardrik.Store.Conformance
+  use Wardrik.Store.DurableConformance
 
   alias Wardrik.Store.S3
   alias Wardrik.Store.Test.S3Bucket
 
   setup_all do
     S3Bucket.reset()
-    store = S3.new(S3Bucket.store_opts(conditional_delete: true))
+
+    store =
+      [conditional_delete: true]
+      |> S3Bucket.store_opts()
+      |> S3.new()
+
     start_supervised!({Wardrik.Store, store})
     %{store: store, lost: Wardrik.Store.scope(store, "lost")}
   end
-
-  use Wardrik.Store.Conformance
-  use Wardrik.Store.DurableConformance
 
   describe "a write whose answer is lost" do
     test "is answered as written where it landed", %{lost: store} do
@@ -110,10 +114,17 @@ defmodule Wardrik.Store.S3Test do
 
   test "keeps the key an object is written under, and every prefix of it" do
     for key <- ["plain/key", "a b/ü/.x/..", "~tilde", "/lead//double/", "scope:key"] do
-      assert S3.unescape(S3.escape(key)) == key
-      assert String.starts_with?(S3.escape(key), S3.escape(String.slice(key, 0, 3)))
-      assert S3.escape(key) =~ ~r{\A[A-Za-z0-9._~/-]*\z}
-      refute S3.escape(key) =~ ~r{\A/|//}
+      escaped = S3.escape(key)
+
+      prefix =
+        key
+        |> String.slice(0, 3)
+        |> S3.escape()
+
+      assert S3.unescape(escaped) == key
+      assert String.starts_with?(escaped, prefix)
+      assert escaped =~ ~r{\A[A-Za-z0-9._~/-]*\z}
+      refute escaped =~ ~r{\A/|//}
     end
   end
 
@@ -124,6 +135,7 @@ end
 
 defmodule Wardrik.Store.S3TombstoneTest do
   use ExUnit.Case, async: false
+  use Wardrik.Store.Conformance
 
   alias Wardrik.Store.Test.S3Bucket
 
@@ -131,15 +143,13 @@ defmodule Wardrik.Store.S3TombstoneTest do
     S3Bucket.reset()
 
     store =
-      Wardrik.Store.S3.new(
-        S3Bucket.store_opts([conditional_delete: false, no_such_key: true], prefix: "mo")
-      )
+      [conditional_delete: false, no_such_key: true]
+      |> S3Bucket.store_opts(prefix: "mo")
+      |> Wardrik.Store.S3.new()
 
     start_supervised!({Wardrik.Store, store})
     %{store: store}
   end
-
-  use Wardrik.Store.Conformance
 
   test "a conditional delete leaves a tombstone that reads, lists and writes as nothing", %{
     store: store
@@ -208,7 +218,11 @@ defmodule Wardrik.Store.S3StartTest do
   end
 
   test "a conditional delete before it starts finds how the bucket deletes" do
-    store = S3.new(S3Bucket.store_opts([conditional_delete: true], prefix: "unstarted"))
+    store =
+      [conditional_delete: true]
+      |> S3Bucket.store_opts(prefix: "unstarted")
+      |> S3.new()
+
     {:ok, vsn} = Wardrik.Store.put(store, "k", :value)
 
     assert :ok = Wardrik.Store.delete(store, "k", if_vsn: vsn)
@@ -216,7 +230,11 @@ defmodule Wardrik.Store.S3StartTest do
   end
 
   test "a conditional delete raises where how the bucket deletes can't be found" do
-    store = S3.new(S3Bucket.store_opts([], prefix: "unprobed"))
+    store =
+      []
+      |> S3Bucket.store_opts(prefix: "unprobed")
+      |> S3.new()
+
     {:ok, vsn} = Wardrik.Store.put(store, "k", :value)
     S3Bucket.refuse(403)
 
@@ -242,20 +260,19 @@ if endpoint = System.get_env("S3_TEST_ENDPOINT") do
         prefix: "run-#{System.system_time(:millisecond)}"
       ]
 
-      %{status: status} =
-        Req.put!(
-          Req.new(
-            base_url: @endpoint,
-            aws_sigv4: [
-              access_key_id: opts[:access_key_id],
-              secret_access_key: opts[:secret_access_key],
-              region: opts[:region],
-              service: :s3
-            ],
-            retry: false
-          ),
-          url: "/" <> opts[:bucket]
+      req =
+        Req.new(
+          base_url: @endpoint,
+          aws_sigv4: [
+            access_key_id: opts[:access_key_id],
+            secret_access_key: opts[:secret_access_key],
+            region: opts[:region],
+            service: :s3
+          ],
+          retry: false
         )
+
+      %{status: status} = Req.put!(req, url: "/" <> opts[:bucket])
 
       true = status in [200, 409]
       store = Wardrik.Store.S3.new(opts)

@@ -42,9 +42,13 @@ defmodule WardrikWeb.FormTest do
   end
 
   test "adds and removes groups, and says which field doesn't read" do
-    params = Form.add(%{}, ["triggers"]) |> Form.add(["triggers"])
+    params =
+      %{}
+      |> Form.add(["triggers"])
+      |> Form.add(["triggers"])
+
     assert Map.keys(params["triggers"]) == ["0", "1"]
-    assert Form.remove(params, ["triggers", "0"])["triggers"] |> Map.keys() == ["1"]
+    assert Map.keys(Form.remove(params, ["triggers", "0"])["triggers"]) == ["1"]
 
     assert {:error, "timeout doesn't read as a whole number."} =
              Form.read(@define, %{"timeout" => "soon"})

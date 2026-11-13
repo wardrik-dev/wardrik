@@ -75,9 +75,13 @@ defmodule WardrikDaemon.CLI.Command do
   defp options(switches) do
     Enum.map_join(switches, " ", fn
       {name, :boolean} -> "[--#{flag(name)}]"
-      {name, _type} -> "[--#{flag(name)} #{name |> Atom.to_string() |> String.upcase()}]"
+      {name, _type} -> "[--#{flag(name)} #{String.upcase(Atom.to_string(name))}]"
     end)
   end
 
-  defp flag(name), do: name |> Atom.to_string() |> String.replace("_", "-")
+  defp flag(name) do
+    name
+    |> Atom.to_string()
+    |> String.replace("_", "-")
+  end
 end

@@ -109,6 +109,7 @@ defmodule WardrikDaemon.AgentRecordsTest do
     assert AgentRecords.identified(store, "acme", %{"model" => "m"}) == {:ok, %{"model" => "m"}}
     assert AgentRecords.name?("triage-2.b_c")
     refute AgentRecords.name?("a/b")
-    refute AgentRecords.name?(String.duplicate("a", 65))
+    long = String.duplicate("a", 65)
+    refute AgentRecords.name?(long)
   end
 end

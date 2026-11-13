@@ -48,7 +48,10 @@ defmodule Wardrik.OperationTools do
   def tools(%WardrikCore.Context{agent_id: id, principal: principal}, opts) do
     me = %{wardrik: Keyword.fetch!(opts, :wardrik), id: id, principal: principal}
 
-    opts |> Keyword.fetch!(:operations) |> operations() |> Enum.map(&tool(me, &1))
+    opts
+    |> Keyword.fetch!(:operations)
+    |> operations()
+    |> Enum.map(&tool(me, &1))
   end
 
   defp operations(:read),

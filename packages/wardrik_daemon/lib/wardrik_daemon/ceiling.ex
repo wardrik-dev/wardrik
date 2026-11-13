@@ -73,7 +73,7 @@ defmodule WardrikDaemon.Ceiling do
   def json(store, org, ceiling) do
     spend = spent(store, org, ceiling)
 
-    %{
+    fields = %{
       "ceiling" => ceiling.name,
       "per" => Atom.to_string(spend.per),
       "on_exhausted" => Atom.to_string(spend.on_exhausted),
@@ -82,7 +82,8 @@ defmodule WardrikDaemon.Ceiling do
       "granted" => amount(spend.granted),
       "starts_over" => spend.starts_over && Date.to_iso8601(spend.starts_over)
     }
-    |> Map.reject(fn {_key, value} -> value == nil end)
+
+    Map.reject(fields, fn {_key, value} -> value == nil end)
   end
 
   @doc """
@@ -97,7 +98,12 @@ defmodule WardrikDaemon.Ceiling do
 
     with :ok <- an_org(owner, org),
          {:ok, settings} <- WardrikDaemon.Orgs.settings(org, orgs) do
-      {:ok, settings.ceilings |> Enum.map(&json(store, org, &1)) |> Enum.sort_by(& &1["ceiling"])}
+      ceilings =
+        settings.ceilings
+        |> Enum.map(&json(store, org, &1))
+        |> Enum.sort_by(& &1["ceiling"])
+
+      {:ok, ceilings}
     end
   end
 

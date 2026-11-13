@@ -35,12 +35,18 @@ defmodule WardrikRest.OpenAPI.Schema do
   def resolve(node, document), do: resolve(node, document, [])
 
   defp resolve(%{"$ref" => "#/" <> pointer = ref}, document, seen) do
-    if ref in seen,
-      do: %{},
-      else:
-        document
-        |> get_in(pointer |> String.split("/") |> Enum.map(&unescape/1))
-        |> found(document, [ref | seen])
+    if ref in seen do
+      %{}
+    else
+      keys =
+        pointer
+        |> String.split("/")
+        |> Enum.map(&unescape/1)
+
+      document
+      |> get_in(keys)
+      |> found(document, [ref | seen])
+    end
   end
 
   defp resolve(%{"$ref" => _elsewhere}, _document, _seen), do: %{}
@@ -49,7 +55,11 @@ defmodule WardrikRest.OpenAPI.Schema do
   defp found(%{} = node, document, seen), do: resolve(node, document, seen)
   defp found(_none, _document, _seen), do: %{}
 
-  defp unescape(part), do: part |> String.replace("~1", "/") |> String.replace("~0", "~")
+  defp unescape(part) do
+    part
+    |> String.replace("~1", "/")
+    |> String.replace("~0", "~")
+  end
 
   defp json(%{"$ref" => @prefix <> name} = node, _document, _seen) do
     case node["description"] do
@@ -61,7 +71,7 @@ defmodule WardrikRest.OpenAPI.Schema do
   defp json(%{"$ref" => ref} = node, document, seen) do
     if ref in seen,
       do: %{},
-      else: node |> resolve(document) |> json(document, [ref | seen])
+      else: json(resolve(node, document), document, [ref | seen])
   end
 
   defp json(%{} = node, document, seen) do
@@ -104,8 +114,11 @@ defmodule WardrikRest.OpenAPI.Schema do
 
   defp read_only?(field, document), do: resolve(field, document)["readOnly"] == true
 
-  defp nested(%{} = node, document, seen),
-    do: node |> json(document, seen) |> Map.delete("description")
+  defp nested(%{} = node, document, seen) do
+    node
+    |> json(document, seen)
+    |> Map.delete("description")
+  end
 
   defp nested(_none, _document, _seen), do: nil
 

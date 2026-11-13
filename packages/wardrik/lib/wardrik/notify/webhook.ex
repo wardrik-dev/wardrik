@@ -9,6 +9,8 @@ defmodule Wardrik.Notify.Webhook do
     req_options: [type: :keyword_list, default: [], doc: "Merged into the `Req` request."]
   ]
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Posts notices as JSON to a URL.
 
@@ -32,7 +34,10 @@ defmodule Wardrik.Notify.Webhook do
 
   @impl Wardrik.Notify
   def deliver(notice, opts) do
-    body = notice |> Notice.json() |> JSON.encode!()
+    body =
+      notice
+      |> Notice.json()
+      |> JSON.encode!()
 
     options =
       Keyword.merge(
@@ -63,8 +68,10 @@ defmodule Wardrik.Notify.Webhook do
       #=> "sha256=9f86d0..."
   """
   @spec sign(String.t(), iodata()) :: String.t()
-  def sign(secret, body),
-    do: "sha256=" <> Base.encode16(:crypto.mac(:hmac, :sha256, secret, body), case: :lower)
+  def sign(secret, body) do
+    mac = :crypto.mac(:hmac, :sha256, secret, body)
+    "sha256=" <> Base.encode16(mac, case: :lower)
+  end
 
   defp signature(_body, nil), do: []
   defp signature(body, secret), do: [{"x-wardrik-signature", sign(secret, body)}]

@@ -71,8 +71,11 @@ defmodule Wardrik.EventLog.Timeline do
 
   @doc "Returns the items, oldest first."
   @spec items(t()) :: [map()]
-  def items(%__MODULE__{items: items, order: order}),
-    do: order |> Enum.reverse() |> Enum.map(&Map.fetch!(items, &1))
+  def items(%__MODULE__{items: items, order: order}) do
+    order
+    |> Enum.reverse()
+    |> Enum.map(&Map.fetch!(items, &1))
+  end
 
   @doc "Returns the item `id`, or `nil`."
   @spec item(t(), String.t()) :: map() | nil
@@ -96,8 +99,11 @@ defmodule Wardrik.EventLog.Timeline do
 
   @doc "Returns the calls the runs wait on a person for, oldest first."
   @spec interrupts(t()) :: [map()]
-  def interrupts(timeline),
-    do: timeline |> items() |> Enum.flat_map(&Map.get(&1, :interrupts, []))
+  def interrupts(timeline) do
+    timeline
+    |> items()
+    |> Enum.flat_map(&Map.get(&1, :interrupts, []))
+  end
 
   defp fold(_t, "wardrik.conversation.cleared", _data, _event),
     do: %__MODULE__{touched: :reset}
@@ -314,7 +320,11 @@ defmodule Wardrik.EventLog.Timeline do
     end
   end
 
-  defp waiting_on?(item, id), do: Enum.any?(Map.get(item, :interrupts, []), &(&1["id"] == id))
+  defp waiting_on?(item, id) do
+    item
+    |> Map.get(:interrupts, [])
+    |> Enum.any?(&(&1["id"] == id))
+  end
 
   defp find_step(run, id), do: Enum.find(run.steps, &(&1.id == id))
 

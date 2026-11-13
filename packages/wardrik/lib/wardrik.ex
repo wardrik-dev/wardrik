@@ -33,9 +33,6 @@ defmodule Wardrik do
 
   @behaviour Wardrik.Server
 
-  @typedoc "A person, or whom an agent works for. Build one with `principal/2`."
-  @type principal() :: WardrikCore.Principal.t()
-
   use Supervisor
 
   alias Wardrik.Error
@@ -44,6 +41,9 @@ defmodule Wardrik do
   alias Wardrik.Scope
   alias Wardrik.Setup
   alias WardrikCore.Principal
+
+  @typedoc "A person, or whom an agent works for. Build one with `principal/2`."
+  @type principal() :: WardrikCore.Principal.t()
 
   @entry {:or, [:atom, {:tuple, [:atom, :any]}]}
   @named {:or,
@@ -339,7 +339,10 @@ defmodule Wardrik do
   """
   @callback init(config :: keyword()) :: {:ok, keyword()}
 
-  defmacro __using__(opts), do: Wardrik.Instance.using(Keyword.get(opts, :otp_app))
+  defmacro __using__(opts) do
+    otp_app = Keyword.get(opts, :otp_app)
+    Wardrik.Instance.using(otp_app)
+  end
 
   @doc """
   Starts Wardrik. Raises `NimbleOptions.ValidationError` on a bad option.
@@ -368,11 +371,19 @@ defmodule Wardrik do
   def start_link(%__MODULE__{name: name} = wardrik),
     do: Supervisor.start_link(__MODULE__, wardrik, name: name)
 
-  def start_link(opts) when is_list(opts), do: opts |> new() |> start_link()
+  def start_link(opts) when is_list(opts) do
+    opts
+    |> new()
+    |> start_link()
+  end
 
   @doc false
   @spec new(keyword()) :: t()
-  def new(opts), do: opts |> NimbleOptions.validate!(@schema) |> Setup.wardrik()
+  def new(opts) do
+    opts
+    |> NimbleOptions.validate!(@schema)
+    |> Setup.wardrik()
+  end
 
   @doc "Returns `start_link/1`'s options as a `NimbleOptions` schema."
   @spec schema() :: NimbleOptions.t()
@@ -509,7 +520,8 @@ defmodule Wardrik do
              agent: Keyword.fetch!(opts, :agent_id)
            }) do
       held = Wardrik.Resolution.hold(opts, resolved)
-      WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, held))
+      agents = agents(wardrik)
+      WardrikCore.start_agent(agents, Setup.agent(wardrik, held))
     end
   end
 
@@ -540,8 +552,12 @@ defmodule Wardrik do
   """
   @spec sign_in(atom() | t(), String.t(), Principal.t()) ::
           {:ok, %{required(:url) => String.t(), optional(:code) => String.t()}} | {:error, term()}
-  def sign_in(instance, provider, %Principal{} = principal),
-    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.authorize(provider, principal)
+  def sign_in(instance, provider, %Principal{} = principal) do
+    instance
+    |> Instance.fetch!()
+    |> oauth()
+    |> Wardrik.OAuth.authorize(provider, principal)
+  end
 
   @doc """
   Returns the browser sign-in whose URL carries `state` while it's under way: its `provider` and
@@ -555,8 +571,14 @@ defmodule Wardrik do
           {:ok, %{provider: String.t(), principal: Principal.t()}} | :error
   def started_sign_in(instance, state) do
     case Instance.fetch!(instance) do
-      %__MODULE__{oauth: nil} -> :error
-      wardrik -> wardrik |> oauth() |> Wardrik.OAuth.started(state) |> started()
+      %__MODULE__{oauth: nil} ->
+        :error
+
+      wardrik ->
+        wardrik
+        |> oauth()
+        |> Wardrik.OAuth.started(state)
+        |> started()
     end
   end
 
@@ -574,8 +596,13 @@ defmodule Wardrik do
   @spec signing_in?(atom() | t(), String.t(), Principal.t()) :: boolean()
   def signing_in?(instance, provider, %Principal{} = principal) do
     case Instance.fetch!(instance) do
-      %__MODULE__{oauth: nil} -> false
-      wardrik -> wardrik |> oauth() |> Wardrik.OAuth.signing_in?(provider, principal)
+      %__MODULE__{oauth: nil} ->
+        false
+
+      wardrik ->
+        wardrik
+        |> oauth()
+        |> Wardrik.OAuth.signing_in?(provider, principal)
     end
   end
 
@@ -585,8 +612,12 @@ defmodule Wardrik do
       :ok = Wardrik.forget_client(MyApp.AgentRuntime, "linear/app_1")
   """
   @spec forget_client(atom() | t(), String.t()) :: :ok | {:error, term()}
-  def forget_client(instance, key),
-    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.forget_client(key)
+  def forget_client(instance, key) do
+    instance
+    |> Instance.fetch!()
+    |> oauth()
+    |> Wardrik.OAuth.forget_client(key)
+  end
 
   @doc """
   Returns the sign-in pages' plug, to mount at `:oauth`'s `page`. `nil` without `:oauth`.
@@ -596,8 +627,11 @@ defmodule Wardrik do
       Wardrik.sign_in_pages(MyApp.AgentRuntime, {MyApp.Session, :principal, []})
   """
   @spec sign_in_pages(atom() | t(), mfa()) :: {module(), term()} | nil
-  def sign_in_pages(instance, principal),
-    do: instance |> Instance.fetch!() |> pages(principal)
+  def sign_in_pages(instance, principal) do
+    instance
+    |> Instance.fetch!()
+    |> pages(principal)
+  end
 
   @doc """
   Finishes a browser sign-in from its callback `params`.
@@ -609,13 +643,21 @@ defmodule Wardrik do
   """
   @spec finish_sign_in(atom() | t(), map(), keyword()) ::
           {:ok, %{provider: String.t(), principal: Principal.t()}} | {:error, term()}
-  def finish_sign_in(instance, params, opts),
-    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.finish(params, opts)
+  def finish_sign_in(instance, params, opts) do
+    instance
+    |> Instance.fetch!()
+    |> oauth()
+    |> Wardrik.OAuth.finish(params, opts)
+  end
 
   @doc "Returns Wardrik's OAuth Client ID Metadata Document. The sign-in pages serve it at `/client`."
   @spec client_document(atom() | t()) :: map()
-  def client_document(instance),
-    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.client_document()
+  def client_document(instance) do
+    instance
+    |> Instance.fetch!()
+    |> oauth()
+    |> Wardrik.OAuth.client_document()
+  end
 
   defp pages(%__MODULE__{oauth: nil}, _principal), do: nil
 

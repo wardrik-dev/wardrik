@@ -7,15 +7,18 @@ defmodule Wardrik.CatalogTest do
     catalog = Catalog.new()
     operations = MapSet.new(WardrikProtocol.operations(), & &1.id)
 
-    assert MapSet.new(Map.keys(catalog.handlers)) == operations
-    assert MapSet.new(Map.keys(catalog.operations)) == operations
+    handled = Map.keys(catalog.handlers)
+    assert MapSet.new(handled) == operations
+    described = Map.keys(catalog.operations)
+    assert MapSet.new(described) == operations
   end
 
   test "streams every operation that can be streamed, and nothing else" do
     streamed =
       for %{stream: true, id: id} <- WardrikProtocol.operations(), into: MapSet.new(), do: id
 
-    assert MapSet.new(Map.keys(Catalog.new().streams)) == streamed
+    streams = Map.keys(Catalog.new().streams)
+    assert MapSet.new(streams) == streamed
   end
 
   test "turns what a view returns into JSON" do

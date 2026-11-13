@@ -31,7 +31,12 @@ defmodule WardrikWeb.Follow do
   def agents(socket) do
     case Wardrik.Scope.run(socket.assigns.scope, "agents.list", %{}) do
       {:ok, %{"agents" => [_ | _] = agents}} ->
-        start(socket, "events.list", %{"agents" => agents |> Enum.map(& &1["id"]) |> Enum.uniq()})
+        ids =
+          agents
+          |> Enum.map(& &1["id"])
+          |> Enum.uniq()
+
+        start(socket, "events.list", %{"agents" => ids})
 
       _none ->
         socket
@@ -47,9 +52,16 @@ defmodule WardrikWeb.Follow do
     if Phoenix.LiveView.connected?(socket) do
       {lv, scope} = {self(), socket.assigns.scope}
       {:ok, _task} = Task.start_link(fn -> follow(lv, scope, id, input) end)
-      socket |> assign(:live, true) |> assign(:due, false) |> assign(:stopped, nil)
+
+      socket
+      |> assign(:live, true)
+      |> assign(:due, false)
+      |> assign(:stopped, nil)
     else
-      socket |> assign(:live, false) |> assign(:due, false) |> assign(:stopped, nil)
+      socket
+      |> assign(:live, false)
+      |> assign(:due, false)
+      |> assign(:stopped, nil)
     end
   end
 
@@ -74,11 +86,17 @@ defmodule WardrikWeb.Follow do
     end
   end
 
-  def handle({__MODULE__, :reload}, socket, reload, _opts),
-    do: socket |> assign(:due, false) |> reload.()
+  def handle({__MODULE__, :reload}, socket, reload, _opts) do
+    socket
+    |> assign(:due, false)
+    |> reload.()
+  end
 
-  def handle({__MODULE__, {:ended, why}}, socket, _reload, _opts),
-    do: socket |> assign(:live, false) |> assign(:stopped, why)
+  def handle({__MODULE__, {:ended, why}}, socket, _reload, _opts) do
+    socket
+    |> assign(:live, false)
+    |> assign(:stopped, why)
+  end
 
   defp follow(lv, scope, id, input) do
     why =

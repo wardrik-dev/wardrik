@@ -2,7 +2,9 @@ defmodule Wardrik.Policy.RulesTest do
   use ExUnit.Case, async: true
 
   defp decide(rules, name, arguments) do
-    rules |> Wardrik.Policy.new!() |> Wardrik.Policy.decide(name, arguments: arguments)
+    rules
+    |> Wardrik.Policy.new!()
+    |> Wardrik.Policy.decide(name, arguments: arguments)
   end
 
   describe "conditions on arguments" do

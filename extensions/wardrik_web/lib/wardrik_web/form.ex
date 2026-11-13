@@ -145,14 +145,16 @@ defmodule WardrikWeb.Form do
   defp read(:object, %{"properties" => properties} = object, params, path) when is_map(params) do
     required = Map.get(object, "required", [])
 
-    Enum.reduce_while(properties, {:ok, %{}}, fn {name, schema}, {:ok, map} ->
-      case read(kind(schema, name), schema, params[name], [name | path], name in required) do
-        {:ok, value} -> {:cont, {:ok, Map.put(map, name, value)}}
-        :none -> {:cont, {:ok, map}}
-        {:error, _why} = error -> {:halt, error}
-      end
-    end)
-    |> none_if_empty()
+    result =
+      Enum.reduce_while(properties, {:ok, %{}}, fn {name, schema}, {:ok, map} ->
+        case read(kind(schema, name), schema, params[name], [name | path], name in required) do
+          {:ok, value} -> {:cont, {:ok, Map.put(map, name, value)}}
+          :none -> {:cont, {:ok, map}}
+          {:error, _why} = error -> {:halt, error}
+        end
+      end)
+
+    none_if_empty(result)
   end
 
   defp read(:list, %{"items" => item}, params, path) when is_map(params) do
@@ -172,14 +174,16 @@ defmodule WardrikWeb.Form do
   end
 
   defp read(:union, schema, %{@variant => variant} = params, path) when variant != "" do
-    case Enum.fetch!(alternatives(schema), String.to_integer(variant)) do
+    alternatives = alternatives(schema)
+
+    case Enum.fetch!(alternatives, String.to_integer(variant)) do
       %{"const" => const} -> {:ok, const}
       alternative -> read(kind(alternative), alternative, params["value"], path)
     end
   end
 
   defp read(:checks, _schema, [_ | _] = values, _path),
-    do: {:ok, Enum.reject(values, &(&1 == ""))} |> none_if_empty()
+    do: none_if_empty({:ok, Enum.reject(values, &(&1 == ""))})
 
   defp read(kind, _schema, text, path) when is_binary(text) do
     case value(kind, String.trim(text)) do
@@ -190,7 +194,12 @@ defmodule WardrikWeb.Form do
         {:ok, value}
 
       :error ->
-        {:error, "#{path |> Enum.reverse() |> Enum.join(".")} doesn't read as #{describe(kind)}."}
+        field =
+          path
+          |> Enum.reverse()
+          |> Enum.join(".")
+
+        {:error, "#{field} doesn't read as #{describe(kind)}."}
     end
   end
 
@@ -210,8 +219,15 @@ defmodule WardrikWeb.Form do
   defp value(kind, text) when kind in [:text, :long, :choice], do: {:ok, text}
   defp value(:switch, text), do: {:ok, text == "true"}
 
-  defp value(:lines, text),
-    do: {:ok, text |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))}
+  defp value(:lines, text) do
+    lines =
+      text
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    {:ok, lines}
+  end
 
   defp value(:integer, text) do
     case Integer.parse(text) do
@@ -265,7 +281,13 @@ defmodule WardrikWeb.Form do
   def add(params, path) do
     change(params || %{}, path, fn groups ->
       groups = groups || %{}
-      next = groups |> Map.keys() |> Enum.map(&String.to_integer/1) |> Enum.max(fn -> -1 end)
+
+      next =
+        groups
+        |> Map.keys()
+        |> Enum.map(&String.to_integer/1)
+        |> Enum.max(fn -> -1 end)
+
       Map.put(groups, Integer.to_string(next + 1), %{})
     end)
   end
@@ -294,6 +316,7 @@ defmodule WardrikWeb.Form do
   attr :except, :list, default: []
   attr :target, :any, default: nil, doc: "The `phx-target` of the add and remove buttons."
 
+  @spec fields(map()) :: Phoenix.LiveView.Rendered.t()
   def fields(assigns) do
     required = Map.get(assigns.schema, "required", [])
 
@@ -362,8 +385,7 @@ defmodule WardrikWeb.Form do
 
   defp render_field(%{kind: :list} = assigns) do
     groups =
-      (assigns.params || %{})
-      |> Enum.sort_by(fn {index, _group} -> String.to_integer(index) end)
+      Enum.sort_by(assigns.params || %{}, fn {index, _group} -> String.to_integer(index) end)
 
     assigns = assign(assigns, groups: groups, item: assigns.schema["items"])
 

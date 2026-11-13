@@ -22,7 +22,12 @@ defmodule Wardrik.UnreadableTest do
   defp saved_as_gone(%{wardrik: wardrik, store: store, scope: scope}, id) do
     run!(scope, "agent.define", %{"agent" => id, "model" => @model})
     run!(scope, "agent.stop", %{"agent" => id})
-    key = WardrikCore.saved_key(Wardrik.agents(wardrik), {id, nil})
+
+    key =
+      wardrik
+      |> Wardrik.agents()
+      |> WardrikCore.saved_key({id, nil})
+
     durable = Wardrik.Store.scope(store, "durable")
     {value, vsn} = Wardrik.Store.lookup(durable, key)
     {:ok, _vsn} = Wardrik.Store.put(durable, key, %{value | "state" => @gone}, if_vsn: vsn)
@@ -75,10 +80,8 @@ defmodule Wardrik.UnreadableTest do
     assert status in ["idle", "running"]
     assert Durable.noted(context.store, key) == :error
 
-    refute Map.has_key?(
-             run!(context.scope, "agent.define", %{"agent" => "acme/old", "model" => @model}),
-             "reset"
-           )
+    defined = run!(context.scope, "agent.define", %{"agent" => "acme/old", "model" => @model})
+    refute Map.has_key?(defined, "reset")
   end
 
   test "notes a state only until it's written again", context do
@@ -114,11 +117,13 @@ defmodule Wardrik.UnreadableTest do
     test "reads every kind of term, and compressed ones" do
       term =
         {self(), make_ref(), [1.5, 2 | 3], "x", <<1::3>>, 10 ** 40, -(10 ** 300), 2 ** 40,
-         &Enum.map/2, fn -> 1 end, %{a: :b}, ~c"chars", Port.list() |> hd(), 1.0e10}
+         &Enum.map/2, fn -> 1 end, %{a: :b}, ~c"chars", hd(Port.list()), 1.0e10}
 
-      assert {:ok, atoms} = Unreadable.atoms(:erlang.term_to_binary(term))
+      binary = :erlang.term_to_binary(term)
+      assert {:ok, atoms} = Unreadable.atoms(binary)
       assert "Elixir.Enum" in atoms and "a" in atoms
-      assert {:ok, ["b"]} = Unreadable.atoms(:erlang.term_to_binary(:b, compressed: 9))
+      compressed = :erlang.term_to_binary(:b, compressed: 9)
+      assert {:ok, ["b"]} = Unreadable.atoms(compressed)
       assert {:ok, ["latin"]} = Unreadable.atoms(<<131, 100, 0, 5, "latin">>)
       assert {:ok, ["s"]} = Unreadable.atoms(<<131, 115, 1, "s">>)
       assert {:ok, []} = Unreadable.atoms(<<131, 99>> <> String.duplicate("0", 31))
@@ -129,12 +134,15 @@ defmodule Wardrik.UnreadableTest do
         assert Unreadable.reason(broken) == "it isn't in a form this release can read"
       end
 
-      assert Unreadable.reason(:erlang.term_to_binary(%{a: 1})) ==
+      map = :erlang.term_to_binary(%{a: 1})
+
+      assert Unreadable.reason(map) ==
                "it isn't in a form this release can read"
     end
 
     test "loads a module a state names before calling it unreadable" do
-      refute Unreadable.load_named(:erlang.term_to_binary(Enum))
+      named = :erlang.term_to_binary(Enum)
+      refute Unreadable.load_named(named)
       refute Unreadable.load_named("not a term")
 
       # Compiled by another VM, so this one has never seen the module's name.
@@ -142,8 +150,9 @@ defmodule Wardrik.UnreadableTest do
       dir = Path.join(System.tmp_dir!(), name)
       File.mkdir_p!(dir)
       on_exit(fn -> File.rm_rf!(dir) end)
-      File.write!(Path.join(dir, "lazy.ex"), "defmodule #{name}, do: defstruct [:x]")
-      {_out, 0} = System.cmd("elixirc", ["-o", dir, Path.join(dir, "lazy.ex")])
+      source = Path.join(dir, "lazy.ex")
+      File.write!(source, "defmodule #{name}, do: defstruct [:x]")
+      {_out, 0} = System.cmd("elixirc", ["-o", dir, source])
       true = Code.prepend_path(dir)
 
       module = "Elixir." <> name

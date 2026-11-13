@@ -5,8 +5,6 @@ defmodule Wardrik.OAuth.Flow do
 
   use GenServer, restart: :temporary
 
-  require Logger
-
   alias Wardrik.OAuth.Browser
   alias Wardrik.OAuth.Device
   alias Wardrik.OAuth.Metadata
@@ -14,6 +12,8 @@ defmodule Wardrik.OAuth.Flow do
   alias Wardrik.OAuth.Registration
   alias Wardrik.OAuth.Token
   alias WardrikCore.Principal
+
+  require Logger
 
   @lifetime :timer.minutes(15)
 
@@ -57,6 +57,7 @@ defmodule Wardrik.OAuth.Flow do
     do: GenServer.call(pid, {:finish, params, principal}, :timer.seconds(30))
 
   @doc false
+  @spec start_link({map(), Provider.t(), Principal.t()}) :: GenServer.on_start()
   def start_link({settings, provider, principal}) do
     name = {:via, Registry, {settings.registry, {:flow, provider.name, principal.id}}}
     GenServer.start_link(__MODULE__, {settings, provider, principal}, name: name)
@@ -229,7 +230,10 @@ defmodule Wardrik.OAuth.Flow do
 
   defp redirect_uri(flow), do: flow.settings.page <> "/callback"
 
-  defp random, do: 18 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+  defp random do
+    bytes = :crypto.strong_rand_bytes(18)
+    Base.url_encode64(bytes, padding: false)
+  end
 
   defp schedule(interval), do: Process.send_after(self(), :poll, interval)
 end

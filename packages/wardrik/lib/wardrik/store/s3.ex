@@ -253,10 +253,14 @@ if Code.ensure_loaded?(Req) do
 
       case Keyword.fetch(opts, :if_vsn) do
         :error ->
-          store |> remove(object, []) |> removed(store, object, :error)
+          store
+          |> remove(object, [])
+          |> removed(store, object, :error)
 
         {:ok, vsn} ->
-          store |> delete_over(object, vsn) |> removed(store, object, {:ok, vsn})
+          store
+          |> delete_over(object, vsn)
+          |> removed(store, object, {:ok, vsn})
       end
     end
 
@@ -310,7 +314,7 @@ if Code.ensure_loaded?(Req) do
 
       for {object, size, etag} <- list(store, object(store, prefix), nil, []),
           size > 0,
-          do: {object |> String.replace_prefix(root, "") |> unescape(), etag}
+          do: {unescape(String.replace_prefix(object, root, "")), etag}
     end
 
     # Pages are kept last first, and joined once the last is read.
@@ -324,9 +328,13 @@ if Code.ensure_loaded?(Req) do
           {objects, next} = listing(body)
           pages = [objects | pages]
 
-          if next,
-            do: list(store, prefix, next, pages),
-            else: pages |> Enum.reverse() |> Enum.concat()
+          if next do
+            list(store, prefix, next, pages)
+          else
+            pages
+            |> Enum.reverse()
+            |> Enum.concat()
+          end
 
         {:ok, response} ->
           raise Error.exception(response)
@@ -337,16 +345,23 @@ if Code.ensure_loaded?(Req) do
     end
 
     defp listing(body) do
-      {document, _rest} = body |> String.to_charlist() |> :xmerl_scan.string(quiet: true)
+      {document, _rest} =
+        body
+        |> String.to_charlist()
+        |> :xmerl_scan.string(quiet: true)
 
       objects =
         for contents <- :xmerl_xpath.string(~c"//Contents", document) do
-          {field(contents, ~c"Key/text()"),
-           field(contents, ~c"Size/text()") |> String.to_integer(),
+          size = field(contents, ~c"Size/text()")
+
+          {field(contents, ~c"Key/text()"), String.to_integer(size),
            field(contents, ~c"ETag/text()")}
         end
 
-      truncated = Enum.map(:xmerl_xpath.string(~c"//IsTruncated/text()", document), &text/1)
+      truncated =
+        ~c"//IsTruncated/text()"
+        |> :xmerl_xpath.string(document)
+        |> Enum.map(&text/1)
 
       next =
         case {truncated, :xmerl_xpath.string(~c"//NextContinuationToken/text()", document)} do
@@ -362,7 +377,11 @@ if Code.ensure_loaded?(Req) do
       text(value)
     end
 
-    defp text(node), do: node |> elem(4) |> List.to_string()
+    defp text(node) do
+      node
+      |> elem(4)
+      |> List.to_string()
+    end
 
     defp probe(store) do
       object = object(store, "probe/#{node()}/#{System.unique_integer([:positive])}")

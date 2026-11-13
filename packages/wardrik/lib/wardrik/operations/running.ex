@@ -18,7 +18,11 @@ defmodule Wardrik.Operations.Running do
 
   @doc "Returns the running `agent`, or `nil`."
   @spec whereis(Wardrik.t(), agent()) :: pid() | nil
-  def whereis(wardrik, agent), do: WardrikCore.whereis(Wardrik.agents(wardrik), agent)
+  def whereis(wardrik, agent) do
+    wardrik
+    |> Wardrik.agents()
+    |> WardrikCore.whereis(agent)
+  end
 
   @doc "Returns `agent`, waking it from its definition if needed, or a `not_found` error."
   @spec awake(Wardrik.t(), agent()) :: {:ok, pid()} | {:error, Error.t()}
@@ -34,14 +38,18 @@ defmodule Wardrik.Operations.Running do
   @doc "Returns whether the agent `key` is running, saved or defined."
   @spec known?(Wardrik.t(), key()) :: boolean()
   def known?(wardrik, {agent, _conversation} = key) do
+    agents = Wardrik.agents(wardrik)
+
     whereis(wardrik, key) != nil or Definitions.fetch(wardrik, agent) != :error or
-      key in WardrikCore.list(Wardrik.agents(wardrik))
+      key in WardrikCore.list(agents)
   end
 
   @doc "Returns the keys of the saved agent `agent` and its conversations."
   @spec saved(Wardrik.t(), String.t()) :: [key()]
-  def saved(wardrik, agent),
-    do: for({^agent, _conversation} = key <- WardrikCore.list(Wardrik.agents(wardrik)), do: key)
+  def saved(wardrik, agent) do
+    agents = Wardrik.agents(wardrik)
+    for {^agent, _conversation} = key <- WardrikCore.list(agents), do: key
+  end
 
   @doc "Returns the agent `agent`'s definition, or a `not_found` error."
   @spec definition(Wardrik.t(), String.t()) :: {:ok, map()} | {:error, Error.t()}
@@ -80,7 +88,9 @@ defmodule Wardrik.Operations.Running do
   end
 
   defp start(wardrik, key, opts) do
-    case WardrikCore.start_agent(Wardrik.agents(wardrik), opts) do
+    agents = Wardrik.agents(wardrik)
+
+    case WardrikCore.start_agent(agents, opts) do
       {:ok, pid} ->
         configured(pid, opts)
 
@@ -124,7 +134,11 @@ defmodule Wardrik.Operations.Running do
     end
   end
 
-  defp saved_key(wardrik, key), do: WardrikCore.saved_key(Wardrik.agents(wardrik), key)
+  defp saved_key(wardrik, key) do
+    wardrik
+    |> Wardrik.agents()
+    |> WardrikCore.saved_key(key)
+  end
 
   defp configured(pid, opts) do
     :ok = WardrikCore.configure(pid, Keyword.drop(opts, [:agent_id, :conversation]))

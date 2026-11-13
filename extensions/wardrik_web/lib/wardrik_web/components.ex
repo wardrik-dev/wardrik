@@ -21,6 +21,7 @@ defmodule WardrikWeb.Components do
   slot :badge
   slot :actions
 
+  @spec head(map()) :: Phoenix.LiveView.Rendered.t()
   def head(assigns) do
     ~H"""
     <header class="head">
@@ -37,6 +38,7 @@ defmodule WardrikWeb.Components do
   @doc "A status label for an agent or a run."
   attr :value, :string, required: true
 
+  @spec status(map()) :: Phoenix.LiveView.Rendered.t()
   def status(assigns) do
     ~H"""
     <span class={["pill", @value]}>{@value}</span>
@@ -47,6 +49,7 @@ defmodule WardrikWeb.Components do
   attr :live, :boolean, required: true
   attr :stopped, :string, default: nil
 
+  @spec live(map()) :: Phoenix.LiveView.Rendered.t()
   def live(assigns) do
     ~H"""
     <span class={["live", !@live && "off"]} title={@stopped}>
@@ -62,6 +65,7 @@ defmodule WardrikWeb.Components do
   attr :owners, :list, required: true
   attr :owner, :string, required: true
 
+  @spec owner_picker(map()) :: Phoenix.LiveView.Rendered.t()
   def owner_picker(assigns) do
     ~H"""
     <form :if={length(@owners) > 1} id="owner-picker" class="filters" phx-change="owner">
@@ -77,6 +81,7 @@ defmodule WardrikWeb.Components do
   attr :key, :atom, required: true
   attr :behaviour, :atom, required: true
 
+  @spec off(map()) :: Phoenix.LiveView.Rendered.t()
   def off(assigns) do
     ~H"""
     <div class="card">
@@ -108,6 +113,7 @@ defmodule WardrikWeb.Components do
   @doc "A JSON value, pretty-printed."
   attr :value, :any, required: true
 
+  @spec json(map()) :: Phoenix.LiveView.Rendered.t()
   def json(assigns) do
     ~H"""
     <pre class="json">{Jason.encode!(@value, pretty: true)}</pre>
@@ -125,6 +131,7 @@ defmodule WardrikWeb.Components do
   attr :dashboard, :any, default: nil
   attr :agent, :boolean, default: false
 
+  @spec events(map()) :: Phoenix.LiveView.Rendered.t()
   def events(assigns) do
     ~H"""
     <div class="rows">
@@ -209,8 +216,11 @@ defmodule WardrikWeb.Components do
     |> String.slice(0, 140)
   end
 
-  defp leaves(%{} = map),
-    do: map |> Enum.sort_by(&elem(&1, 0)) |> Enum.flat_map(fn {_key, value} -> leaves(value) end)
+  defp leaves(%{} = map) do
+    map
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.flat_map(fn {_key, value} -> leaves(value) end)
+  end
 
   defp leaves(list) when is_list(list), do: Enum.flat_map(list, &leaves/1)
   defp leaves(value) when is_binary(value) and value != "", do: [value]
@@ -223,6 +233,7 @@ defmodule WardrikWeb.Components do
   attr :scope, :any, required: true
   attr :assigns, :map, default: %{}
 
+  @spec panels(map()) :: Phoenix.LiveView.Rendered.t()
   def panels(assigns) do
     ~H"""
     <.live_component
@@ -312,6 +323,7 @@ defmodule WardrikWeb.Components do
   attr :format, :any, default: nil
   attr :max, :any, default: nil
 
+  @spec spark(map()) :: Phoenix.LiveView.Rendered.t()
   def spark(assigns) do
     values = assigns.values
     assigns = assign(assigns, :format, assigns.format || (&number/1))
@@ -381,6 +393,7 @@ defmodule WardrikWeb.Components do
   attr :warn, :boolean, default: true
   attr :tip, :string, default: nil, doc: "explains the bar, shown on hover or focus"
 
+  @spec meter(map()) :: Phoenix.LiveView.Rendered.t()
   def meter(assigns) do
     percent = if assigns.limit > 0, do: assigns.count * 100 / assigns.limit, else: 0
     assigns = assign(assigns, percent: percent, high: assigns.warn and percent >= 80)
@@ -403,6 +416,7 @@ defmodule WardrikWeb.Components do
   @doc "A small ⓘ mark that shows `text` on hover or keyboard focus."
   attr :text, :string, required: true
 
+  @spec tip(map()) :: Phoenix.LiveView.Rendered.t()
   def tip(assigns) do
     ~H"""
     <span class="tip" tabindex="0" role="note" aria-label={@text} data-tip={@text}>i</span>

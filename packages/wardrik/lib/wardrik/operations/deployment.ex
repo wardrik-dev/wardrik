@@ -10,7 +10,12 @@ defmodule Wardrik.Operations.Deployment do
   @spec audit(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def audit(scope, input) do
     opts = [after: input["starting_after"] || 0, limit: input["limit"] || 100]
-    %{events: events, next: next} = Wardrik.EventLog.audit(Wardrik.events(scope.wardrik), opts)
+
+    %{events: events, next: next} =
+      scope.wardrik
+      |> Wardrik.events()
+      |> Wardrik.EventLog.audit(opts)
+
     {:ok, %{"events" => events, "next" => next}}
   end
 
@@ -25,8 +30,10 @@ defmodule Wardrik.Operations.Deployment do
 
     _failed = Wardrik.Resolution.refresh(wardrik, named || :all)
 
-    :ok = Wardrik.MCP.reconcile(Wardrik.mcp(wardrik))
-    :ok = Wardrik.Triggers.reconcile(Wardrik.triggers(wardrik))
+    mcp = Wardrik.mcp(wardrik)
+    :ok = Wardrik.MCP.reconcile(mcp)
+    triggers = Wardrik.triggers(wardrik)
+    :ok = Wardrik.Triggers.reconcile(triggers)
 
     here = to_string(node())
 
@@ -46,7 +53,12 @@ defmodule Wardrik.Operations.Deployment do
   @spec nodes(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def nodes(%Wardrik.Scope{wardrik: wardrik}, _input) do
     agents = Wardrik.agents(wardrik)
-    placements = Map.values(WardrikCore.placements(agents))
+
+    placements =
+      agents
+      |> WardrikCore.placements()
+      |> Map.values()
+
     counts = Enum.frequencies(placements)
 
     nodes =
@@ -58,7 +70,10 @@ defmodule Wardrik.Operations.Deployment do
     states =
       agents
       |> WardrikCore.running()
-      |> Enum.map(fn {key, _pid} -> Snapshot.status(Wardrik.EventLog.activity(events, key)) end)
+      |> Enum.map(fn {key, _pid} ->
+        activity = Wardrik.EventLog.activity(events, key)
+        Snapshot.status(activity)
+      end)
       |> Enum.frequencies()
 
     {:ok,
@@ -77,7 +92,9 @@ defmodule Wardrik.Operations.Deployment do
     key = Running.key(input)
     id = Running.describe(key)
 
-    case WardrikCore.move(Wardrik.agents(wardrik), key, to: node) do
+    agents = Wardrik.agents(wardrik)
+
+    case WardrikCore.move(agents, key, to: node) do
       {:ok, _pid} ->
         Changes.record(scope, type: "agent.moved", agent: key, data: %{"node" => node})
         {:ok, %{"agent" => Snapshot.summary(wardrik, key)}}

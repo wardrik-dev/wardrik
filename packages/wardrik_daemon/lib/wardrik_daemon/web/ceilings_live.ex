@@ -23,10 +23,14 @@ defmodule WardrikDaemon.Web.CeilingsLive do
   end
 
   @impl true
-  def handle_params(params, _uri, socket),
-    do:
-      {:noreply,
-       socket |> assign(:owner, params["owner"] || socket.assigns.daemon.config.org) |> load()}
+  def handle_params(params, _uri, socket) do
+    socket =
+      socket
+      |> assign(:owner, params["owner"] || socket.assigns.daemon.config.org)
+      |> load()
+
+    {:noreply, socket}
+  end
 
   @impl true
   def handle_event("owner", %{"owner" => owner}, socket),

@@ -98,7 +98,8 @@ defmodule WardrikDaemon.ServerTest do
   end
 
   test "gives an agent its files, and context read into every turn", context do
-    config = File.read!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml"))
+    path = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
+    config = File.read!(path)
 
     write(
       context,
@@ -123,7 +124,8 @@ defmodule WardrikDaemon.ServerTest do
   test "reads its files again, and forgets an agent whose file is gone", context do
     context = start_daemon(context)
     triage = id(context, "acme", "triage")
-    File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/triage.md"))
+    file = Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/triage.md")
+    File.rm!(file)
     write(context, "agents/notes.md", "Keep notes.")
 
     capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
@@ -159,7 +161,9 @@ defmodule WardrikDaemon.ServerTest do
     capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
     assert id(context, "acme", "triage") == triage
 
-    File.rename!(Path.join(dir, "triage.md"), Path.join(dir, "helper.md"))
+    triage_file = Path.join(dir, "triage.md")
+    helper_file = Path.join(dir, "helper.md")
+    File.rename!(triage_file, helper_file)
     log = capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
 
     assert log =~ "helper is the name of another agent in acme"
@@ -170,7 +174,7 @@ defmodule WardrikDaemon.ServerTest do
 
     assert {:error, %Wardrik.Error{type: :not_found}} = Wardrik.Agent.read(context.admin, triage)
 
-    File.rename!(Path.join(dir, "helper.md"), Path.join(dir, "triage.md"))
+    File.rename!(helper_file, triage_file)
     capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
     assert id(context, "acme", "triage") not in [triage, helper]
   end
@@ -249,7 +253,8 @@ defmodule WardrikDaemon.ServerTest do
     CLIToken.issue(context.daemon_store, path, "http://127.0.0.1:1")
     assert Tokens.verify(context.daemon_store, secret) == :error
     assert [%Token{name: "wardrik command"}] = Tokens.list(context.daemon_store)
-    assert CLIToken.read(Path.join(context.root, "none")) == :error
+    none = Path.join(context.root, "none")
+    assert CLIToken.read(none) == :error
   end
 
   test "finds the deployment's secrets in the vault before it opens", context do

@@ -83,8 +83,12 @@ defmodule Wardrik.ChatTest do
       assert Wardrik.Chat.received(context.workspace, mention("Hi", "1.1")) == :ignored
       assert Rooms.left(context.workspace, "C1") == :ok
 
-      assert ["wardrik.room.bound", "wardrik.room.unbound"] =
-               Enum.map(audited(context), & &1["type"])
+      types =
+        context
+        |> audited()
+        |> Enum.map(& &1["type"])
+
+      assert ["wardrik.room.bound", "wardrik.room.unbound"] = types
     end
 
     test "has the agent answer every message, or only mentions", context do
@@ -464,7 +468,9 @@ defmodule Wardrik.ChatTest do
   describe "notices" do
     test "knows a conversation in one of the workspace's threads", context do
       {:ok, workspace} =
-        Wardrik.Chat.workspace(Wardrik.Chat.channel(Chat, channel_options(context)), "T1")
+        Chat
+        |> Wardrik.Chat.channel(channel_options(context))
+        |> Wardrik.Chat.workspace("T1")
 
       thread = Workspace.conversation(workspace, room: "C1", thread: "1696.1234")
       assert Workspace.thread?(workspace, thread)
@@ -585,8 +591,12 @@ defmodule Wardrik.ChatTest do
 
     test "post a notice only in the workspace it names, and skip one not added", context do
       channel = context.stored
-      opts = Keyword.drop(channel_options(context), [:token, :owner])
-      opts = Keyword.merge(opts, installations: :stored, vault: context.vault)
+
+      opts =
+        context
+        |> channel_options()
+        |> Keyword.drop([:token, :owner])
+        |> Keyword.merge(installations: :stored, vault: context.vault)
 
       for {workspace, owner} <- [{"T1", "acme"}, {"T3", "globex"}] do
         installation = %Installation{

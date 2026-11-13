@@ -107,7 +107,11 @@ defmodule WardrikDaemon.Client do
 
   defp template(%{path: path}, _input), do: path
 
-  defp segment(value), do: URI.encode(to_string(value), &URI.char_unreserved?/1)
+  defp segment(value) do
+    value
+    |> to_string()
+    |> URI.encode(&URI.char_unreserved?/1)
+  end
 
   defp answered({:ok, %Req.Response{status: status, body: body}}, _client)
        when status in 200..299,

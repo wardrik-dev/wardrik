@@ -6,12 +6,12 @@ defmodule Wardrik.Notify.Server do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Notice
   alias Wardrik.Notify
   alias Wardrik.Operations.Snapshot
   alias WardrikCore.Retry
+
+  require Logger
 
   @doc "Starts the node's notifier."
   @spec start_link(Wardrik.t()) :: GenServer.on_start()
@@ -82,7 +82,8 @@ defmodule Wardrik.Notify.Server do
              definition: definition
            }),
          defaults = Map.merge(state.wardrik.defaults, resolved.defaults),
-         %{to: to, on: on} <- Notify.route(Map.merge(defaults, definition)),
+         merged = Map.merge(defaults, definition),
+         %{to: to, on: on} <- Notify.route(merged),
          true <- notice.kind in on,
          do: Enum.each(to, &tell(state, &1, notice))
 

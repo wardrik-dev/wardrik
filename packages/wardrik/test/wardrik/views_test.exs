@@ -14,7 +14,8 @@ defmodule Wardrik.ViewsTest do
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     stub(ReqLLM, :stream_text, fn _model, _messages, _opts -> {:ok, answer("Nothing.")} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     start_agent(wardrik, "acme/triage")
     scope = owner(wardrik)
     {:ok, _message} = Wardrik.Agent.ask(scope, "acme/triage", content: "Hi", id: "msg_1")
@@ -27,7 +28,8 @@ defmodule Wardrik.ViewsTest do
     {:ok, %{"events" => json}} = Wardrik.run(scope, "agent.events", %{"agent" => "acme/triage"})
 
     timeline = Timeline.fold(events)
-    assert Timeline.items(timeline) == json |> Timeline.fold() |> Timeline.items()
+    from_json = Timeline.fold(json)
+    assert Timeline.items(timeline) == Timeline.items(from_json)
 
     assert [%{kind: :user, text: "Hi"}, %{kind: :run, status: :completed} = run] =
              Timeline.items(timeline)

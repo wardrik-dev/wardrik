@@ -19,7 +19,10 @@ defmodule Wardrik.Operations.Lifecycle do
   """
   @spec define(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
-    definition = input |> Map.delete("agent") |> Definition.named()
+    definition =
+      input
+      |> Map.delete("agent")
+      |> Definition.named()
 
     with :ok <- bounded(wardrik, id, scope.policy),
          :ok <- written_after(wardrik, id, definition["policy"]),
@@ -38,7 +41,10 @@ defmodule Wardrik.Operations.Lifecycle do
     triggers = Map.get(definition, "triggers", [])
 
     with :ok <- Definitions.put(wardrik, id, definition),
-         :ok <- Wardrik.Triggers.put(Wardrik.triggers(wardrik), id, triggers) do
+         :ok <-
+           wardrik
+           |> Wardrik.triggers()
+           |> Wardrik.Triggers.put(id, triggers) do
       :ok
     else
       {:error, reason} ->
@@ -108,11 +114,13 @@ defmodule Wardrik.Operations.Lifecycle do
          {:ok, definition} <- Running.definition(wardrik, agent),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, agent, definition),
          before = messages(wardrik, key),
-         :ok <- WardrikCore.delete(Wardrik.agents(wardrik), key),
+         agents = Wardrik.agents(wardrik),
+         :ok <- WardrikCore.delete(agents, key),
          {:ok, _pid} <- Running.bring(wardrik, Running.held(opts, conversation)) do
       subject = Wardrik.EventLog.CloudEvent.subject(agent)
       cleared = {"conversation.cleared", subject, %{"messages_before" => before}}
-      :ok = Wardrik.EventLog.append(Wardrik.events(wardrik), key, cleared)
+      events = Wardrik.events(wardrik)
+      :ok = Wardrik.EventLog.append(events, key, cleared)
       Changes.record(scope, type: "agent.cleared", agent: key)
       Agent.read(scope, input)
     end
@@ -125,10 +133,12 @@ defmodule Wardrik.Operations.Lifecycle do
 
     with {:ok, _pid} <- Snapshot.running(wardrik, key) do
       now = DateTime.utc_now()
+      events = Wardrik.events(wardrik)
+      activity = Wardrik.EventLog.activity(events, key)
 
       calls =
         for %{"type" => "wardrik.tool_call.started", "tool" => tool, "since" => since} <-
-              Wardrik.EventLog.activity(Wardrik.events(wardrik), key)["doing"],
+              activity["doing"],
             do: %{
               "id" => tool["call"]["id"],
               "name" => tool["name"],
@@ -166,7 +176,8 @@ defmodule Wardrik.Operations.Lifecycle do
   def forgotten(wardrik, id) do
     with :ok <- deleted(wardrik, id),
          :ok <- Definitions.delete(wardrik, id),
-         :ok <- Wardrik.Triggers.put(Wardrik.triggers(wardrik), id, []) do
+         triggers = Wardrik.triggers(wardrik),
+         :ok <- Wardrik.Triggers.put(triggers, id, []) do
       :ok
     else
       {:error, reason} ->
@@ -175,9 +186,11 @@ defmodule Wardrik.Operations.Lifecycle do
   end
 
   defp deleted(wardrik, id) do
+    agents = Wardrik.agents(wardrik)
+
     deleted =
       for key <- Enum.uniq([{id, nil} | Running.saved(wardrik, id)]),
-          do: WardrikCore.delete(Wardrik.agents(wardrik), key)
+          do: WardrikCore.delete(agents, key)
 
     Enum.find(deleted, :ok, &(&1 != :ok))
   end
@@ -219,7 +232,10 @@ defmodule Wardrik.Operations.Lifecycle do
   end
 
   defp idle(wardrik, key) do
-    case Snapshot.status(Wardrik.EventLog.activity(Wardrik.events(wardrik), key)) do
+    events = Wardrik.events(wardrik)
+    activity = Wardrik.EventLog.activity(events, key)
+
+    case Snapshot.status(activity) do
       "idle" ->
         :ok
 

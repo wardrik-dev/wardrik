@@ -38,10 +38,15 @@ defmodule Wardrik.Policy.Rules do
   def to_json(rules) do
     {after_label, rules} = Enum.split_with(rules, & &1.after)
 
+    allow_after =
+      after_label
+      |> Enum.group_by(& &1.after)
+      |> patterns()
+
     rules
     |> Enum.group_by(&Atom.to_string(&1.effect))
     |> patterns()
-    |> Map.put("allow_after", after_label |> Enum.group_by(& &1.after) |> patterns())
+    |> Map.put("allow_after", allow_after)
   end
 
   defp patterns(groups), do: Map.new(groups, fn {key, rules} -> {key, written(rules)} end)
@@ -137,7 +142,9 @@ defmodule Wardrik.Policy.Rules do
   defp listed(other), do: [{other, :not_a_list}]
 
   defp after_labels(labels) when is_map(labels) do
-    case Enum.reject(Map.keys(labels), &(is_binary(&1) and &1 != "")) do
+    keys = Map.keys(labels)
+
+    case Enum.reject(keys, &(is_binary(&1) and &1 != "")) do
       [] ->
         {:ok,
          for({label, patterns} <- labels, entry <- listed(patterns), do: {{:allow, label}, entry})}

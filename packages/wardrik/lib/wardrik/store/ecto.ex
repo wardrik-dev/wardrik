@@ -19,9 +19,9 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
     @behaviour Wardrik.Store.Adapter
 
-    require Logger
-
     alias Ecto.Adapters.SQL
+
+    require Logger
 
     @table "wardrik_store"
 

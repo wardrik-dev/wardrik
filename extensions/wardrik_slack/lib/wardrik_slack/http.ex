@@ -56,7 +56,8 @@ defmodule WardrikSlack.HTTP do
   defp route(_channel, _request), do: text(404, "Slack sends nothing here.")
 
   defp acted(channel, act) do
-    task = Task.Supervisor.async_nolink(WardrikSlack.tasks(channel), act)
+    tasks = WardrikSlack.tasks(channel)
+    task = Task.Supervisor.async_nolink(tasks, act)
     if Task.yield(task, @wait) == nil, do: Task.ignore(task)
     text(200, "")
   end
@@ -75,10 +76,10 @@ defmodule WardrikSlack.HTTP do
 
   @doc "Returns the `x-slack-signature` for `body`, signed with `secret` at Unix time `at`."
   @spec signature(String.t(), integer(), String.t()) :: String.t()
-  def signature(secret, at, body),
-    do:
-      "v0=" <>
-        Base.encode16(:crypto.mac(:hmac, :sha256, secret, "v0:#{at}:#{body}"), case: :lower)
+  def signature(secret, at, body) do
+    mac = :crypto.mac(:hmac, :sha256, secret, "v0:#{at}:#{body}")
+    "v0=" <> Base.encode16(mac, case: :lower)
+  end
 
   defp text(status, body),
     do: %{status: status, headers: %{"content-type" => "text/plain; charset=utf-8"}, body: body}

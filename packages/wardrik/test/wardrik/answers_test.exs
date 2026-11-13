@@ -10,8 +10,13 @@ defmodule Wardrik.AnswersTest do
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, opts ->
-      for chunk <- ["Nothing's ", "on ", "fire."],
-          do: opts[:on_chunk].(ReqLLM.StreamChunk.text(chunk))
+      on_chunk = opts[:on_chunk]
+
+      for chunk <- ["Nothing's ", "on ", "fire."] do
+        chunk
+        |> ReqLLM.StreamChunk.text()
+        |> on_chunk.()
+      end
 
       {:ok, response}
     end)
@@ -25,8 +30,9 @@ defmodule Wardrik.AnswersTest do
   end
 
   test "streams an answer's text as it's written", %{scope: scope} do
-    assert Wardrik.Agent.stream(scope, "acme/triage", "What's on fire?") |> Enum.to_list() ==
-             ["Nothing's ", "on ", "fire."]
+    stream = Wardrik.Agent.stream(scope, "acme/triage", "What's on fire?")
+
+    assert Enum.to_list(stream) == ["Nothing's ", "on ", "fire."]
   end
 
   test "takes the agent as a struct", %{scope: scope} do
@@ -59,7 +65,9 @@ defmodule Wardrik.AnswersTest do
              Wardrik.Agent.reply(nobody, "acme/triage", "Hi")
 
     assert_raise Wardrik.Error, fn ->
-      nobody |> Wardrik.Agent.stream("acme/triage", "Hi") |> Enum.to_list()
+      nobody
+      |> Wardrik.Agent.stream("acme/triage", "Hi")
+      |> Enum.to_list()
     end
   end
 end

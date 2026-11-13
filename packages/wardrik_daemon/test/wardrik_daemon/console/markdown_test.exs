@@ -3,13 +3,19 @@ defmodule WardrikDaemon.Console.MarkdownTest do
 
   alias WardrikDaemon.Console.Markdown
 
-  defp plain(data), do: data |> Owl.Data.untag() |> IO.chardata_to_string()
+  defp plain(data) do
+    data
+    |> Owl.Data.untag()
+    |> IO.chardata_to_string()
+  end
 
   defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 
-  defp render(text), do: text |> Markdown.line() |> plain()
+  defp styles(text), do: sequences(Markdown.line(text))
+
+  defp render(text), do: plain(Markdown.line(text))
 
   defp push(text), do: Markdown.push(Markdown.new(), text)
 
@@ -73,8 +79,8 @@ defmodule WardrikDaemon.Console.MarkdownTest do
   describe "block constructs" do
     test "headings lose their hashes and gain colour" do
       assert render("## The component model") == "The component model"
-      assert Markdown.line("# Title") |> sequences() |> Enum.member?(:bright)
-      refute Markdown.line("### Deep") |> sequences() |> Enum.member?(:bright)
+      assert :bright in styles("# Title")
+      refute :bright in styles("### Deep")
     end
 
     test "bullets become bullets, keeping their indent" do
@@ -90,7 +96,7 @@ defmodule WardrikDaemon.Console.MarkdownTest do
 
     test "block quotes are marked and dimmed" do
       assert render("> quoted") == "│ quoted"
-      assert Markdown.line("> quoted") |> sequences() |> Enum.member?(:faint)
+      assert :faint in styles("> quoted")
     end
 
     test "horizontal rules become a divider" do
@@ -112,17 +118,17 @@ defmodule WardrikDaemon.Console.MarkdownTest do
     end
 
     test "each marker gets its own sequence" do
-      assert Markdown.line("**bold**") |> sequences() |> Enum.member?(:bright)
-      assert Markdown.line("*em*") |> sequences() |> Enum.member?(:italic)
-      assert Markdown.line("`code`") |> sequences() |> Enum.member?(:cyan)
+      assert :bright in styles("**bold**")
+      assert :italic in styles("*em*")
+      assert :cyan in styles("`code`")
     end
 
     test "links render as their text, hyperlinked" do
       assert render("see [the docs](https://example.com)") == "see the docs"
 
-      assert Markdown.line("[the docs](https://example.com)")
-             |> sequences()
-             |> Enum.member?({:hyperlink, "https://example.com"})
+      link = Markdown.line("[the docs](https://example.com)")
+      sequences = sequences(link)
+      assert Enum.member?(sequences, {:hyperlink, "https://example.com"})
     end
 
     test "a bare link shows its url" do
@@ -238,7 +244,8 @@ defmodule WardrikDaemon.Console.MarkdownTest do
         |> elem(1)
         |> Markdown.flush()
 
-      assert sequences(name) |> Enum.member?(:bright)
+      sequences = sequences(name)
+      assert Enum.member?(sequences, :bright)
     end
 
     test "a table still pending at the end of the stream is flushed" do

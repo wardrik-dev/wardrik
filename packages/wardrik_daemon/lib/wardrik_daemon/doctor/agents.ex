@@ -1,25 +1,33 @@
 defmodule WardrikDaemon.Doctor.Agents do
   @moduledoc false
 
+  import WardrikDaemon.Doctor, only: [counted: 2]
+
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.Policies
 
-  import WardrikDaemon.Doctor, only: [counted: 2]
-
   @doc "Returns a check for each file that doesn't read, or one saying they all did."
   @spec check(Config.t(), Dirs.t()) :: [WardrikDaemon.Doctor.check()]
   def check(config, dirs) do
-    case Policies.read(Dirs.config(dirs, "policies")) do
+    path = Dirs.config(dirs, "policies")
+
+    case Policies.read(path) do
       {:ok, policies} -> agents(config, dirs, policies)
       {:error, why} -> [{:fail, "agents", why}]
     end
   end
 
   defp agents(config, dirs, policies) do
-    files = dirs |> Dirs.config("agents") |> Path.join("*.md") |> Path.wildcard() |> Enum.sort()
+    files =
+      dirs
+      |> Dirs.config("agents")
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.sort()
+
     store = Wardrik.Store.ETS.new(name: :"wardrik doctor #{System.unique_integer([:positive])}")
     ulid = if Process.whereis(WardrikDaemon.ULID), do: [], else: [WardrikDaemon.ULID]
 
@@ -27,7 +35,12 @@ defmodule WardrikDaemon.Doctor.Agents do
       Supervisor.start_link([{Wardrik.Store, store} | ulid], strategy: :one_for_one)
 
     wardrik = wardrik(config, policies, store)
-    schema = JSV.build!(WardrikProtocol.schema("agent_definition"))
+
+    schema =
+      "agent_definition"
+      |> WardrikProtocol.schema()
+      |> JSV.build!()
+
     records = Wardrik.Store.scope(store, "wardrik_daemon")
     read = for path <- files, do: {path, recorded(records, AgentFile.read(path, config))}
     failures = Enum.flat_map(read, &unread(&1, records, wardrik, schema))

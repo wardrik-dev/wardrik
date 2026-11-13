@@ -65,7 +65,7 @@ defmodule Wardrik.MCP.HTTPStub do
   end
 
   defp respond(_method, false, _body), do: reply(404, "text/plain", "not found")
-  defp respond(:POST, true, body), do: body |> JSON.decode!() |> answer()
+  defp respond(:POST, true, body), do: answer(JSON.decode!(body))
   defp respond(_method, true, _body), do: reply(202, "text/plain", "")
 
   defp answer(%{"id" => id, "method" => "initialize", "params" => params}),

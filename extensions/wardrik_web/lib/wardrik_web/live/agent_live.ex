@@ -43,7 +43,12 @@ defmodule WardrikWeb.AgentLive do
   @impl true
   def handle_params(params, _uri, socket) do
     tab = if params["tab"] in Enum.map(tabs(), &elem(&1, 0)), do: params["tab"], else: "timeline"
-    socket = socket |> assign(:tab, tab) |> load()
+
+    socket =
+      socket
+      |> assign(:tab, tab)
+      |> load()
+
     {:noreply, if(socket.assigns[:live] == nil, do: follow(socket), else: socket)}
   end
 
@@ -193,8 +198,10 @@ defmodule WardrikWeb.AgentLive do
   # agent.events returns the oldest events first. Start from the cursor that events.head returns.
   defp newest(scope, input) do
     with {:ok, %{"events" => events}} <-
-           Wardrik.Scope.run(scope, "agent.events", Map.put(input, "limit", 500)),
-         do: {:ok, %{"events" => events |> Enum.take(-100) |> Enum.reverse()}}
+           Wardrik.Scope.run(scope, "agent.events", Map.put(input, "limit", 500)) do
+      latest = Enum.take(events, -100)
+      {:ok, %{"events" => Enum.reverse(latest)}}
+    end
   end
 
   # Show Move only when there's another node and the scope can list nodes.

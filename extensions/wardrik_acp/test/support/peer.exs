@@ -28,8 +28,14 @@ defmodule Peer do
 
   defp loop(state) do
     case IO.read(:stdio, :line) do
-      :eof -> :ok
-      line -> line |> received() |> handle(state) |> loop()
+      :eof ->
+        :ok
+
+      line ->
+        line
+        |> received()
+        |> handle(state)
+        |> loop()
     end
   end
 
@@ -103,8 +109,15 @@ defmodule Peer do
   end
 
   defp handle(%{"id" => id, "method" => "session/prompt", "params" => params}, state) do
-    text = params["prompt"] |> List.last() |> Map.fetch!("text")
-    {reason, state} = text |> steps() |> run(state)
+    text =
+      params["prompt"]
+      |> List.last()
+      |> Map.fetch!("text")
+
+    {reason, state} =
+      text
+      |> steps()
+      |> run(state)
 
     case reason do
       {:fail, message} ->
@@ -135,7 +148,12 @@ defmodule Peer do
   end
 
   defp tail(text) do
-    case text |> String.split("\n\n") |> List.last() |> decoded() do
+    last =
+      text
+      |> String.split("\n\n")
+      |> List.last()
+
+    case decoded(last) do
       {:ok, steps} -> steps
       :error -> []
     end
@@ -197,13 +215,18 @@ defmodule Peer do
   defp run([%{"ask" => tool_call} | steps], state) do
     id = "p#{state.next}"
 
+    asked =
+      tool_call
+      |> Map.put("toolCallId", id)
+      |> in_cwd(state.cwd)
+
     send_line(%{
       "jsonrpc" => "2.0",
       "id" => id,
       "method" => "session/request_permission",
       "params" => %{
         "sessionId" => state.session,
-        "toolCall" => tool_call |> Map.put("toolCallId", id) |> in_cwd(state.cwd),
+        "toolCall" => asked,
         "options" => [
           %{"optionId" => "once", "name" => "Allow", "kind" => "allow_once"},
           %{"optionId" => "always", "name" => "Always", "kind" => "allow_always"},
@@ -212,19 +235,24 @@ defmodule Peer do
       }
     })
 
-    case answer(id) do
-      "once" -> say(state, "allowed " <> tool_call["title"])
-      "no" -> say(state, "refused " <> tool_call["title"])
-      :cancelled -> :cancelled
-    end
-    |> case do
+    said =
+      case answer(id) do
+        "once" -> say(state, "allowed " <> tool_call["title"])
+        "no" -> say(state, "refused " <> tool_call["title"])
+        :cancelled -> :cancelled
+      end
+
+    case said do
       :cancelled -> {"cancelled", state}
       _said -> run(steps, %{state | next: state.next + 1})
     end
   end
 
   defp run([%{"write" => %{"path" => path, "text" => text}} | steps], state) do
-    File.write!(Path.join(state.cwd, path), text)
+    state.cwd
+    |> Path.join(path)
+    |> File.write!(text)
+
     run(steps, state)
   end
 

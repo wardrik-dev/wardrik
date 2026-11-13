@@ -23,7 +23,12 @@ defmodule WardrikRest.OpenAPITest do
     assert spec.title == "Shop"
     assert spec.schemes == %{"bearer" => :bearer, "key" => {:query, "api_key"}}
 
-    assert spec.operations |> Enum.map(& &1.name) |> Enum.sort() ==
+    names =
+      spec.operations
+      |> Enum.map(& &1.name)
+      |> Enum.sort()
+
+    assert names ==
              ["admin", "get_health", "orders_get", "orders_tags", "orders_update", "post_orders"]
 
     get = operation(spec, "orders_get")
@@ -38,7 +43,8 @@ defmodule WardrikRest.OpenAPITest do
              "expand" => %Parameter{in: :query, schema: %{"type" => "array"}}
            } = args(get)
 
-    refute Map.has_key?(args(get), "session")
+    taken = args(get)
+    refute Map.has_key?(taken, "session")
     assert args(get)["order_id"].schema["description"] == "The order's ID."
     assert operation(spec, "get_health").security == [[]]
   end
@@ -70,7 +76,8 @@ defmodule WardrikRest.OpenAPITest do
     assert place.security == [["bearer"]]
     assert %{"lines" => %{required: true}, "note" => note} = args(place)
     assert note.schema == %{"type" => "string"}
-    refute Map.has_key?(args(place), "id")
+    taken = args(place)
+    refute Map.has_key?(taken, "id")
 
     # The receipt takes only a file upload. Admin signs in only with HTTP basic, which isn't read.
     refute operation(spec, "orders_receipt")
@@ -135,12 +142,18 @@ defmodule WardrikRest.OpenAPITest do
 
       Req.Test.stub(test, fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
-        type = conn |> Plug.Conn.get_req_header("content-type") |> List.first()
+
+        type =
+          conn
+          |> Plug.Conn.get_req_header("content-type")
+          |> List.first()
+
         send(pid, {:called, conn.method, conn.request_path, type, body, conn.req_headers})
         Req.Test.json(conn, %{"ok" => true})
       end)
 
-      tools = Map.new(WardrikRest.tools(nil, apis: [api]), &{&1.name, &1})
+      listed = WardrikRest.tools(nil, apis: [api])
+      tools = Map.new(listed, &{&1.name, &1})
       %{tools: tools, context: context}
     end
 

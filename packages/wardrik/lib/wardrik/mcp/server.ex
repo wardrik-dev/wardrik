@@ -92,6 +92,8 @@ defmodule Wardrik.MCP.Server do
             ]
           )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   An MCP server and how to reach it.
 
@@ -162,6 +164,7 @@ defmodule Wardrik.MCP.Server do
     do: struct!(__MODULE__, [name: to_string(name)] ++ NimbleOptions.validate!(opts, @schema))
 
   @doc false
+  @spec transport(term()) :: {:ok, {:stdio | :streamable_http, keyword()}} | {:error, String.t()}
   def transport({:streamable_http, opts}) do
     with {:ok, opts} <- options(opts, @http) do
       case URI.new(opts[:url]) do
@@ -273,15 +276,21 @@ defmodule Wardrik.MCP.Server do
 
   @doc "Returns the transport options for reaching the server with the caller's `token`."
   @spec transport(t(), String.t() | nil) :: {:stdio | :streamable_http, keyword()}
-  def transport(%__MODULE__{transport: {:streamable_http, opts}} = server, token),
-    do:
-      {:streamable_http, opts |> endpoint() |> pooled(server.mcp) |> credentialed(server, token)}
+  def transport(%__MODULE__{transport: {:streamable_http, opts}} = server, token) do
+    opts =
+      opts
+      |> endpoint()
+      |> pooled(server.mcp)
+      |> credentialed(server, token)
+
+    {:streamable_http, opts}
+  end
 
   def transport(%__MODULE__{transport: {:stdio, opts}, credential_env: env}, token)
-      when is_binary(env) and is_binary(token),
-      do:
-        {:stdio,
-         opts |> Keyword.update(:env, %{env => token}, &Map.put(&1, env, token)) |> isolated()}
+      when is_binary(env) and is_binary(token) do
+    opts = Keyword.update(opts, :env, %{env => token}, &Map.put(&1, env, token))
+    {:stdio, isolated(opts)}
+  end
 
   def transport(%__MODULE__{transport: {:stdio, opts}}, _token), do: {:stdio, isolated(opts)}
 
@@ -327,7 +336,11 @@ defmodule Wardrik.MCP.Server do
   end
 
   defp glob?(glob, name) do
-    pattern = glob |> String.split("*") |> Enum.map_join(".*", &Regex.escape/1)
+    pattern =
+      glob
+      |> String.split("*")
+      |> Enum.map_join(".*", &Regex.escape/1)
+
     Regex.match?(~r/\A#{pattern}\z/, name)
   end
 

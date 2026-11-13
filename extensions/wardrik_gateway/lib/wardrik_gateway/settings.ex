@@ -64,6 +64,7 @@ defmodule WardrikGateway.Settings do
   end
 
   @doc false
+  @spec fallbacks(term()) :: {:ok, %{String.t() => [String.t()]}} | {:error, String.t()}
   def fallbacks(fallbacks) when is_map(fallbacks) do
     Enum.reduce_while(fallbacks, {:ok, %{}}, fn
       {model, rest}, {:ok, done} when is_binary(model) and is_list(rest) ->
@@ -80,6 +81,7 @@ defmodule WardrikGateway.Settings do
   def fallbacks(other), do: {:error, "fallbacks is a map of models, got: #{inspect(other)}"}
 
   @doc false
+  @spec limits(term()) :: {:ok, %{String.t() => keyword()}} | {:error, String.t()}
   def limits(limits) when is_map(limits) do
     Enum.reduce_while(limits, {:ok, %{}}, fn {provider, limit}, {:ok, done} ->
       case NimbleOptions.validate(limit, @limit) do

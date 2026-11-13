@@ -98,9 +98,13 @@ defmodule WardrikDaemon.Config.Options do
   # it. Options with no names of their own, as `[]` or `*:`, are any atom that exists.
   defp option(key, schema, path) do
     found =
-      if schema == [] or Keyword.has_key?(schema, :*),
-        do: atom(key),
-        else: Enum.find(Keyword.keys(schema), &(Atom.to_string(&1) == to_string(key)))
+      if schema == [] or Keyword.has_key?(schema, :*) do
+        atom(key)
+      else
+        schema
+        |> Keyword.keys()
+        |> Enum.find(&(Atom.to_string(&1) == to_string(key)))
+      end
 
     if is_atom(found) and found != nil, do: {:ok, found}, else: unknown(key, schema, path)
   end

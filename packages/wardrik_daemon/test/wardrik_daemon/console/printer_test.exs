@@ -44,7 +44,8 @@ defmodule WardrikDaemon.Console.PrinterTest do
       |> Enum.flat_map_reduce(Printer.new(), &Printer.event(&2, &1))
       |> elem(0)
 
-    assert IO.chardata_to_string(Ansi.chardata(faint, true)) =~ "\e[2m"
+    styled = Ansi.chardata(faint, true)
+    assert IO.chardata_to_string(styled) =~ "\e[2m"
   end
 
   test "says each tool call as it starts and ends, cut to the width" do

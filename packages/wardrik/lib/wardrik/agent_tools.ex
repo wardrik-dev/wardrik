@@ -236,7 +236,8 @@ defmodule Wardrik.AgentTools do
   end
 
   defp asked(me, agent, message, context) do
-    id = "msg_" <> Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false)
+    random = :crypto.strong_rand_bytes(12)
+    id = "msg_" <> Base.url_encode64(random, padding: false)
     me = %{me | labels: Context.labels(context)}
 
     asker = {me.id, me.conversation}
@@ -248,14 +249,16 @@ defmodule Wardrik.AgentTools do
   defp defined(me, agent, definition) do
     wardrik = Wardrik.Instance.fetch!(me.wardrik)
 
-    if Wardrik.Declarations.declared?(wardrik, agent),
-      do: {:error, "#{agent} is declared by a file, which a person changes."},
-      else:
-        run(
-          %{me | policy: policy(wardrik, me.id)},
-          "agent.define",
-          definition |> Wardrik.Type.json() |> Map.put("agent", agent)
-        )
+    if Wardrik.Declarations.declared?(wardrik, agent) do
+      {:error, "#{agent} is declared by a file, which a person changes."}
+    else
+      input =
+        definition
+        |> Wardrik.Type.json()
+        |> Map.put("agent", agent)
+
+      run(%{me | policy: policy(wardrik, me.id)}, "agent.define", input)
+    end
   end
 
   defp policy(wardrik, id) do
@@ -272,14 +275,21 @@ defmodule Wardrik.AgentTools do
     set(me, agent, Map.put(fields, "trigger", name))
   end
 
-  defp schedule_name,
-    do: "schedule-" <> Base.encode32(:crypto.strong_rand_bytes(4), case: :lower, padding: false)
+  defp schedule_name do
+    random = :crypto.strong_rand_bytes(4)
+    "schedule-" <> Base.encode32(random, case: :lower, padding: false)
+  end
 
   defp run(%{principal: nil, id: id}, _operation, _input),
     do: {:error, "#{id} acts for no one, so it can't reach other agents."}
 
   defp run(me, operation, input) do
-    case Wardrik.run(scope(me), operation, input) do
+    result =
+      me
+      |> scope()
+      |> Wardrik.run(operation, input)
+
+    case result do
       {:ok, nil} -> {:ok, %{"ok" => true}}
       {:ok, output} -> {:ok, output}
       {:error, error} -> {:error, error.message}

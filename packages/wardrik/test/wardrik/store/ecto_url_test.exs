@@ -10,12 +10,9 @@ if System.get_env("DATABASE_URL") do
 
     setup_all do
       url =
-        String.replace(
-          System.fetch_env!("DATABASE_URL"),
-          ~r{/[^/?]+(\?|$)},
-          "/wardrik_store_url\\1",
-          global: false
-        )
+        "DATABASE_URL"
+        |> System.fetch_env!()
+        |> String.replace(~r{/[^/?]+(\?|$)}, "/wardrik_store_url\\1", global: false)
 
       database = Ecto.Repo.Supervisor.parse_url(url)
       _dropped = Postgres.storage_down(database)
@@ -46,7 +43,8 @@ if System.get_env("DATABASE_URL") do
       assert Repo.options("postgres://u:p@db.example.com/w?ssl=true&x=1")[:url] ==
                "postgres://u:p@db.example.com/w?x=1"
 
-      refute Keyword.has_key?(Repo.options("postgres://u:p@localhost/w"), :ssl)
+      options = Repo.options("postgres://u:p@localhost/w")
+      refute Keyword.has_key?(options, :ssl)
     end
 
     test "takes a repo or a url, not both" do

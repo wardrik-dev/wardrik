@@ -167,7 +167,12 @@ defmodule Wardrik.Policy.Judge do
   def weigh(decision, nil, _call), do: decision
 
   def weigh(decision, judge, call) do
-    case judge |> judge(call) |> trusted(call) do
+    answer =
+      judge
+      |> judge(call)
+      |> trusted(call)
+
+    case answer do
       {:pass, measurements} ->
         %{decision | measurements: measurements}
 

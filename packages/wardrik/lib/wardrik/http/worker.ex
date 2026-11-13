@@ -147,10 +147,15 @@ defmodule Wardrik.HTTP.Worker do
   defp notification(method, params),
     do: {:text, JSON.encode!(%{"jsonrpc" => "2.0", "method" => method, "params" => params})}
 
-  defp response(id, body),
-    do: {:text, JSON.encode!(Map.merge(%{"jsonrpc" => "2.0", "id" => id}, body))}
+  defp response(id, body) do
+    message = Map.merge(%{"jsonrpc" => "2.0", "id" => id}, body)
+    {:text, JSON.encode!(message)}
+  end
 
   defp keep_alive(state), do: Process.send_after(self(), :keepalive, state.keepalive)
 
-  defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
+  defp version do
+    vsn = Application.spec(:wardrik, :vsn)
+    to_string(vsn)
+  end
 end

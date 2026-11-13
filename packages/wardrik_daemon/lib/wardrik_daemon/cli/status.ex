@@ -99,26 +99,36 @@ defmodule WardrikDaemon.CLI.Status do
   def line(%{since: nil} = status, _now), do: Owl.Data.tag(["· ", status.idle], :light_black)
 
   def line(status, now) do
-    [
-      Owl.Data.tag(Enum.at(@frames, rem(status.frame, length(@frames))), :cyan),
+    frame = Enum.at(@frames, rem(status.frame, length(@frames)))
+
+    parts = [
+      Owl.Data.tag(frame, :cyan),
       " ",
       doing(status),
       Owl.Data.tag(" · #{seconds(status, now)}", :light_black)
     ]
-    |> Owl.Data.truncate(status.width - 1)
+
+    Owl.Data.truncate(parts, status.width - 1)
   end
 
   defp doing(%{running: running, doing: doing}) when map_size(running) == 0, do: doing
 
   defp doing(%{running: running}) do
-    [first | rest] = running |> Map.values() |> Enum.sort()
+    [first | rest] =
+      running
+      |> Map.values()
+      |> Enum.sort()
+
     if rest == [], do: first, else: "#{first} and #{length(rest)} more"
   end
 
   @doc "Draws the line at `now`, and moves it on a frame."
   @spec draw(t(), integer()) :: t()
   def draw(status, now) do
-    line = Ansi.chardata(line(status, now), status.colour?)
+    line =
+      status
+      |> line(now)
+      |> Ansi.chardata(status.colour?)
 
     if status.shown?,
       do: Owl.LiveScreen.update(status.screen, __MODULE__, line),
@@ -153,7 +163,10 @@ defmodule WardrikDaemon.CLI.Status do
   def finish(%{since: nil} = status, _outcome, _now), do: status
 
   def finish(status, outcome, now) do
-    line = Ansi.chardata(summary(status, outcome, now), status.colour?)
+    line =
+      status
+      |> summary(outcome, now)
+      |> Ansi.chardata(status.colour?)
 
     if status.shown?,
       do: Owl.LiveScreen.update(status.screen, __MODULE__, line),
@@ -165,8 +178,10 @@ defmodule WardrikDaemon.CLI.Status do
 
   @doc "Returns the summary line `finish/3` leaves."
   @spec summary(t(), :done | :waiting | {:failed, String.t()}, integer()) :: Owl.Data.t()
-  def summary(status, :done, now),
-    do: [Owl.Data.tag("✔", :green), " ", Owl.Data.tag(took(status, now), :light_black)]
+  def summary(status, :done, now) do
+    took = took(status, now)
+    [Owl.Data.tag("✔", :green), " ", Owl.Data.tag(took, :light_black)]
+  end
 
   def summary(status, :waiting, now),
     do: [Owl.Data.tag("?", :yellow), " ", "waits on you", after_(status, now)]

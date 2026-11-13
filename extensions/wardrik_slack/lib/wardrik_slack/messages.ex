@@ -40,12 +40,17 @@ defmodule WardrikSlack.Messages do
     mention = "<@#{bot}>"
     text = Map.get(event, "text", "")
 
+    said =
+      text
+      |> String.replace(mention, "")
+      |> String.trim()
+
     inbound = %Inbound{
       room: room,
       thread: thread(event["thread_ts"], ts),
       id: ts,
       sender: sender(workspace, event["user"]),
-      text: text |> String.replace(mention, "") |> String.trim(),
+      text: said,
       mentioned?: String.contains?(text, mention)
     }
 

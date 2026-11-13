@@ -31,7 +31,9 @@ defmodule WardrikWeb.TriggersComponent do
         )
 
       {:error, error} ->
-        socket |> assign(triggers: []) |> flash(:error, error.message)
+        socket
+        |> assign(triggers: [])
+        |> flash(:error, error.message)
     end
   end
 
@@ -77,7 +79,13 @@ defmodule WardrikWeb.TriggersComponent do
   def handle_event("remove", %{"name" => name}, socket) do
     case remove(socket, name) do
       {:ok, _answer} ->
-        {:noreply, socket |> assign(triggers: nil) |> load() |> flash(:info, "Removed #{name}.")}
+        socket =
+          socket
+          |> assign(triggers: nil)
+          |> load()
+          |> flash(:info, "Removed #{name}.")
+
+        {:noreply, socket}
 
       {:error, error} ->
         {:noreply, flash(socket, :error, error.message)}
@@ -120,8 +128,11 @@ defmodule WardrikWeb.TriggersComponent do
         " · "
       )
 
-  defp when_text(trigger, _agent),
-    do: Enum.join(Enum.reject([trigger["every"], trigger["timezone"]], &is_nil/1), " · ")
+  defp when_text(trigger, _agent) do
+    [trigger["every"], trigger["timezone"]]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
 
   @impl true
   def render(assigns) do

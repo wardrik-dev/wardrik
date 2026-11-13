@@ -9,12 +9,12 @@ defmodule WardrikSlack.Socket do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Chat.Channel
   alias WardrikSlack.API
   alias WardrikSlack.Dispatch
   alias WardrikSlack.Socket.Connection
+
+  require Logger
 
   @first_backoff 1_000
   @max_backoff 60_000
@@ -90,7 +90,8 @@ defmodule WardrikSlack.Socket do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp run(state, work) do
-    {:ok, _pid} = Task.Supervisor.start_child(WardrikSlack.tasks(state.channel), work)
+    tasks = WardrikSlack.tasks(state.channel)
+    {:ok, _pid} = Task.Supervisor.start_child(tasks, work)
     {:noreply, state}
   end
 

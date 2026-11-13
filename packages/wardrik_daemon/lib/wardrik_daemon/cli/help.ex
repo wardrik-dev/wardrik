@@ -82,7 +82,11 @@ defmodule WardrikDaemon.CLI.Help do
   end
 
   defp listed(command) do
-    typed = String.pad_trailing(String.trim("#{command.name} #{command.arguments}"), @column)
+    typed =
+      "#{command.name} #{command.arguments}"
+      |> String.trim()
+      |> String.pad_trailing(@column)
+
     ["  ", Owl.Data.tag(typed, :cyan), " ", command.summary]
   end
 

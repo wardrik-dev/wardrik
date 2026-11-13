@@ -110,7 +110,10 @@ defmodule Wardrik.Workspace.Reads do
   end
 
   defp matches(path, content, regex, around) do
-    lines = content |> String.split("\n") |> Enum.with_index(1)
+    lines =
+      content
+      |> String.split("\n")
+      |> Enum.with_index(1)
 
     for {line, number} <- lines, Regex.match?(regex, line) do
       %{path: path, line: number, text: line, around: around(lines, number, around)}
@@ -130,8 +133,16 @@ defmodule Wardrik.Workspace.Reads do
   end
 
   defp window(lines, offset, limit) do
-    taken = lines |> Enum.drop(offset - 1) |> Enum.take(limit)
-    numbered = taken |> Enum.with_index(offset) |> Enum.map(fn {line, n} -> "#{n}\t#{line}" end)
+    taken =
+      lines
+      |> Enum.drop(offset - 1)
+      |> Enum.take(limit)
+
+    numbered =
+      taken
+      |> Enum.with_index(offset)
+      |> Enum.map(fn {line, n} -> "#{n}\t#{line}" end)
+
     {shown, count} = within(numbered, @max_read_bytes)
     last = offset + count - 1
     {Enum.join(shown, "\n"), if(last < length(lines), do: last + 1)}

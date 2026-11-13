@@ -21,8 +21,13 @@ defmodule Wardrik.Policy.Pattern do
   @spec parse(term()) :: {:ok, t()} | {:error, String.t()}
   def parse(source) when is_binary(source) and source != "" do
     case Regex.run(@call, source, capture: :all_but_first) do
-      [name, inner] -> source |> new(name) |> with_argument(inner)
-      nil -> plain(source)
+      [name, inner] ->
+        source
+        |> new(name)
+        |> with_argument(inner)
+
+      nil ->
+        plain(source)
     end
   end
 
@@ -46,7 +51,11 @@ defmodule Wardrik.Policy.Pattern do
     end
   end
 
-  defp count(source, character), do: source |> :binary.matches(character) |> length()
+  defp count(source, character) do
+    source
+    |> :binary.matches(character)
+    |> length()
+  end
 
   defp misplaced(source),
     do:
@@ -87,6 +96,7 @@ defmodule Wardrik.Policy.Pattern do
   defp names?(%__MODULE__{parts: parts}, name), do: Name.match?(parts, name)
 
   defimpl String.Chars do
+    @impl true
     def to_string(pattern), do: pattern.source
   end
 end

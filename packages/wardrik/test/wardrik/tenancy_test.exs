@@ -40,8 +40,15 @@ defmodule Wardrik.TenancyTest do
 
   defp readers(pattern) do
     for app <- @libraries,
-        path <- app |> source() |> Path.join("lib/**/*.ex") |> Path.wildcard(),
-        path |> File.read!() |> String.split("\n") |> Enum.any?(&reads?(&1, pattern)),
+        path <-
+          app
+          |> source()
+          |> Path.join("lib/**/*.ex")
+          |> Path.wildcard(),
+        path
+        |> File.read!()
+        |> String.split("\n")
+        |> Enum.any?(&reads?(&1, pattern)),
         uniq: true,
         do: path
   end

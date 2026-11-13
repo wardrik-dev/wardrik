@@ -62,10 +62,14 @@ defmodule Wardrik.Operations.Agents do
   @doc "Lists the calls the agents wait on a person for."
   @spec interrupts(Scope.t(), map()) :: {:ok, map()}
   def interrupts(scope, input) do
+    events = Wardrik.events(scope.wardrik)
+
     interrupts =
       for {agent, conversation} = key <- Visible.keys(scope, input),
           interrupt <-
-            Snapshot.interrupts(Wardrik.EventLog.activity(Wardrik.events(scope.wardrik), key)),
+            events
+            |> Wardrik.EventLog.activity(key)
+            |> Snapshot.interrupts(),
           do:
             Snapshot.conversation(
               %{"agent" => %{"id" => agent}, "interrupt" => interrupt},
@@ -93,7 +97,8 @@ defmodule Wardrik.Operations.Agents do
   @doc "Returns the cursor at the end of the agents' logs."
   @spec head(Scope.t(), map()) :: {:ok, map()}
   def head(scope, input) do
-    cursor = Wardrik.EventLog.head(Wardrik.events(scope.wardrik), Visible.logs(input))
+    events = Wardrik.events(scope.wardrik)
+    cursor = Wardrik.EventLog.head(events, Visible.logs(input))
     {:ok, %{"cursor" => visible_cursor(scope, input, cursor)}}
   end
 
@@ -106,7 +111,10 @@ defmodule Wardrik.Operations.Agents do
     with {:ok, stream} <- Snapshot.stream(scope, Visible.logs(input), opts) do
       {:ok,
        stream
-       |> Stream.filter(fn {event, _cursor} -> visible?.(Visible.agent_id(event)) end)
+       |> Stream.filter(fn {event, _cursor} ->
+         agent = Visible.agent_id(event)
+         visible?.(agent)
+       end)
        |> Stream.map(fn {event, cursor} -> {event, encoded(cursor, visible?)} end)}
     end
   end

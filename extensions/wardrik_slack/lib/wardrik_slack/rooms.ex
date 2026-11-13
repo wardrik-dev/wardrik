@@ -56,8 +56,13 @@ defmodule WardrikSlack.Rooms do
 
     reply =
       case act(action, value(pressed), workspace, room, by) do
-        {:error, text} -> Blocks.ephemeral(text)
-        shown -> Map.put(message(shown, workspace, nil), :replace_original, true)
+        {:error, text} ->
+          Blocks.ephemeral(text)
+
+        shown ->
+          shown
+          |> message(workspace, nil)
+          |> Map.put(:replace_original, true)
       end
 
     API.respond(payload["response_url"], reply, API.req_options(workspace.channel))
@@ -89,8 +94,11 @@ defmodule WardrikSlack.Rooms do
   defp answers("everything"), do: :everything
   defp answers(_mentions), do: :mentions
 
-  defp offer(workspace, agent, by),
-    do: Enum.find(Workspace.offered(workspace, by), %Offer{agent: agent}, &(&1.agent == agent))
+  defp offer(workspace, agent, by) do
+    workspace
+    |> Workspace.offered(by)
+    |> Enum.find(%Offer{agent: agent}, &(&1.agent == agent))
+  end
 
   defp value(%{"value" => value}), do: value
   defp value(%{"selected_option" => %{"value" => value}}), do: value
@@ -165,18 +173,18 @@ defmodule WardrikSlack.Rooms do
           do: "*#{shown(offer)}*\n#{description}",
           else: "*#{shown(offer)}*"
 
-      Map.put(
-        Blocks.section(line),
-        :accessory,
-        Blocks.button("Use", action_id: "wardrik_room_agent", value: agent)
-      )
+      line
+      |> Blocks.section()
+      |> Map.put(:accessory, Blocks.button("Use", action_id: "wardrik_room_agent", value: agent))
     end
   end
 
   defp choose(offers) do
     options =
-      for %Offer{agent: agent} = offer <- offers,
-          do: %{text: Blocks.plain(shown(offer)), value: agent}
+      for %Offer{agent: agent} = offer <- offers do
+        name = shown(offer)
+        %{text: Blocks.plain(name), value: agent}
+      end
 
     select = %{
       type: "static_select",

@@ -52,7 +52,11 @@ defmodule WardrikDaemon.AgentFile do
   defp split(text), do: {:ok, %{}, String.trim(text)}
 
   defp agent(path, fields, config) do
-    name = path |> Path.basename() |> Path.rootname()
+    name =
+      path
+      |> Path.basename()
+      |> Path.rootname()
+
     org = fields["org"] || org(fields["owner"], config.org)
     owner = owner(fields["owner"], org)
 
@@ -78,7 +82,9 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   defp declared(org, config) do
-    if org == config.org or Map.has_key?(Map.delete(config.orgs, "*"), org),
+    orgs = Map.delete(config.orgs, "*")
+
+    if org == config.org or Map.has_key?(orgs, org),
       do: :ok,
       else: {:error, "is in the org #{inspect(org)}, which config.yaml doesn't declare"}
   end

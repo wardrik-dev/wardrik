@@ -99,7 +99,12 @@ defmodule WardrikLua.Sandbox.Runner do
   defp over_budget?(pid, max_heap_bytes) do
     case Process.info(pid, :binary) do
       {:binary, held} ->
-        held |> Enum.uniq_by(&elem(&1, 0)) |> Enum.sum_by(&elem(&1, 1)) > max_heap_bytes
+        bytes =
+          held
+          |> Enum.uniq_by(&elem(&1, 0))
+          |> Enum.sum_by(&elem(&1, 1))
+
+        bytes > max_heap_bytes
 
       nil ->
         false

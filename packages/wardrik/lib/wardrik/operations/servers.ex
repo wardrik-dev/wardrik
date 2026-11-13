@@ -57,8 +57,9 @@ defmodule Wardrik.Operations.Servers do
         not_removed(wardrik, owner, name)
 
       record ->
-        _stopped = Wardrik.MCP.remove(Wardrik.mcp(wardrik), key)
-        :ok = :erpc.multicast(Node.list(), Wardrik.MCP, :remove, [Wardrik.mcp(wardrik), key])
+        mcp = Wardrik.mcp(wardrik)
+        _stopped = Wardrik.MCP.remove(mcp, key)
+        :ok = :erpc.multicast(Node.list(), Wardrik.MCP, :remove, [mcp, key])
         forget_sign_ins(wardrik, record)
         :ok = Owned.delete(wardrik, @kind, owner, name)
         changed(scope, "server.removed", {owner, name, %{}})
@@ -106,13 +107,14 @@ defmodule Wardrik.Operations.Servers do
 
   defp declared(wardrik) do
     for {name, opts} <- wardrik.mcp do
-      %{
+      server = %{
         "owner" => Owned.deployment(),
         "name" => to_string(name),
         "source" => "config",
         "auth" => declared_auth(opts)
       }
-      |> put("url", url(opts[:transport]))
+
+      put(server, "url", url(opts[:transport]))
     end
   end
 
@@ -163,7 +165,9 @@ defmodule Wardrik.Operations.Servers do
 
   # The header names the secret, read as each connection starts, so a new value takes effect.
   defp signs_in(wardrik, owner, %{"auth" => %{"secret" => %{"name" => name} = secret}}) do
-    if {owner, name, :header} in Wardrik.Vault.list(Wardrik.vault(wardrik)) do
+    vault = Wardrik.vault(wardrik)
+
+    if {owner, name, :header} in Wardrik.Vault.list(vault) do
       sent = sent(Map.get(secret, "scheme", "Bearer"), name)
       {:ok, [headers: %{Map.get(secret, "header", "authorization") => sent}], "secret"}
     else
@@ -213,7 +217,9 @@ defmodule Wardrik.Operations.Servers do
   end
 
   defp started(wardrik, key, opts) do
-    case Wardrik.MCP.add(Wardrik.mcp(wardrik), key, opts) do
+    mcp = Wardrik.mcp(wardrik)
+
+    case Wardrik.MCP.add(mcp, key, opts) do
       :ok -> :ok
       {:error, why} -> {:error, Error.new(:invalid_request, "The server doesn't read: #{why}")}
     end
@@ -248,8 +254,11 @@ defmodule Wardrik.Operations.Servers do
     end
   end
 
-  defp held(wardrik, owner),
-    do: Wardrik.Vault.names(Wardrik.vault(wardrik), %Principal{id: owner})
+  defp held(wardrik, owner) do
+    wardrik
+    |> Wardrik.vault()
+    |> Wardrik.Vault.names(%Principal{id: owner})
+  end
 
   defp authorizing(wardrik, {owner, credential}, name) do
     case Wardrik.sign_in(wardrik, credential, %Principal{id: owner}) do

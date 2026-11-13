@@ -3,9 +3,9 @@ defmodule Wardrik.Sleeper do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Operations.Running
+
+  require Logger
 
   @idle ~w(wardrik.agent.started wardrik.run.completed wardrik.run.failed wardrik.run.cancelled
            wardrik.run.deadline_exceeded)
@@ -19,8 +19,10 @@ defmodule Wardrik.Sleeper do
 
   @doc "Starts the idle timer for the newly defined agent `id`."
   @spec watch(Wardrik.t(), String.t()) :: :ok
-  def watch(wardrik, id),
-    do: GenServer.cast(Module.concat(wardrik.name, Sleeper), {:watch, {id, nil}})
+  def watch(wardrik, id) do
+    sleeper = Module.concat(wardrik.name, Sleeper)
+    GenServer.cast(sleeper, {:watch, {id, nil}})
+  end
 
   @impl GenServer
   def init(wardrik) do
@@ -30,16 +32,17 @@ defmodule Wardrik.Sleeper do
 
   @impl GenServer
   def handle_continue(:subscribe, %{wardrik: wardrik} = state) do
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    events = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(events, :all)
     {:noreply, state}
   end
 
   @impl GenServer
-  def handle_cast({:watch, id}, state), do: {:noreply, state |> disarm(id) |> arm(id)}
+  def handle_cast({:watch, id}, state), do: {:noreply, arm(disarm(state, id), id)}
 
   @impl GenServer
   def handle_info({Wardrik.EventLog, id, %{"type" => type}}, state) when type in @idle,
-    do: {:noreply, state |> disarm(id) |> arm(id)}
+    do: {:noreply, arm(disarm(state, id), id)}
 
   def handle_info({Wardrik.EventLog, id, %{"type" => type}}, state) when type in @busy,
     do: {:noreply, disarm(state, id)}

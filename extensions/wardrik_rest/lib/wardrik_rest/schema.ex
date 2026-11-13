@@ -51,8 +51,12 @@ defmodule WardrikRest.Schema do
   # sentence.
   defp brief(nil, _how), do: nil
 
-  defp brief(description, %{brief: true}),
-    do: description |> String.split(~r/(?<=[.!?])\s/, parts: 2) |> hd() |> String.slice(0, @brief)
+  defp brief(description, %{brief: true}) do
+    description
+    |> String.split(~r/(?<=[.!?])\s/, parts: 2)
+    |> hd()
+    |> String.slice(0, @brief)
+  end
 
   defp brief(description, _how), do: description
 
@@ -63,10 +67,16 @@ defmodule WardrikRest.Schema do
         {{name, described(inlined, brief(schema["description"], how))}, [more | cut]}
       end)
 
-    {Map.new(schemas), cut |> List.flatten() |> Enum.uniq() |> Enum.sort()}
+    cut =
+      cut
+      |> List.flatten()
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    {Map.new(schemas), cut}
   end
 
-  defp size(schemas), do: schemas |> JSON.encode!() |> byte_size()
+  defp size(schemas), do: byte_size(JSON.encode!(schemas))
 
   @doc """
   Returns the object `name` names, with its fields' descriptions, and the objects inside it as
@@ -116,7 +126,9 @@ defmodule WardrikRest.Schema do
   defp object(%{} = node, types, seen) do
     choices = Enum.flat_map(@choices, &List.wrap(node[&1]))
 
-    case Enum.find(Enum.map(choices, &object(&1, types, seen)), &Map.has_key?(&1, "properties")) do
+    objects = Enum.map(choices, &object(&1, types, seen))
+
+    case Enum.find(objects, &Map.has_key?(&1, "properties")) do
       nil -> node
       object -> object
     end

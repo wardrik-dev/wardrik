@@ -83,10 +83,8 @@ defmodule Wardrik.Channels do
   def owned(instance, args) do
     case fetched(instance, Keyword.fetch!(args, :channel)) do
       {:ok, {adapter, opts}} ->
-        Wardrik.Chat.Channel.owned(
-          Wardrik.Chat.channel(adapter, opts),
-          Keyword.fetch!(args, :owner)
-        )
+        channel = Wardrik.Chat.channel(adapter, opts)
+        Wardrik.Chat.Channel.owned(channel, Keyword.fetch!(args, :owner))
 
       {:error, _why} ->
         []

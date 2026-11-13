@@ -70,7 +70,9 @@ defmodule WardrikWeb.Router do
   defmacro wardrik_dashboard(path, opts) do
     quote bind_quoted: [path: path, opts: opts] do
       {session_name, hooks, dashboard} =
-        WardrikWeb.Router.__dashboard__(Phoenix.Router.scoped_path(__MODULE__, path), opts)
+        __MODULE__
+        |> Phoenix.Router.scoped_path(path)
+        |> WardrikWeb.Router.__dashboard__(opts)
 
       scope path, alias: false, as: false do
         get "/assets/:asset", WardrikWeb.Assets, :show
@@ -105,6 +107,7 @@ defmodule WardrikWeb.Router do
   end
 
   @doc false
+  @spec __dashboard__(String.t(), keyword()) :: {atom(), [term()], WardrikWeb.Dashboard.t()}
   def __dashboard__(prefix, opts) do
     opts = NimbleOptions.validate!(opts, @schema)
     {name, opts} = Keyword.pop!(opts, :live_session)

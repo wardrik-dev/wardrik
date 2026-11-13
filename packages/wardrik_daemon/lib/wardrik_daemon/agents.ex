@@ -24,16 +24,19 @@ defmodule WardrikDaemon.Agents do
 
   @behaviour Wardrik.Declarations
 
-  require Logger
-
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config.Access
 
+  require Logger
+
   @key "agent files"
 
   @impl Wardrik.Declarations
-  def declared?(opts, id), do: id in Map.values(declared(opts))
+  def declared?(opts, id) do
+    declared = declared(opts)
+    id in Map.values(declared)
+  end
 
   @impl Wardrik.Declarations
   def reload(opts) do
@@ -52,7 +55,8 @@ defmodule WardrikDaemon.Agents do
           into: %{},
           do: {file, id}
 
-    gone = Enum.uniq(Map.values(last)) -- Map.values(declared)
+    claimed = Map.values(last)
+    gone = Enum.uniq(claimed) -- Map.values(declared)
 
     {:ok, _vsn} = Wardrik.Store.put(opts[:store], @key, declared)
     problems = Enum.map(read, &defined(opts, &1)) ++ Enum.map(gone, &forgotten(opts, &1))
@@ -68,7 +72,12 @@ defmodule WardrikDaemon.Agents do
   @spec scope(keyword()) :: Wardrik.Scope.t()
   def scope(opts), do: Wardrik.as(opts[:wardrik], Access.admin())
 
-  defp files(opts), do: opts[:dir] |> Path.join("*.md") |> Path.wildcard() |> Enum.sort()
+  defp files(opts) do
+    opts[:dir]
+    |> Path.join("*.md")
+    |> Path.wildcard()
+    |> Enum.sort()
+  end
 
   defp declared(opts), do: Wardrik.Store.get(opts[:store], @key) || %{}
 
@@ -116,12 +125,14 @@ defmodule WardrikDaemon.Agents do
 
   @doc "Returns whether the agent of `record` is gone: forgotten, or never defined."
   @spec gone?(keyword(), AgentRecords.t()) :: boolean()
-  def gone?(opts, record),
-    do:
-      match?(
-        {:error, %Wardrik.Error{type: :not_found}},
-        Wardrik.run(scope(opts), "agent.definition", %{"agent" => record.id})
-      )
+  def gone?(opts, record) do
+    definition =
+      opts
+      |> scope()
+      |> Wardrik.run("agent.definition", %{"agent" => record.id})
+
+    match?({:error, %Wardrik.Error{type: :not_found}}, definition)
+  end
 
   defp declares({:ok, record, _definition}, _last), do: record.id
   defp declares({:error, _why}, last), do: last
@@ -131,7 +142,9 @@ defmodule WardrikDaemon.Agents do
   defp defined(opts, {path, {:ok, record, definition}}) do
     with {:ok, definition} <- AgentRecords.identified(opts[:store], record.org, definition),
          {:ok, snapshot} <-
-           Wardrik.run(scope(opts), "agent.define", Map.put(definition, "agent", record.id)) do
+           opts
+           |> scope()
+           |> Wardrik.run("agent.define", Map.put(definition, "agent", record.id)) do
       started_over(snapshot, record, path)
     else
       {:error, %Wardrik.Error{message: message}} ->
@@ -148,7 +161,9 @@ defmodule WardrikDaemon.Agents do
   defp started_over(_snapshot, _record, _path), do: :ok
 
   defp forgotten(opts, id) do
-    case Wardrik.run(scope(opts), "agent.forget", %{"agent" => id}) do
+    scope = scope(opts)
+
+    case Wardrik.run(scope, "agent.forget", %{"agent" => id}) do
       {:error, %Wardrik.Error{type: type} = error} when type != :not_found ->
         "didn't forget #{id}, whose file is gone: #{error.message}"
 

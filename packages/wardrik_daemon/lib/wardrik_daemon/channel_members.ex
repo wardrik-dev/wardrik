@@ -43,7 +43,9 @@ defmodule WardrikDaemon.ChannelMembers do
   defp by_email(nil, _domains), do: :error
 
   defp by_email(email, domains) do
-    with [name, domain] <- email |> String.downcase() |> String.split("@"),
+    address = String.downcase(email)
+
+    with [name, domain] <- String.split(address, "@"),
          {:ok, org} <- Map.fetch(domains, domain),
          user = Owners.person(org, name),
          true <- Owners.user?(user) do
@@ -57,6 +59,7 @@ defmodule WardrikDaemon.ChannelMembers do
   defp named(%Request{name: name}), do: %{name: name}
 
   @doc false
+  @spec user(term()) :: {:ok, String.t()} | {:error, String.t()}
   def user("user:" <> id = user) do
     if id == Access.admin() or Owners.user?(id), do: {:ok, id}, else: not_user(user)
   end
@@ -67,6 +70,7 @@ defmodule WardrikDaemon.ChannelMembers do
     do: {:error, "is a person in an org, as user:acme/@ana, or user:admin, not #{inspect(other)}"}
 
   @doc false
+  @spec domain(String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def domain(domain) do
     if Regex.match?(~r/\A[^@\s]+\.[^@\s]+\z/, domain),
       do: {:ok, String.downcase(domain)},
@@ -74,6 +78,7 @@ defmodule WardrikDaemon.ChannelMembers do
   end
 
   @doc false
+  @spec org(String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def org(org) do
     if org != "deployment" and Owners.valid?(org) and Owners.person(org) == nil,
       do: {:ok, org},

@@ -176,8 +176,13 @@ defmodule Wardrik.Testing.Server do
     {:ok, %{"agents" => agents}}
   end
 
-  defp answer(%Scope{wardrik: name}, "agent.definition", %{"agent" => agent}),
-    do: name |> state() |> Map.fetch!(:offered) |> List.keyfind(agent, 0) |> defined(agent)
+  defp answer(%Scope{wardrik: name}, "agent.definition", %{"agent" => agent}) do
+    name
+    |> state()
+    |> Map.fetch!(:offered)
+    |> List.keyfind(agent, 0)
+    |> defined(agent)
+  end
 
   defp answer(%Scope{wardrik: name}, "agent.read", input) do
     {agent, conversation} = log = log(input)
@@ -218,7 +223,17 @@ defmodule Wardrik.Testing.Server do
     end
   end
 
-  defp state(name), do: Agent.get(state_name(name), & &1)
-  defp update(name, change), do: Agent.update(state_name(name), change)
+  defp state(name) do
+    name
+    |> state_name()
+    |> Agent.get(& &1)
+  end
+
+  defp update(name, change) do
+    name
+    |> state_name()
+    |> Agent.update(change)
+  end
+
   defp state_name(name), do: Module.concat(name, Wardrik.Testing)
 end

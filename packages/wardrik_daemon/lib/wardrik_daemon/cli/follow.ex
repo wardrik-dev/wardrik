@@ -328,7 +328,10 @@ defmodule WardrikDaemon.CLI.Follow do
   defp noted(state, event), do: %{state | status: Status.seen(state.status, event, now())}
 
   defp printed(event, %{cx: %{json?: true}} = state) do
-    IO.puts(JSON.encode!(event))
+    event
+    |> JSON.encode!()
+    |> IO.puts()
+
     state
   end
 
@@ -389,6 +392,6 @@ defmodule WardrikDaemon.CLI.Follow do
     |> Enum.map_join(& &1["content"])
   end
 
-  defp trace(%{"traceparent" => "00-" <> rest}), do: rest |> String.split("-", parts: 2) |> hd()
+  defp trace(%{"traceparent" => "00-" <> rest}), do: hd(String.split(rest, "-", parts: 2))
   defp trace(_event), do: nil
 end

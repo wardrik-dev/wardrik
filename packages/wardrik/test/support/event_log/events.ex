@@ -16,7 +16,9 @@ defmodule Wardrik.EventLog.Test.Events do
 
   def trimmed(events) do
     {Wardrik.EventLog.Retention, retention, :worker, _modules} =
-      events |> Supervisor.which_children() |> List.keyfind(Wardrik.EventLog.Retention, 0)
+      events
+      |> Supervisor.which_children()
+      |> List.keyfind(Wardrik.EventLog.Retention, 0)
 
     :sys.get_state(retention)
   end
@@ -52,7 +54,11 @@ defmodule Wardrik.EventLog.Test.Protocol do
   import ExUnit.Assertions
 
   def valid!(cloud_event) do
-    envelope = JSV.build!(WardrikProtocol.schema("cloudevent"))
+    envelope =
+      "cloudevent"
+      |> WardrikProtocol.schema()
+      |> JSV.build!()
+
     assert {:ok, _event} = JSV.validate(cloud_event, envelope)
     "wardrik." <> type = cloud_event["type"]
 

@@ -60,11 +60,8 @@ defmodule WardrikSlack.SocketTest do
       assert {:reply, {:text, ~s({"envelope_id":"e-4"})}, _owner} =
                Connection.handle_frame({:text, ~s({"envelope_id":"e-4"})}, self())
 
-      assert {:reply, _ack, _owner} =
-               Connection.handle_frame(
-                 frame(%{envelope_id: "e-1", type: "interactive", payload: %{}}),
-                 self()
-               )
+      interactive = frame(%{envelope_id: "e-1", type: "interactive", payload: %{}})
+      assert {:reply, _ack, _owner} = Connection.handle_frame(interactive, self())
 
       assert_received {:interactive, %{}}
 

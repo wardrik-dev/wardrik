@@ -101,7 +101,8 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   defp seal(context, {owner, name}, value, kind) do
     secret = %Secret{principal: %Principal{id: owner}, name: name, value: value}
-    {:ok, _vsn} = Wardrik.Vault.put(Wardrik.vault(context.running), secret, kind: kind)
+    vault = Wardrik.vault(context.running)
+    {:ok, _vsn} = Wardrik.Vault.put(vault, secret, kind: kind)
   end
 
   # A grant the app `key` issued, expired, which only that app may refresh.
@@ -169,7 +170,11 @@ defmodule WardrikDaemon.OAuthAppsTest do
   test "refreshes a grant only by the app that issued it", context do
     admin = client(context, "user:admin")
     assert {:ok, _app} = add(admin, "payments", app("crm", "payments-crm"))
-    issuer = Apps.key(nearest(context, "payments", "crm"))
+
+    issuer =
+      context
+      |> nearest("payments", "crm")
+      |> Apps.key()
 
     # The issuer refreshes it, though its token endpoint is down.
     grant(context, {"payments/@ana", "payments:crm"}, issuer)
@@ -178,7 +183,8 @@ defmodule WardrikDaemon.OAuthAppsTest do
     # An app removed and added again by the same name is another app: Bo signs in again.
     assert {:ok, _app} = remove(admin, "payments", "crm")
     assert {:ok, _app} = add(admin, "payments", app("crm", "payments-crm"))
-    refute Apps.key(nearest(context, "payments", "crm")) == issuer
+    added_again = nearest(context, "payments", "crm")
+    refute Apps.key(added_again) == issuer
 
     grant(context, {"payments/@bo", "payments:crm"}, issuer)
     assert {:authorize, _url} = credential(context, "payments/@bo", "payments:crm")
@@ -245,10 +251,11 @@ defmodule WardrikDaemon.OAuthAppsTest do
     assert {:ok, listed} = list(admin, "growth")
     refute JSON.encode!(listed) =~ "sk-"
     refute JSON.encode!(listed) =~ "deployment-secret"
-    refute :erlang.term_to_binary(Wardrik.Store.entries(context.daemon_store, "")) =~ "sk-"
+    entries = Wardrik.Store.entries(context.daemon_store, "")
+    refute :erlang.term_to_binary(entries) =~ "sk-"
 
-    :ok =
-      Wardrik.Vault.delete(Wardrik.vault(context.running), %Principal{id: "growth"}, "CRM_SECRET")
+    vault = Wardrik.vault(context.running)
+    :ok = Wardrik.Vault.delete(vault, %Principal{id: "growth"}, "CRM_SECRET")
 
     assert {:error, "crm's client secret CRM_SECRET isn't sealed for growth"} =
              resolve(context, "growth/@cy", "crm")
@@ -266,11 +273,13 @@ defmodule WardrikDaemon.OAuthAppsTest do
     assert {:error, "invalid_request", message} = add(admin, "growth", inside)
     assert message == "The token_endpoint can't be reached: 169.254.169.254 is a private address."
 
+    app = app("wiki", "x")
+
     for input <- [
           %{"name" => "wiki"},
-          %{app("wiki", "x") | "name" => "a:b"},
-          Map.put(app("wiki", "x"), "client_secret", "inline"),
-          Map.put(app("wiki", "x"), "authorization_params", %{"state" => "mine"})
+          %{app | "name" => "a:b"},
+          Map.put(app, "client_secret", "inline"),
+          Map.put(app, "authorization_params", %{"state" => "mine"})
         ] do
       assert {:error, "invalid_request", _message} = add(admin, "growth", input)
     end

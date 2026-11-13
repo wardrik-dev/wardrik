@@ -126,6 +126,12 @@ defmodule WardrikCore.Retry do
 
   defp wait(_attempt, 0), do: 0
 
-  defp wait(attempt, max_wait),
-    do: :rand.uniform(min(:timer.seconds(2 ** (attempt - 1)), max_wait))
+  defp wait(attempt, max_wait) do
+    seconds = 2 ** (attempt - 1)
+
+    seconds
+    |> :timer.seconds()
+    |> min(max_wait)
+    |> :rand.uniform()
+  end
 end

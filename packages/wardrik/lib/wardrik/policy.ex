@@ -143,7 +143,10 @@ defmodule Wardrik.Policy do
 
     with :ok <- Read.known(fields, @keys, "a policy"),
          {:ok, rules} <- Rules.decode(fields),
-         {:ok, {default, by_annotation}} <- Default.decode(Map.get(fields, "default", :allow)),
+         {:ok, {default, by_annotation}} <-
+           fields
+           |> Map.get("default", :allow)
+           |> Default.decode(),
          {:ok, budget} <- decoded(Budget, fields["budget"]),
          {:ok, judge} <- decoded(Judge, fields["judge"]) do
       {:ok,
@@ -186,8 +189,11 @@ defmodule Wardrik.Policy do
     * `:evaluate` - asks a judge's model. See `t:Wardrik.Policy.Judge.evaluate/0`.
   """
   @spec decide(t() | [t()], String.t(), keyword()) :: decision()
-  def decide(policies, name, opts \\ []),
-    do: policies |> explain(name, opts) |> Decision.outcome()
+  def decide(policies, name, opts \\ []) do
+    policies
+    |> explain(name, opts)
+    |> Decision.outcome()
+  end
 
   @doc "Decides a call like `decide/3`, and returns a `Wardrik.Policy.Decision` that says what decided."
   @spec explain(t() | [t()], String.t(), keyword()) :: Decision.t()

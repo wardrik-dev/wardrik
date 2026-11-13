@@ -9,11 +9,14 @@ defmodule WardrikTest do
     {:ok, agent} =
       Wardrik.start_agent(wardrik, agent_id: "acme/triage", model: "anthropic:claude-haiku-4-5")
 
-    assert WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage") == agent
-    assert WardrikCore.list(Wardrik.agents(wardrik)) == [{"acme/triage", nil}]
+    agents = Wardrik.agents(wardrik)
+    assert WardrikCore.whereis(agents, "acme/triage") == agent
+    assert WardrikCore.list(agents) == [{"acme/triage", nil}]
+
+    events = Wardrik.events(wardrik)
 
     assert {:ok, %{events: [%{"type" => "wardrik.agent.started"}]}} =
-             Wardrik.EventLog.page(Wardrik.events(wardrik), ["acme/triage"])
+             Wardrik.EventLog.page(events, ["acme/triage"])
   end
 
   test "makes a scope of who acts, for whom", %{wardrik: wardrik} do

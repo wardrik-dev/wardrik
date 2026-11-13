@@ -3,14 +3,14 @@ defmodule Wardrik.Chat.Replies.Server do
 
   use DurableServer, vsn: 2
 
-  require Logger
-
   alias Wardrik.Chat.Outbound
   alias Wardrik.Chat.Replies.Follower
   alias Wardrik.Chat.Replies.State
   alias Wardrik.Chat.Waiting
   alias Wardrik.Chat.Workspace
   alias Wardrik.EventLog.Cursor
+
+  require Logger
 
   @types ~w(wardrik.message.created wardrik.run.started wardrik.tool_call.started
             wardrik.run.completed wardrik.run.interrupted wardrik.run.failed wardrik.run.cancelled
@@ -72,13 +72,18 @@ defmodule Wardrik.Chat.Replies.Server do
   # Reads the new conversation from its end now, then follows it with the rest.
   defp followed(state, conversation) do
     {:ok, read} = Cursor.decode(state.cursor || Cursor.encode(%{}))
-    {:ok, head} = Cursor.decode(Wardrik.EventLog.head(state.channel.events, [conversation]))
 
-    listen(%{
-      state
-      | conversations: state.conversations ++ [conversation],
-        cursor: Cursor.encode(Map.merge(head, read))
-    })
+    {:ok, head} =
+      state.channel.events
+      |> Wardrik.EventLog.head([conversation])
+      |> Cursor.decode()
+
+    cursor =
+      head
+      |> Map.merge(read)
+      |> Cursor.encode()
+
+    listen(%{state | conversations: state.conversations ++ [conversation], cursor: cursor})
   end
 
   defp listen(%State{conversations: []} = state), do: state
@@ -172,7 +177,8 @@ defmodule Wardrik.Chat.Replies.Server do
 
   defp waiting(state, {agent, id}, ids, asked_by) do
     with {:ok, workspace} <- workspace(state),
-         {:ok, read} <- Wardrik.Agent.read(Workspace.scope(workspace), agent, conversation: id) do
+         scope = Workspace.scope(workspace),
+         {:ok, read} <- Wardrik.Agent.read(scope, agent, conversation: id) do
       for interrupt <- read.interrupts,
           ids == :all or interrupt.id in ids,
           do: %Waiting{

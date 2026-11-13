@@ -57,7 +57,7 @@ defmodule WardrikDaemon.OperatorToolsTest do
   end
 
   defp text(%{content: content}) when is_list(content),
-    do: Enum.map_join(content, &(&1 |> Map.get(:text, "") |> to_string()))
+    do: Enum.map_join(content, &to_string(Map.get(&1, :text, "")))
 
   defp text(_message), do: ""
 
@@ -216,7 +216,7 @@ defmodule WardrikDaemon.OperatorToolsTest do
 
       :persistent_term.put(
         {HelpTools, "http://docs.test/b.json"},
-        {0, :persistent_term.get({HelpTools, "http://docs.test/b.json"}) |> elem(1)}
+        {0, elem(:persistent_term.get({HelpTools, "http://docs.test/b.json"}), 1)}
       )
 
       assert {:ok, %{"pages" => [%{"title" => "Agent files"} | _rest]}} =

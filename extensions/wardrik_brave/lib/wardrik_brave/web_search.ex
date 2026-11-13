@@ -62,8 +62,10 @@ defmodule WardrikBrave.WebSearch do
   @spec run(atom() | map(), map(), WardrikCore.Context.t()) ::
           {:ok, map()} | {:error, String.t()}
   def run(brave, args, context) do
-    with {:ok, window} <- window(args),
-         do: Client.search(settings(brave, context), body(args, window))
+    with {:ok, window} <- window(args) do
+      settings = settings(brave, context)
+      Client.search(settings, body(args, window))
+    end
   end
 
   defp described(%{api_key: key} = settings) when key in [nil, ""],
@@ -83,13 +85,14 @@ defmodule WardrikBrave.WebSearch do
   @doc "Returns the API parameters for the tool's arguments and date window."
   @spec body(map(), String.t() | nil) :: map()
   def body(args, window) do
-    %{
+    params = %{
       "q" => args[:query],
       "count" => args[:count] || @default_count,
       "maximum_number_of_tokens" => args[:max_tokens] || @default_max_tokens,
       "freshness" => window
     }
-    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+    Map.reject(params, fn {_key, value} -> is_nil(value) end)
   end
 
   defp window(%{freshness: _freshness, published_between: _between}),

@@ -6,6 +6,7 @@ defmodule WardrikWeb.Layouts do
   alias WardrikWeb.Dashboard
 
   @doc "The HTML document: assets, CSRF token and socket path."
+  @spec root(map()) :: Phoenix.LiveView.Rendered.t()
   def root(assigns) do
     {js, css} = WardrikWeb.Assets.names()
     assigns = assign(assigns, js: js, css: css)
@@ -31,6 +32,7 @@ defmodule WardrikWeb.Layouts do
   end
 
   @doc "The layout of each page: navigation and flash messages."
+  @spec app(map()) :: Phoenix.LiveView.Rendered.t()
   def app(assigns) do
     assigns = assign(assigns, :pages, Dashboard.pages(assigns.dashboard))
 
@@ -117,16 +119,18 @@ defmodule WardrikWeb.Layouts do
   end
 
   # The menu slides in only on narrow screens. On wide screens the attribute has no effect.
-  defp open_menu,
-    do:
-      JS.set_attribute({"data-menu", "open"}, to: "#wardrik-shell")
-      |> JS.set_attribute({"aria-expanded", "true"}, to: "#wardrik-shell .menu")
-      |> JS.focus_first(to: "#wardrik-nav")
+  defp open_menu do
+    %JS{}
+    |> JS.set_attribute({"data-menu", "open"}, to: "#wardrik-shell")
+    |> JS.set_attribute({"aria-expanded", "true"}, to: "#wardrik-shell .menu")
+    |> JS.focus_first(to: "#wardrik-nav")
+  end
 
-  defp close_menu,
-    do:
-      JS.remove_attribute("data-menu", to: "#wardrik-shell")
-      |> JS.set_attribute({"aria-expanded", "false"}, to: "#wardrik-shell .menu")
+  defp close_menu do
+    %JS{}
+    |> JS.remove_attribute("data-menu", to: "#wardrik-shell")
+    |> JS.set_attribute({"aria-expanded", "false"}, to: "#wardrik-shell .menu")
+  end
 
   attr :dashboard, Dashboard, required: true
   attr :here, :string, required: true

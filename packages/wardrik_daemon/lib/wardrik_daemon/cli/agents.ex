@@ -286,8 +286,7 @@ defmodule WardrikDaemon.CLI.Agents do
           {"model", definition["model"]},
           {"tools", Enum.join(Map.get(definition, "tools", []), ", ")},
           {"policy", policy(definition["policy"])},
-          {"triggers",
-           definition |> Map.get("triggers", []) |> Enum.map_join(", ", & &1["name"])},
+          {"triggers", Enum.map_join(Map.get(definition, "triggers", []), ", ", & &1["name"])},
           {"channels", Enum.join(Map.get(definition, "channels", []), ", ")},
           {"missing", Enum.join(missing, ", ")}
         ])
@@ -353,8 +352,9 @@ defmodule WardrikDaemon.CLI.Agents do
   # Elsewhere, an editor that opens a window of its own, as `code --wait`, still works.
   defp editor(cx) do
     editor = cx.env["VISUAL"] || cx.env["EDITOR"] || "vi"
+    program = hd(String.split(editor, " ", parts: 2))
 
-    if System.find_executable(editor |> String.split(" ", parts: 2) |> hd()),
+    if System.find_executable(program),
       do: {:ok, editor},
       else:
         {:error,

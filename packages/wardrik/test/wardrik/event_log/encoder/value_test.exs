@@ -4,7 +4,10 @@ defmodule Wardrik.EventLog.Encoder.ValueTest do
   alias ReqLLM.Message.ContentPart
   alias Wardrik.EventLog.Encoder.Value
 
-  @message JSV.build!(WardrikProtocol.schema("defs") |> get_in(["$defs", "message"]))
+  @defs WardrikProtocol.schema("defs")
+  @message @defs
+           |> get_in(["$defs", "message"])
+           |> JSV.build!()
 
   defp encoded(message) do
     encoded = Value.message(message)
@@ -70,10 +73,11 @@ defmodule Wardrik.EventLog.Encoder.ValueTest do
   test "encodes any term as JSON" do
     uri = URI.parse("https://x.test")
     term = %{at: ~U[2026-10-22 12:00:00Z], uri: uri, tags: [:a, nil, true], pid: self(), n: 1}
+    fields = Map.from_struct(uri)
 
     assert Value.json(term) == %{
              "at" => "2026-10-22T12:00:00Z",
-             "uri" => Value.json(Map.from_struct(uri)),
+             "uri" => Value.json(fields),
              "tags" => ["a", nil, true],
              "pid" => inspect(self()),
              "n" => 1

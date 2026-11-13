@@ -5,6 +5,8 @@ defmodule Wardrik.Notify.OwnedWebhook do
     secret: [type: :string, doc: "The name of the secret that signs each notice."]
   ]
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Posts notices to a webhook an owner keeps. See `Wardrik.NotifyTargets`.
 

@@ -66,7 +66,10 @@ defmodule WardrikDaemon.CLI.Decide do
   end
 
   defp decided?(cx, interrupt, operation, log, given) do
-    input = log |> Map.put("interrupt", interrupt["id"]) |> Map.merge(given)
+    input =
+      log
+      |> Map.put("interrupt", interrupt["id"])
+      |> Map.merge(given)
 
     case Context.call(cx, operation, input) do
       {:ok, _decided} ->
@@ -84,8 +87,12 @@ defmodule WardrikDaemon.CLI.Decide do
   defp card(cx, interrupt, arguments) do
     arguments =
       case arguments do
-        empty when empty in [nil, %{}] -> []
-        arguments -> [Owl.Data.tag(pretty(arguments), :light_black)]
+        empty when empty in [nil, %{}] ->
+          []
+
+        arguments ->
+          pretty = pretty(arguments)
+          [Owl.Data.tag(pretty, :light_black)]
       end
 
     [why(interrupt, arguments), held(interrupt), arguments]
@@ -111,6 +118,10 @@ defmodule WardrikDaemon.CLI.Decide do
 
   defp held(_interrupt), do: []
 
-  defp pretty(arguments),
-    do: arguments |> :json.format() |> IO.iodata_to_binary() |> String.trim_trailing()
+  defp pretty(arguments) do
+    arguments
+    |> :json.format()
+    |> IO.iodata_to_binary()
+    |> String.trim_trailing()
+  end
 end

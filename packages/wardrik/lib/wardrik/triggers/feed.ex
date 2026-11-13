@@ -46,7 +46,12 @@ defmodule Wardrik.Triggers.Feed do
   @spec unseen([entry()], [String.t()]) :: {[entry()], [String.t()]}
   def unseen(entries, seen) do
     known = MapSet.new(seen)
-    new = entries |> Enum.reject(&MapSet.member?(known, &1.id)) |> Enum.reverse()
+
+    new =
+      entries
+      |> Enum.reject(&MapSet.member?(known, &1.id))
+      |> Enum.reverse()
+
     {new, Enum.take(Enum.map(Enum.reverse(new), & &1.id) ++ seen, @remembered)}
   end
 

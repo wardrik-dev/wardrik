@@ -17,7 +17,8 @@ defmodule Wardrik.WorkspaceTest do
       ]
     ]
 
-    tools = Map.new(Wardrik.Workspace.tools(nil, opts), &{&1.name, &1})
+    offered = Wardrik.Workspace.tools(nil, opts)
+    tools = Map.new(offered, &{&1.name, &1})
 
     %{
       store: store,
@@ -104,7 +105,13 @@ defmodule Wardrik.WorkspaceTest do
     call(context, "write_file", %{path: "b.txt", content: "gamma"})
 
     assert %{files: listed, more: 0} = call(context, "list_files", %{pattern: "**/*.md"})
-    assert Enum.map(listed, & &1.path) |> Enum.sort() == ["notes/a.md", "shared/team/plan.md"]
+
+    paths =
+      listed
+      |> Enum.map(& &1.path)
+      |> Enum.sort()
+
+    assert paths == ["notes/a.md", "shared/team/plan.md"]
 
     assert %{files: [%{by: "acme/triage", bytes: 5}]} =
              call(context, "list_files", %{pattern: "*.txt"})

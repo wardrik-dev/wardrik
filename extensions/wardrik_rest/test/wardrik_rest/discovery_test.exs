@@ -4,7 +4,9 @@ defmodule WardrikRest.DiscoveryTest do
   alias WardrikRest.Discovery
   alias WardrikRest.Parameter
 
-  @analytics "test/fixtures/analyticsdata-v1beta.json" |> File.read!() |> JSON.decode!()
+  @analytics "test/fixtures/analyticsdata-v1beta.json"
+             |> File.read!()
+             |> JSON.decode!()
 
   defp read(document), do: WardrikRest.Reader.read({Discovery, document: document})
 
@@ -66,7 +68,9 @@ defmodule WardrikRest.DiscoveryTest do
         }
       })
 
-    assert Map.keys(spec.types) |> Enum.sort() ==
+    names = Map.keys(spec.types)
+
+    assert Enum.sort(names) ==
              ["Ads__Label", "Campaign", "Campaign_ShoppingSetting", "Other__Label"]
 
     assert spec.types["Campaign"]["properties"] == %{
@@ -132,7 +136,8 @@ defmodule WardrikRest.DiscoveryTest do
 
     create = operation(spec, "notes_create")
     fields = Map.new(create.parameters, &{&1.name, &1.schema})
-    assert Map.keys(fields) |> Enum.sort() == ["extra", "tags", "text"]
+    names = Map.keys(fields)
+    assert Enum.sort(names) == ["extra", "tags", "text"]
     assert fields["extra"] == %{"type" => "object", "additionalProperties" => %{}}
   end
 

@@ -12,8 +12,13 @@ defmodule WardrikProtocol do
   alias WardrikProtocol.Operations
 
   @dir Application.app_dir(:wardrik_protocol, "priv/v1")
-  @files @dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort()
-  @names @files |> Enum.map(&Path.basename(&1, ".json")) |> List.delete("openapi")
+  @files @dir
+         |> Path.join("*.json")
+         |> Path.wildcard()
+         |> Enum.sort()
+  @names @files
+         |> Enum.map(&Path.basename(&1, ".json"))
+         |> List.delete("openapi")
   @events Enum.filter(@names, &String.contains?(&1, "."))
   @document Operations.document(@dir)
   @operations Operations.build(@document)
@@ -77,15 +82,19 @@ defmodule WardrikProtocol do
 
   @doc "Returns `true` if events of the type are sent as they happen and never stored."
   @spec live?(String.t()) :: boolean()
-  def live?("wardrik." <> name) when name in @events,
-    do: Map.get(schema(name), "x-wardrik-live", false)
+  def live?("wardrik." <> name) when name in @events do
+    name
+    |> schema()
+    |> Map.get("x-wardrik-live", false)
+  end
 
   @doc """
   Returns the schema `name`, like `"run.started"` or `"cloudevent"`, with every `$ref` inlined.
   """
   @spec schema(String.t()) :: map()
   for name <- @names do
-    def schema(unquote(name)), do: unquote(Macro.escape(Inline.schema(@dir, name)))
+    schema = Inline.schema(@dir, name)
+    def schema(unquote(name)), do: unquote(Macro.escape(schema))
   end
 
   @doc "Returns the OpenAPI document, with `$ref`s to other files inlined."
@@ -105,6 +114,14 @@ defmodule WardrikProtocol do
   def operation(_id), do: nil
 
   @doc false
-  def __mix_recompile__?,
-    do: @dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort() != @files
+  @spec __mix_recompile__?() :: boolean()
+  def __mix_recompile__? do
+    files =
+      @dir
+      |> Path.join("*.json")
+      |> Path.wildcard()
+      |> Enum.sort()
+
+    files != @files
+  end
 end

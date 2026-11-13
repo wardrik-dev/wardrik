@@ -11,7 +11,8 @@ defmodule Wardrik.FilesTest do
   setup :set_mimic_global
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(

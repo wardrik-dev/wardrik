@@ -22,7 +22,10 @@ defmodule WardrikWeb.OperationsLive do
   end
 
   defp matching(query) do
-    query = String.downcase(String.trim(query))
+    query =
+      query
+      |> String.trim()
+      |> String.downcase()
 
     Enum.filter(WardrikProtocol.operations(), fn operation ->
       query == "" or
@@ -32,7 +35,11 @@ defmodule WardrikWeb.OperationsLive do
 
   @impl true
   def render(assigns) do
-    {inbound, people} = assigns.query |> matching() |> Enum.split_with(&Operations.inbound?/1)
+    {inbound, people} =
+      assigns.query
+      |> matching()
+      |> Enum.split_with(&Operations.inbound?/1)
+
     assigns = assign(assigns, people: groups(people), inbound: groups(inbound))
 
     ~H"""

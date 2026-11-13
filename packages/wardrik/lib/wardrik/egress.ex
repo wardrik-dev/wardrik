@@ -62,7 +62,9 @@ defmodule Wardrik.Egress do
   def public?(address), do: not Enum.any?(@not_public_v6, &within?(address, &1))
 
   defp reached(host) do
-    case :inet.parse_address(String.to_charlist(host)) do
+    charlist = String.to_charlist(host)
+
+    case :inet.parse_address(charlist) do
       {:ok, address} -> literal(host, address)
       {:error, :einval} -> resolved(host, addresses(host))
     end
@@ -92,7 +94,9 @@ defmodule Wardrik.Egress do
 
   defp within?(address, {network, bits}) do
     shift = width(address) - bits
-    Bitwise.bsr(integer(address), shift) == Bitwise.bsr(integer(network), shift)
+    address_number = integer(address)
+    network_number = integer(network)
+    Bitwise.bsr(address_number, shift) == Bitwise.bsr(network_number, shift)
   end
 
   defp width({_a, _b, _c, _d}), do: 32
@@ -100,7 +104,10 @@ defmodule Wardrik.Egress do
 
   defp integer(address) do
     size = div(width(address), tuple_size(address))
-    address |> Tuple.to_list() |> Enum.reduce(0, &(Bitwise.bsl(&2, size) + &1))
+
+    address
+    |> Tuple.to_list()
+    |> Enum.reduce(0, &(Bitwise.bsl(&2, size) + &1))
   end
 
   defp ipv4(hi, lo),

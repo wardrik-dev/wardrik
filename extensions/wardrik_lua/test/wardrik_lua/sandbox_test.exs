@@ -17,7 +17,8 @@ defmodule WardrikLua.SandboxTest do
     end
 
     test "refuses more source than it will take" do
-      assert {:error, message} = Sandbox.check(String.duplicate("-- comment\n", 10_000))
+      source = String.duplicate("-- comment\n", 10_000)
+      assert {:error, message} = Sandbox.check(source)
       assert message =~ "longer than the 65536 allowed"
     end
 
@@ -91,7 +92,8 @@ defmodule WardrikLua.SandboxTest do
 
   describe "limits" do
     test "bounds compilation by the deadline too" do
-      code = "return " <> Enum.join(List.duplicate("1", 10_000), "+")
+      ones = List.duplicate("1", 10_000)
+      code = "return " <> Enum.join(ones, "+")
       task = Task.async(fn -> evaluate(code, timeout_ms: 10) end)
       result = Task.yield(task, 1_000) || Task.shutdown(task, :brutal_kill)
 

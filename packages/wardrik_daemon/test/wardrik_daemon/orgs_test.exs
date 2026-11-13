@@ -12,7 +12,8 @@ defmodule WardrikDaemon.OrgsTest do
 
   defp read(context, text) do
     write(context, "config.yaml", text)
-    Config.read(Dirs.new(context.env), context.env)
+    dirs = Dirs.new(context.env)
+    Config.read(dirs, context.env)
   end
 
   @yaml """

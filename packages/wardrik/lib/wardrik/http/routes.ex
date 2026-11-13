@@ -6,7 +6,11 @@ defmodule Wardrik.HTTP.Routes do
     literal -> literal
   end
 
-  pattern = fn path -> path |> String.split("/", trim: true) |> Enum.map(segment) end
+  pattern = fn path ->
+    path
+    |> String.split("/", trim: true)
+    |> Enum.map(segment)
+  end
 
   @routes WardrikProtocol.operations()
           |> Enum.flat_map(fn operation ->

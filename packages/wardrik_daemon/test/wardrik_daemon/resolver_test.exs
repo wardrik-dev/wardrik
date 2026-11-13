@@ -42,8 +42,11 @@ defmodule WardrikDaemon.ResolverTest do
 
   defp resolve(context, owner, name), do: resolve(context, recorded(context, owner, name))
 
-  defp resolve(context, id),
-    do: Wardrik.Resolver.resolve(Wardrik.Instance.fetch!(context.wardrik), %Request{agent: id})
+  defp resolve(context, id) do
+    context.wardrik
+    |> Wardrik.Instance.fetch!()
+    |> Wardrik.Resolver.resolve(%Request{agent: id})
+  end
 
   defp recorded(context, owner, name) do
     case AgentRecords.named(context.daemon_store, WardrikDaemon.Owners.org(owner), name) do

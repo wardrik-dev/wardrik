@@ -17,8 +17,9 @@ defmodule Wardrik.Chat.Installations.Stored do
 
   @impl Wardrik.Channel.Installations
   def fetch(%Request{channel: channel, workspace: workspace}, config) do
-    with %{"owner" => owner} <-
-           Wardrik.Store.get(store(config), key(channel, workspace)),
+    store = store(config)
+
+    with %{"owner" => owner} <- Wardrik.Store.get(store, key(channel, workspace)),
          {:ok, token} <- sealed(config, owner, secret(channel, workspace)) do
       {:ok,
        %Installation{
@@ -56,7 +57,8 @@ defmodule Wardrik.Chat.Installations.Stored do
     kept = %{"owner" => owner}
 
     with {:ok, _sealed} <- seal(config, owner, secret(channel, workspace), installation.token),
-         {:ok, _vsn} <- Wardrik.Store.put(store(config), key(channel, workspace), kept) do
+         store = store(config),
+         {:ok, _vsn} <- Wardrik.Store.put(store, key(channel, workspace), kept) do
       :ok
     else
       {:error, reason} -> {:error, "#{channel} wasn't kept for #{workspace}: #{inspect(reason)}"}
@@ -65,24 +67,34 @@ defmodule Wardrik.Chat.Installations.Stored do
 
   @impl Wardrik.Channel.Installations
   def delete(%Request{channel: channel, workspace: workspace}, config) do
-    case Wardrik.Store.get(store(config), key(channel, workspace)) do
+    store = store(config)
+
+    case Wardrik.Store.get(store, key(channel, workspace)) do
       %{"owner" => owner} ->
         :ok = unseal(config, owner, secret(channel, workspace))
-        Wardrik.Store.delete(store(config), key(channel, workspace))
+        Wardrik.Store.delete(store, key(channel, workspace))
 
       nil ->
         :ok
     end
   end
 
-  defp sealed(config, owner, name), do: config |> vault() |> sealed_in(owner, name)
+  defp sealed(config, owner, name) do
+    config
+    |> vault()
+    |> sealed_in(owner, name)
+  end
 
   defp sealed_in(nil, _owner, _name), do: {:error, :no_keys}
 
   defp sealed_in(vault, owner, name),
     do: Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :token)
 
-  defp seal(config, owner, name, token), do: config |> vault() |> seal_in(owner, name, token)
+  defp seal(config, owner, name, token) do
+    config
+    |> vault()
+    |> seal_in(owner, name, token)
+  end
 
   defp seal_in(nil, _owner, _name, _token), do: {:error, :no_keys}
 
@@ -91,7 +103,11 @@ defmodule Wardrik.Chat.Installations.Stored do
     Wardrik.Vault.put(vault, secret, kind: :token)
   end
 
-  defp unseal(config, owner, name), do: config |> vault() |> unseal_in(owner, name)
+  defp unseal(config, owner, name) do
+    config
+    |> vault()
+    |> unseal_in(owner, name)
+  end
 
   defp unseal_in(nil, _owner, _name), do: :ok
   defp unseal_in(vault, owner, name), do: Wardrik.Vault.delete(vault, %Principal{id: owner}, name)

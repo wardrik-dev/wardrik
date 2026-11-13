@@ -312,8 +312,8 @@ defmodule WardrikSlackTest do
     end
 
     test "posts no notice of a turn in one of its threads, which shows it", context do
-      {:ok, workspace} =
-        Wardrik.Chat.workspace(Wardrik.Chat.channel(WardrikSlack, context.options), "T1")
+      channel = Wardrik.Chat.channel(WardrikSlack, context.options)
+      {:ok, workspace} = Wardrik.Chat.workspace(channel, "T1")
 
       notice = %Wardrik.Notice{
         agent: "agt_digest",

@@ -31,7 +31,9 @@ defmodule WardrikResearchTest do
 
   defp answering(answer) do
     stub(ReqLLM, :stream_text, fn _model, messages, _opts ->
-      {:ok, response(answer.(system(messages), prompt(messages)))}
+      system = system(messages)
+      message = answer.(system, prompt(messages))
+      {:ok, response(message)}
     end)
   end
 
@@ -45,8 +47,17 @@ defmodule WardrikResearchTest do
     }
   end
 
-  defp system(messages), do: messages |> Enum.find(&(&1.role == :system)) |> text()
-  defp prompt(messages), do: messages |> Enum.find(&(&1.role == :user)) |> text()
+  defp system(messages) do
+    messages
+    |> Enum.find(&(&1.role == :system))
+    |> text()
+  end
+
+  defp prompt(messages) do
+    messages
+    |> Enum.find(&(&1.role == :user))
+    |> text()
+  end
 
   defp text(%ReqLLM.Message{content: parts}), do: Enum.map_join(parts, "", & &1.text)
 

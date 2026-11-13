@@ -32,7 +32,11 @@ defmodule WardrikLua.Sandbox.Limits do
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     limits = struct!(__MODULE__, opts)
-    Enum.each(Map.from_struct(limits), &validate!/1)
+
+    limits
+    |> Map.from_struct()
+    |> Enum.each(&validate!/1)
+
     limits
   end
 

@@ -56,6 +56,7 @@ defmodule WardrikCore do
 
   Other options go to `DurableServer.Supervisor`.
   """
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     {name, opts} = Keyword.pop(opts, :name, __MODULE__)
 
@@ -69,6 +70,7 @@ defmodule WardrikCore do
   end
 
   @doc false
+  @spec start_loaded({module(), atom(), [term()]}) :: Supervisor.on_start()
   def start_loaded({module, function, args}) do
     :ok = load_kept()
     apply(module, function, args)
@@ -77,9 +79,10 @@ defmodule WardrikCore do
   @kept [:wardrik_core, :req_llm]
 
   defp load_kept do
-    for {app, _description, _vsn} <- Application.loaded_applications(),
-        kept?(app),
-        do: app |> Application.spec(:modules) |> Code.ensure_all_loaded()
+    for {app, _description, _vsn} <- Application.loaded_applications(), kept?(app) do
+      modules = Application.spec(app, :modules)
+      Code.ensure_all_loaded(modules)
+    end
 
     :ok
   end
@@ -156,7 +159,9 @@ defmodule WardrikCore do
       {WardrikCore.Agent,
        key: durable({ids[:agent_id], ids[:conversation]}), initial_state: state}
 
-    case DurableServer.Supervisor.start_child(agents(instance), child) do
+    supervisor = agents(instance)
+
+    case DurableServer.Supervisor.start_child(supervisor, child) do
       {:ok, {pid, _meta}} -> {:ok, pid}
       {:error, reason} -> {:error, reason}
     end
@@ -195,7 +200,9 @@ defmodule WardrikCore do
   """
   @spec whereis(atom(), agent()) :: pid() | nil
   def whereis(instance \\ __MODULE__, agent) do
-    case DurableServer.Supervisor.lookup(agents(instance), durable(agent)) do
+    supervisor = agents(instance)
+
+    case DurableServer.Supervisor.lookup(supervisor, durable(agent)) do
       {pid, _meta} -> pid
       nil -> nil
     end
@@ -260,7 +267,10 @@ defmodule WardrikCore do
     instance
     |> agents()
     |> DurableServer.Supervisor.stream_all_server_info()
-    |> Enum.flat_map(fn info -> Enum.map(key(info.key), &{&1, placed(info)}) end)
+    |> Enum.flat_map(fn info ->
+      keys = key(info.key)
+      Enum.map(keys, &{&1, placed(info)})
+    end)
     |> Map.new()
   end
 
@@ -275,7 +285,11 @@ defmodule WardrikCore do
     instance
     |> agents()
     |> DurableServer.Supervisor.global_members()
-    |> Enum.flat_map(fn {durable, {pid, _meta}} -> Enum.map(key(durable), &{&1, pid}) end)
+    |> Enum.flat_map(fn {durable, {pid, _meta}} ->
+      durable
+      |> key()
+      |> Enum.map(&{&1, pid})
+    end)
     |> Map.new()
   end
 
@@ -291,8 +305,9 @@ defmodule WardrikCore do
     with {:ok, target} <- node(Keyword.fetch!(args, :to), nodes(instance)),
          :ok <- saved(instance, keyed(agent)) do
       child = {WardrikCore.Agent, key: durable(agent), initial_state: %{}}
+      supervisor = agents(instance)
 
-      case DurableServer.Supervisor.rehome_child(agents(instance), child, target_node: target) do
+      case DurableServer.Supervisor.rehome_child(supervisor, child, target_node: target) do
         {:ok, {pid, _meta}} -> {:ok, pid}
         {:error, reason} -> {:error, reason}
       end
@@ -302,7 +317,9 @@ defmodule WardrikCore do
   @doc "Stops the agent and deletes its saved state. Returns `:ok` if there's no such agent."
   @spec delete(atom(), agent()) :: :ok | {:error, term()}
   def delete(instance \\ __MODULE__, agent) do
-    case DurableServer.Supervisor.terminate_and_delete_child(agents(instance), durable(agent)) do
+    supervisor = agents(instance)
+
+    case DurableServer.Supervisor.terminate_and_delete_child(supervisor, durable(agent)) do
       :ok -> :ok
       {:error, :not_found} -> :ok
       {:error, reason} -> {:error, reason}
@@ -453,7 +470,11 @@ defmodule WardrikCore do
   """
   @spec saved_key(atom(), String.t() | {String.t(), String.t() | nil}) :: String.t()
   def saved_key(instance \\ __MODULE__, agent) do
-    %{prefix: prefix} = DurableServer.Supervisor.__get_config__(agents(instance))
+    %{prefix: prefix} =
+      instance
+      |> agents()
+      |> DurableServer.Supervisor.__get_config__()
+
     prefix <> durable(agent)
   end
 
@@ -478,7 +499,12 @@ defmodule WardrikCore do
   end
 
   defp key("agents/" <> encoded) do
-    case encoded |> String.split("/") |> Enum.map(&URI.decode_www_form/1) do
+    parts =
+      encoded
+      |> String.split("/")
+      |> Enum.map(&URI.decode_www_form/1)
+
+    case parts do
       [agent_id] -> [{agent_id, nil}]
       [agent_id, conversation] -> [{agent_id, conversation}]
     end

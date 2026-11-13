@@ -28,6 +28,8 @@ defmodule Wardrik.HTTP.Endpoint do
             ]
           )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Serves Wardrik's operations over HTTP. Most apps use `Wardrik.HTTP`, which sets `:server` and
   `:sign_in`:
@@ -96,10 +98,18 @@ defmodule Wardrik.HTTP.Endpoint do
 
   @doc "Validates `opts`. Raises `NimbleOptions.ValidationError` if they're invalid."
   @impl Plug
-  def init(opts), do: opts |> NimbleOptions.validate!(@schema) |> Map.new()
+  def init(opts) do
+    opts
+    |> NimbleOptions.validate!(@schema)
+    |> Map.new()
+  end
 
   @impl Plug
-  def call(conn, settings), do: conn |> Plug.RequestId.call(@request_id) |> serve(settings)
+  def call(conn, settings) do
+    conn
+    |> Plug.RequestId.call(@request_id)
+    |> serve(settings)
+  end
 
   defp serve(%Plug.Conn{method: "GET", path_info: ["v1", "openapi.json"]} = conn, _settings),
     do: Response.json(conn, 200, WardrikProtocol.openapi())
@@ -190,8 +200,11 @@ defmodule Wardrik.HTTP.Endpoint do
   defp respond(conn, scope, operation, input, _settings),
     do: Response.answer(conn, operation, Wardrik.Scope.run(scope, operation.id, input))
 
-  defp event_stream?(conn),
-    do: conn |> get_req_header("accept") |> Enum.any?(&String.contains?(&1, "text/event-stream"))
+  defp event_stream?(conn) do
+    conn
+    |> get_req_header("accept")
+    |> Enum.any?(&String.contains?(&1, "text/event-stream"))
+  end
 
   defp resumed(conn, input) do
     case get_req_header(conn, "last-event-id") do

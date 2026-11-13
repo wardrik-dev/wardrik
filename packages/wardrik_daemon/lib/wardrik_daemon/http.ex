@@ -55,7 +55,9 @@ defmodule WardrikDaemon.HTTP do
   @request_id Plug.RequestId.init(http_header: "request-id")
   @openapi_path Application.app_dir(:wardrik_daemon, "priv/openapi.json")
   @external_resource @openapi_path
-  @openapi @openapi_path |> File.read!() |> JSON.decode!()
+  @openapi @openapi_path
+           |> File.read!()
+           |> JSON.decode!()
   @inputs Map.new(
             ~w(token_input pairing_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
@@ -130,7 +132,11 @@ defmodule WardrikDaemon.HTTP do
 
   # Each agent is listed only where the caller may read it, so they learn of no other.
   get "/v1/owners/:owner/agents" do
-    conn = conn |> Plug.RequestId.call(@request_id) |> Plug.Conn.fetch_query_params()
+    conn =
+      conn
+      |> Plug.RequestId.call(@request_id)
+      |> Plug.Conn.fetch_query_params()
+
     daemon = conn.assigns.daemon
 
     with {:ok, scope} <- authenticated(conn, daemon),
@@ -174,7 +180,8 @@ defmodule WardrikDaemon.HTTP do
 
   get "/v1/tokens" do
     served(conn, {"token.read", {:token, "*"}}, fn _scope ->
-      {:ok, 200, %{"tokens" => Enum.map(Tokens.list(conn.assigns.daemon.store), &Tokens.json/1)}}
+      tokens = Tokens.list(conn.assigns.daemon.store)
+      {:ok, 200, %{"tokens" => Enum.map(tokens, &Tokens.json/1)}}
     end)
   end
 
@@ -261,7 +268,11 @@ defmodule WardrikDaemon.HTTP do
     """)
   end
 
-  defp escape(text), do: text |> Plug.HTML.html_escape() |> IO.iodata_to_binary()
+  defp escape(text) do
+    text
+    |> Plug.HTML.html_escape()
+    |> IO.iodata_to_binary()
+  end
 
   # Who asks is checked first, so a route answers 401 to anyone without a token, whatever they
   # ask for.

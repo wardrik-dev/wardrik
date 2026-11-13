@@ -22,7 +22,8 @@ defmodule Wardrik.ResolvedTest do
   @model "anthropic:claude-haiku-4-5"
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     given = [
       principal: %WardrikCore.Principal{id: "user_42"},

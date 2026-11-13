@@ -34,7 +34,11 @@ defmodule Wardrik.HTTP do
 
   @doc "Returns a child spec that serves Wardrik with Bandit."
   @spec child_spec(keyword()) :: Supervisor.child_spec()
-  def child_spec(opts), do: opts |> served() |> Endpoint.child_spec()
+  def child_spec(opts) do
+    opts
+    |> served()
+    |> Endpoint.child_spec()
+  end
 
   @doc """
   Returns a `:body_reader` for `Plug.Parsers` that keeps the raw body for webhook signatures.
@@ -45,17 +49,25 @@ defmodule Wardrik.HTTP do
   def body_reader, do: {Wardrik.HTTP.BodyReader, :read_body, []}
 
   @impl Plug
-  def init(opts), do: opts |> served() |> Endpoint.init()
+  def init(opts) do
+    opts
+    |> served()
+    |> Endpoint.init()
+  end
 
   @impl Plug
   def call(conn, settings), do: Endpoint.call(conn, settings)
 
   defp served(opts) do
     {principal, opts} = Keyword.pop(opts, :principal, {__MODULE__, :nobody, []})
-    opts |> Keyword.pop(:wardrik) |> served_as(principal)
+
+    opts
+    |> Keyword.pop(:wardrik)
+    |> served_as(principal)
   end
 
   @doc false
+  @spec nobody(Plug.Conn.t()) :: nil
   def nobody(_conn), do: nil
 
   defp served_as({wardrik, opts}, principal) when is_atom(wardrik) and not is_nil(wardrik),

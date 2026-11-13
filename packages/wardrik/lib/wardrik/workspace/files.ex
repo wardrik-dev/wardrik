@@ -28,7 +28,9 @@ defmodule Wardrik.Workspace.Files do
   @spec read(Wardrik.Store.t(), tree: String.t(), path: String.t()) ::
           {:ok, File.t(), version()} | :none
   def read(store, args) do
-    case Wardrik.Store.lookup(scoped(store), key(args)) do
+    scoped = scoped(store)
+
+    case Wardrik.Store.lookup(scoped, key(args)) do
       {%File{} = file, vsn} -> {:ok, file, version(vsn)}
       nil -> :none
     end
@@ -45,7 +47,8 @@ defmodule Wardrik.Workspace.Files do
     %File{} = file = Keyword.fetch!(args, :file)
 
     with {:ok, vsn} <- vsn(Keyword.fetch!(args, :version)),
-         {:ok, written} <- Wardrik.Store.put(scoped(store), key(args), file, if_vsn: vsn),
+         scoped = scoped(store),
+         {:ok, written} <- Wardrik.Store.put(scoped, key(args), file, if_vsn: vsn),
          do: {:ok, version(written)}
   end
 
@@ -56,8 +59,11 @@ defmodule Wardrik.Workspace.Files do
   @spec delete(Wardrik.Store.t(), tree: String.t(), path: String.t(), version: version()) ::
           :ok | {:error, :conflict | term()}
   def delete(store, args) do
-    with {:ok, vsn} <- vsn(Keyword.fetch!(args, :version)),
-         do: Wardrik.Store.delete(scoped(store), key(args), if_vsn: vsn)
+    with {:ok, vsn} <- vsn(Keyword.fetch!(args, :version)) do
+      store
+      |> scoped()
+      |> Wardrik.Store.delete(key(args), if_vsn: vsn)
+    end
   end
 
   @doc "Returns every path in `tree`."
@@ -65,7 +71,9 @@ defmodule Wardrik.Workspace.Files do
   def paths(store, tree) do
     prefix = tree <> "//"
 
-    for key <- Wardrik.Store.keys(scoped(store), prefix),
+    scoped = scoped(store)
+
+    for key <- Wardrik.Store.keys(scoped, prefix),
         do: String.replace_prefix(key, prefix, "")
   end
 
@@ -80,7 +88,11 @@ defmodule Wardrik.Workspace.Files do
   defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_workspace")
   defp key(args), do: Keyword.fetch!(args, :tree) <> "//" <> Keyword.fetch!(args, :path)
 
-  defp version(vsn), do: vsn |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
+  defp version(vsn) do
+    vsn
+    |> :erlang.term_to_binary()
+    |> Base.url_encode64(padding: false)
+  end
 
   defp vsn(nil), do: {:ok, nil}
 

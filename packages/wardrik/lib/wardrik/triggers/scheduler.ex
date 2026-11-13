@@ -95,7 +95,9 @@ defmodule Wardrik.Triggers.Scheduler do
   end
 
   defp reconcile(%{settings: settings} = state) do
-    Enum.reduce(Records.all(settings.store), state, fn {agent_id, name} = key, state ->
+    settings.store
+    |> Records.all()
+    |> Enum.reduce(state, fn {agent_id, name} = key, state ->
       case Records.lookup(settings.store, agent_id: agent_id, name: name) do
         {record, _vsn} -> arm(state, key, Records.next_at(record))
         nil -> state
@@ -148,8 +150,13 @@ defmodule Wardrik.Triggers.Scheduler do
 
   defp upcoming(%Trigger{clock: clock, timezone: timezone, jitter: jitter}, now) do
     case Clock.next(clock, timezone, now) do
-      nil -> nil
-      next -> next |> DateTime.add(jittered(jitter)) |> DateTime.to_iso8601()
+      nil ->
+        nil
+
+      next ->
+        next
+        |> DateTime.add(jittered(jitter))
+        |> DateTime.to_iso8601()
     end
   end
 
@@ -160,7 +167,13 @@ defmodule Wardrik.Triggers.Scheduler do
 
   defp arm(state, key, next_at) do
     ref = make_ref()
-    delay = next_at |> DateTime.diff(DateTime.utc_now(), :millisecond) |> max(0) |> min(@longest)
+
+    delay =
+      next_at
+      |> DateTime.diff(DateTime.utc_now(), :millisecond)
+      |> max(0)
+      |> min(@longest)
+
     Process.send_after(self(), {:due, key, ref}, delay)
     %{state | timers: Map.put(state.timers, key, ref)}
   end

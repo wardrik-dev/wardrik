@@ -25,13 +25,13 @@ defmodule Wardrik.Vault do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Vault.Grants
   alias Wardrik.Vault.Sealed
   alias Wardrik.Vault.Secret
   alias WardrikCore.Credentials
   alias WardrikCore.Principal
+
+  require Logger
 
   @typedoc "A vault, by the name your app gave it."
   @type t() :: atom()
@@ -202,7 +202,9 @@ defmodule Wardrik.Vault do
     keys = Keyword.fetch!(args, :keys)
     path = path(principal, name)
 
-    case Wardrik.Store.lookup(Wardrik.Store.scope(store, "wardrik_vault"), path) do
+    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+
+    case Wardrik.Store.lookup(scoped, path) do
       {%Sealed{} = sealed, _vsn} -> Sealed.unseal(sealed, Sealed.decode_keys(keys), path)
       nil -> {:error, :not_found}
     end
@@ -248,8 +250,12 @@ defmodule Wardrik.Vault do
 
   @doc "Removes what `principal` holds as `name`. Returns `:ok` even if there's nothing."
   @spec delete(t(), Principal.t(), String.t()) :: :ok | {:error, term()}
-  def delete(vault, %Principal{} = principal, name),
-    do: vault |> settings() |> Map.fetch!(:store) |> Wardrik.Store.delete(path(principal, name))
+  def delete(vault, %Principal{} = principal, name) do
+    vault
+    |> settings()
+    |> Map.fetch!(:store)
+    |> Wardrik.Store.delete(path(principal, name))
+  end
 
   @doc "Returns the names `principal` holds. Needs no key."
   @spec names(t(), Principal.t()) :: [String.t()]
@@ -327,25 +333,24 @@ defmodule Wardrik.Vault do
     decoded = Sealed.decode_keys(keys)
     if length(decoded) < length(keys), do: Logger.warning("A vault key isn't 32 bytes of base64")
 
+    store = Keyword.fetch!(opts, :store)
+
     settings = %{
-      store: opts |> Keyword.fetch!(:store) |> Wardrik.Store.scope("wardrik_vault"),
+      store: Wardrik.Store.scope(store, "wardrik_vault"),
       keys: decoded,
       grants: Keyword.fetch!(opts, :grants)
     }
 
-    table =
-      :ets.new(table(Keyword.fetch!(opts, :name)), [
-        :named_table,
-        :protected,
-        read_concurrency: true
-      ])
+    table_name = table(Keyword.fetch!(opts, :name))
+    table = :ets.new(table_name, [:named_table, :protected, read_concurrency: true])
 
     true = :ets.insert(table, {:settings, settings})
     {:ok, table}
   end
 
   defp settings(vault) do
-    [{:settings, settings}] = :ets.lookup(table(vault), :settings)
+    table = table(vault)
+    [{:settings, settings}] = :ets.lookup(table, :settings)
     settings
   rescue
     ArgumentError ->

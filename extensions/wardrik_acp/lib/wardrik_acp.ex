@@ -1,35 +1,4 @@
 defmodule WardrikACP do
-  @options NimbleOptions.new!(
-             name: [
-               type: :atom,
-               required: true,
-               doc: "The name agents and functions use to find it."
-             ],
-             harnesses: [
-               type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
-               default: [],
-               doc: "Coding agents, as a list of name and options. See `WardrikACP.Harness`."
-             ],
-             checkouts: [
-               type:
-                 {:list, {:tuple, [{:or, [:atom, :string]}, {:or, [:string, :keyword_list]}]}},
-               default: [],
-               doc:
-                 "Git repositories coding agents work in, as a list of name and path or options. See `WardrikACP.Checkout`."
-             ],
-             sweep: [
-               type: {:or, [:pos_integer, {:in, [:infinity]}]},
-               default: :timer.hours(24),
-               doc:
-                 "Milliseconds between sweeps, or `:infinity`. The first runs at start. See `sweep/1`."
-             ],
-             worktrees: [
-               type: :string,
-               required: true,
-               doc: "The directory for worktrees, one per piece of work."
-             ]
-           )
-
   @moduledoc """
   Gives WardrikCore agents coding agents, such as Claude Code, as tools. Each one runs over the
   Agent Client Protocol (ACP).
@@ -66,6 +35,7 @@ defmodule WardrikACP do
     * `[:wardrik_acp, :update]` for each session update. Metadata: `:agent_id`, `:span`,
       `:harness`, `:update` (the ACP `SessionUpdate` map).
   """
+
   @behaviour WardrikCore.Capability
   use Supervisor
 
@@ -73,6 +43,37 @@ defmodule WardrikACP do
   alias WardrikACP.Connection
   alias WardrikACP.Harness
   alias WardrikACP.Sweep
+
+  @options NimbleOptions.new!(
+             name: [
+               type: :atom,
+               required: true,
+               doc: "The name agents and functions use to find it."
+             ],
+             harnesses: [
+               type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
+               default: [],
+               doc: "Coding agents, as a list of name and options. See `WardrikACP.Harness`."
+             ],
+             checkouts: [
+               type:
+                 {:list, {:tuple, [{:or, [:atom, :string]}, {:or, [:string, :keyword_list]}]}},
+               default: [],
+               doc:
+                 "Git repositories coding agents work in, as a list of name and path or options. See `WardrikACP.Checkout`."
+             ],
+             sweep: [
+               type: {:or, [:pos_integer, {:in, [:infinity]}]},
+               default: :timer.hours(24),
+               doc:
+                 "Milliseconds between sweeps, or `:infinity`. The first runs at start. See `sweep/1`."
+             ],
+             worktrees: [
+               type: :string,
+               required: true,
+               doc: "The directory for worktrees, one per piece of work."
+             ]
+           )
 
   @doc """
   Starts `WardrikACP`. Coding agents start when a call first needs them.
@@ -129,7 +130,8 @@ defmodule WardrikACP do
   """
   @spec sweep(atom()) :: [Path.t()]
   def sweep(acp) do
-    {:ok, settings} = Registry.meta(Connection.registry(acp), :settings)
+    registry = Connection.registry(acp)
+    {:ok, settings} = Registry.meta(registry, :settings)
     Sweep.run(settings)
   end
 
@@ -145,10 +147,13 @@ defmodule WardrikACP do
   @impl WardrikCore.Capability
   def tools(_context, opts) do
     acp = Keyword.fetch!(opts, :name)
-    {:ok, settings} = Registry.meta(Connection.registry(acp), :settings)
+    registry = Connection.registry(acp)
+    {:ok, settings} = Registry.meta(registry, :settings)
 
     checkouts =
-      opts |> Keyword.get(:checkouts, Map.keys(settings.checkouts)) |> Enum.map(&to_string/1)
+      opts
+      |> Keyword.get(:checkouts, Map.keys(settings.checkouts))
+      |> Enum.map(&to_string/1)
 
     opts
     |> Keyword.fetch!(:harnesses)

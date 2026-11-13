@@ -12,7 +12,8 @@ defmodule Wardrik.DefinitionsTest do
   setup :set_mimic_global
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
@@ -32,7 +33,8 @@ defmodule Wardrik.DefinitionsTest do
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -382,7 +384,9 @@ defmodule Wardrik.DefinitionsTest do
       define(scope, "acme/triage", %{"model" => @model})
 
       ref =
-        Process.monitor(Wardrik.Operations.Running.whereis(context.wardrik, "acme/triage"))
+        context.wardrik
+        |> Wardrik.Operations.Running.whereis("acme/triage")
+        |> Process.monitor()
 
       until("wardrik.agent.stopped")
       assert_receive {:DOWN, ^ref, :process, _pid, _reason}
@@ -392,7 +396,8 @@ defmodule Wardrik.DefinitionsTest do
 
   describe "defaults" do
     test "gives a definition what the Wardrik's defaults say, where it says nothing", context do
-      store = Wardrik.Test.Store.new(:"defaults store #{context.test}")
+      store_name = :"defaults store #{context.test}"
+      store = Wardrik.Test.Store.new(store_name)
 
       wardrik =
         Wardrik.new(
@@ -430,10 +435,11 @@ defmodule Wardrik.DefinitionsTest do
       assert system(messages) == "Be brief."
       until("wardrik.run.completed")
 
-      conversation = WardrikCore.whereis(Wardrik.agents(wardrik), {"acme/triage", "C1-1696.1234"})
+      agents = Wardrik.agents(wardrik)
+      conversation = WardrikCore.whereis(agents, {"acme/triage", "C1-1696.1234"})
       assert [_asked, _answered] = WardrikCore.history(conversation)
 
-      own = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")
+      own = WardrikCore.whereis(agents, "acme/triage")
       assert WardrikCore.history(own) == []
       assert run!(scope, "agent.timeline", %{"agent" => "acme/triage"})["items"] == []
 
@@ -441,7 +447,8 @@ defmodule Wardrik.DefinitionsTest do
                run!(scope, "agent.read", input)
 
       assert agent == %{"id" => "acme/triage"}
-      refute Map.has_key?(run!(scope, "agent.read", %{"agent" => "acme/triage"}), "conversation")
+      read = run!(scope, "agent.read", %{"agent" => "acme/triage"})
+      refute Map.has_key?(read, "conversation")
     end
 
     test "has no definition or triggers of its own", %{scope: scope} do
@@ -504,11 +511,12 @@ defmodule Wardrik.DefinitionsTest do
       run!(scope, "agent.ask", Map.put(conversation, "content", "Hi"))
       until("wardrik.run.completed")
 
-      assert {"acme/triage", "C1"} in WardrikCore.list(Wardrik.agents(wardrik))
+      agents = Wardrik.agents(wardrik)
+      assert {"acme/triage", "C1"} in WardrikCore.list(agents)
 
       run!(scope, "agent.forget", %{"agent" => "acme/triage"})
 
-      assert WardrikCore.list(Wardrik.agents(wardrik)) == []
+      assert WardrikCore.list(agents) == []
       assert refused(scope, "agent.read", conversation) == :not_found
       assert run!(scope, "agents.list", %{})["agents"] == []
     end
@@ -530,10 +538,11 @@ defmodule Wardrik.DefinitionsTest do
                run!(scope, "agent.clear", conversation)
 
       agents = Wardrik.agents(wardrik)
-      assert WardrikCore.history(WardrikCore.whereis(agents, {"acme/triage", "C1"})) == []
+      cleared = WardrikCore.whereis(agents, {"acme/triage", "C1"})
+      assert WardrikCore.history(cleared) == []
 
-      assert [_asked, _answered] =
-               WardrikCore.history(WardrikCore.whereis(agents, "acme/triage"))
+      own = WardrikCore.whereis(agents, "acme/triage")
+      assert [_asked, _answered] = WardrikCore.history(own)
 
       assert %{"items" => []} = run!(scope, "agent.timeline", conversation)
 
@@ -591,7 +600,11 @@ defmodule Wardrik.DefinitionsTest do
 
       assert %{"status" => "idle"} = run!(scope, "agent.clear", %{"agent" => "acme/triage"})
 
-      pid = WardrikCore.whereis(Wardrik.agents(wardrik), "acme/triage")
+      pid =
+        wardrik
+        |> Wardrik.agents()
+        |> WardrikCore.whereis("acme/triage")
+
       assert WardrikCore.history(pid) == []
 
       assert %{"items" => []} = run!(scope, "agent.timeline", %{"agent" => "acme/triage"})
@@ -740,9 +753,15 @@ defmodule Wardrik.DefinitionsTest do
       store = Wardrik.Store.scope(wardrik.store, "wardrik_triggers")
       key = "triggers/" <> URI.encode_www_form(id) <> "/" <> name
       {record, _vsn} = Wardrik.Store.lookup(store, key)
-      past = DateTime.utc_now() |> DateTime.add(-5) |> DateTime.to_iso8601()
+
+      past =
+        DateTime.utc_now()
+        |> DateTime.add(-5)
+        |> DateTime.to_iso8601()
+
       {:ok, _vsn} = Wardrik.Store.put(store, key, %{record | "next_at" => past})
-      :ok = Wardrik.Triggers.reconcile(Wardrik.triggers(wardrik))
+      triggers = Wardrik.triggers(wardrik)
+      :ok = Wardrik.Triggers.reconcile(triggers)
     end
 
     test "gives a defined agent its triggers, and asks it when one comes due, asleep or not", %{
@@ -756,8 +775,10 @@ defmodule Wardrik.DefinitionsTest do
         "triggers" => [%{"every" => "0 9 * * *", "prompt" => "Write it."}]
       })
 
+      triggers = Wardrik.triggers(wardrik)
+
       assert [{%Wardrik.Triggers.Trigger{name: "trigger-1"}, %DateTime{}}] =
-               Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest")
+               Wardrik.Triggers.list(triggers, "acme/digest")
 
       run!(scope, "agent.stop", %{"agent" => "acme/digest"})
       until("wardrik.agent.stopped")
@@ -842,14 +863,23 @@ defmodule Wardrik.DefinitionsTest do
       answers([answer("Posted.")])
       define(scope, "acme/digest", %{"model" => @model})
 
-      at = DateTime.utc_now() |> DateTime.add(86_400) |> DateTime.truncate(:second)
+      at =
+        DateTime.utc_now()
+        |> DateTime.add(86_400)
+        |> DateTime.truncate(:second)
+
       local = DateTime.shift_zone!(at, "America/Los_Angeles", Tz.TimeZoneDatabase)
+
+      local_at =
+        local
+        |> DateTime.to_naive()
+        |> NaiveDateTime.to_iso8601()
 
       assert %{"name" => "launch", "next_at" => next_at} =
                run!(scope, "agent.trigger_set", %{
                  "agent" => "acme/digest",
                  "trigger" => "launch",
-                 "at" => local |> DateTime.to_naive() |> NaiveDateTime.to_iso8601(),
+                 "at" => local_at,
                  "timezone" => "America/Los_Angeles",
                  "prompt" => "Post it."
                })
@@ -864,7 +894,8 @@ defmodule Wardrik.DefinitionsTest do
       assert %{role: :user, content: [%{text: "Post it."}, %{text: "(Sent " <> _sent}]} =
                List.last(messages)
 
-      assert Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+      triggers = Wardrik.triggers(wardrik)
+      assert Wardrik.Triggers.list(triggers, "acme/digest") == []
 
       assert {:ok, definition} = Wardrik.Definitions.fetch(wardrik, "acme/digest")
       assert Map.get(definition, "triggers", []) == []
@@ -917,7 +948,8 @@ defmodule Wardrik.DefinitionsTest do
                  "trigger" => "daily"
                })
 
-      assert Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+      triggers = Wardrik.triggers(wardrik)
+      assert Wardrik.Triggers.list(triggers, "acme/digest") == []
 
       assert refused(scope, "agent.trigger_remove", %{
                "agent" => "acme/digest",
@@ -954,7 +986,8 @@ defmodule Wardrik.DefinitionsTest do
 
       run!(scope, "agent.forget", %{"agent" => "acme/digest"})
 
-      assert Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+      triggers = Wardrik.triggers(wardrik)
+      assert Wardrik.Triggers.list(triggers, "acme/digest") == []
     end
 
     test "turns away a webhook request it can't prove", %{scope: scope} do

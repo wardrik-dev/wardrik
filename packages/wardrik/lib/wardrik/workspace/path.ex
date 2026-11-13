@@ -16,7 +16,10 @@ defmodule Wardrik.Workspace.Path do
   @doc "Normalises `path`. Returns `{:error, reason}` if it isn't a valid path."
   @spec normalize(term()) :: {:ok, String.t()} | {:error, String.t()}
   def normalize(path) when is_binary(path) do
-    segments = path |> String.split("/") |> Enum.reject(&(&1 in ["", "."]))
+    segments =
+      path
+      |> String.split("/")
+      |> Enum.reject(&(&1 in ["", "."]))
 
     cond do
       not String.valid?(path) or String.contains?(path, [<<0>>, "\\"]) ->
@@ -43,7 +46,11 @@ defmodule Wardrik.Workspace.Path do
 
   @doc "Returns whether `glob` matches `path`."
   @spec match?(String.t(), String.t()) :: boolean()
-  def match?(glob, path), do: Regex.match?(compile(glob), path)
+  def match?(glob, path) do
+    glob
+    |> compile()
+    |> Regex.match?(path)
+  end
 
   @doc "Compiles `glob` to a regular expression."
   @spec compile(String.t()) :: Regex.t()
@@ -62,5 +69,9 @@ defmodule Wardrik.Workspace.Path do
   defp translate(<<char::utf8, rest::binary>>, acc),
     do: translate(rest, [Regex.escape(<<char::utf8>>) | acc])
 
-  defp translate("", acc), do: acc |> Enum.reverse() |> IO.iodata_to_binary()
+  defp translate("", acc) do
+    acc
+    |> Enum.reverse()
+    |> IO.iodata_to_binary()
+  end
 end

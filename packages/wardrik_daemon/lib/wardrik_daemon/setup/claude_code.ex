@@ -36,12 +36,18 @@ defmodule WardrikDaemon.Setup.ClaudeCode do
     end
   end
 
-  defp signed_in?(machine), do: File.exists?(Machine.home(machine, ".claude/.credentials.json"))
+  defp signed_in?(machine) do
+    machine
+    |> Machine.home(".claude/.credentials.json")
+    |> File.exists?()
+  end
 
-  defp keyed?(machine),
-    do:
-      Map.has_key?(machine.env, @key) or
-        Map.has_key?(EnvFile.load(machine.dirs.env_file, %{}), @key)
+  defp keyed?(machine) do
+    Map.has_key?(machine.env, @key) or
+      machine.dirs.env_file
+      |> EnvFile.load(%{})
+      |> Map.has_key?(@key)
+  end
 
   @impl WardrikDaemon.Setup.Step
   def questions(nil), do: []

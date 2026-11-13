@@ -48,13 +48,25 @@ defmodule Wardrik.EventLog.ViewsTest do
       assert [%{"since" => @at}, %{"since" => later}] = activity["doing"]
       assert later == "2026-10-22T09:00:05.000000Z"
 
-      activity = Activity.handle_event(event("tool_call.completed", tool("a")), activity)
+      activity =
+        "tool_call.completed"
+        |> event(tool("a"))
+        |> Activity.handle_event(activity)
+
       assert doing(activity) == ["wardrik.tool_call.started b"]
 
-      activity = Activity.handle_event(event("tool_call.denied", tool("b")), activity)
+      activity =
+        "tool_call.denied"
+        |> event(tool("b"))
+        |> Activity.handle_event(activity)
+
       assert doing(activity) == ["wardrik.tool_call.denied b"]
 
-      activity = Activity.handle_event(event("tool_call.completed", tool("c")), activity)
+      activity =
+        "tool_call.completed"
+        |> event(tool("c"))
+        |> Activity.handle_event(activity)
+
       assert doing(activity) == ["wardrik.tool_call.completed c"]
     end
 
@@ -90,10 +102,9 @@ defmodule Wardrik.EventLog.ViewsTest do
       assert %{"pending" => 1, "doing" => [%{"interrupts" => [%{"id" => "model"}]}]} = activity
 
       activity =
-        Activity.handle_event(
-          event("run.cancelled", %{"dropped" => 3}, "2026-10-22T09:00:02Z"),
-          activity
-        )
+        "run.cancelled"
+        |> event(%{"dropped" => 3}, "2026-10-22T09:00:02Z")
+        |> Activity.handle_event(activity)
 
       assert activity == %{"doing" => [], "pending" => 0, "since" => "2026-10-22T09:00:02Z"}
       assert Activity.handle_event(%{"type" => "wardrik.message.delta"}, activity) == activity
@@ -102,7 +113,8 @@ defmodule Wardrik.EventLog.ViewsTest do
     test "keeps its time when nothing it does changes" do
       activity = View.fold([event("step.started", %{"step" => %{"name" => "plan"}})], Activity)
 
-      assert Activity.handle_event(event("message.delta", %{}, "later"), activity) == activity
+      delta = event("message.delta", %{}, "later")
+      assert Activity.handle_event(delta, activity) == activity
     end
   end
 
@@ -131,10 +143,9 @@ defmodule Wardrik.EventLog.ViewsTest do
       assert Timeline.running?(timeline)
 
       timeline =
-        Timeline.handle_event(
-          event("run.interrupted", %{"interrupts" => [%{"id" => "a"}]}),
-          timeline
-        )
+        "run.interrupted"
+        |> event(%{"interrupts" => [%{"id" => "a"}]})
+        |> Timeline.handle_event(timeline)
 
       refute Timeline.running?(timeline)
       assert Timeline.interrupts(timeline) == [%{"id" => "a"}]
@@ -158,8 +169,11 @@ defmodule Wardrik.EventLog.ViewsTest do
       spec = "a000000000000001"
       adoption = "b000000000000001"
 
-      started =
-        &on_span.(event("subagent.started", %{"prompt" => &1, "agent" => %{"name" => &2}}), &3)
+      started = fn prompt, name, span ->
+        "subagent.started"
+        |> event(%{"prompt" => prompt, "agent" => %{"name" => name}})
+        |> on_span.(span)
+      end
 
       timeline =
         View.fold(
@@ -286,7 +300,11 @@ defmodule Wardrik.EventLog.ViewsTest do
 
       assert [%{status: :waiting, interrupts: [%{"id" => "b"}]}] = Timeline.items(timeline)
 
-      timeline = Timeline.handle_event(event("run.resumed", %{}), timeline)
+      timeline =
+        "run.resumed"
+        |> event(%{})
+        |> Timeline.handle_event(timeline)
+
       assert [%{status: :running, interrupts: []}] = Timeline.items(timeline)
     end
 
@@ -395,11 +413,19 @@ defmodule Wardrik.EventLog.ViewsTest do
     test "keeps each run's events where asked, and adds totals up" do
       events = [event("run.started", run()), event("tool_call.started", tool("a"))]
 
-      assert [%{events: ^events}] = events |> View.fold(Runs, events: true) |> Runs.runs()
-      refute events |> View.fold(Runs) |> Runs.runs() |> hd() |> Map.has_key?(:events)
+      with_events = View.fold(events, Runs, events: true)
+      assert [%{events: ^events}] = Runs.runs(with_events)
 
-      totals = events |> View.fold(Runs) |> Runs.totals()
-      none = Runs.totals(Runs.init([]))
+      folded = View.fold(events, Runs)
+      first = hd(Runs.runs(folded))
+      refute Map.has_key?(first, :events)
+
+      totals = Runs.totals(folded)
+
+      none =
+        []
+        |> Runs.init()
+        |> Runs.totals()
 
       assert Runs.sum([totals, totals, none]) == %{
                runs: 2,
@@ -418,7 +444,9 @@ defmodule Wardrik.EventLog.ViewsTest do
       assert [%{status: :running} = run] = Runs.runs(runs)
       assert Runs.duration_ms(run) == nil
 
-      assert Runs.totals(Runs.init([])) == %{
+      empty = Runs.init([])
+
+      assert Runs.totals(empty) == %{
                runs: 0,
                failed: 0,
                tool_calls: 0,

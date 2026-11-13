@@ -65,13 +65,14 @@ defmodule WardrikBrave.Client do
   defp generic(_grounding), do: []
 
   defp result(entry, sources) do
-    %{
+    result = %{
       "url" => entry["url"],
       "title" => entry["title"],
       "snippets" => Map.get(entry, "snippets", []),
       "age" => age(sources, entry["url"])
     }
-    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+    Map.reject(result, fn {_key, value} -> is_nil(value) end)
   end
 
   defp age(sources, url) do

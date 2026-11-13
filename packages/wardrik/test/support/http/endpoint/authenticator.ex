@@ -18,12 +18,18 @@ defmodule Wardrik.HTTP.Test.Authenticator do
     :ok
   end
 
-  def revoke(name, secret), do: Agent.update(secrets(name), &MapSet.delete(&1, secret))
+  def revoke(name, secret) do
+    name
+    |> secrets()
+    |> Agent.update(&MapSet.delete(&1, secret))
+  end
 
   @impl Wardrik.HTTP.Authenticator
   def authenticate(%{conn: conn, server: server, wardrik: wardrik}, _opts) do
+    secrets = secrets(wardrik)
+
     with ["Bearer " <> secret] <- get_req_header(conn, "authorization"),
-         true <- Agent.get(secrets(wardrik), &MapSet.member?(&1, secret)) do
+         true <- Agent.get(secrets, &MapSet.member?(&1, secret)) do
       {:ok, Wardrik.Scope.new(server, wardrik: wardrik, principal: "acme/@maria")}
     else
       _unknown -> {:error, Error.new(:unauthorized, "Sign in first.")}

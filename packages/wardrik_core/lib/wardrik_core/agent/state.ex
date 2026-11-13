@@ -57,13 +57,14 @@ defmodule WardrikCore.Agent.State do
 
   defp same_principal?(message, other), do: principal_id(message) == principal_id(other)
 
-  defp principal_id(message), do: message |> principal() |> id()
+  defp principal_id(message), do: id(principal(message))
 
   defp id(%WardrikCore.Principal{id: id}), do: id
   defp id(nil), do: nil
 
   defp principal(%ReqLLM.Message{metadata: metadata}), do: Map.get(metadata || %{}, :principal)
 
+  @spec new(keyword()) :: t()
   def new(opts) do
     opts = Keyword.update!(opts, :model, &canonical_spec!/1)
 
@@ -237,10 +238,13 @@ defmodule WardrikCore.Agent.State do
   end
 
   @doc false
+  @spec canonical_prices!(%{optional(ReqLLM.model_input()) => WardrikCore.price()}) ::
+          %{optional(String.t()) => WardrikCore.price()}
   def canonical_prices!(prices),
     do: Map.new(prices, fn {spec, price} -> {canonical_spec!(spec), price} end)
 
   @doc false
+  @spec canonical_spec!(ReqLLM.model_input()) :: String.t()
   def canonical_spec!(spec) do
     case ReqLLM.model(spec) do
       {:ok, model} -> LLMDB.Model.spec(model)

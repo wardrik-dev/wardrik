@@ -115,7 +115,7 @@ defmodule Wardrik.Triggers.Trigger do
   @doc "Encodes the trigger as a map with string keys, leaving out unset keys."
   @spec encode(t()) :: map()
   def encode(%__MODULE__{} = trigger) do
-    %{
+    fields = %{
       "name" => trigger.name,
       "every" => trigger.every,
       "at" => trigger.at,
@@ -128,7 +128,8 @@ defmodule Wardrik.Triggers.Trigger do
       "feed" => if(trigger.feeds != [], do: trigger.feeds),
       "webhook" => webhook_json(trigger.webhook)
     }
-    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+    Map.reject(fields, fn {_key, value} -> is_nil(value) end)
   end
 
   defp known(fields) do

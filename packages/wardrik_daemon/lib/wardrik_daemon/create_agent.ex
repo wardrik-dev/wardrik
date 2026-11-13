@@ -79,7 +79,11 @@ defmodule WardrikDaemon.CreateAgent do
     }
 
     # A model's arguments are JSON already; this makes any keys strings, as the route's are.
-    input = definition |> JSON.encode!() |> JSON.decode!() |> Map.put("name", name)
+    input =
+      definition
+      |> JSON.encode!()
+      |> JSON.decode!()
+      |> Map.put("name", name)
 
     with :ok <- authorized(scope, principal.id),
          {:ok, record} <- create(daemon, scope, {principal.id, input}) do
@@ -98,7 +102,9 @@ defmodule WardrikDaemon.CreateAgent do
 
   # A worker is held to its maker's policy, as agent_define holds it.
   defp policy(wardrik, id) do
-    case Wardrik.run(Agents.scope(wardrik: wardrik), "agent.definition", %{"agent" => id}) do
+    scope = Agents.scope(wardrik: wardrik)
+
+    case Wardrik.run(scope, "agent.definition", %{"agent" => id}) do
       {:ok, %{"definition" => %{"policy" => policy}}} -> policy
       _unbounded -> nil
     end

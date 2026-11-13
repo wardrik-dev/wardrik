@@ -44,7 +44,8 @@ defmodule Wardrik.Operations.Agent do
 
     with {:ok, pid} <- Running.awake(scope.wardrik, key) do
       message_id = input["id"] || message_id()
-      cursor = Wardrik.EventLog.head(Wardrik.events(scope.wardrik), [key])
+      events = Wardrik.events(scope.wardrik)
+      cursor = Wardrik.EventLog.head(events, [key])
       :ok = WardrikCore.ask(pid, text(input), metadata(scope, message_id))
       {:ok, %{"message" => %{"id" => message_id, "cursor" => cursor}}}
     end
@@ -77,8 +78,11 @@ defmodule Wardrik.Operations.Agent do
     decide(scope, decided_input(input, decision))
   end
 
-  defp decided_input(input, decision),
-    do: input |> Map.take(["agent", "conversation"]) |> Map.put("decisions", [decision])
+  defp decided_input(input, decision) do
+    input
+    |> Map.take(["agent", "conversation"])
+    |> Map.put("decisions", [decision])
+  end
 
   @doc "Returns the sign-in URL for a call that waits on a person signing in."
   @spec authorization(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
@@ -147,21 +151,27 @@ defmodule Wardrik.Operations.Agent do
   def timeline(scope, input) do
     events = Wardrik.events(scope.wardrik)
     {timeline, cursor} = Wardrik.EventLog.view(events, Running.key(input), Timeline)
-    {:ok, %{"items" => JSON.json(Timeline.items(timeline)), "cursor" => Cursor.encode(cursor)}}
+    items = Timeline.items(timeline)
+    {:ok, %{"items" => JSON.json(items), "cursor" => Cursor.encode(cursor)}}
   end
 
   @doc "Returns the agent's runs, with what each did and cost."
   @spec runs(Wardrik.Scope.t(), map()) :: {:ok, map()}
   def runs(scope, input) do
-    {runs, cursor} =
-      Wardrik.EventLog.view(Wardrik.events(scope.wardrik), Running.key(input), Runs)
+    events = Wardrik.events(scope.wardrik)
+    {runs, cursor} = Wardrik.EventLog.view(events, Running.key(input), Runs)
 
-    each = Enum.map(Runs.runs(runs), &Map.put(&1, :duration_ms, Runs.duration_ms(&1)))
+    each =
+      runs
+      |> Runs.runs()
+      |> Enum.map(&Map.put(&1, :duration_ms, Runs.duration_ms(&1)))
+
+    totals = Runs.totals(runs)
 
     {:ok,
      %{
        "runs" => JSON.json(each),
-       "totals" => JSON.json(Runs.totals(runs)),
+       "totals" => JSON.json(totals),
        "cursor" => Cursor.encode(cursor)
      }}
   end
@@ -171,11 +181,16 @@ defmodule Wardrik.Operations.Agent do
   defp text(%{"parts" => parts}),
     do: Enum.map_join(parts, "\n\n", &Map.get(&1, "content", ""))
 
-  defp message_id,
-    do: "msg_" <> (12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
+  defp message_id do
+    bytes = :crypto.strong_rand_bytes(12)
+    "msg_" <> Base.url_encode64(bytes, padding: false)
+  end
 
   defp waiting_on(pid, key, decisions) do
-    waiting = pid |> WardrikCore.parked() |> waiting()
+    waiting =
+      pid
+      |> WardrikCore.parked()
+      |> waiting()
 
     case Enum.reject(decisions, &Map.has_key?(waiting, &1["id"])) do
       [] ->

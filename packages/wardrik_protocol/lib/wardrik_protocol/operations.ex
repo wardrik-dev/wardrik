@@ -6,7 +6,11 @@ defmodule WardrikProtocol.Operations do
   @methods ~w(get put post patch delete)
 
   @spec document(Path.t()) :: map()
-  def document(dir), do: dir |> Inline.read("openapi") |> Inline.whole(dir)
+  def document(dir) do
+    dir
+    |> Inline.read("openapi")
+    |> Inline.whole(dir)
+  end
 
   @spec build(map()) :: [map()]
   def build(document) do

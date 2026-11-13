@@ -147,7 +147,12 @@ defmodule WardrikDaemon.CLI.Init do
 
   defp model?(provider, model), do: match?({:ok, _model}, LLMDB.model({provider, model}))
 
-  defp newest(provider), do: provider |> models() |> Enum.take(5) |> Enum.join(", ")
+  defp newest(provider) do
+    provider
+    |> models()
+    |> Enum.take(5)
+    |> Enum.join(", ")
+  end
 
   defp providers do
     for provider <- ReqLLM.Providers.list(),
@@ -171,8 +176,10 @@ defmodule WardrikDaemon.CLI.Init do
   end
 
   defp key(_flags, cx, variable) do
+    saved = EnvFile.load(cx.dirs.env_file, %{})
+
     cond do
-      Map.has_key?(EnvFile.load(cx.dirs.env_file, %{}), variable) ->
+      Map.has_key?(saved, variable) ->
         Context.puts(cx, "#{variable} is read from #{cx.dirs.env_file}.")
         {:ok, nil}
 
@@ -228,10 +235,8 @@ defmodule WardrikDaemon.CLI.Init do
   end
 
   defp modelled?(dirs) do
-    match?(
-      {:ok, %{"defaults" => %{"model" => _model}}},
-      YamlElixir.read_from_file(Dirs.config(dirs, "config.yaml"))
-    )
+    path = Dirs.config(dirs, "config.yaml")
+    match?({:ok, %{"defaults" => %{"model" => _model}}}, YamlElixir.read_from_file(path))
   end
 
   defp written?(cx, path, text, mode) do
@@ -239,7 +244,10 @@ defmodule WardrikDaemon.CLI.Init do
       Context.puts(cx, said(:kept, path))
       false
     else
-      File.mkdir_p!(Path.dirname(path))
+      path
+      |> Path.dirname()
+      |> File.mkdir_p!()
+
       File.write!(path, text)
       File.chmod!(path, mode)
       Context.puts(cx, said(:wrote, path))
@@ -258,7 +266,10 @@ defmodule WardrikDaemon.CLI.Init do
 
   # The daemon this CLI reaches runs from another release, as a checkout's or an older install's.
   defp elsewhere(%{env: %{"WARDRIK_SCRIPT" => script}} = cx) do
-    ours = script |> Path.dirname() |> Path.dirname()
+    ours =
+      script
+      |> Path.dirname()
+      |> Path.dirname()
 
     case Occupant.find(cx.env) do
       %Occupant{root: root} = occupant when root != ours ->
@@ -348,13 +359,21 @@ defmodule WardrikDaemon.CLI.Init do
   end
 
   defp logged(cx) do
-    case Path.wildcard(Path.join([cx.dirs.state, "log", "erlang.log.*"])) do
+    pattern = Path.join([cx.dirs.state, "log", "erlang.log.*"])
+
+    case Path.wildcard(pattern) do
       [] ->
         "It logged nothing to #{Path.join(cx.dirs.state, "log")}."
 
       logs ->
         log = Enum.max_by(logs, &File.stat!(&1, time: :posix).mtime)
-        last = log |> File.read!() |> String.split("\n", trim: true) |> Enum.take(-10)
+
+        last =
+          log
+          |> File.read!()
+          |> String.split("\n", trim: true)
+          |> Enum.take(-10)
+
         "The end of its log, #{log}:\n\n  #{Enum.join(last, "\n  ")}\n\nMore: #{cx.program} logs"
     end
   end
@@ -485,6 +504,8 @@ defmodule WardrikDaemon.CLI.Init do
   # it, so it shows in approvals. Each check is a model call with its tools, tens of thousands of
   # tokens.
   defp assistant do
+    front_door = Application.app_dir(:wardrik_daemon, "priv/front_door.md")
+
     """
     ---
     description: "Turns what people ask for into work that runs."
@@ -500,7 +521,7 @@ defmodule WardrikDaemon.CLI.Init do
           the doctor's checks, and each node's memory. For each problem a call of yours can fix,
           propose that call. Answer "All well." in one line when nothing needs a person.
     ---
-    """ <> File.read!(Application.app_dir(:wardrik_daemon, "priv/front_door.md"))
+    """ <> File.read!(front_door)
   end
 
   defp env do

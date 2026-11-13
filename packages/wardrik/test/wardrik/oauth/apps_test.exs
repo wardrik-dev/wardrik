@@ -14,7 +14,8 @@ defmodule Wardrik.OAuth.AppsTest do
   }
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     # Anyone may use the deployment's apps, Ana acme's too, and nobody globex's.
     decide = fn
@@ -118,7 +119,7 @@ defmodule Wardrik.OAuth.AppsTest do
     {:ok, _added} = add(scope, "acme", "linear")
     assert %{owner: "acme"} = Apps.chosen(wardrik, %Principal{id: "ana"}, "linear")
 
-    assert ["google", "linear"] =
-             wardrik |> Apps.offered(%Principal{id: "ana"}) |> Enum.map(& &1.name)
+    offered = Apps.offered(wardrik, %Principal{id: "ana"})
+    assert ["google", "linear"] = Enum.map(offered, & &1.name)
   end
 end

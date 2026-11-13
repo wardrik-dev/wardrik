@@ -279,16 +279,21 @@ defmodule Wardrik.PolicyTest do
 
       json = Wardrik.Policy.to_json(policy)
 
-      assert json == json |> JSON.encode!() |> JSON.decode!()
+      round_trip =
+        json
+        |> JSON.encode!()
+        |> JSON.decode!()
+
+      assert json == round_trip
       assert {:ok, ^policy} = Wardrik.Policy.decode(json)
     end
 
     test "leaves out what a policy doesn't set" do
-      assert Wardrik.Policy.to_json(Wardrik.Policy.new!(deny: ["shell/*"])) == %{
-               "deny" => ["shell/*"]
-             }
+      denying = Wardrik.Policy.new!(deny: ["shell/*"])
+      assert Wardrik.Policy.to_json(denying) == %{"deny" => ["shell/*"]}
 
-      assert %{"default" => "deny"} = Wardrik.Policy.to_json(Wardrik.Policy.new!(default: :deny))
+      closed = Wardrik.Policy.new!(default: :deny)
+      assert %{"default" => "deny"} = Wardrik.Policy.to_json(closed)
     end
   end
 

@@ -28,7 +28,12 @@ defmodule Wardrik.TriggersTest do
   defp due(store, triggers, name, ago) do
     key = "triggers/" <> URI.encode_www_form(@agent) <> "/" <> name
     {record, _vsn} = Wardrik.Store.lookup(store, key)
-    next_at = DateTime.utc_now() |> DateTime.add(-ago) |> DateTime.to_iso8601()
+
+    next_at =
+      DateTime.utc_now()
+      |> DateTime.add(-ago)
+      |> DateTime.to_iso8601()
+
     {:ok, _vsn} = Wardrik.Store.put(store, key, %{record | "next_at" => next_at})
     :ok = Wardrik.Triggers.reconcile(triggers)
   end
@@ -137,7 +142,8 @@ defmodule Wardrik.TriggersTest do
     end
 
     test "says when the store fails partway, and finishes the change when put again", context do
-      store = FailingStore.new(:"failing #{context.test}")
+      store_name = :"failing #{context.test}"
+      store = FailingStore.new(store_name)
       triggers = :"failing triggers #{context.test}"
       start_supervised!({Wardrik.Store, store}, id: :failing_store)
 
@@ -223,8 +229,11 @@ defmodule Wardrik.TriggersTest do
   end
 
   describe "once, at a time" do
-    defp ahead(seconds),
-      do: DateTime.utc_now() |> DateTime.add(seconds) |> DateTime.truncate(:second)
+    defp ahead(seconds) do
+      DateTime.utc_now()
+      |> DateTime.add(seconds)
+      |> DateTime.truncate(:second)
+    end
 
     test "asks the agent once, queued, and never again", %{triggers: triggers, store: store} do
       at = ahead(3600)
@@ -252,7 +261,12 @@ defmodule Wardrik.TriggersTest do
     end
 
     test "moves its run when its time changes", %{triggers: triggers} do
-      fields = %{"name" => "launch", "at" => DateTime.to_iso8601(ahead(3600)), "prompt" => "Go."}
+      launch_at =
+        3600
+        |> ahead()
+        |> DateTime.to_iso8601()
+
+      fields = %{"name" => "launch", "at" => launch_at, "prompt" => "Go."}
       {:ok, _trigger} = Wardrik.Triggers.set(triggers, @agent, fields)
 
       later = ahead(7200)

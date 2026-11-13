@@ -51,8 +51,13 @@ defmodule Wardrik.Operations.Snapshot do
   @doc "Returns the summaries of `keys`, reading their triggers and spending once for all."
   @spec summaries(Wardrik.t(), [Running.key()]) :: [map()]
   def summaries(wardrik, keys) do
-    agents = keys |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
-    next_runs = Wardrik.Triggers.next_runs(Wardrik.triggers(wardrik), agents)
+    agents =
+      keys
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.uniq()
+
+    triggers = Wardrik.triggers(wardrik)
+    next_runs = Wardrik.Triggers.next_runs(triggers, agents)
     spent = Wardrik.Spending.by_agent(wardrik, agents)
 
     for {agent, _conversation} = key <- keys,
@@ -60,7 +65,8 @@ defmodule Wardrik.Operations.Snapshot do
   end
 
   defp summarized(wardrik, {agent, conversation} = key, next_run, spent) do
-    activity = Wardrik.EventLog.activity(Wardrik.events(wardrik), key)
+    events = Wardrik.events(wardrik)
+    activity = Wardrik.EventLog.activity(events, key)
 
     %{
       "id" => agent,
@@ -99,7 +105,9 @@ defmodule Wardrik.Operations.Snapshot do
   @doc "Returns each trigger's next run by name. Webhooks are `nil`."
   @spec next_runs(Wardrik.t(), String.t()) :: %{String.t() => String.t() | nil}
   def next_runs(wardrik, id) do
-    for {trigger, next_at} <- Wardrik.Triggers.list(Wardrik.triggers(wardrik), id),
+    triggers = Wardrik.triggers(wardrik)
+
+    for {trigger, next_at} <- Wardrik.Triggers.list(triggers, id),
         into: %{},
         do: {trigger.name, next_at && DateTime.to_iso8601(next_at)}
   end
