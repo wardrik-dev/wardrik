@@ -12,8 +12,10 @@ workspace:
     notes: {agent: agt_notes, mode: read}
 ```
 
-- `files` gives the agent `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`
-  and `delete_file`. See `Wardrik.Workspace.Tools`.
+- `files` gives the agent `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`,
+  `search_memory` and `delete_file`. See `Wardrik.Workspace.Tools`.
+- `search_memory` ranks files by how well they answer plain words, with BM25. See
+  `Wardrik.Workspace.Search`. People and apps call it as `Wardrik.Agent.memory_search/3`.
 - `context` reads files into every turn.
 - Paths are relative to the agent's files, as `notes/today.md`. Shared trees are under
   `shared/<name>/`. `mode: read` only reads one.

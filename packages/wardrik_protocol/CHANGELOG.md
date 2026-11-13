@@ -13,6 +13,7 @@
 - `secrets.list`, `secrets.put` and `secrets.delete`, with `Wardrik.Secrets` and
   `Wardrik.SealedSecret`. An operation's subject can be what an owner holds, as `"secret"`,
   authorized on `{:secret, owner}`.
+- `agent.memory_search`, at `GET /v1/agents/{agent}/memory`, answers `Wardrik.MemoryHit`s.
 - An agent, listed or read, has `description` and `model`.
 - `events.list` and `agent.events` take `order` and `before`.
 - A trigger's `at` runs it once. `agent.trigger_set` returns `next_at`.

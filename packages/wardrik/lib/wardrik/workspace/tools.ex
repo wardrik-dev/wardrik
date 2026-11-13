@@ -1,6 +1,6 @@
 defmodule Wardrik.Workspace.Tools do
   @moduledoc """
-  The six file tools.
+  The seven file tools.
 
   | Tool | Arguments | Answers |
   | --- | --- | --- |
@@ -9,6 +9,7 @@ defmodule Wardrik.Workspace.Tools do
   | `edit_file` | `path`, `old`, `new`, `all` | How many places changed |
   | `list_files` | `pattern` (a glob) | Paths, newest first, at most 500 |
   | `search_files` | `pattern` (a regex), `glob`, `context` | Matching lines, at most 200 |
+  | `search_memory` | `query` (plain words), `glob`, `limit` | The files that best answer it, each with its best passage, at most 20. See `Wardrik.Workspace.Search` |
   | `delete_file` | `path` | Whether the file was there |
 
     * `write_file` needs the version read to replace a file, unless it appends.
@@ -49,6 +50,12 @@ defmodule Wardrik.Workspace.Tools do
         fn args, _context -> Reads.search_files(spec, args) end,
         reading
       ),
+      tool(
+        "search_memory",
+        search_memory(),
+        fn args, _context -> Reads.search_memory(spec, args) end,
+        reading
+      ),
       tool("delete_file", delete_file(), fn args, _context -> Writes.delete_file(spec, args) end,
         idempotent: true
       )
@@ -65,8 +72,10 @@ defmodule Wardrik.Workspace.Tools do
     )
   end
 
-  defp resources(name, arguments) when name in ["list_files", "search_files"],
-    do: [Map.get(arguments, if(name == "list_files", do: "pattern", else: "glob")) || "**"]
+  defp resources("list_files", arguments), do: [Map.get(arguments, "pattern") || "**"]
+
+  defp resources(name, arguments) when name in ["search_files", "search_memory"],
+    do: [Map.get(arguments, "glob") || "**"]
 
   defp resources(_name, %{"path" => path}) when is_binary(path), do: [path]
   defp resources(_name, _arguments), do: []
@@ -129,6 +138,19 @@ defmodule Wardrik.Workspace.Tools do
          doc: "How many lines before and after each match to show, at most 5"
        ]
      ]}
+  end
+
+  # Its arguments are agent.memory_search's, less the agent: the tool searches its own.
+  defp search_memory do
+    %{"properties" => properties, "required" => required} =
+      WardrikProtocol.operation("agent.memory_search").input
+
+    {"Search your memory: find the files in your workspace that best answer a question in plain words, such as your notes and the digests of past conversations under digests/. Answers the best files first, each with its best passage, its line and when it was written. Any word of the query counts, so add the words a file might use: pumpkin squash autumn loaf. Use search_files to find exact text.",
+     %{
+       "type" => "object",
+       "properties" => Map.delete(properties, "agent"),
+       "required" => List.delete(required, "agent")
+     }}
   end
 
   defp delete_file,

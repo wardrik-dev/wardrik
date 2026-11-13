@@ -747,6 +747,13 @@ defmodule WardrikDaemon.CLITest do
       assert {0, only} = wardrik(context, ["agent", "files", "ls", "triage", "skills/**"])
       refute only =~ "MEMORY.md"
 
+      assert {0, found} = wardrik(context, ["agent", "files", "search", "triage", "likes", "tea"])
+      assert found =~ ~r/^MEMORY.md\s+1\s+\S+\s+Likes tea\.$/m
+      refute found =~ "SKILL.md"
+
+      assert {0, "Nothing matches.\n"} =
+               wardrik(context, ["agent", "files", "search", "triage", "coffee", "--limit", "2"])
+
       File.write!(Path.join(skills, "triage/SKILL.md"), "---\nname: triage\n---\nLook twice.\n")
       File.write!(Path.join(skills, "deploy.md"), "Ship it.\n")
       put = ["agent", "files", "put", "triage", "skills/old.md", "-"]

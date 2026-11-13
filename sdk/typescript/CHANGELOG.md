@@ -9,6 +9,7 @@
 - `servers.list()`, `servers.add()` and `servers.remove()`, now in Wardrik's protocol.
 - `providers.list()`, `providers.add()` and `providers.remove()`, now in Wardrik's protocol.
 - `secrets.list()`, `secrets.put()` and `secrets.delete()`, now in Wardrik's protocol.
+- `agent.memorySearch()` finds the agent's files that best answer some words.
 - `AgentSummary` and `AgentSnapshot` have `description` and `model`. Reading events takes
   `order` and `before`.
 - `TriggerDefinition` has `at` and `next_at`.

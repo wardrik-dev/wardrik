@@ -4,6 +4,7 @@ defmodule Wardrik.Workspace.Reads do
   alias Wardrik.Workspace.File
   alias Wardrik.Workspace.Files
   alias Wardrik.Workspace.Path
+  alias Wardrik.Workspace.Search
   alias Wardrik.Workspace.Spec
   alias Wardrik.Workspace.Tools
 
@@ -68,6 +69,24 @@ defmodule Wardrik.Workspace.Reads do
 
       {:error, {why, _at}} ->
         Tools.failed(:bad_pattern, "#{args[:pattern]} isn't a regular expression: #{why}")
+    end
+  end
+
+  @doc "Finds the files that best answer a query in plain words. See `Wardrik.Workspace.Search`."
+  @spec search_memory(Spec.t(), map()) :: {:ok, map()}
+  def search_memory(spec, %{"query" => query} = args) do
+    glob = Map.get(args, "glob", "**")
+    files = for {path, file} <- all(spec), Path.match?(glob, path), do: {path, file}
+
+    case Search.search(files, query, limit: Map.get(args, "limit", 5)) do
+      {:ok, hits} ->
+        File.labelled(
+          %{ok: true, hits: Enum.map(hits, &Search.json/1)},
+          Enum.map(hits, & &1.file)
+        )
+
+      {:error, why} ->
+        Tools.failed(:bad_query, why)
     end
   end
 

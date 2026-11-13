@@ -25,6 +25,10 @@
   at `/v1/owners/{owner}/secrets`, as `Wardrik.Secrets`. The owner is a name your app gives,
   never read: your authorizer decides on `{:secret, owner}`. Without `:vault_keys` they answer
   `not_supported`.
+- `search_memory`, with the `files` tool, finds the files that best answer a question in plain
+  words, best first, each with its best passage: BM25 over passages, with a small boost for newer
+  files. `agent.memory_search` and `Wardrik.Agent.memory_search/3` search an agent's own files
+  the same way. See `Wardrik.Workspace.Search`.
 - `Wardrik.started_sign_in/2` returns the browser sign-in a callback's `state` belongs to, whoever
   started it.
 - `agents.list` and `agent.read` give each agent's `description` and `model`.

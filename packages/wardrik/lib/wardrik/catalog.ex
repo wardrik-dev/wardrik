@@ -68,6 +68,7 @@ defmodule Wardrik.Catalog do
         "agent.resolved" => &Resolved.agent/2,
         "agent.files" => &Files.list/2,
         "agent.file" => &Files.read/2,
+        "agent.memory_search" => &Files.memory_search/2,
         "providers.list" => &Providers.list/2,
         "providers.add" => &Providers.add/2,
         "providers.remove" => &Providers.remove/2,
