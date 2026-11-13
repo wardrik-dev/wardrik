@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-rc.1 (unreleased)
+## 0.1.0-rc.1 (2026-11-13)
 
 - One tool per operation of an HTTP API, from its description.
 - Reads OpenAPI 3.0 and 3.1, in JSON or YAML, as `{WardrikRest.OpenAPI, url: url}`, `path:` or

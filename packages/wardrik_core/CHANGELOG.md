@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.7 (2026-11-13)
 
 - A tool's JSON Schema is given to the model without its `pattern`s, which some providers refuse,
   such as `\P{Cc}`. Calls are still checked against the whole schema.

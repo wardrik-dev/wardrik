@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.8 (2026-11-13)
 
 - `notify_targets.list`, `notify_targets.add` and `notify_targets.remove`, with
   `Wardrik.NotifyTargets` and `Wardrik.NotifyTarget`.

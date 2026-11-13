@@ -8,7 +8,7 @@ key-value store. Give Wardrik one with `:store`. `WardrikCore` can keep its agen
 Run in a fresh IEx session:
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.11"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.12"}])
 
 store = Wardrik.Store.ETS.new(name: MyApp.Store)
 {:ok, _supervisor} = Supervisor.start_link([{Wardrik.Store, store}], strategy: :one_for_one)

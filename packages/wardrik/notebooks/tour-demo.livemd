@@ -1,7 +1,7 @@
 # Wardrik in ten minutes
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.11"}, {:kino, "~> 0.19"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.12"}, {:kino, "~> 0.19"}])
 ```
 
 ## Setup

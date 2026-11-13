@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.12 (2026-11-13)
 
 - `notify_targets.list`, `notify_targets.add` and `notify_targets.remove` keep an owner's
   webhooks for notices, at `/v1/owners/{owner}/notify_targets`, as `Wardrik.NotifyTargets`,

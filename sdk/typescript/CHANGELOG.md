@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.7 (2026-11-13)
 
 - `notifyTargets.list()`, `notifyTargets.add()` and `notifyTargets.remove()`, now in Wardrik's
   protocol.
