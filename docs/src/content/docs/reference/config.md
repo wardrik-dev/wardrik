@@ -279,11 +279,13 @@ rest:
 | `base_url` | where calls go; secrets are sent only here |
 | `auth` | a source for each scheme the description names: `{credential: NAME}` or `{key: NAME}` |
 | `headers` | headers every call sends, each a source or a string |
+| `argument_headers` | headers each tool takes as optional arguments, by name with what they're for, as `{login-customer-id: The manager account's ID}` |
 | `only` | operations to offer, by name or glob; default: all it can sign in to |
 | `read_only` | operations that change nothing, beyond `GET`s |
 | `idempotent` | operations safe to repeat, beyond `GET`, `PUT` and `DELETE` |
 | `timeout` | a call's limit in seconds; default `30` |
 | `max_result_bytes` | maximum answer size sent to the model, as JSON; default `131072` |
+| `max_schema_bytes` | each tool's schema size, as JSON, where it can be; deeper types are named instead, and `NAME__describe` gives their fields; default `16384` |
 | `trusted` | `true` disables the `outside` label on its results |
 
 Each API is a tool group of the same name: an agent file lists `tools: [ga4]` and gets one tool

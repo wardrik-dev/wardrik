@@ -1,6 +1,8 @@
 defmodule WardrikRest.API do
   alias WardrikRest.Operation
+  alias WardrikRest.Parameter
   alias WardrikRest.Reader
+  alias WardrikRest.Schema
   alias WardrikRest.Spec
 
   @name_limit 64
@@ -28,6 +30,12 @@ defmodule WardrikRest.API do
               default: %{},
               doc:
                 "Headers every call sends that the description doesn't name, each a source, as `%{\"developer-token\" => {:key, \"ADS_TOKEN\"}}`."
+            ],
+            argument_headers: [
+              type: {:map, :string, :string},
+              default: %{},
+              doc:
+                "Headers each tool takes as optional arguments, by name with what they're for, as `%{\"login-customer-id\" => \"The manager account's ID\"}`."
             ],
             only: [
               type: {:list, :string},
@@ -61,6 +69,12 @@ defmodule WardrikRest.API do
               default: 128 * 1024,
               doc:
                 "Bytes of an answer the model gets, as JSON. A longer one is cut, with a note to ask for less."
+            ],
+            max_schema_bytes: [
+              type: :pos_integer,
+              default: 16 * 1024,
+              doc:
+                "Bytes of each tool's schema, as JSON, where it can be. Types deeper than fit are named instead, and the `<name>__describe` tool gives their fields."
             ],
             egress: [
               type: {:fun, 1},
@@ -115,7 +129,8 @@ defmodule WardrikRest.API do
     :auth,
     :headers,
     :read_only,
-    :idempotent
+    :idempotent,
+    :schemas
   ]
   defstruct [
     :name,
@@ -126,6 +141,9 @@ defmodule WardrikRest.API do
     :headers,
     :read_only,
     :idempotent,
+    :schemas,
+    types: %{},
+    described: [],
     trusted: false,
     timeout: 30_000,
     max_result_bytes: 128 * 1024,
@@ -143,6 +161,9 @@ defmodule WardrikRest.API do
           headers: %{String.t() => source() | String.t()},
           read_only: [String.t()],
           idempotent: [String.t()],
+          schemas: %{String.t() => map()},
+          types: Schema.types(),
+          described: [String.t()],
           trusted: boolean(),
           timeout: pos_integer(),
           max_result_bytes: pos_integer(),
@@ -168,12 +189,19 @@ defmodule WardrikRest.API do
          :ok <- opts[:egress].(opts[:base_url]),
          :ok <- schemes(spec, opts[:auth]),
          {:ok, operations} <- offered(spec, opts) do
+      operations = Enum.map(operations, &headed(&1, opts[:argument_headers]))
+      fitted = Map.new(operations, &{&1.name, fitted(&1, spec, opts)})
+
       {:ok,
        %__MODULE__{
          name: opts[:name],
          base_url: String.trim_trailing(opts[:base_url], "/") <> "/",
          operations: operations,
          schemes: spec.schemes,
+         schemas: Map.new(fitted, fn {name, {schema, _cut}} -> {name, schema} end),
+         types: spec.types,
+         described:
+           fitted |> Map.values() |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort(),
          auth: opts[:auth],
          headers: opts[:headers],
          read_only: opts[:read_only],
@@ -185,6 +213,31 @@ defmodule WardrikRest.API do
        }}
     end
   end
+
+  defp headed(operation, headers) do
+    taken = MapSet.new(operation.parameters, & &1.name)
+
+    added =
+      for {name, about} <- Enum.sort(headers), not MapSet.member?(taken, name) do
+        %Parameter{name: name, in: :header, schema: %{"type" => "string", "description" => about}}
+      end
+
+    %{operation | parameters: operation.parameters ++ added}
+  end
+
+  defp fitted(operation, spec, opts) do
+    {properties, cut} =
+      Schema.fit(operation.parameters, spec.types, opts[:max_schema_bytes], describe(opts[:name]))
+
+    required = for %{required: true, name: name} <- operation.parameters, do: name
+    schema = %{"type" => "object", "properties" => properties}
+    {if(required == [], do: schema, else: Map.put(schema, "required", Enum.sort(required))), cut}
+  end
+
+  @doc "Returns the name of the tool that describes `api`'s types, as `ads__describe`."
+  @spec describe(t() | String.t()) :: String.t()
+  def describe(%__MODULE__{name: name}), do: describe(name)
+  def describe(name), do: "#{name}__describe"
 
   @doc "Returns `:ok` for an `https` URL with a host. The default `:egress`."
   @spec https(String.t()) :: :ok | {:error, String.t()}

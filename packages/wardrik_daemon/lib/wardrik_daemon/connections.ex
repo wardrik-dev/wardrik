@@ -88,17 +88,54 @@ defmodule WardrikDaemon.Connections do
   """
   @spec called_back(Servers.daemon(), map()) ::
           {:ok, %{provider: String.t(), code: String.t()}} | {:error, :declined | :unknown}
-  def called_back(%{wardrik: wardrik}, params) do
-    case Pairings.called_back(Pairings.name(wardrik), params) do
-      {:ok, code, sign_in} ->
+  def called_back(daemon, params), do: called_back(daemon, params, :adopt)
+
+  defp called_back(%{wardrik: wardrik} = daemon, params, adopt) do
+    case {Pairings.called_back(Pairings.name(wardrik), params), adopt} do
+      {{:ok, code, sign_in}, _adopt} ->
         {:ok, %{provider: sign_in.provider, code: code}}
 
-      {:declined, sign_in} ->
+      {{:declined, sign_in}, _adopt} ->
         _ended = end_flow(wardrik, sign_in.principal, params)
         {:error, :declined}
 
-      :error ->
+      {:error, :adopt} ->
+        if adopted?(daemon, params),
+          do: called_back(daemon, params, :adopted),
+          else: {:error, :unknown}
+
+      {:error, :adopted} ->
         {:error, :unknown}
+    end
+  end
+
+  # An agent waiting on a sign-in started it, not `wardrik connection connect`, so it's paired
+  # when its callback comes, with the person it's for.
+  defp adopted?(%{wardrik: wardrik} = daemon, %{"state" => state}) when is_binary(state) do
+    case Wardrik.started_sign_in(wardrik, state) do
+      {:ok, %{provider: credential, principal: principal}} ->
+        sign_in = %{principal: principal, provider: provider(daemon, principal, credential)}
+
+        :ok =
+          Pairings.started(
+            Pairings.name(wardrik),
+            state,
+            Map.put(sign_in, :credential, credential)
+          )
+
+        true
+
+      :error ->
+        false
+    end
+  end
+
+  defp adopted?(_daemon, _params), do: false
+
+  defp provider(daemon, principal, credential) do
+    case List.keyfind(offered(daemon, principal), credential, 1) do
+      {provider, ^credential} -> provider
+      nil -> credential
     end
   end
 

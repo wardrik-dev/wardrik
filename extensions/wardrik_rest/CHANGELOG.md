@@ -9,3 +9,9 @@
 - `only`, `read_only` and `idempotent` by name or glob.
 - Answers over `max_result_bytes` (128 KB unless set) are cut, with a note to ask for less.
 - `WardrikRest.API.schema/0`, to check options before loading.
+- A tool's schema is fitted into `max_schema_bytes` (16 KB unless set): types deeper than fit are
+  named instead, and `<api>__describe` gives their fields. Specs keep their schemas as named
+  `types`; Google's long type names are shortened, and its `UNSPECIFIED` and `UNKNOWN` enum
+  values left out.
+- `argument_headers`: headers each tool takes as optional arguments, such as Google Ads'
+  `login-customer-id`.

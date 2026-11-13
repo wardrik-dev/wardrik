@@ -10,8 +10,8 @@ defmodule WardrikRest.Discovery do
   Each method becomes an operation named by its resources, as `properties_runReport`. Its body's
   fields become arguments beside its path and query parameters; a body field named like a
   parameter is left out. A method with scopes signs in with `"oauth2"`, or takes the API key as
-  `"key"` where the document has one. Descriptions are kept for arguments, not for the fields
-  inside them, and fields the API only returns are left out.
+  `"key"` where the document has one. Its schemas become the spec's types; see
+  `WardrikRest.Discovery.Schema`.
   """
 
   @enforce_keys [:document]
@@ -61,12 +61,16 @@ defmodule WardrikRest.Discovery do
 
     def read(%{document: %{"kind" => "discovery#restDescription"} = document}) do
       keyed = Map.has_key?(Map.get(document, "parameters", %{}), "key")
+      schemas = Map.get(document, "schemas", %{})
+      names = Schema.names(schemas)
+      read = %{document: document, keyed: keyed, schemas: schemas, names: names}
 
       {:ok,
        %Spec{
          title: Map.get(document, "title", document["name"]),
-         operations: document |> methods() |> Enum.map(&operation(&1, document, keyed)),
-         schemes: schemes(document, keyed)
+         operations: document |> methods() |> Enum.map(&operation(&1, read)),
+         schemes: schemes(document, keyed),
+         types: Schema.types(schemas)
        }}
     end
 
@@ -77,7 +81,7 @@ defmodule WardrikRest.Discovery do
         Enum.flat_map(Map.values(Map.get(resource, "resources", %{})), &methods/1)
     end
 
-    defp operation(method, document, keyed) do
+    defp operation(method, %{document: document} = read) do
       params = parameters(method)
       taken = MapSet.new(params, & &1.name)
 
@@ -86,8 +90,8 @@ defmodule WardrikRest.Discovery do
         method: Map.fetch!(@methods, method["httpMethod"]),
         path: Map.get(document, "servicePath", "") <> method["path"],
         description: Map.get(method, "description", method["id"]),
-        parameters: params ++ body(method, document, taken),
-        security: security(method, keyed)
+        parameters: params ++ body(method, read, taken),
+        security: security(method, read.keyed)
       }
     end
 
@@ -103,8 +107,8 @@ defmodule WardrikRest.Discovery do
       end
     end
 
-    defp body(%{"request" => request}, document, taken) do
-      for {name, field} <- Schema.fields(request, document["schemas"]),
+    defp body(%{"request" => request}, read, taken) do
+      for {name, field} <- Schema.fields(request, read.schemas, read.names),
           not MapSet.member?(taken, name),
           do: %Parameter{name: name, in: :body, schema: field}
     end

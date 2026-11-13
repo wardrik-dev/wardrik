@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Wardrik.started_sign_in/2` returns the browser sign-in a callback's `state` belongs to, whoever
+  started it.
 - `agents.list` and `agent.read` give each agent's `description` and `model`.
 - `agent.define` names every problem with a definition in one `invalid_request`, and refuses a
   model whose provider isn't known. A model the catalog doesn't list is still taken.

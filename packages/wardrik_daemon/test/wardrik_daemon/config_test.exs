@@ -388,6 +388,8 @@ defmodule WardrikDaemon.ConfigTest do
                    trusted: true
                    timeout: 10
                    max_result_bytes: 65536
+                   max_schema_bytes: 8192
+                   argument_headers: {login-customer-id: The manager account's ID.}
                orgs:
                  growth: {rest: [ga4]}
                """
@@ -406,6 +408,8 @@ defmodule WardrikDaemon.ConfigTest do
     assert opts[:trusted]
     assert opts[:timeout] == 10_000
     assert opts[:max_result_bytes] == 65_536
+    assert opts[:max_schema_bytes] == 8_192
+    assert opts[:argument_headers] == %{"login-customer-id" => "The manager account's ID."}
     assert config.orgs["growth"].rest == ["ga4"]
   end
 

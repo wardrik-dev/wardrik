@@ -5,12 +5,14 @@ defmodule WardrikRest.Spec do
 
     * `:schemes` - each scheme by its name in the description, as `%{"oauth2" => :bearer}`.
     * `:operations` - every operation, as `WardrikRest.Operation`s.
+    * `:types` - JSON Schemas by name. Any schema in the spec may refer to one as
+      `%{"$ref" => "Campaign"}`, and a type's fields may have descriptions.
   """
 
   alias WardrikRest.Operation
 
   @enforce_keys [:title, :operations, :schemes]
-  defstruct [:title, :operations, :schemes]
+  defstruct [:title, :operations, :schemes, types: %{}]
 
   @typedoc """
   Where a scheme puts its secret: `:bearer` for `Authorization: Bearer ...`, or a named header or
@@ -21,7 +23,8 @@ defmodule WardrikRest.Spec do
   @type t() :: %__MODULE__{
           title: String.t(),
           operations: [Operation.t()],
-          schemes: %{String.t() => place()}
+          schemes: %{String.t() => place()},
+          types: %{String.t() => map()}
         }
 end
 
@@ -53,10 +56,10 @@ end
 
 defmodule WardrikRest.Parameter do
   @moduledoc """
-  One argument of an operation: part of its path, its query or its JSON body.
+  One argument of an operation: part of its path, its query, its JSON body or a header.
 
-  `:schema` is a JSON Schema. A path parameter with `reserved: true` keeps its `/`s, as
-  `properties/123`.
+  `:schema` is a JSON Schema, which may refer to the spec's types. A path parameter with
+  `reserved: true` keeps its `/`s, as `properties/123`.
   """
 
   @enforce_keys [:name, :in, :schema]
@@ -64,7 +67,7 @@ defmodule WardrikRest.Parameter do
 
   @type t() :: %__MODULE__{
           name: String.t(),
-          in: :path | :query | :body,
+          in: :path | :query | :body | :header,
           schema: map(),
           required: boolean(),
           reserved: boolean()
