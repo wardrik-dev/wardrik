@@ -29,6 +29,19 @@ defmodule WardrikDaemon.CLI.Files do
         run: &read/3
       },
       %Command{
+        name: "agent files search",
+        group: @group,
+        arguments: "AGENT WORDS...",
+        switches: [glob: :string, limit: :integer],
+        count: {2, :any},
+        summary: "find the agent's files that best answer some words, best first",
+        details: [
+          "Ranks its notes and digests by the words they share with WORDS, as search_memory does.",
+          "--glob GLOB searches only the paths it matches. --limit N shows up to N, 5 unless set."
+        ],
+        run: &searched/3
+      },
+      %Command{
         name: "agent files put",
         group: @group,
         arguments: "AGENT PATH [FILE]",
@@ -79,6 +92,27 @@ defmodule WardrikDaemon.CLI.Files do
         empty: "No files."
       )
     end
+  end
+
+  defp searched([agent | words], flags, cx) do
+    input =
+      %{"query" => Enum.join(words, " "), "glob" => flags[:glob], "limit" => flags[:limit]}
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+    with {:ok, id} <- Context.agent(cx, agent),
+         {:ok, %{"hits" => hits} = answer} <-
+           Context.call(cx, "agent.memory_search", Map.put(input, "agent", id)) do
+      Table.show(cx, answer,
+        header: ["PATH", "LINE", "WRITTEN", "PASSAGE"],
+        rows: Enum.map(hits, &[&1["path"], &1["line"], &1["at"], first_line(&1["excerpt"])]),
+        empty: "Nothing matches."
+      )
+    end
+  end
+
+  defp first_line(excerpt) do
+    line = excerpt |> String.split("\n", parts: 2) |> hd()
+    if String.length(line) > 60, do: String.slice(line, 0, 59) <> "…", else: line
   end
 
   defp read([agent, path], _flags, cx) do

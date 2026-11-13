@@ -117,6 +117,14 @@ defmodule Wardrik.WorkspaceTest do
              call(context, "search_files", %{pattern: "beta", glob: "shared/**"})
 
     assert error(call(context, "search_files", %{pattern: "("})) == :bad_pattern
+
+    assert %{hits: [%{"path" => "shared/team/plan.md", "line" => 1} | _rest]} =
+             call(context, "search_memory", %{"query" => "plans for beta"})
+
+    assert %{hits: [%{"path" => "notes/a.md"}]} =
+             call(context, "search_memory", %{"query" => "beta", "glob" => "notes/**"})
+
+    assert error(call(context, "search_memory", %{"query" => "the"})) == :bad_query
   end
 
   test "a file keeps the labels of what its writers had read, and its readers carry them",
@@ -144,6 +152,9 @@ defmodule Wardrik.WorkspaceTest do
 
     assert {:ok, %ReqLLM.ToolResult{metadata: %{labels: ["books", "outside"]}}} =
              run(context, "search_files", %{pattern: "."})
+
+    assert {:ok, %ReqLLM.ToolResult{metadata: %{labels: ["outside"]}}} =
+             run(context, "search_memory", %{"query" => "web"})
 
     assert {:ok, %ReqLLM.ToolResult{metadata: %{labels: ["books", "outside"]}}} =
              run(context, "list_files", %{})

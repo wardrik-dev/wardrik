@@ -12,6 +12,7 @@ defmodule Wardrik.Operations.Files do
   alias Wardrik.Workspace.File
   alias Wardrik.Workspace.Files
   alias Wardrik.Workspace.Path
+  alias Wardrik.Workspace.Search
 
   @max_listed 500
   @max_bytes 4 * 1024 * 1024
@@ -30,6 +31,24 @@ defmodule Wardrik.Operations.Files do
         |> Enum.take(@max_listed)
 
       {:ok, %{"files" => Enum.map(files, &entry/1)}}
+    end
+  end
+
+  @doc "Finds the agent's files that best answer a query in plain words, best first."
+  @spec memory_search(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
+  def memory_search(%Scope{wardrik: wardrik}, %{"agent" => id, "query" => query} = input) do
+    glob = Map.get(input, "glob", "**")
+
+    with :ok <- Snapshot.known(wardrik, {id, nil}) do
+      files =
+        for {path, file, _version} <- Files.list(wardrik.store, Agents.tree(id)),
+            Path.match?(glob, path),
+            do: {path, file}
+
+      case Search.search(files, query, limit: Map.get(input, "limit", 5)) do
+        {:ok, hits} -> {:ok, %{"hits" => Enum.map(hits, &Search.json/1)}}
+        {:error, why} -> {:error, Error.new(:invalid_request, why <> ".")}
+      end
     end
   end
 

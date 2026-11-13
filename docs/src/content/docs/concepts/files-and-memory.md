@@ -20,6 +20,7 @@ context: [MEMORY.md]
 | `edit_file` | replaces text that appears once, or everywhere with `all` |
 | `list_files` | lists the files a glob matches, newest first |
 | `search_files` | finds the lines a regular expression matches |
+| `search_memory` | finds the files that best answer a question in plain words, best first |
 | `delete_file` | deletes a file |
 
 - Paths are relative, such as `notes/2026-10-01.md`. Directories are created as needed.
@@ -43,7 +44,7 @@ context:
 ## Digests
 
 Before an agent sleeps, it writes a digest of each conversation to its workspace. A later
-conversation finds it with `search_files`.
+conversation finds it with `search_memory` or `search_files`.
 
 ```md title="digests/C0123ABC.md"
 ---
@@ -58,7 +59,8 @@ Maria asked for the open incidents. Two were open; INC-41 was closed after the d
 To use them, say so in the agent's instructions:
 
 ```md
-Before you answer someone new to this conversation, run search_files in digests/ for their name.
+Before you answer someone new to this conversation, run search_memory for their name and what
+they ask about.
 ```
 
 - The file is `digests/<conversation>.md`, or `digests/agent.md` for the agent's own
@@ -71,6 +73,32 @@ Before you answer someone new to this conversation, run search_files in digests/
   `outside`.
 - It needs the `files` tool. Set [`digest: false`](/reference/agent-files/#digest) to turn it off.
   With `idle_timeout: infinity`, the agent never sleeps, so it writes none.
+
+## Search memory
+
+`search_memory` ranks the agent's files by how well they answer a question, and quotes each
+one's best passage:
+
+```json
+{"query": "pumpkin squash autumn loaf launch", "glob": "digests/**", "limit": 5}
+```
+
+```json
+{"ok": true, "hits": [{"path": "digests/C0123ABC.md", "line": 12, "at": "2026-11-11T16:04:12Z",
+  "excerpt": "Posted the pumpkin loaf launch to X at 9:00...", "score": 3.41}]}
+```
+
+- Any word of the query counts. Files with more of its words, or rarer ones, rank first
+  ([BM25](https://en.wikipedia.org/wiki/Okapi_BM25)). A newer file ranks a little higher.
+- Words match whole, singular or plural. Other forms of a word, and synonyms, don't match, so
+  name the words a file might use.
+- It searches the agent's workspace and the trees shared with it, and carries the labels of the
+  files it quotes.
+- `search_files` finds exact text, with a regular expression.
+
+People and apps search an agent's memory with
+[`GET /v1/agents/{agent}/memory`](/reference/http-api/#search-memory) or
+`wardrik agent files search`.
 
 ## Sharing workspaces
 

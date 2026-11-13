@@ -31,6 +31,7 @@ import type {
   Events,
   Forgotten,
   Interrupts,
+  MemoryHits,
   Node,
   Nodes,
   NotifyTarget,
@@ -290,6 +291,14 @@ export const operations = {
     path_params: ["agent"],
     query: ["path"],
     body: false,
+  },
+  "agent.memory_search": {
+    method: "GET",
+    path: "/v1/agents/{agent}/memory",
+    path_params: ["agent"],
+    query: ["query", "glob", "limit"],
+    body: false,
+    unwrap: "hits",
   },
   "agent.kill": {
     method: "DELETE",
@@ -644,6 +653,16 @@ export interface Inputs {
     /** The file's path in the workspace, such as notes/today.md. */
     path: string;
   };
+  "agent.memory_search": {
+    /** The agent ID, URL-encoded as one path segment. */
+    agent: string;
+    /** What to find, in plain words. Any word counts; files with more of them, or rarer ones, come first. Singular and plural match; other forms of a word and synonyms don't, so add the words a file might use. */
+    query: string;
+    /** Return only the paths this glob matches: * within a folder, ? one character, ** across folders. Defaults to **. */
+    glob?: string | undefined;
+    /** The most files to return. Defaults to 5. */
+    limit?: number | undefined;
+  };
   "agent.kill": {
     /** The agent ID, URL-encoded as one path segment. */
     agent: string;
@@ -780,6 +799,7 @@ export interface Outputs {
   "agent.file": AgentFileContent;
   "agent.file_put": AgentFile;
   "agent.file_delete": void;
+  "agent.memory_search": MemoryHits["hits"];
   "agent.kill": void;
   "agent.trigger_set": TriggerDefinition;
   "agent.trigger_remove": TriggerDefinition;
@@ -1141,6 +1161,27 @@ export class AgentOperations {
     options: CallOptions = {},
   ): Promise<Outputs["agent.file_delete"]> {
     return this.#runner.call("agent.file_delete", { ...input, agent: this.agent }, options);
+  }
+
+  /**
+   * Search an agent's memory.
+   *
+   * Finds the files in the agent's workspace that best answer a query in plain words, such as its notes and its digests of past conversations. Returns the best passage of each file, best first. Files shared with it from other workspaces aren't searched.
+   *
+   * Acts on the agent, never a conversation.
+   */
+  memorySearch(
+    input: {
+      /** What to find, in plain words. Any word counts; files with more of them, or rarer ones, come first. Singular and plural match; other forms of a word and synonyms don't, so add the words a file might use. */
+      query: string;
+      /** Return only the paths this glob matches: * within a folder, ? one character, ** across folders. Defaults to **. */
+      glob?: string | undefined;
+      /** The most files to return. Defaults to 5. */
+      limit?: number | undefined;
+    },
+    options: CallOptions = {},
+  ): Promise<Outputs["agent.memory_search"]> {
+    return this.#runner.call("agent.memory_search", { ...input, agent: this.agent }, options);
   }
 
   /**

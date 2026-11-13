@@ -679,6 +679,29 @@ curl "$WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/file?path=MEMORY.md" -H "Authorizati
  "at": "2026-11-11T12:00:00Z", "labels": []}, "content": "Likes tea."}
 ```
 
+### Search memory
+
+`GET /v1/agents/{agent}/memory?query=WORDS`
+
+Returns the agent's files that best answer `query`, best first, each with its best passage. It
+searches as the agent's [`search_memory`](/concepts/files-and-memory/#search-memory) does, in
+the agent's own workspace only.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `query` | string, required | what to find, in plain words |
+| `glob` | string | search only the paths it matches |
+| `limit` | integer | the most files, 1 to 20; 5 unless set |
+
+```sh
+curl "$WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/memory?query=pumpkin+loaf+launch" -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"hits": [{"path": "digests/C1.md", "line": 12, "excerpt": "Posted the pumpkin loaf launch to X at 9:00.",
+ "at": "2026-11-11T17:02:00Z", "score": 3.41}]}
+```
+
 ### Write a file
 
 `PUT /v1/agents/{agent}/file`

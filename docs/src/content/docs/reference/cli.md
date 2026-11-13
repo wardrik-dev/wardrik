@@ -104,6 +104,7 @@ For a file-defined agent, the next reload resets triggers to those in the file.
 | --- | --- |
 | `agent files ls AGENT [GLOB]` | lists the agent's files, newest first |
 | `agent files cat AGENT PATH` | prints a file |
+| `agent files search AGENT WORDS... [--glob G] [--limit N]` | lists the files that best answer `WORDS`, best first, with each one's best passage |
 | `agent files put AGENT PATH [FILE]` | writes a file from `FILE`, or from stdin without one or with `-` |
 | `agent files rm AGENT PATH` | deletes a file |
 | `agent files sync AGENT DIR [--to PREFIX] [--delete]` | writes each file in `DIR` whose content differs |

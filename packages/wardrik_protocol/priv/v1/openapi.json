@@ -1365,6 +1365,57 @@
         }
       }
     },
+    "/v1/agents/{agent}/memory": {
+      "get": {
+        "operationId": "agent.memory_search",
+        "summary": "Search an agent's memory",
+        "description": "Finds the files in the agent's workspace that best answer a query in plain words, such as its notes and its digests of past conversations. Returns the best passage of each file, best first. Files shared with it from other workspaces aren't searched.",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-action": "agent.files",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/agent"
+          },
+          {
+            "$ref": "#/components/parameters/memory_query"
+          },
+          {
+            "$ref": "#/components/parameters/glob"
+          },
+          {
+            "$ref": "#/components/parameters/memory_limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The files that match, best first, each with its best passage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:memory_hits"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent}/calls/{call}": {
       "delete": {
         "operationId": "agent.kill",
@@ -3488,6 +3539,27 @@
         "schema": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"
+        }
+      },
+      "memory_query": {
+        "name": "query",
+        "in": "query",
+        "required": true,
+        "description": "What to find, in plain words. Any word counts; files with more of them, or rarer ones, come first. Singular and plural match; other forms of a word and synonyms don't, so add the words a file might use.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "memory_limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "The most files to return. Defaults to 5.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
         }
       }
     },

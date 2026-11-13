@@ -16,6 +16,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Forgotten
   alias Wardrik.Interrupt
   alias Wardrik.MCPServer
+  alias Wardrik.MemoryHit
   alias Wardrik.Message
   alias Wardrik.Nodes
   alias Wardrik.NotifyTarget
@@ -65,6 +66,7 @@ defmodule Wardrik.Operations.Types do
     "servers.list" => {"servers", MCPServer, :from_json},
     "connections.list" => {"connections", Connection, :from_json},
     "notify_targets.list" => {"targets", NotifyTarget, :from_json},
+    "agent.memory_search" => {"hits", MemoryHit, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }

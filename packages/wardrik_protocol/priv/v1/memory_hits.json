@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:memory_hits",
+  "title": "Memory hits",
+  "description": "What agent.memory_search answers: the files that best answer the query, best first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hits"
+  ],
+  "properties": {
+    "hits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "excerpt",
+          "score"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The file, relative to the workspace."
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The line its best passage starts on."
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "Its best passage, cut to 600 bytes."
+          },
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the file was last written."
+          },
+          "score": {
+            "type": "number",
+            "description": "How well it answers the query. Higher is better; only the order means anything."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "hits": [
+        {
+          "path": "digests/C1.md",
+          "line": 12,
+          "excerpt": "Posted the pumpkin loaf launch to X at 9:00.",
+          "at": "2026-11-11T17:02:00Z",
+          "score": 3.41
+        }
+      ]
+    }
+  ]
+}

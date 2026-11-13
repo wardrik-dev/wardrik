@@ -1033,6 +1033,33 @@ export interface Interrupts {
   }[];
 }
 /**
+ * What agent.memory_search answers: the files that best answer the query, best first.
+ */
+export interface MemoryHits {
+  hits: {
+    /**
+     * The file, relative to the workspace.
+     */
+    path: string;
+    /**
+     * The line its best passage starts on.
+     */
+    line: number;
+    /**
+     * Its best passage, cut to 600 bytes.
+     */
+    excerpt: string;
+    /**
+     * When the file was last written.
+     */
+    at?: string | null;
+    /**
+     * How well it answers the query. Higher is better; only the order means anything.
+     */
+    score: number;
+  }[];
+}
+/**
  * The node to restart the agent on.
  */
 export interface Node {

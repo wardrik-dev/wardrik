@@ -66,7 +66,7 @@ tools: [web_search, files, github/*, agents/*]
 | `deep_research` | researches a topic with subagents |
 | `run_lua` | runs Lua in a sandbox |
 | `agent_create` | creates another agent in the same organization |
-| `files` | `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `delete_file` on its workspace and mounts |
+| `files` | `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `search_memory`, `delete_file` on its workspace and mounts |
 | `NAME/*` | every tool of the MCP server `NAME` |
 | `servers/*` | every tool of every MCP server its owner added |
 | `workers/*` | every tool that connected [tool workers](/build/tool-workers/) serve to it |

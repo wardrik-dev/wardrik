@@ -63,6 +63,22 @@ defmodule Wardrik.FilesTest do
     assert system =~ ~r/<file path="MEMORY.md" version="[^"]+">\nLikes tea.\n<\/file>/
   end
 
+  test "searches the agent's memory in plain words, best first", %{scope: scope} do
+    {:ok, _written} = put(scope, "digests/C1.md", "# Monday\n\nPosted the pumpkin loaf launch.")
+    {:ok, _written} = put(scope, "notes/prices.md", "Pumpkin went up.")
+
+    assert %{"hits" => [%{"path" => "digests/C1.md", "line" => 3, "excerpt" => excerpt}, _second]} =
+             run!(scope, "agent.memory_search", %{"agent" => @agent, "query" => "pumpkin launch"})
+
+    assert excerpt == "Posted the pumpkin loaf launch."
+
+    assert {:ok, [%Wardrik.MemoryHit{path: "notes/prices.md"}]} =
+             Wardrik.Agent.memory_search(scope, @agent, query: "pumpkin", glob: "notes/**")
+
+    assert refused(scope, "agent.memory_search", %{"agent" => @agent, "query" => "the"}) ==
+             :invalid_request
+  end
+
   test "reads, lists by glob, and deletes", %{scope: scope} do
     {:ok, _written} = put(scope, "skills/triage/SKILL.md", "---\nname: triage\n---\n")
     {:ok, _written} = put(scope, "notes/today.md", "Quiet.")
