@@ -35,7 +35,7 @@ issues need an engineer.
 | `display_name` | display name; default: the name |
 | `description` | a short description |
 | `instructions` | the system prompt; the Markdown body |
-| `model` | the model, as `provider:model` |
+| `model` | the model, as `provider:model`, or the name of one of `config.yaml`'s [`models.endpoints`](/reference/config/#models) |
 | [`tools`](#tools) | the tools it can call |
 | [`workspace`](#workspace) | other agents' workspaces to mount |
 | [`context`](#context) | files loaded into every turn |

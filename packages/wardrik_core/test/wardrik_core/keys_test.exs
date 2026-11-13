@@ -66,6 +66,43 @@ defmodule WardrikCore.KeysTest do
     assert {:ok, _called} = WardrikCore.generate(without_key)
   end
 
+  test "calls an endpoint's model at its base_url, with only the key it names" do
+    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
+
+    expect(ReqLLM, :stream_text, fn "openai:gpt-4o-mini", _messages, opts ->
+      assert opts[:base_url] == "http://localhost:9931/v1"
+      assert opts[:api_key] == "local-key"
+      {:ok, answer("Hi.")}
+    end)
+
+    held = %{{"acme", "OPENAI_API_KEY"} => "sk-openai", {"acme", "LOCAL_KEY"} => "local-key"}
+
+    endpoint = [
+      model: "openai:gpt-4o-mini",
+      base_url: "http://localhost:9931/v1",
+      key: "LOCAL_KEY"
+    ]
+
+    context = %{context(held) | model: "local", endpoints: %{"local" => endpoint}}
+
+    assert {:ok, _called} = WardrikCore.generate(context)
+  end
+
+  test "never gives an endpoint its provider's key" do
+    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
+
+    expect(ReqLLM, :stream_text, fn "openai:gpt-4o-mini", _messages, opts ->
+      assert opts[:api_key] == "none"
+      {:ok, answer("Hi.")}
+    end)
+
+    endpoint = [model: "openai:gpt-4o-mini", base_url: "http://localhost:9931/v1"]
+    held = %{{"acme", "OPENAI_API_KEY"} => "sk-openai"}
+    context = %{context(held) | model: "local", endpoints: %{"local" => endpoint}}
+
+    assert {:ok, _called} = WardrikCore.generate(context)
+  end
+
   test "gives a model call the agent's model_options over the defaults" do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
 

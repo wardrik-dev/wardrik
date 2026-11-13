@@ -41,7 +41,8 @@ defmodule Wardrik.Compaction do
   def call(context, next, _opts), do: next.(context)
 
   defp compacted(context, opts) do
-    window = opts[:window] || WardrikCore.context_window(context.model) || @window
+    spec = Context.spec(context, context.model)
+    window = opts[:window] || WardrikCore.context_window(spec) || @window
 
     if tokens(context.messages) > Keyword.get(opts, :at, @at) * window,
       do: summarized(context, Keyword.get(opts, :keep, @keep) * window),

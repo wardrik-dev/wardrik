@@ -76,7 +76,7 @@ defmodule Wardrik.Resolution do
 
     checked = [
       triggers: triggers(definition),
-      model: model(definition),
+      model: model(wardrik, definition),
       capabilities: capabilities(wardrik, servers, definition),
       workspace:
         Wardrik.Workspace.Agents.resolve(wardrik,
@@ -239,17 +239,20 @@ defmodule Wardrik.Resolution do
 
   # A model the catalog doesn't list may still be served, as a fine-tune or through a gateway, so
   # only what can never work is refused.
-  defp model(%{"model" => model}) when is_binary(model) do
+  defp model(%{endpoints: endpoints}, %{"model" => model}) when is_map_key(endpoints, model),
+    do: {:ok, model}
+
+  defp model(_wardrik, %{"model" => model}) when is_binary(model) do
     case ReqLLM.model(model) do
       {:ok, _model} -> {:ok, model}
       {:error, _reason} -> {:error, Error.new(:invalid_request, unmodelled(model))}
     end
   end
 
-  defp model(%{"model" => model}),
+  defp model(_wardrik, %{"model" => model}),
     do: {:error, Error.new(:invalid_request, "#{inspect(model)} isn't a model.")}
 
-  defp model(_definition),
+  defp model(_wardrik, _definition),
     do: {:error, Error.new(:invalid_request, "A definition names a model.")}
 
   defp unmodelled(model) do
@@ -258,7 +261,7 @@ defmodule Wardrik.Resolution do
         "#{model} isn't a model: there's no provider #{provider}. Models are named as provider:model, such as anthropic:claude-haiku-4-5."
 
       [_id] ->
-        "#{model} isn't a model. Models are named as provider:model, such as anthropic:claude-haiku-4-5."
+        "#{model} isn't a model or an endpoint. Models are named as provider:model, such as anthropic:claude-haiku-4-5."
     end
   end
 

@@ -260,6 +260,17 @@ defmodule Wardrik do
               Options for every agent's model calls, as `ReqLLM` takes them, such as
               `[temperature: 0.2]`. An agent's own `model_options` merge over them.
               """
+            ],
+            endpoints: [
+              type: {:map, {:or, [:atom, :string]}, :keyword_list},
+              default: %{},
+              doc: """
+              Models by name, each called at its own `base_url` with the API key named `key`.
+              An agent whose `model` names one calls it there. See `WardrikCore.start_agent/2`'s
+              `:endpoints`.
+
+                  endpoints: %{"local" => [model: "vllm:LFM3-1.7B", base_url: "http://localhost:9931/v1"]}
+              """
             ]
           )
 
@@ -294,7 +305,8 @@ defmodule Wardrik do
     :trusted_workers,
     :egress,
     :prices,
-    :model_options
+    :model_options,
+    :endpoints
   ]
   defstruct @enforce_keys
 
@@ -328,6 +340,7 @@ defmodule Wardrik do
           egress: (String.t() -> :ok | {:error, String.t()}),
           prices: %{String.t() => WardrikCore.price()},
           model_options: keyword(),
+          endpoints: %{String.t() => WardrikCore.endpoint()},
           agents: keyword()
         }
 

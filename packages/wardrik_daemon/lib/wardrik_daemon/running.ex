@@ -79,6 +79,7 @@ defmodule WardrikDaemon.Running do
           defaults: config.defaults,
           prices: config.prices,
           model_options: config.model_options,
+          endpoints: config.endpoints,
           middleware: [{WardrikGateway, gateway}],
           policies: Map.to_list(policies),
           resolver:

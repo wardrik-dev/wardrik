@@ -79,6 +79,16 @@ defmodule WardrikDaemon.Config do
                   `:model_options`.
                   """
                 ],
+                endpoints: [
+                  type: {:map, :string, :any},
+                  default: %{},
+                  doc: """
+                  Models by name, each called at its own `base_url`, such as a local
+                  OpenAI-compatible server: `model`, a model spec, `base_url`, and optionally
+                  `key`, the name of the API key it's called with. An agent whose `model` names
+                  one calls it there. See `Wardrik`'s `:endpoints`.
+                  """
+                ],
                 gateway: [
                   type: {:map, :string, :any},
                   default: %{},
@@ -280,6 +290,7 @@ defmodule WardrikDaemon.Config do
             defaults: %{},
             prices: %{},
             model_options: [],
+            endpoints: %{},
             gateway: [],
             mcp: [],
             harnesses: [],
@@ -313,6 +324,7 @@ defmodule WardrikDaemon.Config do
           defaults: map(),
           prices: %{String.t() => keyword()},
           model_options: keyword(),
+          endpoints: %{String.t() => WardrikCore.endpoint()},
           gateway: keyword(),
           mcp: keyword(),
           harnesses: [{String.t(), keyword()}],
@@ -495,6 +507,7 @@ defmodule WardrikDaemon.Config do
          {:ok, workspace} <- workspace(opts[:workspace]),
          {:ok, prices} <- prices(opts[:models][:prices]),
          {:ok, model_options} <- model_options(opts[:models][:options]),
+         {:ok, endpoints} <- endpoints(opts[:models][:endpoints]),
          {:ok, gateway} <- gateway(opts[:models][:gateway]),
          {:ok, cluster} <- Cluster.new(opts[:cluster]),
          {:ok, storage} <- storage(opts[:storage]) do
@@ -508,6 +521,7 @@ defmodule WardrikDaemon.Config do
         defaults: opts[:defaults],
         prices: prices,
         model_options: model_options,
+        endpoints: endpoints,
         gateway: gateway,
         mcp: mcp,
         harnesses: harnesses,
@@ -588,6 +602,31 @@ defmodule WardrikDaemon.Config do
     do:
       {:error,
        "models.prices.#{spec}: holds input and output, dollars per million tokens, or priced_as, and markup"}
+
+  @endpoint [
+    model: [type: :string, required: true],
+    base_url: [type: :string, required: true],
+    key: [type: :string]
+  ]
+
+  defp endpoints(yaml) do
+    with {:ok, endpoints} <- Options.each(yaml, &endpoint/2), do: {:ok, Map.new(endpoints)}
+  end
+
+  defp endpoint(name, yaml) do
+    path = "models.endpoints.#{name}"
+
+    with {:ok, endpoint} <- Options.validate(yaml, @endpoint, path),
+         :ok <- modelled(endpoint[:model], path),
+         do: {:ok, endpoint}
+  end
+
+  defp modelled(spec, path) do
+    case ReqLLM.model(spec) do
+      {:ok, _model} -> :ok
+      {:error, _reason} -> {:error, Options.at(path, "#{spec} isn't a model")}
+    end
+  end
 
   # Checked against ReqLLM's own options, without their defaults: each call fills those in.
   defp model_options(yaml) do
