@@ -157,6 +157,37 @@ defmodule Wardrik.DefinitionsTest do
       assert refused(scope, "agent.definition", %{"agent" => "acme/triage"}) == :not_found
     end
 
+    test "says everything wrong with a definition at once", %{scope: scope} do
+      assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
+               Wardrik.run(scope, "agent.define", %{
+                 "agent" => "acme/triage",
+                 "model" => "nope:x",
+                 "tools" => ["nope", "nada"],
+                 "channels" => ["slack"],
+                 "triggers" => [%{"every" => "often", "prompt" => "Go."}]
+               })
+
+      assert message =~ "nope:x isn't a model: there's no provider nope."
+      assert message =~ "There's no tool nope here. There's no tool nada here."
+      assert message =~ "There's no channel slack here."
+      assert message =~ "often is neither a cron expression nor an interval"
+    end
+
+    test "takes a model the catalog doesn't list, from a provider it knows", %{scope: scope} do
+      assert %{"model" => "anthropic:claude-tuned-1"} =
+               define(scope, "acme/triage", %{"model" => "anthropic:claude-tuned-1"})
+    end
+
+    test "lists each agent with its description and model", %{scope: scope} do
+      define(scope, "acme/triage", %{"model" => @model, "description" => "Sorts the queue."})
+
+      assert [%{"id" => "acme/triage", "description" => "Sorts the queue.", "model" => @model}] =
+               run!(scope, "agents.list", %{})["agents"]
+
+      assert %{"description" => "Sorts the queue.", "model" => @model} =
+               run!(scope, "agent.read", %{"agent" => "acme/triage"})
+    end
+
     @tag mcp: [{"down", [transport: {:stdio, command: "no-such-mcp-server"}]}]
     test "gives every tool and server for *, and says which offer nothing yet", %{scope: scope} do
       answers([answer("Hi.")])

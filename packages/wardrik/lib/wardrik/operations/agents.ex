@@ -78,9 +78,8 @@ defmodule Wardrik.Operations.Agents do
   @doc "Returns a page of the agents' events."
   @spec events(Scope.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
   def events(scope, input) do
-    opts = [after: input["after"], limit: input["limit"]]
-
-    with {:ok, page} <- Snapshot.page(scope, Visible.logs(input), opts) do
+    with {:ok, opts} <- Snapshot.paging(input),
+         {:ok, page} <- Snapshot.page(scope, Visible.logs(input), opts) do
       events =
         Enum.filter(page.events, fn event ->
           Visible.visible?(scope, input, Visible.agent_id(event)) and

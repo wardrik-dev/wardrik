@@ -19,7 +19,7 @@
     },
     "next": {
       "type": "string",
-      "description": "The cursor after these events, to read on from."
+      "description": "The cursor after these events, to read on from as after; with order newest, the cursor before them, to read further back as before."
     }
   },
   "examples": [

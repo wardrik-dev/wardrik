@@ -223,22 +223,16 @@ defmodule Wardrik.AgentTools do
            for(
              agent <- agents,
              not Map.has_key?(agent, "conversation"),
-             do: described(wardrik, Map.take(agent, ["id", "status"]))
+             do: declared(wardrik, Map.take(agent, ["id", "status", "description"]))
            )
        }}
     end
   end
 
-  defp described(wardrik, %{"id" => id} = agent) do
-    agent =
-      if Wardrik.Declarations.declared?(wardrik, id),
-        do: Map.put(agent, "file", true),
-        else: agent
-
-    case Wardrik.Definitions.fetch(wardrik, id) do
-      {:ok, %{"description" => description}} -> Map.put(agent, "description", description)
-      _undescribed -> agent
-    end
+  defp declared(wardrik, %{"id" => id} = agent) do
+    if Wardrik.Declarations.declared?(wardrik, id),
+      do: Map.put(agent, "file", true),
+      else: agent
   end
 
   defp asked(me, agent, message, context) do

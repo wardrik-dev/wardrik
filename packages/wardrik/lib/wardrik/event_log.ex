@@ -186,18 +186,27 @@ defmodule Wardrik.EventLog do
     do: settings(events).store |> Reader.head(resources) |> Cursor.encode()
 
   @doc """
-  Returns a page of kept events, oldest first.
+  Returns a page of kept events, oldest first, or newest first with `order: :newest`.
 
       {:ok, %{events: events, next: next}} = Wardrik.EventLog.page(MyApp.Events, ["agt_1"], limit: 100)
       {:ok, %{events: more}} = Wardrik.EventLog.page(MyApp.Events, ["agt_1"], after: next)
 
-    * `next` is the cursor after the page.
-    * Starts with a `wardrik.events.dropped` if retention dropped events after the cursor.
-    * Returns `{:error, :invalid_cursor}` for a bad `:after`.
+      {:ok, %{events: latest, next: older}} =
+        Wardrik.EventLog.page(MyApp.Events, ["agt_1"], order: :newest, limit: 20)
+
+      {:ok, %{events: before}} =
+        Wardrik.EventLog.page(MyApp.Events, ["agt_1"], order: :newest, before: older)
+
+    * `next` is the cursor after the page, or before it with `order: :newest`.
+    * Oldest first, it starts with a `wardrik.events.dropped` if retention dropped events after the
+      cursor. Newest first, it stops at the oldest event kept.
+    * Returns `{:error, :invalid_cursor}` for a bad cursor.
 
   ## Options
 
-    * `:after` - the cursor to read after. The start unless set.
+    * `:order` - `:oldest` (default) or `:newest` first.
+    * `:after` - oldest first, the cursor to read after. The start unless set.
+    * `:before` - newest first, the cursor to read before. The end unless set.
     * `:limit` - the most events to return. `100` unless set, and never more than `500`.
   """
   @spec page(atom(), resources(), keyword()) ::
@@ -205,7 +214,26 @@ defmodule Wardrik.EventLog do
   def page(events, resources, opts \\ []) do
     limit = opts |> Keyword.get(:limit, @default_limit) |> min(@max_limit)
 
-    with {:ok, cursor} <- after_cursor(opts[:after]) do
+    case Keyword.get(opts, :order, :oldest) do
+      :oldest -> forward(events, resources, opts[:after], limit)
+      :newest -> backward(events, resources, opts[:before], limit)
+    end
+  end
+
+  defp backward(events, resources, before, limit) do
+    with {:ok, cursor} <- before_cursor(before) do
+      {read, next} = Reader.page_back(settings(events), resources, before: cursor, limit: limit)
+
+      {:ok,
+       %{events: for({_log, _sequence, event} <- read, do: event), next: Cursor.encode(next)}}
+    end
+  end
+
+  defp before_cursor(nil), do: {:ok, nil}
+  defp before_cursor(text), do: after_cursor(text)
+
+  defp forward(events, resources, after_text, limit) do
+    with {:ok, cursor} <- after_cursor(after_text) do
       {read, next} = Reader.page(settings(events), resources, after: cursor, limit: limit)
 
       {:ok,

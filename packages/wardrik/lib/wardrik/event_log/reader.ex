@@ -50,6 +50,70 @@ defmodule Wardrik.EventLog.Reader do
   end
 
   @doc """
+  Returns up to `:limit` entries before the cursor `:before` from the logs `resources` cover,
+  newest first, and the cursor before them. `nil` reads from the end.
+
+      Wardrik.EventLog.Reader.page_back(settings, ["agt_1"], before: nil, limit: 20)
+
+  Events retention dropped are past the start, so a page stops at the oldest kept.
+  """
+  @spec page_back(map(), Wardrik.EventLog.resources(),
+          before: Cursor.t() | nil,
+          limit: pos_integer()
+        ) :: {[entry()], Cursor.t()}
+  def page_back(settings, resources, args) do
+    limit = Keyword.fetch!(args, :limit)
+    logs = covered(settings.store, resources)
+
+    tops =
+      case Keyword.fetch!(args, :before) do
+        nil -> Map.new(logs, &{&1, Log.last(settings.store, &1)})
+        cursor -> Map.new(logs, &{&1, Map.get(cursor, &1, 0)})
+      end
+
+    read =
+      tops
+      |> Enum.map(fn {log, top} ->
+        settings.store |> before(log, top, limit) |> Enum.reverse()
+      end)
+      |> Stream.unfold(&next_newest/1)
+      |> Enum.take(limit)
+
+    {read, receded(tops, read)}
+  end
+
+  defp before(_store, _log, top, _limit) when top < 1, do: []
+
+  defp before(store, log, top, limit) do
+    from = max(top - limit, 0)
+
+    case Log.read(store, log, after: from, limit: top - from) do
+      {:ok, events} -> numbered(log, events)
+      {:dropped, oldest} when oldest <= top -> before(store, log, top, top - oldest + 1)
+      {:dropped, _oldest} -> []
+    end
+  end
+
+  defp next_newest(reads) do
+    case Enum.reject(reads, &(&1 == [])) do
+      [] ->
+        nil
+
+      reads ->
+        [newest | rest] =
+          log = Enum.max_by(reads, fn [{_log, _sequence, event} | _rest] -> order(event) end)
+
+        {newest, [rest | List.delete(reads, log)]}
+    end
+  end
+
+  defp receded(tops, entries) do
+    Enum.reduce(entries, tops, fn {log, sequence, _event}, cursor ->
+      Map.update!(cursor, log, &min(&1, sequence - 1))
+    end)
+  end
+
+  @doc """
   Returns up to `:limit` entries of `log` after the sequence number `:after`.
 
       Wardrik.EventLog.Reader.entries(settings, {"agt_1", nil}, after: 0, limit: 100)
