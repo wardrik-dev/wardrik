@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:notify_target_input",
+  "title": "A notify target to add",
+  "description": "A webhook that receives notifications from the owner's agents, and the secret that signs them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "url"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+      "description": "The target's name. An agent sends to this target when its definition sets notify to this name, for example notify: ops. Use up to 32 letters, digits, - and _."
+    },
+    "url": {
+      "type": "string",
+      "description": "The HTTPS URL that notifications are posted to. Wardrik checks the URL when you add the target and before each notification. It doesn't follow redirects."
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "description": "A secret in the owner's vault. Wardrik uses it to sign the body of each notification. Wardrik reads it each time, so a new value applies immediately.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the secret in the owner's vault."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "name": "ops",
+      "url": "https://hooks.acme.example/wardrik",
+      "secret": {
+        "name": "OPS_HOOK_SECRET"
+      }
+    }
+  ]
+}

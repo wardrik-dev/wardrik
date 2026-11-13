@@ -8,6 +8,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Files
   alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.NotifyTargets
   alias Wardrik.Operations.Providers
   alias Wardrik.Operations.Resolved
   alias Wardrik.Operations.Runtime
@@ -73,6 +74,9 @@ defmodule Wardrik.Catalog do
         "connections.list" => &Connections.list/2,
         "connections.connect" => &Connections.connect/2,
         "connections.disconnect" => &Connections.disconnect/2,
+        "notify_targets.list" => &NotifyTargets.list/2,
+        "notify_targets.add" => &NotifyTargets.add/2,
+        "notify_targets.remove" => &NotifyTargets.remove/2,
         "secrets.list" => &Secrets.list/2,
         "servers.list" => &Servers.list/2,
         "servers.add" => &Servers.add/2,

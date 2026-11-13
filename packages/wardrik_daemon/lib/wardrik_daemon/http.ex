@@ -14,7 +14,6 @@ defmodule WardrikDaemon.HTTP do
   | --- | --- |
   | `GET`, `POST /v1/owners/{owner}/agents` | finds agents by `?name=`; makes one |
   | `GET /v1/owners/{owner}/ceilings` | an org's spend against each ceiling |
-  | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../{name}` | webhooks |
   | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with its code |
   | `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens |
   | `POST /v1/tokens/web` | a sign-in link for the dashboard |
@@ -49,7 +48,6 @@ defmodule WardrikDaemon.HTTP do
   alias WardrikDaemon.Ceiling
   alias WardrikDaemon.Connections
   alias WardrikDaemon.CreateAgent
-  alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Tokens
 
@@ -59,7 +57,7 @@ defmodule WardrikDaemon.HTTP do
   @external_resource @openapi_path
   @openapi @openapi_path |> File.read!() |> JSON.decode!()
   @inputs Map.new(
-            ~w(notify_target_input token_input pairing_input),
+            ~w(token_input pairing_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
           )
 
@@ -100,8 +98,8 @@ defmodule WardrikDaemon.HTTP do
   @doc """
   Returns the daemon's operation `id`, with its `:method`, `:path` and `:parameters`, or `nil`.
 
-      %{method: "post", path: "/v1/owners/{owner}/notify_targets"} =
-        WardrikDaemon.HTTP.operation("notify_targets.add")
+      %{method: "post", path: "/v1/tokens"} =
+        WardrikDaemon.HTTP.operation("tokens.create")
   """
   @spec operation(String.t()) :: map() | nil
   def operation(id), do: Map.get(@operations, id)
@@ -162,28 +160,6 @@ defmodule WardrikDaemon.HTTP do
     served(conn, owner, {"ceiling.read", :ceiling}, fn _scope ->
       with {:ok, ceilings} <- Ceiling.list(conn.assigns.daemon, owner),
            do: {:ok, 200, %{"ceilings" => ceilings}}
-    end)
-  end
-
-  get "/v1/owners/:owner/notify_targets" do
-    served(conn, owner, {"notify_target.read", :notify_target}, fn _scope ->
-      {:ok, 200, %{"targets" => NotifyTargets.list(conn.assigns.daemon, owner)}}
-    end)
-  end
-
-  post "/v1/owners/:owner/notify_targets" do
-    served(conn, owner, {"notify_target.add", :notify_target}, fn scope ->
-      with {:ok, input} <- input(conn, "notify_target_input"),
-           {:ok, added} <- NotifyTargets.add(conn.assigns.daemon, {owner, input}, scope.principal),
-           do: {:ok, 201, added}
-    end)
-  end
-
-  delete "/v1/owners/:owner/notify_targets/:name" do
-    served(conn, owner, {"notify_target.delete", :notify_target}, fn scope ->
-      with {:ok, removed} <-
-             NotifyTargets.remove(conn.assigns.daemon, {owner, name}, scope.principal),
-           do: {:ok, 200, removed}
     end)
   end
 

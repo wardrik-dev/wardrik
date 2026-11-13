@@ -5,7 +5,6 @@ defmodule WardrikDaemon.OperatorToolsTest do
   import WardrikDaemon.Test
 
   alias WardrikDaemon.HelpTools
-  alias WardrikDaemon.NotifyTargets
 
   setup :set_mimic_global
 
@@ -101,8 +100,8 @@ defmodule WardrikDaemon.OperatorToolsTest do
 
     {:ok, _reply} = Wardrik.Agent.reply(context.admin, aide, "Set up notices.")
 
-    assert [%{"name" => "ops", "url" => "http://127.0.0.1:9/ops"}] =
-             NotifyTargets.list(daemon(), "acme")
+    assert {:ok, %{"targets" => [%{"name" => "ops", "url" => "http://127.0.0.1:9/ops"}]}} =
+             Wardrik.run(context.admin, "notify_targets.list", %{"owner" => "acme"})
 
     sent = results()
     assert sent =~ "notify_targets"
@@ -126,7 +125,9 @@ defmodule WardrikDaemon.OperatorToolsTest do
 
     {:ok, _reply} = Wardrik.Agent.reply(context.admin, aide, "Set up notices.")
 
-    assert NotifyTargets.list(daemon(), "deployment") == []
+    assert {:ok, %{"targets" => []}} =
+             Wardrik.run(context.admin, "notify_targets.list", %{"owner" => "deployment"})
+
     sent = results()
     assert sent =~ "You may not do this to the notify targets of deployment."
     assert sent =~ "secrets"

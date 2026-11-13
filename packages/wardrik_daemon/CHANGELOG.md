@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Notify targets are Wardrik's `notify_targets.*` operations, sent by
+  `Wardrik.Notify.OwnedWebhook`. `notify_targets.list` lists the owner's own.
 - Connections are Wardrik's `connections.*` operations. The daemon keeps `connections.pair`,
   which pairs a browser sign-in as its callback comes, whoever started it.
 - MCP servers are Wardrik's `servers.*` operations. `servers.list` lists the owner's own. An

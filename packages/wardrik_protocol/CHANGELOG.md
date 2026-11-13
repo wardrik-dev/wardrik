@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `notify_targets.list`, `notify_targets.add` and `notify_targets.remove`, with
+  `Wardrik.NotifyTargets` and `Wardrik.NotifyTarget`.
 - `connections.list`, `connections.connect` and `connections.disconnect`, with
   `Wardrik.Connections`, `Wardrik.Connection` and `Wardrik.Connecting`.
 - `servers.list`, `servers.add` and `servers.remove`, with `Wardrik.Servers`,

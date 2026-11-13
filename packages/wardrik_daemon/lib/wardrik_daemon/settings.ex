@@ -7,7 +7,7 @@ defmodule WardrikDaemon.Settings do
   | Kind | Store | Checked as |
   | --- | --- | --- |
   | `servers` | Wardrik's `servers.*` | `mcp_server` |
-  | `notify_targets` | `WardrikDaemon.NotifyTargets` | `notify_target` |
+  | `notify_targets` | Wardrik's `notify_targets.*` | `notify_target` |
   | `oauth_apps` | Wardrik's `providers.*` | `provider` |
 
   Each checks `read`, `add` or `delete` on the owner's kind, as the HTTP API does. Those that are
@@ -21,7 +21,8 @@ defmodule WardrikDaemon.Settings do
   @kinds %{
     "servers" => %{operation: "servers", kind: :mcp_server, input: "server_input"},
     "notify_targets" => %{
-      store: WardrikDaemon.NotifyTargets,
+      operation: "notify_targets",
+      listed: "targets",
       kind: :notify_target,
       input: "notify_target_input"
     },
@@ -66,8 +67,10 @@ defmodule WardrikDaemon.Settings do
   @spec list(map(), Wardrik.Scope.t(), kind(), String.t()) :: {:ok, [map()]} | {:error, Error.t()}
   def list(daemon, scope, kind, owner) do
     case @kinds[kind] do
-      %{operation: operation} ->
-        with {:ok, %{^operation => items}} <-
+      %{operation: operation} = settings ->
+        listed = Map.get(settings, :listed, operation)
+
+        with {:ok, %{^listed => items}} <-
                Wardrik.run(scope, operation <> ".list", %{"owner" => owner}),
              do: {:ok, Enum.map(items, &named/1)}
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `notify_targets.list`, `notify_targets.add` and `notify_targets.remove` keep an owner's
+  webhooks for notices, at `/v1/owners/{owner}/notify_targets`, as `Wardrik.NotifyTargets`,
+  sent by `Wardrik.Notify.OwnedWebhook`. Defining an agent checks `notify_target.use` for each
+  target the resolver gives it that another owner keeps.
 - `connections.list`, `connections.connect` and `connections.disconnect` let a principal see,
   start and forget their own sign-ins, at `/v1/connections`, as `Wardrik.Connections`, offering
   each OAuth app they may use. Authorized on `{:connection, principal_id}`.

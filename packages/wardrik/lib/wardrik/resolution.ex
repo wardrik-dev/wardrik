@@ -19,23 +19,32 @@ defmodule Wardrik.Resolution do
          do: {:ok, hold(opts, resolved)}
   end
 
-  # Each server another owner keeps is used only as the authorizer allows. An agent that acts for
-  # no one is given what the resolver gives it.
+  # Each server and notify target another owner keeps is used only as the authorizer allows. An
+  # agent that acts for no one is given what the resolver gives it.
   defp used(_wardrik, %Resolved{principal: nil}), do: :ok
-  defp used(_wardrik, %Resolved{servers: servers}) when map_size(servers) == 0, do: :ok
 
-  defp used(wardrik, %Resolved{principal: principal, servers: servers}) do
-    refused =
+  defp used(_wardrik, %Resolved{servers: servers, notify: notify})
+       when map_size(servers) == 0 and map_size(notify) == 0,
+       do: :ok
+
+  defp used(wardrik, %Resolved{principal: principal, servers: servers, notify: notify}) do
+    servers =
       for {name, key} <- servers,
-          owner = Wardrik.Operations.Servers.owner(wardrik, key),
+          do:
+            {Wardrik.Operations.Servers.owner(wardrik, key), {"mcp_server.use", :mcp_server},
+             "server #{name}"}
+
+    targets =
+      for {name, target} <- notify,
+          do:
+            {Wardrik.Operations.NotifyTargets.owner(target),
+             {"notify_target.use", :notify_target}, "notify target #{name}"}
+
+    refused =
+      for {owner, use, what} <- servers ++ targets,
           owner not in [nil, principal.id],
-          not Wardrik.Owned.usable?(
-            wardrik,
-            principal,
-            %{owner: owner},
-            {"mcp_server.use", :mcp_server}
-          ),
-          do: "#{principal.id} may not use #{owner}'s server #{name}."
+          not Wardrik.Owned.usable?(wardrik, principal, %{owner: owner}, use),
+          do: "#{principal.id} may not use #{owner}'s #{what}."
 
     case refused do
       [] -> :ok

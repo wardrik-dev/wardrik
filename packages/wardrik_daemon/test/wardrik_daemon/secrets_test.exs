@@ -159,10 +159,10 @@ defmodule WardrikDaemon.SecretsTest do
   test "refuses an owner it doesn't name, and a secret it can't seal", context do
     admin = client(context, "user:admin")
 
-    assert {:error, "not_found", "There's no secret of growth/triage."} =
+    assert {:error, "not_found", "There's no secrets of growth/triage."} =
              list(admin, "growth/triage")
 
-    assert {:error, "not_found", "There's no secret of globex."} = put(admin, "globex", "KEY")
+    assert {:error, "not_found", "There's no secrets of globex."} = put(admin, "globex", "KEY")
 
     for input <- [
           %{"value" => "", "purpose" => "api_key"},

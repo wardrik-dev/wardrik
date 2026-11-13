@@ -3097,6 +3097,146 @@
           }
         }
       }
+    },
+    "/v1/owners/{owner}/notify_targets": {
+      "get": {
+        "operationId": "notify_targets.list",
+        "summary": "List the notify targets an owner's agents route to",
+        "description": "The notify targets the owner keeps. The deployment's include those it starts with.",
+        "tags": [
+          "Notify targets"
+        ],
+        "x-wardrik-action": "notify_target.read",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "notify_target",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The owner's notify targets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:notify_targets"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "notify_targets.add",
+        "summary": "Add a webhook for an owner's agents' notices",
+        "description": "Adds a webhook for the owner's agents' notices. Your resolver gives each agent the targets it routes to; an agent routing to another owner's is checked as notify_target.use. One of the owner's own by the same name is a conflict. The URL must pass the deployment's egress check, when it's added and before each notice.",
+        "tags": [
+          "Notify targets"
+        ],
+        "x-wardrik-action": "notify_target.add",
+        "x-wardrik-effect": "change",
+        "x-wardrik-subject": "notify_target",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "urn:wardrik:schema:v1:notify_target_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The target, without its secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:notify_target"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/owners/{owner}/notify_targets/{name}": {
+      "delete": {
+        "operationId": "notify_targets.remove",
+        "summary": "Remove a notify target",
+        "description": "Removes one of the owner's own.",
+        "tags": [
+          "Notify targets"
+        ],
+        "x-wardrik-action": "notify_target.delete",
+        "x-wardrik-effect": "destructive",
+        "x-wardrik-subject": "notify_target",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/target_name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The target, as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:notify_target"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3338,6 +3478,16 @@
         "schema": {
           "type": "string",
           "pattern": "^[^/\\s]+$"
+        }
+      },
+      "target_name": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "description": "The notify target's name.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"
         }
       }
     },

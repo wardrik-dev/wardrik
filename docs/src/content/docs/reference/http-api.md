@@ -1042,6 +1042,60 @@ Forgets your account. The next call that needs it asks you to sign in again. Ret
 curl -X DELETE $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
+## Notify targets
+
+The webhooks an owner keeps for their agents' notices. Your resolver gives each agent the
+targets it routes to; routing to another owner's is `notify_target.use` on
+`{:notify_target, owner}`, as your authorizer decides. The daemon routes an agent to its owner's
+target of each name, else its org's, else the deployment's.
+
+### List notify targets
+
+`GET /v1/owners/{owner}/notify_targets`
+
+Lists the notice targets available to the owner's agents: the owner's, then the org's, then the deployment's.
+
+```sh
+curl $WARDRIK_URL/v1/owners/acme/notify_targets -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"targets": [{"owner": "acme", "name": "ops", "source": "runtime", "kind": "webhook",
+              "url": "https://hooks.acme.example/wardrik", "secret": {"name": "OPS_HOOK_SECRET"}}]}
+```
+
+### Add a notify target
+
+`POST /v1/owners/{owner}/notify_targets`
+
+Adds a notice webhook. Returns `201`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string, required | destination name used in `notify`; up to 32 letters, digits, `-`, or `_` |
+| `url` | string, required | an `https` URL; redirects aren't followed |
+| `secret.name` | string | a vault secret that signs each notice |
+
+```sh
+curl $WARDRIK_URL/v1/owners/acme/notify_targets -H "Authorization: Bearer $WARDRIK_TOKEN" \
+  --json '{"name": "ops", "url": "https://hooks.acme.example/wardrik", "secret": {"name": "OPS_HOOK_SECRET"}}'
+```
+
+```json
+{"owner": "acme", "name": "ops", "source": "runtime", "kind": "webhook",
+ "url": "https://hooks.acme.example/wardrik", "secret": {"name": "OPS_HOOK_SECRET"}}
+```
+
+### Remove a notify target
+
+`DELETE /v1/owners/{owner}/notify_targets/{name}`
+
+Removes one of the owner's targets. Returns its last state.
+
+```sh
+curl -X DELETE $WARDRIK_URL/v1/owners/acme/notify_targets/ops -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
 ## Daemon: agents
 
 ### Make an agent
@@ -1100,55 +1154,6 @@ curl $WARDRIK_URL/v1/owners/acme/ceilings -H "Authorization: Bearer $WARDRIK_TOK
 ```json
 {"ceilings": [{"ceiling": "plan", "per": "month", "on_exhausted": "ask", "limit": {"usd": 20.0},
                "spent": {"usd": 12.4, "tokens": 81200}, "granted": {}, "starts_over": "2026-11-01"}]}
-```
-
-## Daemon: notify targets
-
-### List notify targets
-
-`GET /v1/owners/{owner}/notify_targets`
-
-Lists the notice targets available to the owner's agents: the owner's, then the org's, then the deployment's.
-
-```sh
-curl $WARDRIK_URL/v1/owners/acme/notify_targets -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-```json
-{"targets": [{"owner": "acme", "name": "ops", "source": "runtime", "kind": "webhook",
-              "url": "https://hooks.acme.example/wardrik", "secret": {"name": "OPS_HOOK_SECRET"}}]}
-```
-
-### Add a notify target
-
-`POST /v1/owners/{owner}/notify_targets`
-
-Adds a notice webhook. Returns `201`.
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `name` | string, required | destination name used in `notify`; up to 32 letters, digits, `-`, or `_` |
-| `url` | string, required | an `https` URL; redirects aren't followed |
-| `secret.name` | string | a vault secret that signs each notice |
-
-```sh
-curl $WARDRIK_URL/v1/owners/acme/notify_targets -H "Authorization: Bearer $WARDRIK_TOKEN" \
-  --json '{"name": "ops", "url": "https://hooks.acme.example/wardrik", "secret": {"name": "OPS_HOOK_SECRET"}}'
-```
-
-```json
-{"owner": "acme", "name": "ops", "source": "runtime", "kind": "webhook",
- "url": "https://hooks.acme.example/wardrik", "secret": {"name": "OPS_HOOK_SECRET"}}
-```
-
-### Remove a notify target
-
-`DELETE /v1/owners/{owner}/notify_targets/{name}`
-
-Removes one of the owner's targets. Returns its last state.
-
-```sh
-curl -X DELETE $WARDRIK_URL/v1/owners/acme/notify_targets/ops -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ## Daemon: connections
