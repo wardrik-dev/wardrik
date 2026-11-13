@@ -27,7 +27,7 @@ if System.get_env("DATABASE_URL") do
       assert {:ok, _vsn} = Wardrik.Store.put(store, "a", 1)
       assert Repo.migrate() == :ignore
 
-      assert %{rows: [[1]]} =
+      assert %{rows: [[2]]} =
                SQL.query!(
                  Repo,
                  "SELECT count(*) FROM wardrik_store_migrations"

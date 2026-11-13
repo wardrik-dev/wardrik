@@ -10,7 +10,7 @@ defmodule WardrikDaemon.TokensTest do
   setup context do
     store = Wardrik.Store.ETS.new(name: :"tokens #{context.test}")
     start_supervised!({Wardrik.Store, store})
-    %{store: Wardrik.Store.scope(store, "wardrik_daemon")}
+    %{store: Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)}
   end
 
   defp create(store, subject, opts \\ []) do

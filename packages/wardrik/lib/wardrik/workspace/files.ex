@@ -85,7 +85,9 @@ defmodule Wardrik.Workspace.Files do
         do: {path, file, version}
   end
 
-  defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_workspace")
+  defp scoped(store),
+    do: Wardrik.Store.scope(store, "wardrik_workspace", format: Wardrik.Store.Format.Term)
+
   defp key(args), do: Keyword.fetch!(args, :tree) <> "//" <> Keyword.fetch!(args, :path)
 
   defp version(vsn) do

@@ -39,15 +39,16 @@ defmodule Wardrik.Store.Conformance do
         test "a later write replaces an earlier one", %{scoped: store} = context do
           key = unique_key(context)
 
-          {:ok, _vsn} = Wardrik.Store.put(store, key, :old)
-          {:ok, _vsn} = Wardrik.Store.put(store, key, :new)
+          {:ok, _vsn} = Wardrik.Store.put(store, key, "old")
+          {:ok, _vsn} = Wardrik.Store.put(store, key, "new")
 
-          assert Wardrik.Store.get(store, key) == :new
+          assert Wardrik.Store.get(store, key) == "new"
         end
 
         test "hands back a large value whole", %{scoped: store} = context do
           key = unique_key(context)
-          value = %{"bytes" => :crypto.strong_rand_bytes(1024 * 1024)}
+          bytes = :crypto.strong_rand_bytes(1024 * 1024)
+          value = %{"bytes" => Base.encode64(bytes)}
 
           {:ok, _vsn} = Wardrik.Store.put(store, key, value)
           assert Wardrik.Store.get(store, key) == value
@@ -56,7 +57,7 @@ defmodule Wardrik.Store.Conformance do
         test "deleting removes the key, and deleting again is fine", %{scoped: store} = context do
           key = unique_key(context)
 
-          {:ok, _vsn} = Wardrik.Store.put(store, key, :value)
+          {:ok, _vsn} = Wardrik.Store.put(store, key, "value")
           assert :ok = Wardrik.Store.delete(store, key)
           assert Wardrik.Store.get(store, key) == nil
           assert :ok = Wardrik.Store.delete(store, key)
@@ -73,61 +74,61 @@ defmodule Wardrik.Store.Conformance do
         test "writes where nothing is written only once", %{scoped: store} = context do
           key = unique_key(context)
 
-          assert {:ok, vsn} = Wardrik.Store.put(store, key, :first, if_vsn: nil)
+          assert {:ok, vsn} = Wardrik.Store.put(store, key, "first", if_vsn: nil)
           assert vsn != nil
-          assert {:error, :conflict} = Wardrik.Store.put(store, key, :second, if_vsn: nil)
-          assert Wardrik.Store.get(store, key) == :first
+          assert {:error, :conflict} = Wardrik.Store.put(store, key, "second", if_vsn: nil)
+          assert Wardrik.Store.get(store, key) == "first"
         end
 
         test "writes over the current version only", %{scoped: store} = context do
           key = unique_key(context)
 
-          {:ok, first} = Wardrik.Store.put(store, key, :first, if_vsn: nil)
-          assert {:ok, second} = Wardrik.Store.put(store, key, :second, if_vsn: first)
+          {:ok, first} = Wardrik.Store.put(store, key, "first", if_vsn: nil)
+          assert {:ok, second} = Wardrik.Store.put(store, key, "second", if_vsn: first)
           assert second != first
-          assert {:error, :conflict} = Wardrik.Store.put(store, key, :third, if_vsn: first)
-          assert {:second, ^second} = Wardrik.Store.lookup(store, key)
+          assert {:error, :conflict} = Wardrik.Store.put(store, key, "third", if_vsn: first)
+          assert {"second", ^second} = Wardrik.Store.lookup(store, key)
         end
 
         test "takes a plain write and delete over a key written conditionally",
              %{scoped: store} = context do
           key = unique_key(context)
 
-          {:ok, _vsn} = Wardrik.Store.put(store, key, :first, if_vsn: nil)
-          assert {:ok, _vsn} = Wardrik.Store.put(store, key, :second)
-          assert Wardrik.Store.get(store, key) == :second
+          {:ok, _vsn} = Wardrik.Store.put(store, key, "first", if_vsn: nil)
+          assert {:ok, _vsn} = Wardrik.Store.put(store, key, "second")
+          assert Wardrik.Store.get(store, key) == "second"
           assert :ok = Wardrik.Store.delete(store, key)
           assert Wardrik.Store.get(store, key) == nil
-          assert {:ok, _vsn} = Wardrik.Store.put(store, key, :again, if_vsn: nil)
+          assert {:ok, _vsn} = Wardrik.Store.put(store, key, "again", if_vsn: nil)
         end
 
         test "never takes a version again once it's written over", %{scoped: store} = context do
           key = unique_key(context)
 
-          {:ok, first} = Wardrik.Store.put(store, key, :same, if_vsn: nil)
-          {:ok, second} = Wardrik.Store.put(store, key, :other, if_vsn: first)
-          {:ok, _third} = Wardrik.Store.put(store, key, :same, if_vsn: second)
+          {:ok, first} = Wardrik.Store.put(store, key, "same", if_vsn: nil)
+          {:ok, second} = Wardrik.Store.put(store, key, "other", if_vsn: first)
+          {:ok, _third} = Wardrik.Store.put(store, key, "same", if_vsn: second)
 
-          assert {:error, :conflict} = Wardrik.Store.put(store, key, :stale, if_vsn: first)
+          assert {:error, :conflict} = Wardrik.Store.put(store, key, "stale", if_vsn: first)
           assert {:error, :conflict} = Wardrik.Store.delete(store, key, if_vsn: first)
-          assert Wardrik.Store.get(store, key) == :same
+          assert Wardrik.Store.get(store, key) == "same"
         end
 
         test "takes a version it never gave out as a conflict", %{scoped: store} = context do
           key = unique_key(context)
 
-          assert {:error, :conflict} = Wardrik.Store.put(store, key, :first, if_vsn: "nope")
-          {:ok, _vsn} = Wardrik.Store.put(store, key, :first, if_vsn: nil)
-          assert {:error, :conflict} = Wardrik.Store.put(store, key, :second, if_vsn: "nope")
+          assert {:error, :conflict} = Wardrik.Store.put(store, key, "first", if_vsn: "nope")
+          {:ok, _vsn} = Wardrik.Store.put(store, key, "first", if_vsn: nil)
+          assert {:error, :conflict} = Wardrik.Store.put(store, key, "second", if_vsn: "nope")
           assert {:error, :conflict} = Wardrik.Store.delete(store, key, if_vsn: "nope")
-          assert Wardrik.Store.get(store, key) == :first
+          assert Wardrik.Store.get(store, key) == "first"
         end
 
         test "deletes only the version it names", %{scoped: store} = context do
           key = unique_key(context)
 
-          {:ok, first} = Wardrik.Store.put(store, key, :first, if_vsn: nil)
-          {:ok, second} = Wardrik.Store.put(store, key, :second, if_vsn: first)
+          {:ok, first} = Wardrik.Store.put(store, key, "first", if_vsn: nil)
+          {:ok, second} = Wardrik.Store.put(store, key, "second", if_vsn: first)
 
           assert {:error, :conflict} = Wardrik.Store.delete(store, key, if_vsn: first)
           assert :ok = Wardrik.Store.delete(store, key, if_vsn: second)
@@ -156,9 +157,9 @@ defmodule Wardrik.Store.Conformance do
           base = unique_key(context)
           key = base <> "/a b+c%d~e&f=g?h#i/ü✓/.hidden/../x:y"
 
-          {:ok, _vsn} = Wardrik.Store.put(store, key, :odd)
+          {:ok, _vsn} = Wardrik.Store.put(store, key, "odd")
 
-          assert Wardrik.Store.get(store, key) == :odd
+          assert Wardrik.Store.get(store, key) == "odd"
           assert Wardrik.Store.keys(store, base <> "/a b+c") == [key]
           assert Wardrik.Store.keys(store, base <> "/a c") == []
         end
@@ -239,7 +240,7 @@ defmodule Wardrik.Store.Conformance do
           here = Wardrik.Store.scope(outer, "here")
           there = Wardrik.Store.scope(outer, "there")
 
-          {:ok, _vsn} = Wardrik.Store.put(here, key, :here)
+          {:ok, _vsn} = Wardrik.Store.put(here, key, "here")
 
           assert Wardrik.Store.get(there, key) == nil
           assert Wardrik.Store.keys(there, key) == []
@@ -249,8 +250,8 @@ defmodule Wardrik.Store.Conformance do
           key = unique_key(context)
           inner = Wardrik.Store.scope(outer, "inner")
 
-          {:ok, _vsn} = Wardrik.Store.put(outer, "inner/" <> key, :outer)
-          {:ok, _vsn} = Wardrik.Store.put(outer, "inner:" <> key, :outer)
+          {:ok, _vsn} = Wardrik.Store.put(outer, "inner/" <> key, "outer")
+          {:ok, _vsn} = Wardrik.Store.put(outer, "inner:" <> key, "outer")
 
           assert Wardrik.Store.get(inner, key) == nil
           assert Wardrik.Store.keys(inner, key) == []
@@ -265,12 +266,12 @@ defmodule Wardrik.Store.Conformance do
       describe "a Wardrik.Store starting" do
         test "starts nothing where it's already running", %{store: store} = context do
           key = unique_key(context)
-          {:ok, _vsn} = Wardrik.Store.put(store, key, :kept)
+          {:ok, _vsn} = Wardrik.Store.put(store, key, "kept")
 
           assert {:ok, :undefined} =
-                   start_supervised(Supervisor.child_spec({Wardrik.Store, store}, id: :again))
+                   start_supervised(Supervisor.child_spec({Wardrik.Store, store}, id: "again"))
 
-          assert Wardrik.Store.get(store, key) == :kept
+          assert Wardrik.Store.get(store, key) == "kept"
         end
       end
     end

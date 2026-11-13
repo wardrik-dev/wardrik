@@ -43,7 +43,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
       {:ok,
        %{
-         state: Wardrik.Store.scope(store, "durable"),
+         state: Wardrik.Store.scope(store, "durable", format: Wardrik.Store.Format.Term),
          defaults: %{
            heartbeat_tracking_mode: :poll,
            discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 30_000),
@@ -218,7 +218,9 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
       end
     end
 
-    defp durable(store), do: Wardrik.Store.scope(store, "durable")
+    defp durable(store),
+      do: Wardrik.Store.scope(store, "durable", format: Wardrik.Store.Format.Term)
+
     defp notes(durable), do: Wardrik.Store.scope(durable, "unreadable")
 
     defp update(_store, _key, _update, retries) when retries < 0,

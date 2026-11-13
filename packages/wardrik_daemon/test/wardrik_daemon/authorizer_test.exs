@@ -48,6 +48,7 @@ defmodule WardrikDaemon.AuthorizerTest do
 
     store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
     start_supervised!({Wardrik.Store, store})
+    store = Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)
 
     ids =
       Map.new(@agents, fn agent ->

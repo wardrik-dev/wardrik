@@ -47,6 +47,8 @@ Wardrik.Store.put(mine, "settings/theme", "blue", if_vsn: vsn)
 - Each part of Wardrik scopes the store by its own name. Scope it yourself to keep your data apart.
 - `:if_vsn` writes only over the version you read. `nil` writes only where nothing is.
 - With EKV, once you write a key with `:if_vsn`, always write it that way.
+- Values are JSON. To change their shape in a later release, name a `Wardrik.Store.Format` with
+  `:format`, whose `load/2` reads each version written before.
 
 ## Keep agents in it
 

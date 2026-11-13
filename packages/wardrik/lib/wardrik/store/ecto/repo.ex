@@ -8,7 +8,7 @@ if Code.ensure_loaded?(Ecto.Adapters.Postgres) do
 
     use Ecto.Repo, otp_app: :wardrik, adapter: Ecto.Adapters.Postgres
 
-    @migrations [{1, Wardrik.Store.Ecto.Repo.V1}]
+    @migrations [{1, Wardrik.Store.Ecto.Repo.V1}, {2, Wardrik.Store.Ecto.Repo.V2}]
 
     @doc "Returns the repo's start options for `url`. Adds TLS options if `url` has `ssl=true`."
     @spec options(String.t()) :: keyword()
@@ -54,5 +54,15 @@ if Code.ensure_loaded?(Ecto.Adapters.Postgres) do
     def up, do: Wardrik.Store.Ecto.Migration.up(version: 1)
     @spec down() :: :ok
     def down, do: Wardrik.Store.Ecto.Migration.down(version: 1)
+  end
+
+  defmodule Wardrik.Store.Ecto.Repo.V2 do
+    @moduledoc false
+    use Ecto.Migration
+
+    @spec up() :: :ok
+    def up, do: Wardrik.Store.Ecto.Migration.up(version: 2)
+    @spec down() :: :ok
+    def down, do: Wardrik.Store.Ecto.Migration.down(version: 2)
   end
 end

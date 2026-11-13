@@ -7,6 +7,13 @@ defmodule Wardrik.Store.TestMigration do
   @moduledoc "Runs `Wardrik.Store.Ecto.Migration` in the tests."
   use Ecto.Migration
 
-  def up, do: Wardrik.Store.Ecto.Migration.up(version: 1)
-  def down, do: Wardrik.Store.Ecto.Migration.down(version: 1)
+  def up do
+    Wardrik.Store.Ecto.Migration.up(version: 1)
+    Wardrik.Store.Ecto.Migration.up(version: 2)
+  end
+
+  def down do
+    Wardrik.Store.Ecto.Migration.down(version: 2)
+    Wardrik.Store.Ecto.Migration.down(version: 1)
+  end
 end

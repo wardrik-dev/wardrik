@@ -95,7 +95,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       vsn = :rand.uniform(0x7FFFFFFFFFFFFFFF)
       condition = Keyword.fetch(opts, :if_vsn)
 
-      case written(repo, condition, [path, :erlang.term_to_binary(value), vsn]) do
+      case written(repo, condition, [path, value, vsn]) do
         {:ok, %{num_rows: 1}} -> {:ok, vsn}
         {:ok, %{num_rows: 0}} -> {:error, :conflict}
         {:error, reason} -> {:error, reason}
@@ -106,8 +106,8 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     def lookup(%Own{}, path), do: lookup(Wardrik.Store.Ecto.Repo, path)
 
     def lookup(repo, path) do
-      case SQL.query!(repo, "SELECT value, vsn FROM #{@table} WHERE key = $1", [path]) do
-        %{rows: [[value, vsn]]} -> {:erlang.binary_to_term(value, [:safe]), vsn}
+      case SQL.query!(repo, "SELECT value::text, vsn FROM #{@table} WHERE key = $1", [path]) do
+        %{rows: [[value, vsn]]} -> {value, vsn}
         %{rows: []} -> nil
       end
     end
@@ -142,9 +142,11 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
     def lookup_many(repo, paths) do
       %{rows: rows} =
-        SQL.query!(repo, "SELECT key, value, vsn FROM #{@table} WHERE key = ANY($1)", [paths])
+        SQL.query!(repo, "SELECT key, value::text, vsn FROM #{@table} WHERE key = ANY($1)", [
+          paths
+        ])
 
-      for [key, value, vsn] <- rows, do: {key, :erlang.binary_to_term(value, [:safe]), vsn}
+      for [key, value, vsn] <- rows, do: {key, value, vsn}
     end
 
     @impl Wardrik.Store.Adapter
@@ -154,11 +156,11 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       %{rows: rows} =
         SQL.query!(
           repo,
-          "SELECT key, value, vsn FROM #{@table} WHERE key LIKE $1 ESCAPE '\\' ORDER BY key",
+          "SELECT key, value::text, vsn FROM #{@table} WHERE key LIKE $1 ESCAPE '\\' ORDER BY key",
           [like(prefix) <> "%"]
         )
 
-      for [key, value, vsn] <- rows, do: {key, :erlang.binary_to_term(value, [:safe]), vsn}
+      for [key, value, vsn] <- rows, do: {key, value, vsn}
     end
 
     @impl Wardrik.Store.Adapter
@@ -179,7 +181,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       SQL.query(
         repo,
         """
-        INSERT INTO #{@table} (key, value, vsn) VALUES ($1, $2, $3)
+        INSERT INTO #{@table} (key, value, vsn) VALUES ($1, $2::text::jsonb, $3)
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, vsn = EXCLUDED.vsn
         """,
         args
@@ -189,7 +191,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     defp written(repo, {:ok, nil}, args) do
       SQL.query(
         repo,
-        "INSERT INTO #{@table} (key, value, vsn) VALUES ($1, $2, $3) ON CONFLICT (key) DO NOTHING",
+        "INSERT INTO #{@table} (key, value, vsn) VALUES ($1, $2::text::jsonb, $3) ON CONFLICT (key) DO NOTHING",
         args
       )
     end
@@ -197,7 +199,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     defp written(repo, {:ok, vsn}, args) when is_integer(vsn) do
       SQL.query(
         repo,
-        "UPDATE #{@table} SET value = $2, vsn = $3 WHERE key = $1 AND vsn = $4",
+        "UPDATE #{@table} SET value = $2::text::jsonb, vsn = $3 WHERE key = $1 AND vsn = $4",
         args ++ [vsn]
       )
     end

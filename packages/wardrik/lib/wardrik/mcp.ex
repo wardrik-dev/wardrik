@@ -155,7 +155,9 @@ defmodule Wardrik.MCP do
   end
 
   defp scoped(nil), do: nil
-  defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_mcp")
+
+  defp scoped(store),
+    do: Wardrik.Store.scope(store, "wardrik_mcp", format: Wardrik.Store.Format.Term)
 
   @doc """
   Returns the tools of the named servers.

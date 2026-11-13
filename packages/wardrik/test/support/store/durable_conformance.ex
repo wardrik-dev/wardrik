@@ -133,7 +133,7 @@ defmodule Wardrik.Store.DurableConformance do
           stored = %StoredState{vsn: 1, state: %{}, meta: %Meta{}}
           unreadable = %{"vsn" => 1, "state" => <<131, 100, 0, 3, "zzq">>, "meta" => "x"}
           why = "it isn't in a form this release can read"
-          durable = Wardrik.Store.scope(store, "durable")
+          durable = Wardrik.Store.scope(store, "durable", format: Wardrik.Store.Format.Term)
           {:ok, _vsn} = Wardrik.Store.put(durable, key, unreadable)
 
           log =

@@ -7,7 +7,15 @@ if System.get_env("DATABASE_URL") do
     alias Wardrik.Store.TestRepo
 
     setup_all do
-      start_supervised!({TestRepo, url: System.fetch_env!("DATABASE_URL"), log: false})
+      # A schema of their own, so dropping the table never pulls it from the suite's other tests.
+      start_supervised!(
+        {TestRepo,
+         url: System.fetch_env!("DATABASE_URL"),
+         log: false,
+         parameters: [search_path: "wardrik_ecto_test"]}
+      )
+
+      Ecto.Adapters.SQL.query!(TestRepo, "CREATE SCHEMA IF NOT EXISTS wardrik_ecto_test")
       migrations = [{1, Wardrik.Store.TestMigration}]
       Ecto.Migrator.run(TestRepo, migrations, :down, all: true, log: false)
 
@@ -26,8 +34,8 @@ if System.get_env("DATABASE_URL") do
     end
 
     test "has no migration past the versions it knows" do
-      assert_raise ArgumentError, ~r/no version 2/, fn ->
-        Wardrik.Store.Ecto.Migration.up(version: 2)
+      assert_raise ArgumentError, ~r/no version 3/, fn ->
+        Wardrik.Store.Ecto.Migration.up(version: 3)
       end
     end
   end

@@ -13,15 +13,24 @@ defmodule Wardrik.Store do
 
   The adapter decides where keys are kept. See `Wardrik.Store.ETS`, `Wardrik.Store.EKV` and
   `Wardrik.Store.Ecto`.
+
+  Values are kept as JSON, in the format the scope names. See `Wardrik.Store.Format`.
   """
 
   alias Wardrik.Store.Adapter
+  alias Wardrik.Store.Format
+  alias Wardrik.Store.UnreadableError
 
   @enforce_keys [:adapter, :config]
-  defstruct [:adapter, :config, scope: ""]
+  defstruct [:adapter, :config, scope: "", format: Format.JSON]
 
-  @typedoc "A store, scoped or not."
-  @type t() :: %__MODULE__{adapter: module(), config: Adapter.config(), scope: String.t()}
+  @typedoc "A store, scoped or not, and the `Wardrik.Store.Format` of what it keeps."
+  @type t() :: %__MODULE__{
+          adapter: module(),
+          config: Adapter.config(),
+          scope: String.t(),
+          format: module()
+        }
 
   @typedoc "A key within a scope."
   @type key() :: String.t()
@@ -60,14 +69,24 @@ defmodule Wardrik.Store do
   Returns the store nested under the scope `name`. Keys in one scope never match another's.
 
       mine = Wardrik.Store.scope(store, "my_app")
+      themes = Wardrik.Store.scope(store, "my_app", format: MyApp.Theme)
 
   `name` is lowercase letters, digits and underscores, starting with a letter. Raises
   `ArgumentError` otherwise.
+
+  ## Options
+
+    * `:format` - the `Wardrik.Store.Format` values are written and read in.
+      `Wardrik.Store.Format.JSON` unless given, whatever the outer scope's.
   """
-  @spec scope(t(), String.t()) :: t()
-  def scope(%__MODULE__{} = store, name) when is_binary(name) do
+  @spec scope(t(), String.t(), format: module()) :: t()
+  def scope(%__MODULE__{} = store, name, opts \\ []) when is_binary(name) do
     if Regex.match?(@scope_name, name),
-      do: %{store | scope: nested(store.scope, name)},
+      do: %{
+        store
+        | scope: nested(store.scope, name),
+          format: Keyword.get(opts, :format, Format.JSON)
+      },
       else: raise(ArgumentError, not_a_scope_name(name))
   end
 
@@ -86,7 +105,8 @@ defmodule Wardrik.Store do
   @spec put(t(), key(), term(), if_vsn: vsn() | nil) ::
           {:ok, vsn() | nil} | {:error, :conflict | term()}
   def put(%__MODULE__{} = store, key, value, opts \\ []) when is_binary(key),
-    do: store.adapter.put(store.config, path(store, key), value, opts)
+    do:
+      store.adapter.put(store.config, path(store, key), Format.encode(store.format, value), opts)
 
   @doc "Returns the value under `key`, or `nil`."
   @spec get(t(), key()) :: term() | nil
@@ -97,10 +117,19 @@ defmodule Wardrik.Store do
     end
   end
 
-  @doc "Returns `{value, vsn}` for `key`, or `nil`."
+  @doc """
+  Returns `{value, vsn}` for `key`, or `nil`.
+
+  Raises `Wardrik.Store.UnreadableError` where the scope's format can't read the value, as all
+  reads do.
+  """
   @spec lookup(t(), key()) :: {term(), vsn()} | nil
-  def lookup(%__MODULE__{} = store, key) when is_binary(key),
-    do: store.adapter.lookup(store.config, path(store, key))
+  def lookup(%__MODULE__{} = store, key) when is_binary(key) do
+    case store.adapter.lookup(store.config, path(store, key)) do
+      {text, vsn} -> {read(store, key, text), vsn}
+      nil -> nil
+    end
+  end
 
   @doc """
   Removes `key`. Returns `:ok`, also when `key` isn't there.
@@ -129,9 +158,10 @@ defmodule Wardrik.Store do
   def lookup_many(%__MODULE__{} = store, keys) when is_list(keys) do
     paths = Map.new(keys, &{path(store, &1), &1})
 
-    for {path, value, vsn} <- many(store, Map.keys(paths)),
+    for {path, text, vsn} <- many(store, Map.keys(paths)),
+        key = Map.fetch!(paths, path),
         into: %{},
-        do: {Map.fetch!(paths, path), {value, vsn}}
+        do: {key, {read(store, key, text), vsn}}
   end
 
   @doc "Returns `{key, value, vsn}` for each of the scope's keys that starts with `prefix`, sorted by key."
@@ -141,7 +171,10 @@ defmodule Wardrik.Store do
 
     store
     |> listed(root <> prefix)
-    |> Enum.map(fn {path, value, vsn} -> {String.replace_prefix(path, root, ""), value, vsn} end)
+    |> Enum.map(fn {path, text, vsn} ->
+      key = String.replace_prefix(path, root, "")
+      {key, read(store, key, text), vsn}
+    end)
     |> Enum.sort_by(&elem(&1, 0))
   end
 
@@ -179,6 +212,13 @@ defmodule Wardrik.Store do
 
   defp one_by_one(adapter, config, paths) do
     for path <- paths, {value, vsn} <- [adapter.lookup(config, path)], do: {path, value, vsn}
+  end
+
+  defp read(store, key, text) do
+    case Format.decode(store.format, text) do
+      {:ok, value} -> value
+      {:error, reason} -> raise UnreadableError, scope: store.scope, key: key, reason: reason
+    end
   end
 
   defp nested("", name), do: name

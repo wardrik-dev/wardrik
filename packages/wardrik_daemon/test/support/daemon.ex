@@ -139,7 +139,8 @@ defmodule WardrikDaemon.Test do
     Map.merge(context, %{
       wardrik: name,
       admin: admin,
-      daemon_store: Wardrik.Store.scope(store, "wardrik_daemon"),
+      daemon_store:
+        Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term),
       log: log
     })
   end
