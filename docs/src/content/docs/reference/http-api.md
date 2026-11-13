@@ -811,49 +811,12 @@ curl "$WARDRIK_URL/v1/deployment/audit?starting_after=11" -H "Authorization: Bea
 
 Each entry is a CloudEvent, like an agent's [events](/reference/events/).
 
-## Daemon: agents
+## Secrets
 
-### Make an agent
-
-`POST /v1/owners/{owner}/agents`
-
-Generates an agent ID, stores the record, and defines the agent. Returns `201`.
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `name` | string, required | unique in the org: letters, digits, `_`, `.`, `-` |
-| any [definition](/reference/agent-files/#keys) key | | the agent's definition |
-
-```sh
-curl $WARDRIK_URL/v1/owners/acme%2F%40jon/agents -H "Authorization: Bearer $WARDRIK_TOKEN" \
-  --json '{"name": "notes", "model": "anthropic:claude-haiku-4-5", "instructions": "You keep Jon'\''s notes."}'
-```
-
-```json
-{"id": "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", "name": "notes", "org": "acme", "owner": "acme/@jon"}
-```
-
-`workspace.shared` names agents of the org by name. A name in use is a `409`.
-
-### Find agents
-
-`GET /v1/owners/{owner}/agents`
-
-Lists the agents in the owner's org that the token can read.
-
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `name` | string | the agent's name; every agent unless set |
-
-```sh
-curl "$WARDRIK_URL/v1/owners/acme/agents?name=notes" -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-```json
-{"agents": [{"id": "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", "name": "notes", "org": "acme", "owner": "acme/@jon"}]}
-```
-
-## Daemon: secrets
+An owner's secrets, sealed in the vault. The owner is a name your app gives, URL-encoded as one
+segment: Wardrik doesn't read it. Your authorizer decides who may act for it, as
+`secret.read`, `secret.put` and `secret.delete` on `{:secret, owner}`. The daemon's owners are
+`deployment`, an org such as `acme`, or a person as `acme%2F%40jon`.
 
 ### List secrets
 
@@ -898,6 +861,48 @@ Removes the secret. Returns `204`, even if it didn't exist.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/secrets/ANTHROPIC_API_KEY -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+## Daemon: agents
+
+### Make an agent
+
+`POST /v1/owners/{owner}/agents`
+
+Generates an agent ID, stores the record, and defines the agent. Returns `201`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string, required | unique in the org: letters, digits, `_`, `.`, `-` |
+| any [definition](/reference/agent-files/#keys) key | | the agent's definition |
+
+```sh
+curl $WARDRIK_URL/v1/owners/acme%2F%40jon/agents -H "Authorization: Bearer $WARDRIK_TOKEN" \
+  --json '{"name": "notes", "model": "anthropic:claude-haiku-4-5", "instructions": "You keep Jon'\''s notes."}'
+```
+
+```json
+{"id": "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", "name": "notes", "org": "acme", "owner": "acme/@jon"}
+```
+
+`workspace.shared` names agents of the org by name. A name in use is a `409`.
+
+### Find agents
+
+`GET /v1/owners/{owner}/agents`
+
+Lists the agents in the owner's org that the token can read.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `name` | string | the agent's name; every agent unless set |
+
+```sh
+curl "$WARDRIK_URL/v1/owners/acme/agents?name=notes" -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"agents": [{"id": "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", "name": "notes", "org": "acme", "owner": "acme/@jon"}]}
 ```
 
 ## Daemon: ceilings

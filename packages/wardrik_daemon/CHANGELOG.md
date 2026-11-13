@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Secrets are Wardrik's `secrets.*` operations. An owner the daemon doesn't know answers
+  `not_found`, from `WardrikDaemon.Authorizer`, where it answered `invalid_request`.
 - A sign-in an agent asked for, while waiting on it, finishes from the browser like one
   `wardrik connection connect` started: its page shows the code to pair. It showed "Sign-in not
   found" before.

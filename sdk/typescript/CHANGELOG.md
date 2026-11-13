@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `secrets.list()`, `secrets.put()` and `secrets.delete()`, now in Wardrik's protocol.
 - `AgentSummary` and `AgentSnapshot` have `description` and `model`. Reading events takes
   `order` and `before`.
 - `TriggerDefinition` has `at` and `next_at`.

@@ -5,21 +5,17 @@ defmodule WardrikDaemon.Web.SecretSettings do
 
   @behaviour WardrikWeb.Settings
 
-  alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
-  alias WardrikDaemon.Allowed
-  alias WardrikDaemon.Secrets
   alias WardrikDaemon.Web.Settings
+
+  @purposes WardrikProtocol.schema("secret_input")["properties"]["purpose"]["enum"]
 
   @impl true
   def owners(scope, _opts), do: WardrikDaemon.Settings.owners(Settings.daemon(), scope)
 
   @impl true
   def list(scope, owner, _opts) do
-    daemon = Settings.daemon()
-
-    with :ok <- Allowed.owned(daemon, scope, owner, {"secret.read", :secret}),
-         do: {:ok, Secrets.list(daemon.wardrik, owner)}
+    with {:ok, %{"secrets" => secrets}} <- Wardrik.run(scope, "secrets.list", %{"owner" => owner}),
+         do: {:ok, secrets}
   end
 
   @impl true
@@ -35,33 +31,29 @@ defmodule WardrikDaemon.Web.SecretSettings do
           "type" => "string",
           "description" => "If a secret with this name exists, its value is replaced."
         },
-        "purpose" => %{"enum" => Enum.sort(Secrets.purposes())},
+        "purpose" => %{"enum" => @purposes},
         "value" => %{"type" => "string", "writeOnly" => true}
       }
     }
 
   @impl true
   def add(scope, owner, %{"name" => name, "purpose" => purpose, "value" => value}, _opts) do
-    daemon = Settings.daemon()
-    secret = %Secret{principal: %Principal{id: owner}, name: String.trim(name), value: value}
+    input = %{
+      "owner" => owner,
+      "name" => String.trim(name),
+      "purpose" => purpose,
+      "value" => value
+    }
 
-    with :ok <- Allowed.owned(daemon, scope, owner, {"secret.put", :secret}),
-         :ok <-
-           stored(Secrets.put(daemon.wardrik, secret, purpose: purpose, actor: scope.principal)) do
-      {:ok, %{"name" => secret.name, "purpose" => purpose}}
-    end
+    with {:ok, nil} <- Wardrik.run(scope, "secrets.put", input),
+         do: {:ok, %{"name" => input["name"], "purpose" => purpose}}
   end
 
   def add(_scope, _owner, _input, _opts), do: {:error, "Enter a name, a purpose and a value."}
 
   @impl true
   def remove(scope, owner, name, _opts) do
-    daemon = Settings.daemon()
-
-    with :ok <- Allowed.owned(daemon, scope, owner, {"secret.delete", :secret}),
-         do: stored(Secrets.delete(daemon.wardrik, {owner, name}, scope.principal))
+    with {:ok, nil} <- Wardrik.run(scope, "secrets.delete", %{"owner" => owner, "name" => name}),
+         do: :ok
   end
-
-  defp stored(:ok), do: :ok
-  defp stored({:error, reason}), do: {:error, "The vault refused: #{inspect(reason)}."}
 end

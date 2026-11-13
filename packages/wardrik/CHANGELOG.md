@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `secrets.list`, `secrets.put` and `secrets.delete` seal an owner's secrets in Wardrik's vault,
+  at `/v1/owners/{owner}/secrets`, as `Wardrik.Secrets`. The owner is a name your app gives,
+  never read: your authorizer decides on `{:secret, owner}`. Without `:vault_keys` they answer
+  `not_supported`.
 - `Wardrik.started_sign_in/2` returns the browser sign-in a callback's `state` belongs to, whoever
   started it.
 - `agents.list` and `agent.read` give each agent's `description` and `model`.

@@ -27,8 +27,9 @@ defmodule WardrikProtocol do
     * `:conversation` - its route for one of the agent's conversations, or `nil`.
     * `:action` - what the caller must be allowed to do.
     * `:effect` - `"read"`, `"change"` or `"destructive"`.
-    * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"hook"` or
-      `"channel"`.
+    * `:subject` - what it acts on: `"agent"`, `"agents"`, `"deployment"`, `"hook"`,
+      `"channel"`, or what an owner holds, as `"secret"`. An owner's is authorized on
+      `{:secret, owner}`, the owner as the caller names it.
     * `:parameters` - which input fields go in the HTTP path or query.
     * `:input` - one schema for its parameters and body together. A hook's or channel's body is
       the request as it came, so its input is its `x-wardrik-input`.

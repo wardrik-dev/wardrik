@@ -159,24 +159,21 @@ defmodule WardrikDaemon.SecretsTest do
   test "refuses an owner it doesn't name, and a secret it can't seal", context do
     admin = client(context, "user:admin")
 
-    assert {:error, "invalid_request", message} = list(admin, "growth/triage")
-    assert message =~ "growth/triage isn't an owner"
+    assert {:error, "not_found", "There's no secret of growth/triage."} =
+             list(admin, "growth/triage")
 
-    assert {:error, "not_found", message} = put(admin, "globex", "KEY")
-    assert message =~ "There's no org globex here"
+    assert {:error, "not_found", "There's no secret of globex."} = put(admin, "globex", "KEY")
 
     for input <- [
           %{"value" => "", "purpose" => "api_key"},
           %{"value" => "v", "purpose" => "grant"}
         ] do
-      assert {:error, "invalid_request", message} =
+      assert {:error, "invalid_request", _message} =
                Client.run(
                  admin,
                  "secrets.put",
                  Map.merge(input, %{"owner" => "growth", "name" => "X"})
                )
-
-      assert message =~ "with a value and a purpose of api_key, client_secret, header"
     end
 
     assert {:error, "invalid_request", _message} =

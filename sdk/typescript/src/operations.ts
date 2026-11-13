@@ -34,6 +34,8 @@ import type {
   Reloaded,
   Runs,
   Runtime,
+  SecretInput,
+  Secrets,
   Timeline,
   TriggerDefinition,
 } from "./protocol.ts";
@@ -329,6 +331,28 @@ export const operations = {
     body: true,
     unwrap: "agent",
   },
+  "secrets.list": {
+    method: "GET",
+    path: "/v1/owners/{owner}/secrets",
+    path_params: ["owner"],
+    query: [],
+    body: false,
+    unwrap: "secrets",
+  },
+  "secrets.put": {
+    method: "PUT",
+    path: "/v1/owners/{owner}/secrets/{name}",
+    path_params: ["owner", "name"],
+    query: [],
+    body: true,
+  },
+  "secrets.delete": {
+    method: "DELETE",
+    path: "/v1/owners/{owner}/secrets/{name}",
+    path_params: ["owner", "name"],
+    query: [],
+    body: false,
+  },
 } as const;
 
 /** An operation's id, as `agent.ask`. */
@@ -555,6 +579,22 @@ export interface Inputs {
     /** The conversation to act on. The agent's own history where left out. */
     conversation?: string | undefined;
   } & Node;
+  "secrets.list": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+  };
+  "secrets.put": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+    /** The secret's name, as GITHUB_TOKEN. */
+    name: string;
+  } & SecretInput;
+  "secrets.delete": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+    /** The secret's name, as GITHUB_TOKEN. */
+    name: string;
+  };
 }
 
 /** What each operation answers, an answer of one property being that property. */
@@ -596,6 +636,9 @@ export interface Outputs {
   "deployment.nodes": Nodes;
   "deployment.runtime": Runtime;
   "agent.move": AgentAnswer["agent"];
+  "secrets.list": Secrets["secrets"];
+  "secrets.put": void;
+  "secrets.delete": void;
 }
 
 /** The `agent.*` operations. */
@@ -1213,6 +1256,52 @@ export class DeploymentOperations {
   }
 }
 
+/** The `secrets.*` operations. */
+export class SecretsOperations {
+  readonly #runner: Runner;
+
+  /** @internal */
+  constructor(runner: Runner) {
+    this.#runner = runner;
+  }
+
+  /**
+   * List an owner's secrets.
+   *
+   * The names of the secrets the owner holds, and what each is for, including the accounts they connected. Never a value.
+   */
+  list(owner: string, options: CallOptions = {}): Promise<Outputs["secrets.list"]> {
+    return this.#runner.call("secrets.list", { owner }, options);
+  }
+
+  /**
+   * Seal a secret.
+   *
+   * Seals the value as the owner's secret of that name, in place of any it held, and reconnects the owner's MCP servers whose headers read it.
+   */
+  put(
+    owner: string,
+    name: string,
+    input: SecretInput,
+    options: CallOptions = {},
+  ): Promise<Outputs["secrets.put"]> {
+    return this.#runner.call("secrets.put", { ...input, owner, name }, options);
+  }
+
+  /**
+   * Remove a secret.
+   *
+   * Removes the owner's secret of that name. Removing none answers as removing one does.
+   */
+  delete(
+    owner: string,
+    name: string,
+    options: CallOptions = {},
+  ): Promise<Outputs["secrets.delete"]> {
+    return this.#runner.call("secrets.delete", { owner, name }, options);
+  }
+}
+
 /** Every operation but an agent's, by its namespace. */
 export class Operations {
   /** The `agents.*` operations. */
@@ -1225,6 +1314,8 @@ export class Operations {
   readonly audit: AuditOperations;
   /** The `deployment.*` operations. */
   readonly deployment: DeploymentOperations;
+  /** The `secrets.*` operations. */
+  readonly secrets: SecretsOperations;
 
   /** @internal */
   constructor(runner: Runner) {
@@ -1233,5 +1324,6 @@ export class Operations {
     this.events = new EventsOperations(runner);
     this.audit = new AuditOperations(runner);
     this.deployment = new DeploymentOperations(runner);
+    this.secrets = new SecretsOperations(runner);
   }
 }

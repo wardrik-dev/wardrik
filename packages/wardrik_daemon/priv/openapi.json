@@ -21,10 +21,6 @@
       "description": "The agents each org and person makes, and their names."
     },
     {
-      "name": "Secrets",
-      "description": "What each owner holds sealed in the vault."
-    },
-    {
       "name": "Ceilings",
       "description": "The budgets an org's agents share."
     },
@@ -139,135 +135,6 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
-          }
-        }
-      }
-    },
-    "/v1/owners/{owner}/secrets": {
-      "get": {
-        "operationId": "secrets.list",
-        "summary": "List an owner's secrets",
-        "description": "The names of the secrets the owner holds, and what each is for, including the accounts they connected. Never a value.",
-        "tags": [
-          "Secrets"
-        ],
-        "x-wardrik-action": "secret.read",
-        "x-wardrik-resource": "secret",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/owner"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The owner's secrets.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/secrets"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Invalid"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        }
-      }
-    },
-    "/v1/owners/{owner}/secrets/{name}": {
-      "put": {
-        "operationId": "secrets.put",
-        "summary": "Seal a secret",
-        "description": "Seals the value as the owner's secret of that name, in place of any it held, and reconnects the owner's MCP servers whose headers read it. The deployment's are what ${NAME} in config.yaml reads.",
-        "tags": [
-          "Secrets"
-        ],
-        "x-wardrik-action": "secret.put",
-        "x-wardrik-resource": "secret",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/owner"
-          },
-          {
-            "$ref": "#/components/parameters/secret_name"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/secret_input"
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": "Sealed."
-          },
-          "400": {
-            "$ref": "#/components/responses/Invalid"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/Unavailable"
-          }
-        }
-      },
-      "delete": {
-        "operationId": "secrets.delete",
-        "summary": "Remove a secret",
-        "description": "Removes the owner's secret of that name. Removing none answers as removing one does.",
-        "tags": [
-          "Secrets"
-        ],
-        "x-wardrik-action": "secret.delete",
-        "x-wardrik-resource": "secret",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/owner"
-          },
-          {
-            "$ref": "#/components/parameters/secret_name"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Removed."
-          },
-          "400": {
-            "$ref": "#/components/responses/Invalid"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/Unavailable"
           }
         }
       }
@@ -1053,16 +920,6 @@
           "type": "string"
         }
       },
-      "secret_name": {
-        "name": "name",
-        "in": "path",
-        "required": true,
-        "description": "The secret's name, as GITHUB_TOKEN.",
-        "schema": {
-          "type": "string",
-          "pattern": "^[^/\\s]+$"
-        }
-      },
       "server_name": {
         "name": "name",
         "in": "path",
@@ -1268,92 +1125,6 @@
             }
           }
         }
-      },
-      "secrets": {
-        "title": "An owner's secrets",
-        "description": "Each secret the owner holds, by name, and what it's for. Never a value.",
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "secrets"
-        ],
-        "properties": {
-          "secrets": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "name",
-                "purpose"
-              ],
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "purpose": {
-                  "type": "string",
-                  "enum": [
-                    "api_key",
-                    "client_secret",
-                    "header",
-                    "signing_secret",
-                    "grant",
-                    "token",
-                    "secret"
-                  ],
-                  "description": "What it's for: api_key, client_secret, header or signing_secret for one the owner sealed, grant for an account they connected, token for a chat app's install, secret for one sealed with no purpose."
-                }
-              }
-            }
-          }
-        },
-        "examples": [
-          {
-            "secrets": [
-              {
-                "name": "ANTHROPIC_API_KEY",
-                "purpose": "api_key"
-              },
-              {
-                "name": "linear",
-                "purpose": "grant"
-              }
-            ]
-          }
-        ]
-      },
-      "secret_input": {
-        "title": "A secret to seal",
-        "description": "The value to seal, and what it's for. A secret is read only for its purpose, so a client secret is never read as an API key.",
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "value",
-          "purpose"
-        ],
-        "properties": {
-          "value": {
-            "type": "string",
-            "minLength": 1
-          },
-          "purpose": {
-            "type": "string",
-            "enum": [
-              "api_key",
-              "client_secret",
-              "header",
-              "signing_secret"
-            ],
-            "description": "api_key for a key code calls a service with, client_secret for an OAuth app's, header for an MCP server's header, signing_secret for a webhook's."
-          }
-        },
-        "examples": [
-          {
-            "value": "sk-ant-0123456789abcdef",
-            "purpose": "api_key"
-          }
-        ]
       },
       "ceilings": {
         "title": "Ceilings",

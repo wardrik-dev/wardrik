@@ -1340,6 +1340,29 @@ export interface Runtime {
   agents: AgentRuntime[];
 }
 /**
+ * The value to seal, and what it's for. A secret is read only for its purpose, so a client secret is never read as an API key.
+ */
+export interface SecretInput {
+  value: string;
+  /**
+   * api_key for a key code calls a service with, client_secret for an OAuth app's, header for an MCP server's header, signing_secret for a webhook's.
+   */
+  purpose: "api_key" | "client_secret" | "header" | "signing_secret";
+}
+/**
+ * Each secret the owner holds, by name, and what it's for. Never a value.
+ */
+export interface Secrets {
+  secrets: {
+    name: string;
+    /**
+     * What it's for: api_key, client_secret, header or signing_secret for one the owner sealed, grant for an account they connected, token for a chat app's install, secret for one sealed with no purpose.
+     */
+    purpose:
+      "api_key" | "client_secret" | "header" | "signing_secret" | "grant" | "token" | "secret";
+  }[];
+}
+/**
  * What agent.timeline answers: the agent's conversation as a person reads it, oldest first.
  */
 export interface Timeline {
