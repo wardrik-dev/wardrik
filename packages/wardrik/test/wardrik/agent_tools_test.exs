@@ -123,11 +123,13 @@ defmodule Wardrik.AgentToolsTest do
          call("t1", "agent_trigger_set", %{
            "agent" => "acme/worker",
            "trigger" => "daily",
-           "fields" => %{"every" => "1d", "prompt" => "Go."}
+           "every" => "1d",
+           "prompt" => "Go."
          }),
          call("t2", "self_trigger_set", %{
            "trigger" => "mine",
-           "fields" => %{"every" => "1h", "prompt" => "Me."}
+           "every" => "1h",
+           "prompt" => "Me."
          })
        ])},
       {"\"mine\"",
@@ -162,6 +164,52 @@ defmodule Wardrik.AgentToolsTest do
     until("wardrik.run.completed")
 
     assert %{"definition" => %{"triggers" => []}} =
+             run!(scope, "agent.definition", %{"agent" => "acme/worker"})
+  end
+
+  test "schedules a message to itself or another agent, once or every so often", %{scope: scope} do
+    at = DateTime.utc_now() |> DateTime.add(86_400) |> DateTime.truncate(:second)
+
+    local =
+      at |> DateTime.shift_zone!("Europe/Berlin", Tz.TimeZoneDatabase) |> DateTime.to_naive()
+
+    model([
+      {"Plan the week",
+       calling([
+         call("s1", "self_schedule", %{
+           "at" => NaiveDateTime.to_iso8601(local),
+           "timezone" => "Europe/Berlin",
+           "prompt" => "Post the launch."
+         }),
+         call("s2", "agent_schedule", %{
+           "agent" => "acme/worker",
+           "name" => "standup",
+           "every" => "0 9 * * 1-5",
+           "prompt" => "Sum up yesterday."
+         }),
+         call("s3", "self_schedule", %{"prompt" => "Nothing to say when."})
+       ])},
+      {"a trigger has every, at, or a webhook", answer("Planned.")}
+    ])
+
+    define(scope, "acme/worker", %{"model" => @model})
+
+    define(scope, "acme/front", %{
+      "model" => @model,
+      "tools" => ["agents/*", "self/*"],
+      "policy" => %{"allow" => ["self_schedule", "agent_schedule"]}
+    })
+
+    run!(scope, "agent.ask", %{"agent" => "acme/front", "content" => "Plan the week"})
+    until("wardrik.run.completed")
+
+    assert [{%Wardrik.Triggers.Trigger{name: "schedule-" <> _made_up, overlap: :queue}, ^at}] =
+             Wardrik.Triggers.list(
+               Wardrik.triggers(Wardrik.Instance.fetch!(scope.wardrik)),
+               "acme/front"
+             )
+
+    assert %{"definition" => %{"triggers" => [%{"name" => "standup", "every" => "0 9 * * 1-5"}]}} =
              run!(scope, "agent.definition", %{"agent" => "acme/worker"})
   end
 

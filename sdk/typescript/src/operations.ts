@@ -66,7 +66,7 @@ export const operations = {
     method: "GET",
     path: "/v1/events",
     path_params: [],
-    query: ["agents", "types", "after", "limit"],
+    query: ["agents", "types", "after", "before", "order", "limit"],
     body: false,
     stream: true,
   },
@@ -140,7 +140,7 @@ export const operations = {
     path: "/v1/agents/{agent}/events",
     conversation: "/v1/agents/{agent}/conversations/{conversation}/events",
     path_params: ["agent"],
-    query: ["types", "after", "limit"],
+    query: ["types", "after", "before", "order", "limit"],
     body: false,
     stream: true,
   },
@@ -359,6 +359,10 @@ export interface Inputs {
     types?: string[] | undefined;
     /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
     after?: string | undefined;
+    /** With order newest, return events before this cursor. Use the next value from the previous page. */
+    before?: string | undefined;
+    /** oldest returns the oldest events first, after the cursor; newest returns the newest first, before the cursor or from the end. Defaults to oldest. */
+    order?: "oldest" | "newest" | undefined;
     /** The maximum number to return. Defaults to 100. */
     limit?: number | undefined;
   };
@@ -413,6 +417,10 @@ export interface Inputs {
     types?: string[] | undefined;
     /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
     after?: string | undefined;
+    /** With order newest, return events before this cursor. Use the next value from the previous page. */
+    before?: string | undefined;
+    /** oldest returns the oldest events first, after the cursor; newest returns the newest first, before the cursor or from the end. Defaults to oldest. */
+    order?: "oldest" | "newest" | undefined;
     /** The maximum number to return. Defaults to 100. */
     limit?: number | undefined;
     /** The conversation to act on. The agent's own history where left out. */
@@ -694,6 +702,10 @@ export class AgentOperations {
       types?: string[] | undefined;
       /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
+      /** With order newest, return events before this cursor. Use the next value from the previous page. */
+      before?: string | undefined;
+      /** oldest returns the oldest events first, after the cursor; newest returns the newest first, before the cursor or from the end. Defaults to oldest. */
+      order?: "oldest" | "newest" | undefined;
       /** The maximum number to return. Defaults to 100. */
       limit?: number | undefined;
     } = {},
@@ -716,6 +728,10 @@ export class AgentOperations {
       types?: string[] | undefined;
       /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
+      /** With order newest, return events before this cursor. Use the next value from the previous page. */
+      before?: string | undefined;
+      /** oldest returns the oldest events first, after the cursor; newest returns the newest first, before the cursor or from the end. Defaults to oldest. */
+      order?: "oldest" | "newest" | undefined;
     } = {},
     options: StreamOptions = {},
   ): EventStream {
@@ -1067,7 +1083,7 @@ export class EventsOperations {
   /**
    * Read events for several agents.
    *
-   * A page returns the events after the cursor, or from the start without one. A stream returns the events after the cursor, or only new events without one. If older events were deleted past the cursor, a wardrik.events.dropped event comes first and reading continues from the oldest event kept.
+   * A page returns the events after the cursor, or from the start without one. With order newest, it returns the newest events first, before the cursor or from the end. A stream returns the events after the cursor, or only new events without one. If older events were deleted past the cursor, a wardrik.events.dropped event comes first and reading continues from the oldest event kept.
    */
   list(
     input: {
@@ -1077,6 +1093,10 @@ export class EventsOperations {
       types?: string[] | undefined;
       /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
+      /** With order newest, return events before this cursor. Use the next value from the previous page. */
+      before?: string | undefined;
+      /** oldest returns the oldest events first, after the cursor; newest returns the newest first, before the cursor or from the end. Defaults to oldest. */
+      order?: "oldest" | "newest" | undefined;
       /** The maximum number to return. Defaults to 100. */
       limit?: number | undefined;
     },
@@ -1097,6 +1117,10 @@ export class EventsOperations {
       types?: string[] | undefined;
       /** Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs. */
       after?: string | undefined;
+      /** With order newest, return events before this cursor. Use the next value from the previous page. */
+      before?: string | undefined;
+      /** oldest returns the oldest events first, after the cursor; newest returns the newest first, before the cursor or from the end. Defaults to oldest. */
+      order?: "oldest" | "newest" | undefined;
     },
     options: StreamOptions = {},
   ): EventStream {

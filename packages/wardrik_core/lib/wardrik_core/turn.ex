@@ -253,10 +253,22 @@ defmodule WardrikCore.Turn do
 
   defp streamed(_context, _chunk), do: :ok
 
-  defp prompt(%Context{instructions: nil, messages: messages}), do: messages
+  defp prompt(%Context{instructions: nil, messages: messages}), do: Enum.map(messages, &dated/1)
 
   defp prompt(%Context{instructions: instructions, messages: messages}),
-    do: [ReqLLM.Context.system(instructions) | messages]
+    do: [ReqLLM.Context.system(instructions) | Enum.map(messages, &dated/1)]
+
+  # The model knows the time only from each message's, so it can work out "tomorrow at 9".
+  defp dated(%ReqLLM.Message{role: :user, metadata: %{sent_at: %DateTime{} = sent}} = message),
+    do: %{
+      message
+      | content:
+          message.content ++ [ReqLLM.Message.ContentPart.text("(Sent #{sent_line(sent)}.)")]
+    }
+
+  defp dated(message), do: message
+
+  defp sent_line(sent), do: Calendar.strftime(sent, "%A %Y-%m-%d %H:%M UTC")
 
   defp generate(%Context{} = context), do: called(context, &dispatch(context, &1))
 

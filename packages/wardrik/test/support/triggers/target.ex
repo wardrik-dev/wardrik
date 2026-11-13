@@ -14,8 +14,9 @@ defmodule Wardrik.Triggers.Test.Target do
   end
 
   @impl true
-  def fired(%Fired{agent: agent, trigger: trigger, status: status}, %{test: test}) do
+  def fired(%Fired{agent: agent, trigger: trigger, status: status} = fired, %{test: test}) do
     send(test, {:fired, agent, trigger, status})
+    if fired.last, do: send(test, {:last, agent, trigger})
     :ok
   end
 

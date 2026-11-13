@@ -56,6 +56,49 @@ defmodule Wardrik.OperationsTest do
                run!(scope, "agent.runs", %{"agent" => "acme/triage"})
     end
 
+    test "reads its newest events first, and pages back before a cursor", %{
+      wardrik: wardrik,
+      scope: scope
+    } do
+      answers([answer("One."), answer("Two.")])
+      start_agent(wardrik, "acme/triage")
+
+      for content <- ["Hi", "Again"] do
+        run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => content})
+        until("wardrik.run.completed")
+      end
+
+      %{"events" => all} = run!(scope, "agent.events", %{"agent" => "acme/triage"})
+      newest = %{"agent" => "acme/triage", "order" => "newest", "limit" => 3}
+
+      pages =
+        Stream.unfold(run!(scope, "agent.events", newest), fn
+          %{"events" => []} ->
+            nil
+
+          %{"events" => events, "next" => before} ->
+            {events, run!(scope, "agent.events", Map.put(newest, "before", before))}
+        end)
+        |> Enum.to_list()
+
+      assert List.flatten(pages) == Enum.reverse(all)
+      assert Enum.all?(pages, &(Enum.count_until(&1, 4) <= 3))
+
+      assert %{"events" => [latest]} =
+               run!(scope, "events.list", %{
+                 "agents" => ["acme/triage"],
+                 "order" => "newest",
+                 "limit" => 1
+               })
+
+      assert latest == List.last(all)
+
+      assert refused(scope, "agent.events", Map.put(newest, "after", "x")) == :invalid_request
+
+      assert refused(scope, "agent.events", %{"agent" => "acme/triage", "before" => "x"}) ==
+               :invalid_request
+    end
+
     test "takes a message as parts", %{wardrik: wardrik, scope: scope} do
       answers([answer("Hello.")])
       start_agent(wardrik, "acme/triage")

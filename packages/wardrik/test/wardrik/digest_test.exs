@@ -46,7 +46,9 @@ defmodule Wardrik.DigestTest do
     :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
     test = self()
 
-    stub(ReqLLM, :stream_text, fn _model, [%{content: [%{text: system}]} | _] = messages, _opts ->
+    stub(ReqLLM, :stream_text, fn _model,
+                                  [%{content: [%{text: system} | _]} | _] = messages,
+                                  _opts ->
       if String.starts_with?(system, "Write a digest") do
         send(test, {:digesting, messages})
         {:ok, used(answer("Asked about tea."))}
@@ -125,7 +127,7 @@ defmodule Wardrik.DigestTest do
     assert [%{text: "Your digest of this conversation so far:\n\nAsked about tea."}] =
              so_far.content
 
-    assert [%{text: "And milk?"}] = asked.content
+    assert [%{text: "And milk?"} | _sent] = asked.content
 
     run!(scope, "agent.spawn", %{"agent" => @agent})
     asleep(cx)
@@ -136,7 +138,7 @@ defmodule Wardrik.DigestTest do
        %{scope: scope} = cx do
     define(cx, %{"tools" => ["files"]})
 
-    stub(ReqLLM, :stream_text, fn _model, [%{content: [%{text: system}]} | _], _opts ->
+    stub(ReqLLM, :stream_text, fn _model, [%{content: [%{text: system} | _]} | _], _opts ->
       if String.starts_with?(system, "Write a digest"),
         do: {:error, :rate_limited},
         else: {:ok, answer("Tea.")}

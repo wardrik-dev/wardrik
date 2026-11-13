@@ -1,6 +1,8 @@
 defmodule Wardrik.Operations.Triggers do
   @moduledoc false
 
+  require Logger
+
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
@@ -8,7 +10,10 @@ defmodule Wardrik.Operations.Triggers do
   alias Wardrik.Scope
   alias Wardrik.Triggers.Trigger
 
-  @doc "Sets one of the agent's triggers, and saves it in the agent's definition."
+  @doc """
+  Sets one of the agent's triggers, and saves it in the agent's definition. Returns the trigger
+  with its next run, if it has one, as `"next_at"` in its time zone.
+  """
   @spec set(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def set(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "trigger" => name} = input) do
     fields = input |> Map.drop(["agent", "trigger"]) |> Map.put("name", name)
@@ -23,7 +28,7 @@ defmodule Wardrik.Operations.Triggers do
         data: %{"trigger" => %{"name" => name}}
       )
 
-      {:ok, Trigger.encode(trigger)}
+      {:ok, next(wardrik, id, trigger)}
     end
   end
 
@@ -41,6 +46,22 @@ defmodule Wardrik.Operations.Triggers do
       )
 
       {:ok, Trigger.encode(trigger)}
+    end
+  end
+
+  @doc """
+  Removes a trigger that won't run again from the agent and its definition. A failure is logged:
+  the trigger stays listed, and never runs.
+  """
+  @spec ended(Wardrik.t(), String.t(), String.t()) :: :ok
+  def ended(wardrik, id, name) do
+    with {:ok, definition} <- Running.definition(wardrik, id),
+         :ok <- removed(wardrik, id, name),
+         :ok <- saved(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do
+      :ok
+    else
+      {:error, error} ->
+        Logger.warning("#{id}'s trigger #{name} ran, and stays listed: #{error.message}")
     end
   end
 
@@ -66,6 +87,26 @@ defmodule Wardrik.Operations.Triggers do
       {:error, reason} ->
         {:error,
          Error.new(:unavailable, "#{id} can't be asked now (#{reason}); send it again later.")}
+    end
+  end
+
+  # The next run reads in the trigger's zone, so whoever set it sees the time they meant.
+  defp next(wardrik, id, trigger) do
+    encoded = Trigger.encode(trigger)
+
+    case Enum.find(Wardrik.Triggers.list(Wardrik.triggers(wardrik), id), fn {listed, _next_at} ->
+           listed.name == trigger.name
+         end) do
+      {_listed, %DateTime{} = next_at} ->
+        local =
+          next_at
+          |> DateTime.truncate(:second)
+          |> DateTime.shift_zone!(trigger.timezone, Tz.TimeZoneDatabase)
+
+        Map.put(encoded, "next_at", DateTime.to_iso8601(local))
+
+      _unscheduled ->
+        encoded
     end
   end
 

@@ -45,6 +45,38 @@ defmodule WardrikCore.ToolTest do
     assert true == Tool.annotation(tool, :idempotent)
   end
 
+  test "offers the model a schema without patterns, and still checks calls against them" do
+    agent = %{"type" => "string", "pattern" => "^\\P{Cc}+$"}
+
+    schema = %{
+      "type" => "object",
+      "properties" => %{
+        "agent" => agent,
+        "pattern" => %{"type" => "string"},
+        "names" => %{"type" => "array", "items" => %{"type" => "string", "pattern" => "^a"}}
+      },
+      "required" => ["agent"]
+    }
+
+    tool =
+      Tool.new!(
+        name: "find",
+        description: "find",
+        schema: schema,
+        run: fn args, _ -> {:ok, args} end
+      )
+
+    assert %{"agent" => %{"type" => "string"}, "pattern" => _kept, "names" => names} =
+             tool.req_llm.parameter_schema["properties"]
+
+    assert names["items"] == %{"type" => "string"}
+    assert tool.schema["properties"]["agent"] == agent
+
+    call = fn args -> %WardrikCore.ToolCall{id: "1", name: "find", arguments: args} end
+    assert {:ok, _args} = Tool.call([tool], call.(%{"agent" => "acme/a"}), %WardrikCore.Context{})
+    assert {:error, _why} = Tool.call([tool], call.(%{"agent" => "a\nb"}), %WardrikCore.Context{})
+  end
+
   test "rejects options it doesn't know" do
     assert_raise KeyError, fn ->
       Tool.new!(name: "echo", description: "echo", run: fn _, _ -> {:ok, ""} end, meta: %{})

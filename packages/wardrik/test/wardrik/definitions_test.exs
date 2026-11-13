@@ -157,6 +157,37 @@ defmodule Wardrik.DefinitionsTest do
       assert refused(scope, "agent.definition", %{"agent" => "acme/triage"}) == :not_found
     end
 
+    test "says everything wrong with a definition at once", %{scope: scope} do
+      assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
+               Wardrik.run(scope, "agent.define", %{
+                 "agent" => "acme/triage",
+                 "model" => "nope:x",
+                 "tools" => ["nope", "nada"],
+                 "channels" => ["slack"],
+                 "triggers" => [%{"every" => "often", "prompt" => "Go."}]
+               })
+
+      assert message =~ "nope:x isn't a model: there's no provider nope."
+      assert message =~ "There's no tool nope here. There's no tool nada here."
+      assert message =~ "There's no channel slack here."
+      assert message =~ "often is neither a cron expression nor an interval"
+    end
+
+    test "takes a model the catalog doesn't list, from a provider it knows", %{scope: scope} do
+      assert %{"model" => "anthropic:claude-tuned-1"} =
+               define(scope, "acme/triage", %{"model" => "anthropic:claude-tuned-1"})
+    end
+
+    test "lists each agent with its description and model", %{scope: scope} do
+      define(scope, "acme/triage", %{"model" => @model, "description" => "Sorts the queue."})
+
+      assert [%{"id" => "acme/triage", "description" => "Sorts the queue.", "model" => @model}] =
+               run!(scope, "agents.list", %{})["agents"]
+
+      assert %{"description" => "Sorts the queue.", "model" => @model} =
+               run!(scope, "agent.read", %{"agent" => "acme/triage"})
+    end
+
     @tag mcp: [{"down", [transport: {:stdio, command: "no-such-mcp-server"}]}]
     test "gives every tool and server for *, and says which offer nothing yet", %{scope: scope} do
       answers([answer("Hi.")])
@@ -806,6 +837,39 @@ defmodule Wardrik.DefinitionsTest do
                       %{"type" => "wardrik.trigger.fired", "data" => %{"status" => ^status}}}
     end
 
+    test "sets a one-off trigger, says when it runs in its zone, and drops it once it has run",
+         %{wardrik: wardrik, scope: scope} do
+      answers([answer("Posted.")])
+      define(scope, "acme/digest", %{"model" => @model})
+
+      at = DateTime.utc_now() |> DateTime.add(86_400) |> DateTime.truncate(:second)
+      local = DateTime.shift_zone!(at, "America/Los_Angeles", Tz.TimeZoneDatabase)
+
+      assert %{"name" => "launch", "next_at" => next_at} =
+               run!(scope, "agent.trigger_set", %{
+                 "agent" => "acme/digest",
+                 "trigger" => "launch",
+                 "at" => local |> DateTime.to_naive() |> NaiveDateTime.to_iso8601(),
+                 "timezone" => "America/Los_Angeles",
+                 "prompt" => "Post it."
+               })
+
+      assert next_at == DateTime.to_iso8601(local)
+
+      trigger_due(wardrik, "acme/digest", "launch")
+      fired("asked")
+
+      assert_receive {:prompted, messages}
+
+      assert %{role: :user, content: [%{text: "Post it."}, %{text: "(Sent " <> _sent}]} =
+               List.last(messages)
+
+      assert Wardrik.Triggers.list(Wardrik.triggers(wardrik), "acme/digest") == []
+
+      assert {:ok, definition} = Wardrik.Definitions.fetch(wardrik, "acme/digest")
+      assert Map.get(definition, "triggers", []) == []
+    end
+
     test "asks an agent with files to follow its prompt_file", %{wardrik: wardrik, scope: scope} do
       answers([answer("Done.")])
 
@@ -821,7 +885,7 @@ defmodule Wardrik.DefinitionsTest do
 
       assert %{"data" => %{"status" => "asked"}} = until("wardrik.trigger.fired")
       assert_receive {:prompted, messages}
-      assert %{role: :user, content: [%{text: text}]} = List.last(messages)
+      assert %{role: :user, content: [%{text: text} | _]} = List.last(messages)
       assert text =~ "Read HEARTBEAT.md"
       until("wardrik.run.completed")
 

@@ -213,6 +213,25 @@ defmodule WardrikCore.AgentTest do
     assert_receive {[:message, :queued], %{agent_id: ^id, message: %{metadata: %{id: "mine"}}}}
   end
 
+  test "tells the model when each message was sent, keeping the message as it was asked" do
+    test = self()
+
+    ReqLLM
+    |> stub(:stream_text, fn _, messages, _ ->
+      send(test, {:prompted, messages})
+      {:ok, answer("done")}
+    end)
+
+    {id, agent} = start_agent()
+    WardrikCore.ask(agent, "Post it on Tuesday.", %{sent_at: ~U[2026-11-12 23:40:00Z]})
+    assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :ok}}
+
+    assert_receive {:prompted, [%{content: [%{text: "Post it on Tuesday."}, %{text: sent}]}]}
+    assert sent == "(Sent Thursday 2026-11-12 23:40 UTC.)"
+
+    assert [%{content: [%{text: "Post it on Tuesday."}]} | _] = WardrikCore.history(agent)
+  end
+
   describe "instructions" do
     test "are the system prompt of every model call, and never part of the conversation" do
       ReqLLM

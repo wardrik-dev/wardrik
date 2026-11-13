@@ -3,6 +3,7 @@ defmodule Wardrik.Trigger do
   Asks an agent something without anyone typing. A trigger fires:
 
     * on a schedule: `every`, a cron expression or interval, in `timezone`.
+    * once: `at`, a time in `timezone`. It's removed after it runs.
     * when one of its `feed` URLs has new entries.
     * when a service sends its `webhook` a request.
   """
@@ -12,6 +13,7 @@ defmodule Wardrik.Trigger do
     fields: [
       name: "name",
       every: "every",
+      at: "at",
       timezone: "timezone",
       prompt: "prompt",
       prompt_file: "prompt_file",
@@ -19,7 +21,8 @@ defmodule Wardrik.Trigger do
       missed: {"missed", [:run_once, :skip]},
       jitter: "jitter",
       feed: "feed",
-      webhook: {"webhook", Wardrik.Trigger.Webhook}
+      webhook: {"webhook", Wardrik.Trigger.Webhook},
+      next_at: {"next_at", :datetime}
     ]
 end
 

@@ -81,11 +81,11 @@ curl $WARDRIK_URL/v1/agents -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ```json
-{"agents": [{"id": "agt_01JF8X5RQ2", "status": "parked", "pending": 0, "node": "wardrik@box1"}]}
+{"agents": [{"id": "agt_01JF8X5RQ2", "description": "Watches the incident queue.", "model": "anthropic:claude-sonnet-5", "status": "parked", "pending": 0, "node": "wardrik@box1"}]}
 ```
 
-Each agent has `id`, `conversation`, `status`, `pending`, `node`, `next_run` and `spent_today`, as
-[Read an agent](#read-an-agent) describes them.
+Each agent has `id`, `conversation`, `description`, `model`, `status`, `pending`, `node`,
+`next_run` and `spent_today`, as [Read an agent](#read-an-agent) describes them.
 
 ### Read an agent
 
@@ -115,6 +115,8 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WARDRIK_TO
 
 | Field | Type | Description |
 | --- | --- | --- |
+| `description` | string | what the agent is for, from its definition |
+| `model` | string | the model it runs on, from its definition or the deployment default |
 | `status` | string | `idle`, `running`, `parked` (pending approval), `asleep` or `unreadable` |
 | `problem` | string | why its saved state can't be read, while `unreadable` |
 | `node` | string or null | the node it runs on; `null` while asleep |
@@ -140,6 +142,10 @@ curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WAR
 ```
 
 Returns the agent, as [Read an agent](#read-an-agent) does. An unsupported key returns `501`.
+
+An invalid definition returns `400`, naming every problem at once: unknown tools, channels and
+policies, unreadable triggers, and a model whose provider isn't known. A model the catalog
+doesn't list is taken, as a fine-tune or one behind a gateway may not be.
 
 If the agent or one of its conversations has a saved state this release can't read, defining it
 starts that state over. The answer's `reset` lists each one and why. Until then, messages to it
@@ -478,6 +484,8 @@ Returns agents' [events](/reference/events/), as a JSON page or a server-sent ev
 | `agents` | string, repeated | required: the agent IDs to read |
 | `types` | string, repeated | event types, like `wardrik.run.completed`; all unless set |
 | `after` | string | the cursor to read after: a page's `next`, a streamed event's `id`, or a snapshot's `cursor` |
+| `order` | string | `oldest` (default) or `newest` first |
+| `before` | string | with `order=newest`, the cursor to read before: a page's `next` |
 | `limit` | integer | events per page; 100 unless set |
 
 ```sh
@@ -507,6 +515,15 @@ data: {"specversion":"1.0","type":"wardrik.run.completed","agent":"agt_01JF8X5RQ
 - Deltas have no `id`.
 - An idle stream sends a comment every 15 seconds.
 - If the log was trimmed past your cursor, you receive `wardrik.events.dropped`, regardless of `types`.
+
+The latest events, newest first, and the page before them:
+
+```sh
+curl "$WARDRIK_URL/v1/events?agents=agt_01JF8X5RQ2&order=newest&limit=20" \
+  -H "Authorization: Bearer $WARDRIK_TOKEN"
+curl "$WARDRIK_URL/v1/events?agents=agt_01JF8X5RQ2&order=newest&limit=20&before=$NEXT" \
+  -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
 
 `GET /v1/agents/{agent}/events` reads one agent's log the same way.
 
@@ -576,8 +593,9 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/runs -H "Authorization: Bearer $WARDR
 
 Sets or changes one trigger. Returns `404` if the agent has no definition.
 
-The body has the keys of a [trigger](/reference/agent-files/#triggers): `every`, `timezone`, `prompt`,
-`prompt_file`, `overlap`, `missed`, `jitter`, `feed`, `webhook`.
+The body has the keys of a [trigger](/reference/agent-files/#triggers): `every`, `at`, `timezone`,
+`prompt`, `prompt_file`, `overlap`, `missed`, `jitter`, `feed`, `webhook`. It returns the trigger,
+with `next_at`, its next run in its time zone, if it has one.
 
 ```sh
 curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/triggers/sweep -H "Authorization: Bearer $WARDRIK_TOKEN" \
@@ -585,10 +603,11 @@ curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/triggers/sweep -H "Authorizati
 ```
 
 ```json
-{"every": "*/30 * * * *", "prompt": "Check the queue.", "overlap": "skip"}
+{"name": "sweep", "every": "*/30 * * * *", "prompt": "Check the queue.", "overlap": "skip", "missed": "run_once", "next_at": "2026-11-12T23:30:00Z"}
 ```
 
-If `every` and `timezone` are unchanged, the trigger keeps its next run time.
+- If `every`, `at` and `timezone` are unchanged, the trigger keeps its next run time.
+- An `at` that has passed returns `400`.
 
 ### Remove a trigger
 

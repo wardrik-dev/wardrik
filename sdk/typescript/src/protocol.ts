@@ -274,6 +274,14 @@ export interface AgentSummary {
   id: AgentId;
   conversation?: ConversationId;
   /**
+   * What the agent is for, from its definition.
+   */
+  description?: string;
+  /**
+   * The model it runs on, from its definition or the deployment's default.
+   */
+  model?: string;
+  /**
    * Whether it waits for a message, answers one, waits on a person, sleeps until something asks it, or can't start because its saved state can't be read.
    */
   status: "idle" | "running" | "parked" | "asleep" | "unreadable";
@@ -671,6 +679,14 @@ export interface AgentSnapshot {
   };
   conversation?: ConversationId;
   /**
+   * What the agent is for, from its definition.
+   */
+  description?: string;
+  /**
+   * The model it runs on, from its definition or the deployment's default.
+   */
+  model?: string;
+  /**
    * Whether it waits for a message, answers one, waits on a person, sleeps until something asks it, or can't start because its saved state can't be read.
    */
   status: "idle" | "running" | "parked" | "asleep" | "unreadable";
@@ -923,7 +939,7 @@ export interface Events {
    */
   events: WardrikEvent[];
   /**
-   * The cursor after these events, to read on from.
+   * The cursor after these events, to read on from as after; with order newest, the cursor before them, to read further back as before.
    */
   next: string;
 }
@@ -1386,7 +1402,7 @@ export interface Timeline {
   cursor: string;
 }
 /**
- * A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. Add timezone for cron expressions outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for webhooks), missed run_once and jitter 0.
+ * A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. A one-off trigger has at, runs once, and is then removed. Add timezone for cron expressions and times outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for at and webhooks), missed run_once and jitter 0.
  */
 export interface TriggerDefinition {
   /**
@@ -1398,9 +1414,17 @@ export interface TriggerDefinition {
    */
   every?: string;
   /**
-   * The IANA time zone for a cron expression in every, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval.
+   * Use instead of every. A single time to run once, as 2026-11-17T09:00, read in timezone, or with an offset, as 2026-11-17T17:00:00Z, and no timezone. The trigger is removed after it runs. Setting a time that has passed is refused.
+   */
+  at?: string;
+  /**
+   * The IANA time zone for a cron expression in every, or for at, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval.
    */
   timezone?: string;
+  /**
+   * When the trigger runs next, in its time zone. agent.trigger_set returns it. A webhook, or an at that has run, has none.
+   */
+  next_at?: string;
   /**
    * The prompt sent to the agent on each run.
    */

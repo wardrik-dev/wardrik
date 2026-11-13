@@ -31,6 +31,7 @@ defmodule Wardrik.Operations.Agent do
          "interrupts" => Snapshot.interrupts(activity),
          "cursor" => Wardrik.EventLog.head(events, [key])
        }
+       |> Map.merge(Snapshot.described(scope.wardrik, agent))
        |> Map.merge(Snapshot.standing(scope.wardrik, key, activity))
        |> Snapshot.conversation(conversation)}
     end
@@ -125,9 +126,8 @@ defmodule Wardrik.Operations.Agent do
   @doc "Returns a page of the agent's log."
   @spec events(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def events(scope, input) do
-    opts = [after: input["after"], limit: input["limit"]]
-
-    with {:ok, page} <- Snapshot.page(scope, [Running.key(input)], opts) do
+    with {:ok, opts} <- Snapshot.paging(input),
+         {:ok, page} <- Snapshot.page(scope, [Running.key(input)], opts) do
       events = Enum.filter(page.events, &Snapshot.typed?(&1, input["types"]))
       {:ok, %{"events" => events, "next" => page.next}}
     end

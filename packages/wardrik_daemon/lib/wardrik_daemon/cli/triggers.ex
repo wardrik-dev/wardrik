@@ -7,7 +7,7 @@ defmodule WardrikDaemon.CLI.Triggers do
   alias WardrikDaemon.CLI.Table
 
   @group "Triggers"
-  @fields [:every, :timezone, :prompt, :prompt_file, :feed, :overlap]
+  @fields [:every, :at, :timezone, :prompt, :prompt_file, :feed, :overlap]
 
   @doc "Returns the commands on triggers."
   @spec commands() :: [Command.t()]
@@ -30,7 +30,7 @@ defmodule WardrikDaemon.CLI.Triggers do
         summary: "set one of an agent's triggers",
         details: [
           "--every takes a cron expression, as \"0 9 * * 1-5\", or an interval, as 30m, read in",
-          "--timezone. --prompt is what it asks, or --prompt-file a file of the agent's to follow.",
+          "--timezone. --at runs it once, as 2026-11-17T09:00, and removes it. --prompt is what it asks, or --prompt-file a file of the agent's to follow.",
           "--feed watches an RSS or Atom feed. --overlap is skip, queue or settle.",
           "An agent a file declares keeps its file's triggers on the next reload."
         ],
@@ -73,6 +73,8 @@ defmodule WardrikDaemon.CLI.Triggers do
 
   defp runs(%{"every" => every, "timezone" => zone}), do: "every #{every} (#{zone})"
   defp runs(%{"every" => every}), do: "every #{every}"
+  defp runs(%{"at" => at, "timezone" => zone}), do: "once at #{at} (#{zone})"
+  defp runs(%{"at" => at}), do: "once at #{at}"
   defp runs(%{"webhook" => _webhook}), do: "on a webhook"
   defp runs(_trigger), do: ""
 
@@ -91,8 +93,11 @@ defmodule WardrikDaemon.CLI.Triggers do
     with {:ok, id} <- Context.agent(cx, agent),
          input = Map.merge(fields, %{"agent" => id, "trigger" => name}),
          {:ok, answer} <- Context.call(cx, "agent.trigger_set", input),
-         do: Context.done(cx, answer, "Set #{name}.")
+         do: Context.done(cx, answer, "Set #{name}." <> next(answer))
   end
+
+  defp next(%{"next_at" => next_at}), do: " It runs next at #{next_at}."
+  defp next(_answer), do: ""
 
   defp removed([agent, name], _flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),

@@ -17,8 +17,9 @@ defmodule Wardrik.Triggers.Agents do
   end
 
   @impl Wardrik.Triggers.Target
-  def fired(%Fired{agent: agent_id, trigger: trigger, status: status}, wardrik) do
+  def fired(%Fired{agent: agent_id, trigger: trigger, status: status} = fired, wardrik) do
     data = %{"trigger" => %{"name" => trigger}, "status" => Atom.to_string(status)}
+    if fired.last, do: Wardrik.Operations.Triggers.ended(wardrik, agent_id, trigger)
 
     Wardrik.EventLog.append(
       Wardrik.events(wardrik),

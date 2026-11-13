@@ -17,6 +17,14 @@
     "conversation": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/conversation_id"
     },
+    "description": {
+      "type": "string",
+      "description": "What the agent is for, from its definition."
+    },
+    "model": {
+      "type": "string",
+      "description": "The model it runs on, from its definition or the deployment's default."
+    },
     "status": {
       "type": "string",
       "enum": [

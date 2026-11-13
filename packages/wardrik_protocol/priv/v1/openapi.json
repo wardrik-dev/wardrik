@@ -154,7 +154,7 @@
       "get": {
         "operationId": "events.list",
         "summary": "Read events for several agents",
-        "description": "A page returns the events after the cursor, or from the start without one. A stream returns the events after the cursor, or only new events without one. If older events were deleted past the cursor, a wardrik.events.dropped event comes first and reading continues from the oldest event kept.",
+        "description": "A page returns the events after the cursor, or from the start without one. With order newest, it returns the newest events first, before the cursor or from the end. A stream returns the events after the cursor, or only new events without one. If older events were deleted past the cursor, a wardrik.events.dropped event comes first and reading continues from the oldest event kept.",
         "tags": [
           "Agents"
         ],
@@ -170,6 +170,12 @@
           },
           {
             "$ref": "#/components/parameters/after"
+          },
+          {
+            "$ref": "#/components/parameters/before"
+          },
+          {
+            "$ref": "#/components/parameters/order"
           },
           {
             "$ref": "#/components/parameters/limit"
@@ -570,6 +576,12 @@
           },
           {
             "$ref": "#/components/parameters/after"
+          },
+          {
+            "$ref": "#/components/parameters/before"
+          },
+          {
+            "$ref": "#/components/parameters/order"
           },
           {
             "$ref": "#/components/parameters/limit"
@@ -2624,6 +2636,28 @@
         "description": "Return events after this cursor. Use the next value from the previous page, an event ID from a stream, or the cursor from agent.read, agent.timeline or agent.runs.",
         "schema": {
           "type": "string"
+        }
+      },
+      "before": {
+        "name": "before",
+        "in": "query",
+        "required": false,
+        "description": "With order newest, return events before this cursor. Use the next value from the previous page.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "order": {
+        "name": "order",
+        "in": "query",
+        "required": false,
+        "description": "oldest returns the oldest events first, after the cursor; newest returns the newest first, before the cursor or from the end. Defaults to oldest.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "oldest",
+            "newest"
+          ]
         }
       },
       "limit": {

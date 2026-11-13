@@ -69,8 +69,26 @@ defmodule Wardrik.Operations.Snapshot do
       "next_run" => next_run,
       "spent_today" => spent
     }
+    |> Map.merge(described(wardrik, agent))
     |> Map.merge(standing(wardrik, key, activity))
     |> conversation(conversation)
+  end
+
+  @doc """
+  Returns the agent's `"description"` and `"model"`, from its definition, where it has them. The
+  model falls back to the deployment's.
+  """
+  @spec described(Wardrik.t(), String.t()) :: map()
+  def described(wardrik, agent) do
+    definition =
+      case Wardrik.Definitions.fetch(wardrik, agent) do
+        {:ok, definition} -> Map.merge(wardrik.defaults, definition)
+        :error -> wardrik.defaults
+      end
+
+    definition
+    |> Map.take(["description", "model"])
+    |> Map.reject(fn {_key, value} -> is_nil(value) end)
   end
 
   @doc "Puts `conversation` in `output`, where it's one."
@@ -144,6 +162,23 @@ defmodule Wardrik.Operations.Snapshot do
     |> Wardrik.EventLog.page(resources, Enum.reject(opts, &match?({_key, nil}, &1)))
     |> cursor_read()
   end
+
+  @doc """
+  Returns the paging options in `input`: `"order"`, with `"after"` oldest first or `"before"`
+  newest first, and `"limit"`.
+  """
+  @spec paging(map()) :: {:ok, keyword()} | {:error, Error.t()}
+  def paging(%{"order" => "newest", "after" => _after}),
+    do:
+      {:error, Error.new(:invalid_request, "Newest first reads before a cursor, not after one.")}
+
+  def paging(%{"order" => "newest"} = input),
+    do: {:ok, [order: :newest, before: input["before"], limit: input["limit"]]}
+
+  def paging(%{"before" => _before}),
+    do: {:error, Error.new(:invalid_request, "before reads newest first; set order to newest.")}
+
+  def paging(input), do: {:ok, [after: input["after"], limit: input["limit"]]}
 
   @doc "Streams the given logs."
   @spec stream(Scope.t(), Wardrik.EventLog.resources(), keyword()) ::
