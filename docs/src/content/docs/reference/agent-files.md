@@ -70,8 +70,8 @@ tools: [web_search, files, github/*, agents/*]
 | `NAME/*` | every tool of the MCP server `NAME` |
 | `servers/*` | every tool of every MCP server its owner added |
 | `workers/*` | every tool that connected [tool workers](/build/tool-workers/) serve to it |
-| `self/*` | `self_read`, `self_definition_read`, `self_trigger_set`, `self_trigger_remove` |
-| `agents/*` | `agents_list`, `agent_read`, `agent_definition_read`, `agent_ask`, `agent_define`, `agent_trigger_set`, `agent_trigger_remove` |
+| `self/*` | `self_read`, `self_definition_read`, `self_schedule`, `self_trigger_set`, `self_trigger_remove` |
+| `agents/*` | `agents_list`, `agent_read`, `agent_definition_read`, `agent_ask`, `agent_define`, `agent_schedule`, `agent_trigger_set`, `agent_trigger_remove` |
 | `ops/read` | every operation that only reads, as a tool named after it: `agent_runs`, `agent_timeline`, `agent_calls`, `agent_resolved`, `agent_runtime`, `interrupts_list`, `audit_list`, `deployment_nodes`, `deployment_runtime` and the rest |
 | `ops/ID` | one operation, such as `ops/agent.runs` or `ops/agent.stop`. Approving and denying calls are never tools |
 | `settings` | `settings_list`, `server_add`, `notify_target_add`, `oauth_app_add`, `secret_request` |

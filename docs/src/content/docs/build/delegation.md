@@ -21,7 +21,8 @@ Send each request to the agent that handles it. Create another agent when none d
 | `agent_ask` | sends an agent a message; the reply arrives later |
 | `agent_create` | creates an agent by name |
 | `agent_define` | replaces an agent's definition |
-| `agent_trigger_set`, `agent_trigger_remove` | sets or removes an agent's triggers, such as a one-off `at` |
+| `agent_schedule` | schedules an agent a message, once or every so often |
+| `agent_trigger_set`, `agent_trigger_remove` | sets or removes an agent's triggers: schedules, feeds and webhooks |
 
 - Each tool takes an agent ID from `agents_list`.
 - Reads run without approval. Changes need approval unless the policy allows them:

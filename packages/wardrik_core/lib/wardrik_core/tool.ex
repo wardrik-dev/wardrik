@@ -68,7 +68,8 @@ defmodule WardrikCore.Tool do
     * `:description` - required. What the model reads to decide when to call it.
     * `:run` - required. A function of the arguments and the context.
     * `:schema` - the arguments, as a NimbleOptions keyword list or a JSON Schema map. `[]` by
-      default.
+      default. The model is given a map without its `pattern`s, since providers read regular
+      expressions differently or refuse them. Calls are still checked against all of it.
     * `:annotations` - see above.
   """
   @spec new!(keyword()) :: t()
@@ -80,12 +81,32 @@ defmodule WardrikCore.Tool do
       ReqLLM.Tool.new!(
         name: tool.name,
         description: tool.description,
-        parameter_schema: tool.schema,
+        parameter_schema: offered(tool.schema),
         callback: fn _args -> {:error, :run_by_wardrik_core} end
       )
 
     %{tool | req_llm: req_llm}
   end
+
+  defp offered(schema) when is_map(schema) do
+    schema
+    |> Map.delete("pattern")
+    |> Map.new(fn
+      {key, %{} = schemas} when key in ["properties", "$defs", "definitions"] ->
+        {key, Map.new(schemas, fn {name, schema} -> {name, offered(schema)} end)}
+
+      {key, schemas} when key in ["oneOf", "anyOf", "allOf"] and is_list(schemas) ->
+        {key, Enum.map(schemas, &offered/1)}
+
+      {key, %{} = schema} when key in ["items", "additionalProperties", "not"] ->
+        {key, offered(schema)}
+
+      other ->
+        other
+    end)
+  end
+
+  defp offered(schema), do: schema
 
   @doc "Adds `annotations`, such as `read_only: true`. Replaces any with the same key."
   @spec annotate(t(), keyword() | map()) :: t()

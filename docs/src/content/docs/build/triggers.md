@@ -66,7 +66,7 @@ triggers:
 - If the agent is busy, the run waits for its turn. A run missed while the daemon was down runs
   when it starts. Set `missed: skip` to drop it.
 - Setting a time that has passed is refused.
-- With `self/*`, an agent can schedule its own follow-ups. Each message tells the model when it was
+- With `self/*`, an agent can schedule its own follow-ups with `self_schedule`. Each message tells the model when it was
   sent, so it can work out a time like "Tuesday at 9".
 
 ## When a feed has new entries
@@ -131,7 +131,8 @@ curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json
 
 - `wardrik reload` sets a file-defined agent's triggers to those in the file, and removes the rest.
 - With `self/*` in its tools, an agent can set its own triggers. With `agents/*`, it can set
-  another agent's. Each change needs approval.
+  another agent's. `self_schedule` and `agent_schedule` set a schedule; `*_trigger_set` sets any
+  trigger. Each change needs approval unless the policy allows the tool by name.
 - `prompt_file: HEARTBEAT.md` reads the prompt from the agent's [files](/concepts/files-and-memory/),
   so the agent can edit it.
 - `notify: {to: [ops], on: [finished]}` sends each run's reply to a target. See
