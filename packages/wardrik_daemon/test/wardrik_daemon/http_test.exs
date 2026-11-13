@@ -60,7 +60,7 @@ defmodule WardrikDaemon.HTTPTest do
     assert {:ok, %{"secrets" => _secrets}} =
              Client.run(admin, "secrets.list", %{"owner" => "payments"})
 
-    assert {:error, "invalid_request", _message} =
+    assert {:error, "not_found", _message} =
              Client.run(admin, "secrets.list", %{"owner" => "payments/x/y"})
 
     response = Req.get!(context.url <> "/v1/owners/payments/nothing", retry: false)

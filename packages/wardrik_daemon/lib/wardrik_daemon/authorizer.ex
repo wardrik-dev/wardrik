@@ -38,8 +38,17 @@ defmodule WardrikDaemon.Authorizer do
   @member ~w(ask read events)
   @deciding ~w(decide approve deny)
 
-  @typedoc "The roles and bindings `config.yaml` declares, and where agents' records are kept."
-  @type opts() :: %{access: Access.t(), store: Wardrik.Store.t()}
+  @held [:secret, :mcp_server, :notify_target, :provider, :ceiling, :agents]
+
+  @typedoc """
+  The roles and bindings `config.yaml` declares, where agents' records are kept, and the orgs
+  the daemon runs.
+  """
+  @type opts() :: %{
+          required(:access) => Access.t(),
+          required(:store) => Wardrik.Store.t(),
+          optional(:orgs) => map()
+        }
 
   @impl Wardrik.Authorizer
   @spec authorize(Request.t(), opts()) :: :ok | {:error, :forbidden | :not_found}
@@ -50,7 +59,22 @@ defmodule WardrikDaemon.Authorizer do
     end
   end
 
+  # What an owner holds is only found for an owner the daemon knows: the deployment, an org it
+  # runs, or a person in one.
+  def authorize(%Request{resource: {kind, owner}} = request, opts) when kind in @held do
+    if known?(owner, opts),
+      do: decided(request, Map.put(opts, :record, nil)),
+      else: {:error, :not_found}
+  end
+
   def authorize(%Request{} = request, opts), do: decided(request, Map.put(opts, :record, nil))
+
+  defp known?("deployment", _opts), do: true
+
+  defp known?(owner, %{orgs: orgs}),
+    do: Owners.valid?(owner) and WardrikDaemon.Orgs.known(Owners.org(owner), orgs) == :ok
+
+  defp known?(owner, _opts), do: Owners.valid?(owner)
 
   defp decided(%Request{actor: {:channel, _name}} = request, opts), do: member(request, opts)
 

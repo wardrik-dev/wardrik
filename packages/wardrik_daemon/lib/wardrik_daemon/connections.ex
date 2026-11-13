@@ -16,7 +16,6 @@ defmodule WardrikDaemon.Connections do
   alias WardrikCore.Principal
   alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Pairings
-  alias WardrikDaemon.Secrets
   alias WardrikDaemon.Servers
 
   @doc """
@@ -61,9 +60,13 @@ defmodule WardrikDaemon.Connections do
   def disconnect(%{wardrik: wardrik} = daemon, %Principal{id: id} = principal, provider) do
     with {:ok, credential} <- credential(daemon, principal, provider) do
       if credential in held(daemon, principal),
-        do: Secrets.delete(wardrik, {id, credential}, principal),
+        do: forgotten(Wardrik.as(wardrik, principal), %{"owner" => id, "name" => credential}),
         else: {:error, Error.new(:not_found, "You have no #{provider} account connected.")}
     end
+  end
+
+  defp forgotten(scope, secret) do
+    with {:ok, nil} <- Wardrik.run(scope, "secrets.delete", secret), do: :ok
   end
 
   @doc """

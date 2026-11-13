@@ -2564,6 +2564,138 @@
         },
         "x-wardrik-operation": "agent.move"
       }
+    },
+    "/v1/owners/{owner}/secrets": {
+      "get": {
+        "operationId": "secrets.list",
+        "summary": "List an owner's secrets",
+        "description": "The names of the secrets the owner holds, and what each is for, including the accounts they connected. Never a value.",
+        "tags": [
+          "Secrets"
+        ],
+        "x-wardrik-action": "secret.read",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "secret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The owner's secrets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:secrets"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/owners/{owner}/secrets/{name}": {
+      "put": {
+        "operationId": "secrets.put",
+        "summary": "Seal a secret",
+        "description": "Seals the value as the owner's secret of that name, in place of any it held, and reconnects the owner's MCP servers whose headers read it.",
+        "tags": [
+          "Secrets"
+        ],
+        "x-wardrik-action": "secret.put",
+        "x-wardrik-effect": "change",
+        "x-wardrik-subject": "secret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/secret_name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "urn:wardrik:schema:v1:secret_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Sealed."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "secrets.delete",
+        "summary": "Remove a secret",
+        "description": "Removes the owner's secret of that name. Removing none answers as removing one does.",
+        "tags": [
+          "Secrets"
+        ],
+        "x-wardrik-action": "secret.delete",
+        "x-wardrik-effect": "destructive",
+        "x-wardrik-subject": "secret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/secret_name"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2756,6 +2888,25 @@
         "schema": {
           "type": "string",
           "minLength": 1
+        }
+      },
+      "owner": {
+        "name": "owner",
+        "in": "path",
+        "required": true,
+        "description": "The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "secret_name": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "description": "The secret's name, as GITHUB_TOKEN.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[^/\\s]+$"
         }
       }
     },

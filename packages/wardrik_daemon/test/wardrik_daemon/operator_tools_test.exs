@@ -4,11 +4,8 @@ defmodule WardrikDaemon.OperatorToolsTest do
 
   import WardrikDaemon.Test
 
-  alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
   alias WardrikDaemon.HelpTools
   alias WardrikDaemon.NotifyTargets
-  alias WardrikDaemon.Secrets
 
   setup :set_mimic_global
 
@@ -137,8 +134,14 @@ defmodule WardrikDaemon.OperatorToolsTest do
 
   test "lists the deployment's secrets by name, never by value", context do
     aide = id(context, "acme", "assistant")
-    secret = %Secret{principal: %Principal{id: "deployment"}, name: "BRAVE_API_KEY", value: "bsk"}
-    :ok = Secrets.put(daemon().wardrik, secret, purpose: "api_key")
+
+    {:ok, nil} =
+      Wardrik.run(context.admin, "secrets.put", %{
+        "owner" => "deployment",
+        "name" => "BRAVE_API_KEY",
+        "value" => "bsk",
+        "purpose" => "api_key"
+      })
 
     answers([
       calling([{"c1", "settings_list", %{"kind" => "secrets", "owner" => "deployment"}}]),

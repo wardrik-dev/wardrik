@@ -18,6 +18,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Page
   alias Wardrik.Runs
   alias Wardrik.Runtime
+  alias Wardrik.SealedSecret
   alias Wardrik.Timeline
   alias Wardrik.Trigger
   alias Wardrik.Type
@@ -25,7 +26,7 @@ defmodule Wardrik.Operations.Types do
   @snapshots ~w(agent.read agent.define agent.clear)
   @decided ~w(agent.decide agent.approve agent.deny)
   @answered_nothing ~w(agent.cancel agent.forget agent.kill agent.file_delete hook.deliver
-                       hook.deliver_with_secret)
+                       hook.deliver_with_secret secrets.put secrets.delete)
   @triggers ~w(agent.trigger_set agent.trigger_remove)
   @pages ~w(agent.events events.list audit.list)
 
@@ -45,6 +46,7 @@ defmodule Wardrik.Operations.Types do
   @lists %{
     "agent.calls" => {"calls", Call, :from_json},
     "agent.files" => {"files", AgentFile, :from_json},
+    "secrets.list" => {"secrets", SealedSecret, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }

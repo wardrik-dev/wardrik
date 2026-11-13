@@ -13,8 +13,6 @@ defmodule WardrikDaemon.HTTP do
   | Route | Does |
   | --- | --- |
   | `GET`, `POST /v1/owners/{owner}/agents` | finds agents by `?name=`; makes one |
-  | `GET /v1/owners/{owner}/secrets` | lists secrets, never values |
-  | `PUT`, `DELETE /v1/owners/{owner}/secrets/{name}` | seals or removes a secret |
   | `GET /v1/owners/{owner}/ceilings` | an org's spend against each ceiling |
   | `GET`, `POST /v1/owners/{owner}/servers`, `DELETE .../{name}` | MCP servers |
   | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../{name}` | webhooks |
@@ -50,8 +48,6 @@ defmodule WardrikDaemon.HTTP do
 
   alias Wardrik.Error
   alias Wardrik.HTTP.Response
-  alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Allowed
   alias WardrikDaemon.Ceiling
@@ -60,7 +56,6 @@ defmodule WardrikDaemon.HTTP do
   alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Owners
-  alias WardrikDaemon.Secrets
   alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
 
@@ -111,8 +106,8 @@ defmodule WardrikDaemon.HTTP do
   @doc """
   Returns the daemon's operation `id`, with its `:method`, `:path` and `:parameters`, or `nil`.
 
-      %{method: "put", path: "/v1/owners/{owner}/secrets/{name}"} =
-        WardrikDaemon.HTTP.operation("secrets.put")
+      %{method: "post", path: "/v1/owners/{owner}/servers"} =
+        WardrikDaemon.HTTP.operation("servers.add")
   """
   @spec operation(String.t()) :: map() | nil
   def operation(id), do: Map.get(@operations, id)
@@ -166,28 +161,6 @@ defmodule WardrikDaemon.HTTP do
       with {:ok, input} <- json(conn),
            {:ok, record} <- CreateAgent.create(conn.assigns.daemon, scope, {owner, input}),
            do: {:ok, 201, record(record)}
-    end)
-  end
-
-  get "/v1/owners/:owner/secrets" do
-    served(conn, owner, {"secret.read", :secret}, fn _scope ->
-      {:ok, 200, %{"secrets" => Secrets.list(conn.assigns.daemon.wardrik, owner)}}
-    end)
-  end
-
-  put "/v1/owners/:owner/secrets/:name" do
-    served(conn, owner, {"secret.put", :secret}, fn scope ->
-      with {:ok, %{"value" => value, "purpose" => purpose}} <- sealing(conn) do
-        secret = %Secret{principal: %Principal{id: owner}, name: name, value: value}
-        opts = [purpose: purpose, actor: scope.principal]
-        stored(Secrets.put(conn.assigns.daemon.wardrik, secret, opts))
-      end
-    end)
-  end
-
-  delete "/v1/owners/:owner/secrets/:name" do
-    served(conn, owner, {"secret.delete", :secret}, fn scope ->
-      stored(Secrets.delete(conn.assigns.daemon.wardrik, {owner, name}, scope.principal))
     end)
   end
 
@@ -446,38 +419,6 @@ defmodule WardrikDaemon.HTTP do
       _unread -> {:error, Error.new(:invalid_request, "Send the body as JSON.")}
     end
   end
-
-  defp sealing(conn) do
-    with {:ok, body, _conn} <- Plug.Conn.read_body(conn),
-         {:ok, %{} = input} <- JSON.decode(body),
-         :ok <- sealable(input) do
-      {:ok, input}
-    else
-      {:error, %Error{} = error} -> {:error, error}
-      _unread -> {:error, unsealable()}
-    end
-  end
-
-  defp sealable(%{"value" => value, "purpose" => purpose} = input)
-       when is_binary(value) and value != "" and map_size(input) == 2 do
-    if purpose in Secrets.purposes(), do: :ok, else: {:error, unsealable()}
-  end
-
-  defp sealable(_input), do: {:error, unsealable()}
-
-  defp unsealable do
-    purposes = Enum.join(Enum.sort(Secrets.purposes()), ", ")
-
-    Error.new(
-      :invalid_request,
-      ~s(Send {"value": ..., "purpose": ...}, with a value and a purpose of #{purposes}.)
-    )
-  end
-
-  defp stored(:ok), do: {:ok, 204, nil}
-
-  defp stored({:error, reason}),
-    do: {:error, Error.new(:unavailable, "The vault didn't keep it: #{inspect(reason)}.")}
 
   defp record(record),
     do: %{"id" => record.id, "name" => record.name, "org" => record.org, "owner" => record.owner}

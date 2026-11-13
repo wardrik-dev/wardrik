@@ -7,6 +7,8 @@ defmodule Wardrik.Runner do
   alias Wardrik.Instance
   alias Wardrik.Scope
 
+  @held ~w(secret)
+
   @doc "Runs the operation `id` in `scope`, with its handler."
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
   def run(scope, id, input), do: ran(scope, id, input, :handlers)
@@ -71,6 +73,18 @@ defmodule Wardrik.Runner do
            ),
            "deployment"
          )
+
+  # What an owner holds is authorized on the owner, named as the caller names it. Wardrik never
+  # reads it: the authorizer decides who may act for it.
+  defp authorize(scope, %{subject: kind, action: action}, %{"owner" => owner})
+       when kind in @held do
+    resource = {String.to_existing_atom(kind), owner}
+
+    refused(
+      Authorizer.authorize(scope, action: action, resource: resource),
+      "#{kind} of #{owner}"
+    )
+  end
 
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
   defp authorize(_scope, %{subject: "hook"}, _input), do: :ok

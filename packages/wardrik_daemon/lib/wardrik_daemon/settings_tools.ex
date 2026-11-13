@@ -25,7 +25,6 @@ defmodule WardrikDaemon.SettingsTools do
   alias WardrikDaemon.Allowed
   alias WardrikDaemon.Config
   alias WardrikDaemon.Owners
-  alias WardrikDaemon.Secrets
   alias WardrikDaemon.Settings
 
   @adds [
@@ -36,6 +35,8 @@ defmodule WardrikDaemon.SettingsTools do
     {"oauth_app_add", "oauth_apps",
      "Add an OAuth app, such as Google or GitHub, that people connect their accounts with."}
   ]
+
+  @purposes WardrikProtocol.schema("secret_input")["properties"]["purpose"]["enum"]
 
   @owner %{
     "type" => "string",
@@ -97,7 +98,7 @@ defmodule WardrikDaemon.SettingsTools do
         "properties" => %{
           "name" => %{"type" => "string", "description" => "The secret's name, as GITHUB_TOKEN"},
           "purpose" => %{
-            "enum" => Enum.sort(Secrets.purposes()),
+            "enum" => @purposes,
             "description" =>
               "What it's read for, and only that: header for an MCP server's token, api_key for a model's or a tool's key such as BRAVE_API_KEY, client_secret for an OAuth app, signing_secret for signing notices or webhooks."
           },
@@ -123,10 +124,8 @@ defmodule WardrikDaemon.SettingsTools do
     end
   end
 
-  defp listed(daemon, scope, "secrets", owner) do
-    with :ok <- Allowed.owned(daemon, scope, owner, {"secret.read", :secret}),
-         do: {:ok, %{"secrets" => Secrets.list(daemon.wardrik, owner)}}
-  end
+  defp listed(_daemon, scope, "secrets", owner),
+    do: Wardrik.run(scope, "secrets.list", %{"owner" => owner})
 
   defp listed(daemon, scope, kind, owner) do
     with {:ok, items} <- Settings.list(daemon, scope, kind, owner), do: {:ok, %{kind => items}}
