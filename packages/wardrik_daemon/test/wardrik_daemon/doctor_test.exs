@@ -35,6 +35,56 @@ defmodule WardrikDaemon.DoctorTest do
     port
   end
 
+  test "says which agents' saved states the running daemon can't read, and why", context do
+    write(context, "config.yaml", "org: acme\n")
+    dirs = WardrikDaemon.Dirs.new(context.env)
+    token = WardrikDaemon.Dirs.data_home(dirs, "cli_token")
+    File.mkdir_p!(Path.dirname(token))
+    File.write!(token, JSON.encode!(%{id: "t1", secret: "s3cret", url: "http://daemon.test"}))
+
+    why = "it names WardrikPolicy, which this release doesn't have"
+
+    Req.Test.stub(__MODULE__, fn %Plug.Conn{path_info: ["v1", "agents"]} = conn ->
+      case Plug.Conn.fetch_query_params(conn).query_params do
+        %{"after" => "p2"} ->
+          Req.Test.json(conn, %{
+            "agents" => [
+              %{
+                "id" => "acme.old",
+                "conversation" => "C1",
+                "status" => "unreadable",
+                "problem" => why,
+                "pending" => 0
+              }
+            ],
+            "next" => nil
+          })
+
+        _first ->
+          Req.Test.json(conn, %{
+            "agents" => [
+              %{"id" => "acme.ok", "status" => "asleep", "pending" => 0},
+              %{"id" => "acme.old", "status" => "unreadable", "problem" => why, "pending" => 0}
+            ],
+            "next" => "p2"
+          })
+      end
+    end)
+
+    assert found(run(context.env), "saved") == [
+             {:fail,
+              "acme.old can't start, as its saved state can't be read: #{why}. Define it again to start it over: `wardrik reload` does for agents in agents/."},
+             {:fail,
+              "acme.old's conversation C1 can't start, as its saved state can't be read: #{why}. Define it again to start it over: `wardrik reload` does for agents in agents/."}
+           ]
+
+    Req.Test.stub(__MODULE__, &Req.Test.json(&1, %{"agents" => [], "next" => nil}))
+    assert found(run(context.env), "saved") == [{:ok, "every agent's saved state reads"}]
+
+    File.rm!(token)
+    assert found(run(context.env), "saved") == []
+  end
+
   test "says each part reads where it does", context do
     env_file =
       write(context, "env", "# keys\nGITHUB_CLIENT_ID=Iv1\nexport SLACK_BOT_TOKEN=xoxb\n")

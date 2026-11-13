@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- An agent's `status` can be `unreadable`, with `problem`. `AgentSnapshot` has `reset`.
+
 ## 0.1.0-rc.6 (2026-11-11)
 
 - `AgentDefinition` has `digest`.

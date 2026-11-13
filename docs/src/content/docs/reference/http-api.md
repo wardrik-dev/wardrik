@@ -115,7 +115,8 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WARDRIK_TO
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `status` | string | `idle`, `running`, `parked` (pending approval) or `asleep` |
+| `status` | string | `idle`, `running`, `parked` (pending approval), `asleep` or `unreadable` |
+| `problem` | string | why its saved state can't be read, while `unreadable` |
 | `node` | string or null | the node it runs on; `null` while asleep |
 | `pending` | integer | messages queued behind the current one |
 | `activity` | object | what it's doing, as [`activity`](/reference/events/#shared-types) |
@@ -139,6 +140,10 @@ curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2 -H "Authorization: Bearer $WAR
 ```
 
 Returns the agent, as [Read an agent](#read-an-agent) does. An unsupported key returns `501`.
+
+If the agent or one of its conversations has a saved state this release can't read, defining it
+starts that state over. The answer's `reset` lists each one and why. Until then, messages to it
+return `409`.
 
 ### Read a definition
 

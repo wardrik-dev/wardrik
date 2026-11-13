@@ -11,7 +11,12 @@ defmodule Wardrik.Operations.Lifecycle do
   alias Wardrik.Scope
   alias Wardrik.Sleeper
 
-  @doc "Defines an agent. Starts it, or reconfigures it if it's running."
+  @doc """
+  Defines an agent. Starts it, or reconfigures it if it's running.
+
+  Each of its saved states this release can't read is started over first, and the answer's
+  `"reset"` says which and why.
+  """
   @spec define(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
     definition = input |> Map.delete("agent") |> Definition.named()
@@ -19,11 +24,13 @@ defmodule Wardrik.Operations.Lifecycle do
     with :ok <- bounded(wardrik, id, scope.policy),
          :ok <- written_after(wardrik, id, definition["policy"]),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
+         reset = Running.reset_unreadable(wardrik, id),
          {:ok, _pid} <- Running.bring(wardrik, opts),
-         :ok <- saved(wardrik, id, definition) do
+         :ok <- saved(wardrik, id, definition),
+         {:ok, snapshot} <- Agent.read(scope, %{"agent" => id}) do
       Sleeper.watch(wardrik, id)
       Changes.record(scope, type: "agent.defined", agent: id)
-      Agent.read(scope, %{"agent" => id})
+      {:ok, if(reset == [], do: snapshot, else: Map.put(snapshot, "reset", reset))}
     end
   end
 
@@ -84,9 +91,12 @@ defmodule Wardrik.Operations.Lifecycle do
 
     with :ok <- Snapshot.known(wardrik, key) do
       stopped(scope, key, Running.whereis(wardrik, key))
-      {:ok, %{"agent" => %{Snapshot.summary(wardrik, key) | "status" => "asleep"}}}
+      {:ok, %{"agent" => asleep_now(Snapshot.summary(wardrik, key))}}
     end
   end
+
+  defp asleep_now(%{"status" => "unreadable"} = summary), do: summary
+  defp asleep_now(summary), do: %{summary | "status" => "asleep"}
 
   @doc "Clears the agent's history, and restarts it from its definition."
   @spec clear(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}

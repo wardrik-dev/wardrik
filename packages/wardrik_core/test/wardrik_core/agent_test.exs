@@ -526,6 +526,10 @@ defmodule WardrikCore.AgentTest do
     assert {id, nil} in WardrikCore.list()
     assert {id, "C1/1696.1234"} in WardrikCore.list()
     assert %{agent_id: ^id, conversation: "C1/1696.1234"} = agent_state(held)
+    assert WardrikCore.saved_key(id) == "test/agents/acme%2Ftriage+%252F%2Fx"
+
+    assert WardrikCore.saved_key({id, "C1/1696.1234"}) ==
+             "test/agents/acme%2Ftriage+%252F%2Fx/C1%2F1696.1234"
 
     expect(ReqLLM, :stream_text, fn _, _, _ -> {:ok, answer("done")} end)
     :ok = WardrikCore.ask(held, "hi")

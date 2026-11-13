@@ -60,8 +60,8 @@ In an interactive terminal, `ask` and `follow` display pending calls and prompt 
 Press Enter to leave a call pending. The status line shows the agent’s current activity.
 
 A `QUERY` is space-separated terms, all of which must match: text in the name or ID, `name:`,
-`org:`, `user:` (as `user:acme/@jon`), `node:`, `status:idle|running|parked|asleep`, or
-`attention` (pending approval).
+`org:`, `user:` (as `user:acme/@jon`), `node:`, `status:idle|running|parked|asleep|unreadable`,
+or `attention` (pending approval, or a saved state that can't be read).
 
 ```sh
 wardrik ls status:parked

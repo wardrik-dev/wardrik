@@ -130,9 +130,9 @@ defmodule WardrikDaemon.Agents do
 
   defp defined(opts, {path, {:ok, record, definition}}) do
     with {:ok, definition} <- AgentRecords.identified(opts[:store], record.org, definition),
-         {:ok, _snapshot} <-
+         {:ok, snapshot} <-
            Wardrik.run(scope(opts), "agent.define", Map.put(definition, "agent", record.id)) do
-      :ok
+      started_over(snapshot, record, path)
     else
       {:error, %Wardrik.Error{message: message}} ->
         "didn't define #{record.name}. #{path}: #{message}"
@@ -141,6 +141,11 @@ defmodule WardrikDaemon.Agents do
         "didn't define #{record.name}. #{path}: #{why}"
     end
   end
+
+  defp started_over(%{"reset" => reset}, record, path),
+    do: "started #{record.name} over. #{path}: #{Enum.join(reset, " ")}"
+
+  defp started_over(_snapshot, _record, _path), do: :ok
 
   defp forgotten(opts, id) do
     case Wardrik.run(scope(opts), "agent.forget", %{"agent" => id}) do

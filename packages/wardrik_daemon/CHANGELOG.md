@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `wardrik doctor` fails for each agent whose saved state the running daemon can't read, and
+  says why. `wardrik reload` starts such agents over and says so. `wardrik ls` shows them as
+  `unreadable`, `attention` includes them, and `wardrik agent show` gives the reason.
 - `rest` in `config.yaml`: HTTP APIs from their Google Discovery documents, each a tool group of
   its name, with sign-in from `oauth` and keys from the vault. Orgs list them as `rest`.
 

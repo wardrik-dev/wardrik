@@ -21,20 +21,18 @@ defmodule Wardrik.Operations.Agent do
       activity = Wardrik.EventLog.activity(events, key)
 
       {:ok,
-       Snapshot.conversation(
-         %{
-           "agent" => %{"id" => agent},
-           "status" => Snapshot.state(scope.wardrik, key, activity),
-           "node" => Snapshot.placed(scope.wardrik, key),
-           "pending" => activity["pending"],
-           "next_run" => Snapshot.next_run(scope.wardrik, agent),
-           "spent_today" => Wardrik.Spending.today(scope.wardrik, agent),
-           "activity" => activity,
-           "interrupts" => Snapshot.interrupts(activity),
-           "cursor" => Wardrik.EventLog.head(events, [key])
-         },
-         conversation
-       )}
+       %{
+         "agent" => %{"id" => agent},
+         "node" => Snapshot.placed(scope.wardrik, key),
+         "pending" => activity["pending"],
+         "next_run" => Snapshot.next_run(scope.wardrik, agent),
+         "spent_today" => Wardrik.Spending.today(scope.wardrik, agent),
+         "activity" => activity,
+         "interrupts" => Snapshot.interrupts(activity),
+         "cursor" => Wardrik.EventLog.head(events, [key])
+       }
+       |> Map.merge(Snapshot.standing(scope.wardrik, key, activity))
+       |> Snapshot.conversation(conversation)}
     end
   end
 

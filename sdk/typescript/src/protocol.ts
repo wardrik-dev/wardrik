@@ -274,9 +274,13 @@ export interface AgentSummary {
   id: AgentId;
   conversation?: ConversationId;
   /**
-   * Whether it waits for a message, answers one, waits on a person, or sleeps until something asks it.
+   * Whether it waits for a message, answers one, waits on a person, sleeps until something asks it, or can't start because its saved state can't be read.
    */
-  status: "idle" | "running" | "parked" | "asleep";
+  status: "idle" | "running" | "parked" | "asleep" | "unreadable";
+  /**
+   * Why its saved state can't be read while status is unreadable, such as a module it names that this release doesn't have. agent.define starts it over.
+   */
+  problem?: string;
   /**
    * How many messages wait behind what it's doing.
    */
@@ -667,9 +671,13 @@ export interface AgentSnapshot {
   };
   conversation?: ConversationId;
   /**
-   * Whether it waits for a message, answers one, waits on a person, or sleeps until something asks it.
+   * Whether it waits for a message, answers one, waits on a person, sleeps until something asks it, or can't start because its saved state can't be read.
    */
-  status: "idle" | "running" | "parked" | "asleep";
+  status: "idle" | "running" | "parked" | "asleep" | "unreadable";
+  /**
+   * Why its saved state can't be read while status is unreadable, such as a module it names that this release doesn't have. agent.define starts it over.
+   */
+  problem?: string;
   /**
    * The node it runs on, by its name; null while it sleeps.
    */
@@ -689,6 +697,10 @@ export interface AgentSnapshot {
    */
   next_run?: string | null;
   spent_today?: Spent;
+  /**
+   * What agent.define started over because its saved state couldn't be read, and why. Only agent.define answers it.
+   */
+  reset?: string[];
 }
 /**
  * What agents.list answers: the agents the patterns cover, sorted by ID, and where to read on from.

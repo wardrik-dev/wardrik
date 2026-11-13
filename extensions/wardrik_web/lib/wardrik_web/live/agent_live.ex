@@ -231,7 +231,11 @@ defmodule WardrikWeb.AgentLive do
         <.live live={@live} stopped={@stopped} />
         <button :if={@read && @read["status"] == "running"} class="btn" phx-click="cancel">Cancel run</button>
         <button :if={@read && @read["status"] == "asleep"} class="btn" phx-click="spawn">Start</button>
-        <button :if={@read && @read["status"] != "asleep"} class="btn" phx-click="stop">Stop</button>
+        <button
+          :if={@read && @read["status"] not in ["asleep", "unreadable"]}
+          class="btn"
+          phx-click="stop"
+        >Stop</button>
         <button
           class="btn danger"
           phx-click="clear"
@@ -291,6 +295,9 @@ defmodule WardrikWeb.AgentLive do
           <div class="body">
             <dl class="facts">
               <dt>Status</dt><dd><.status value={@read["status"]} /></dd>
+              <%= if @read["problem"] do %>
+                <dt>Problem</dt><dd>{@read["problem"]}. Define it again to start it over.</dd>
+              <% end %>
               <dt>Queued</dt><dd>{@read["pending"]}</dd>
               <dt>Node</dt><dd class="mono">{@read["node"] || "—"}</dd>
               <dt>Next run</dt><dd>{ago(@read["next_run"])}</dd>

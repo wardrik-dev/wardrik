@@ -24,12 +24,22 @@ defmodule Wardrik.Operations.Snapshot do
     end)
   end
 
-  @doc "Returns the agent `key`'s status, or `\"asleep\"`."
-  @spec state(Wardrik.t(), Running.key(), map()) :: String.t()
-  def state(wardrik, key, activity) do
+  @doc """
+  Returns the agent `key`'s `"status"`: its activity's while it runs, else `"asleep"`, or
+  `"unreadable"` with the `"problem"` while its saved state can't be read.
+  """
+  @spec standing(Wardrik.t(), Running.key(), map()) :: map()
+  def standing(wardrik, key, activity) do
     case Running.whereis(wardrik, key) do
-      nil -> "asleep"
-      _pid -> status(activity)
+      nil -> asleep(wardrik, key)
+      _pid -> %{"status" => status(activity)}
+    end
+  end
+
+  defp asleep(wardrik, key) do
+    case Running.unreadable(wardrik, key) do
+      {:ok, reason} -> %{"status" => "unreadable", "problem" => reason}
+      :error -> %{"status" => "asleep"}
     end
   end
 
@@ -52,17 +62,15 @@ defmodule Wardrik.Operations.Snapshot do
   defp summarized(wardrik, {agent, conversation} = key, next_run, spent) do
     activity = Wardrik.EventLog.activity(Wardrik.events(wardrik), key)
 
-    conversation(
-      %{
-        "id" => agent,
-        "status" => state(wardrik, key, activity),
-        "node" => placed(wardrik, key),
-        "pending" => activity["pending"],
-        "next_run" => next_run,
-        "spent_today" => spent
-      },
-      conversation
-    )
+    %{
+      "id" => agent,
+      "node" => placed(wardrik, key),
+      "pending" => activity["pending"],
+      "next_run" => next_run,
+      "spent_today" => spent
+    }
+    |> Map.merge(standing(wardrik, key, activity))
+    |> conversation(conversation)
   end
 
   @doc "Puts `conversation` in `output`, where it's one."

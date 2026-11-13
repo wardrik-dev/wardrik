@@ -23,9 +23,14 @@
         "idle",
         "running",
         "parked",
-        "asleep"
+        "asleep",
+        "unreadable"
       ],
-      "description": "Whether it waits for a message, answers one, waits on a person, or sleeps until something asks it."
+      "description": "Whether it waits for a message, answers one, waits on a person, sleeps until something asks it, or can't start because its saved state can't be read."
+    },
+    "problem": {
+      "type": "string",
+      "description": "Why its saved state can't be read while status is unreadable, such as a module it names that this release doesn't have. agent.define starts it over."
     },
     "pending": {
       "type": "integer",

@@ -120,32 +120,35 @@ defmodule Wardrik.Store.DurableConformance do
                    Durable.get_object(backend, key, [])
         end
 
-        test "takes a state it can't read as never written", %{store: store} = context do
+        test "notes a state it can't read, passes it over and refuses to claim it",
+             %{
+               store: store
+             } = context do
           key = unique_key(context)
           {:ok, %{state: backend}} = Durable.init_backend(store: store)
           stored = %StoredState{vsn: 1, state: %{}, meta: %Meta{}}
           unreadable = %{"vsn" => 1, "state" => <<131, 100, 0, 3, "zzq">>, "meta" => "x"}
+          why = "it isn't in a form this release can read"
 
           {:ok, _vsn} = Wardrik.Store.put(Wardrik.Store.scope(store, "durable"), key, unreadable)
 
-          assert {:error, :not_found} = Durable.get_object(backend, key, [])
+          log =
+            capture_log(fn ->
+              assert {:error, :not_found} = Durable.get_object(backend, key, [])
 
-          parent = self()
-          handler = fn reason -> send(parent, {:handled, reason}) end
+              assert [] =
+                       backend
+                       |> Durable.list_all_objects_stream(key, include_objects: true)
+                       |> Enum.to_list()
 
-          assert [] =
-                   backend
-                   |> Durable.list_all_objects_stream(key,
-                     include_objects: true,
-                     error_handler: handler
-                   )
-                   |> Enum.to_list()
+              assert {:error, {:unreadable, ^why}} = Durable.try_claim(backend, key, stored)
+            end)
 
-          assert_receive {:handled, {:decode_failed, ^key, :unreadable}}
-
-          assert capture_log(fn ->
-                   assert {:ok, {:claimed, _etag}} = Durable.try_claim(backend, key, stored)
-                 end) =~ "claimed as new"
+          assert [_once] = Regex.scan(~r/can't be read/, log)
+          assert {:ok, ^why} = Durable.noted(store, key)
+          assert :ok = Durable.discard(store, key)
+          assert :error = Durable.noted(store, key)
+          assert {:ok, {:claimed, _etag}} = Durable.try_claim(backend, key, stored)
         end
       end
     end

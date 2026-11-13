@@ -56,12 +56,12 @@ defmodule WardrikDaemon.Config.Rest do
     with {:ok, read} <- Options.each(map, &sourced(&1, read.(&2), path)), do: {:ok, Map.new(read)}
   end
 
+  defp sources(_other, path, _read), do: {:error, "#{path}: is a source for each name"}
+
   defp sourced(_name, {:ok, source}, _path), do: {:ok, source}
 
   defp sourced(name, :error, path),
     do: {:error, "#{path}.#{name}: is {credential: NAME} or {key: NAME}"}
-
-  defp sources(_other, path, _read), do: {:error, "#{path}: is a source for each name"}
 
   defp source(%{"credential" => name}) when is_binary(name), do: {:ok, {:credential, name}}
   defp source(%{"key" => name}) when is_binary(name), do: {:ok, {:key, name}}

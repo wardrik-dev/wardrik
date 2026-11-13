@@ -649,6 +649,20 @@ defmodule WardrikDaemon.CLITest do
       assert reloaded =~ "! Wardrik didn't define broken."
       assert reloaded =~ "broken.md: "
 
+      triage = id(context, "acme", "triage")
+      {:ok, _stopped} = Wardrik.run(context.admin, "agent.stop", %{"agent" => triage})
+      wardrik = Wardrik.Instance.fetch!(context.wardrik)
+      durable = Wardrik.Store.scope(wardrik.store, "durable")
+      key = WardrikCore.saved_key(Wardrik.agents(wardrik), {triage, nil})
+      {value, vsn} = Wardrik.Store.lookup(durable, key)
+      gone = <<131, 119, 24, "Elixir.WardrikGoneModule">>
+      {:ok, _vsn} = Wardrik.Store.put(durable, key, %{value | "state" => gone}, if_vsn: vsn)
+
+      assert {0, reloaded} = wardrik(context, ["reload"])
+
+      assert reloaded =~
+               "! Wardrik started triage over. #{context.env["WARDRIK_CONFIG_DIR"]}/agents/triage.md: #{triage} started over, as its saved state couldn't be read: it names WardrikGoneModule, which this release doesn't have."
+
       assert {0, status} = wardrik(context, ["status"])
       assert status =~ "Wardrik runs at http://127.0.0.1:"
       assert {0, audit} = wardrik(context, ["audit"])

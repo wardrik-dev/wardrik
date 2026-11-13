@@ -28,6 +28,9 @@ docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
   -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.12
 ```
 
+After an upgrade, run `wardrik doctor`. It fails for each agent whose saved state the new release
+can't read, and says why.
+
 ## Back up
 
 | What | Where |
@@ -53,6 +56,9 @@ To restore, stop the daemon, extract the archive, and start it. Back up Postgres
 - The script verifies the release against its `SHA256SUMS`. It keeps the previous release and
   removes older ones.
 - The daemon regenerates the cookie and the `wardrik` command's token on startup.
-- If a new release can't read an agent's state, the agent restarts from its definition with an
-  empty conversation.
+- If a new release can't read an agent's saved state, such as one naming a module the release no
+  longer has, the agent doesn't start. Its status is `unreadable`, with the reason as `problem`,
+  and messages to it return an error. Defining it again starts it over with an empty
+  conversation: `wardrik reload` does for agents in `agents/`. Its definition, files and events
+  stay.
 - `~/.config/wardrik` can be kept in a dotfiles repository. Exclude `env`, which contains keys.

@@ -443,6 +443,18 @@ defmodule WardrikCore do
   defp keyed(agent_id) when is_binary(agent_id), do: {agent_id, nil}
   defp keyed({_agent_id, _conversation} = key), do: key
 
+  @doc """
+  Returns the key the agent's state is saved under in the instance's backend.
+
+      WardrikCore.saved_key({"acme.drafts", nil})
+      #=> "wardrik/agents/acme.drafts"
+  """
+  @spec saved_key(atom(), String.t() | {String.t(), String.t() | nil}) :: String.t()
+  def saved_key(instance \\ __MODULE__, agent) do
+    %{prefix: prefix} = DurableServer.Supervisor.__get_config__(agents(instance))
+    prefix <> durable(agent)
+  end
+
   # DurableServer keys are binaries: each id is encoded on its own, so no id is ever split.
   defp durable(agent) do
     {agent_id, conversation} = keyed(agent)

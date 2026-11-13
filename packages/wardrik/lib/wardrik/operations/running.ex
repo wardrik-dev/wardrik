@@ -4,6 +4,7 @@ defmodule Wardrik.Operations.Running do
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Setup
+  alias Wardrik.Store.Durable
 
   @typedoc "An agent's ID and its conversation's, `nil` for the agent's own."
   @type key() :: {String.t(), String.t() | nil}
@@ -90,10 +91,40 @@ defmodule Wardrik.Operations.Running do
       {:error, {:already_started, pid}} when is_pid(pid) ->
         configured(pid, opts)
 
+      {:error, {:unreadable, reason}} ->
+        {:error,
+         Error.new(
+           :conflict,
+           "#{describe(key)} can't start, as its saved state can't be read: #{reason}. Define it again to start it over; its definition, files and events stay."
+         )}
+
       {:error, reason} ->
         {:error, Error.new(:unavailable, "#{describe(key)} didn't start: #{inspect(reason)}")}
     end
   end
+
+  @doc """
+  Returns why the agent `key`'s saved state can't be read, once a read found it so, or
+  `:error`.
+  """
+  @spec unreadable(Wardrik.t(), key()) :: {:ok, String.t()} | :error
+  def unreadable(wardrik, key), do: Durable.noted(wardrik.store, saved_key(wardrik, key))
+
+  @doc """
+  Starts over each of the agent `agent`'s saved states that can't be read, its own and its
+  conversations'. Returns what was started over, and why.
+  """
+  @spec reset_unreadable(Wardrik.t(), String.t()) :: [String.t()]
+  def reset_unreadable(wardrik, agent) do
+    for key <- saved(wardrik, agent),
+        saved = saved_key(wardrik, key),
+        {:error, reason} <- [Durable.check(wardrik.store, saved)] do
+      :ok = Durable.discard(wardrik.store, saved)
+      "#{describe(key)} started over, as its saved state couldn't be read: #{reason}."
+    end
+  end
+
+  defp saved_key(wardrik, key), do: WardrikCore.saved_key(Wardrik.agents(wardrik), key)
 
   defp configured(pid, opts) do
     :ok = WardrikCore.configure(pid, Keyword.drop(opts, [:agent_id, :conversation]))

@@ -59,8 +59,9 @@ wardrik agent clear triage         # empty the history
 
 ## Status
 
-`wardrik ls` shows each agent's status: `idle`, `running`, `parked` (waiting for approval) or
-`asleep`. `wardrik ls attention` lists parked agents.
+`wardrik ls` shows each agent's status: `idle`, `running`, `parked` (waiting for approval),
+`asleep` or `unreadable` (its saved state can't be read). `wardrik ls attention` lists parked and
+unreadable agents. `wardrik agent show NAME` gives an unreadable agent's reason.
 
 ## Sleeping
 
