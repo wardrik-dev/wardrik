@@ -35,42 +35,62 @@ defmodule Wardrik.Resolution do
         defaults: Map.merge(wardrik.defaults, defaults)
     }
 
+  # Every check runs, so a definition's problems come back together.
   defp resolved(wardrik, id, definition, resolved) do
     definition = Map.merge(wardrik.defaults, definition)
     servers = resolved.servers
 
-    with :ok <- triggers(definition),
-         {:ok, model} <- model(definition),
-         {:ok, capabilities} <- capabilities(wardrik, servers, definition),
-         {:ok, workspace} <-
-           Wardrik.Workspace.Agents.resolve(wardrik,
-             agent: id,
-             definition: definition,
-             workspaces: resolved.workspaces,
-             files: files?(definition)
-           ),
-         :ok <- channels(wardrik, Map.get(definition, "channels", [])),
-         :ok <- Wardrik.Notify.check(wardrik, resolved.notify, definition),
-         {:ok, policy} <- policy(wardrik, definition["policy"]),
-         policy = gating(policy),
-         {:ok, boundary} <-
-           policy(wardrik, Wardrik.Definitions.boundary(wardrik, id)) do
+    checked = [
+      triggers: triggers(definition),
+      model: model(definition),
+      capabilities: capabilities(wardrik, servers, definition),
+      workspace:
+        Wardrik.Workspace.Agents.resolve(wardrik,
+          agent: id,
+          definition: definition,
+          workspaces: resolved.workspaces,
+          files: files?(definition)
+        ),
+      channels: channels(wardrik, Map.get(definition, "channels", [])),
+      notify: Wardrik.Notify.check(wardrik, resolved.notify, definition),
+      policy: policy(wardrik, definition["policy"]),
+      boundary: policy(wardrik, Wardrik.Definitions.boundary(wardrik, id))
+    ]
+
+    with {:ok, got} <- all(checked) do
       {:ok,
        [
          agent_id: id,
-         model: model,
+         model: got.model,
          instructions: definition["instructions"],
-         capabilities: capabilities ++ workspace[:capabilities],
-         middleware: workspace[:middleware] ++ compaction(definition["compaction"]),
+         capabilities: got.capabilities ++ got.workspace[:capabilities],
+         middleware: got.workspace[:middleware] ++ compaction(definition["compaction"]),
          retries: retries(definition["retries"]),
          model_options: model_options(definition["model_options"]),
          principal: resolved.principal,
-         policy: Enum.reject([boundary, policy], &is_nil/1),
+         policy: Enum.reject([got.boundary, gating(got.policy)], &is_nil/1),
          timeout: seconds(definition["timeout"]),
          max_rounds: rounds(definition["max_iterations"])
        ]}
     end
   end
+
+  # An invalid request names each problem. Anything else, as a store down, comes back alone.
+  defp all(checked) do
+    case for({_check, {:error, error}} <- checked, do: error) do
+      [] ->
+        {:ok, Map.new(checked, fn {check, result} -> {check, value(result)} end)}
+
+      errors ->
+        case Enum.find(errors, &(&1.type != :invalid_request)) do
+          nil -> {:error, Error.new(:invalid_request, Enum.map_join(errors, " ", & &1.message))}
+          error -> {:error, error}
+        end
+    end
+  end
+
+  defp value(:ok), do: nil
+  defp value({:ok, value}), do: value
 
   @doc """
   Refreshes the awake agents `ids`, or all of them. Returns a line for each failure.
@@ -156,7 +176,7 @@ defmodule Wardrik.Resolution do
     |> Map.get("triggers", [])
     |> Enum.with_index(1)
     |> Enum.map(fn {fields, index} -> trigger(fields, index, files?) end)
-    |> Enum.find(:ok, &match?({:error, _error}, &1))
+    |> joined()
   end
 
   defp prompted(%{"prompt_file" => _file, "prompt" => _prompt}, _files?),
@@ -180,10 +200,30 @@ defmodule Wardrik.Resolution do
 
   defp prompted(_fields, _files?), do: :ok
 
-  defp model(%{"model" => model}), do: {:ok, model}
+  # A model the catalog doesn't list may still be served, as a fine-tune or through a gateway, so
+  # only what can never work is refused.
+  defp model(%{"model" => model}) when is_binary(model) do
+    case ReqLLM.model(model) do
+      {:ok, _model} -> {:ok, model}
+      {:error, _reason} -> {:error, Error.new(:invalid_request, unmodelled(model))}
+    end
+  end
+
+  defp model(%{"model" => model}),
+    do: {:error, Error.new(:invalid_request, "#{inspect(model)} isn't a model.")}
 
   defp model(_definition),
     do: {:error, Error.new(:invalid_request, "A definition names a model.")}
+
+  defp unmodelled(model) do
+    case String.split(model, ":", parts: 2) do
+      [provider, _id] ->
+        "#{model} isn't a model: there's no provider #{provider}. Models are named as provider:model, such as anthropic:claude-haiku-4-5."
+
+      [_id] ->
+        "#{model} isn't a model. Models are named as provider:model, such as anthropic:claude-haiku-4-5."
+    end
+  end
 
   defp rounds(nil), do: @rounds
   defp rounds("infinity"), do: :infinity
@@ -193,9 +233,13 @@ defmodule Wardrik.Resolution do
     named =
       Enum.map(expanded(wardrik, servers, Map.get(definition, "tools", [])), &named(wardrik, &1))
 
-    case Enum.find(named, &match?({:error, _error}, &1)) do
-      nil -> {:ok, entries(wardrik, definition, named)}
-      error -> error
+    with :ok <- joined(named), do: {:ok, entries(wardrik, definition, named)}
+  end
+
+  defp joined(results) do
+    case for({:error, error} <- results, do: error.message) do
+      [] -> :ok
+      messages -> {:error, Error.new(:invalid_request, Enum.join(messages, " "))}
     end
   end
 
@@ -303,10 +347,10 @@ defmodule Wardrik.Resolution do
     do: %{policy | by_annotation: Map.put_new(by_annotation, "gated", :ask)}
 
   defp channels(wardrik, names) do
-    case Enum.reject(names, &Map.has_key?(wardrik.channels, &1)) do
-      [] -> :ok
-      [name | _rest] -> {:error, Error.new(:invalid_request, "There's no channel #{name} here.")}
-    end
+    names
+    |> Enum.reject(&Map.has_key?(wardrik.channels, &1))
+    |> Enum.map(&{:error, Error.new(:invalid_request, "There's no channel #{&1} here.")})
+    |> joined()
   end
 
   defp policy(_wardrik, nil), do: {:ok, nil}

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `AgentSummary` and `AgentSnapshot` have `description` and `model`. Reading events takes
+  `order` and `before`.
 - `TriggerDefinition` has `at` and `next_at`.
 - An agent's `status` can be `unreadable`, with `problem`. `AgentSnapshot` has `reset`.
 

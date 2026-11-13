@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `agents.list` and `agent.read` give each agent's `description` and `model`.
+- `agent.define` names every problem with a definition in one `invalid_request`, and refuses a
+  model whose provider isn't known. A model the catalog doesn't list is still taken.
+- `events.list` and `agent.events` take `order: "newest"`, with `before`, to read the latest
+  events first and page back. `Wardrik.EventLog.page/3` takes `:order` and `:before`.
 - A trigger with `at` runs once, at a time in its `timezone` or with an offset, then it's removed
   from the agent. It queues behind a busy turn by default. `agent.trigger_set` refuses a time
   that has passed, and answers with the trigger's next run as `next_at`. Agents set one with

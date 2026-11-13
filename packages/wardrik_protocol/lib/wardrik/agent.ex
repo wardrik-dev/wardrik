@@ -17,6 +17,8 @@ defmodule Wardrik.Agent do
 
     * `:id` - the agent's ID, as your app chose it.
     * `:conversation` - the conversation's ID, or `nil` for the main one.
+    * `:description` - what the agent is for, from its definition.
+    * `:model` - the model it runs on, from its definition or the deployment's default.
     * `:status` - `:idle`, `:running`, `:parked`, `:asleep` or `:unreadable`.
     * `:problem` - why its saved state can't be read, while it's `:unreadable`. Defining it again
       starts it over.
@@ -37,6 +39,8 @@ defmodule Wardrik.Agent do
     fields: [
       id: "agent.id",
       conversation: "conversation",
+      description: "description",
+      model: "model",
       status: {"status", [:idle, :running, :parked, :asleep, :unreadable]},
       problem: "problem",
       node: "node",
@@ -142,6 +146,8 @@ defmodule Wardrik.Agent do
       from_json(%{
         "agent" => %{"id" => id},
         "conversation" => summary["conversation"],
+        "description" => summary["description"],
+        "model" => summary["model"],
         "status" => summary["status"],
         "node" => summary["node"],
         "pending" => summary["pending"],

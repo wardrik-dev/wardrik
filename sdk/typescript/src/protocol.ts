@@ -274,6 +274,14 @@ export interface AgentSummary {
   id: AgentId;
   conversation?: ConversationId;
   /**
+   * What the agent is for, from its definition.
+   */
+  description?: string;
+  /**
+   * The model it runs on, from its definition or the deployment's default.
+   */
+  model?: string;
+  /**
    * Whether it waits for a message, answers one, waits on a person, sleeps until something asks it, or can't start because its saved state can't be read.
    */
   status: "idle" | "running" | "parked" | "asleep" | "unreadable";
@@ -671,6 +679,14 @@ export interface AgentSnapshot {
   };
   conversation?: ConversationId;
   /**
+   * What the agent is for, from its definition.
+   */
+  description?: string;
+  /**
+   * The model it runs on, from its definition or the deployment's default.
+   */
+  model?: string;
+  /**
    * Whether it waits for a message, answers one, waits on a person, sleeps until something asks it, or can't start because its saved state can't be read.
    */
   status: "idle" | "running" | "parked" | "asleep" | "unreadable";
@@ -923,7 +939,7 @@ export interface Events {
    */
   events: WardrikEvent[];
   /**
-   * The cursor after these events, to read on from.
+   * The cursor after these events, to read on from as after; with order newest, the cursor before them, to read further back as before.
    */
   next: string;
 }

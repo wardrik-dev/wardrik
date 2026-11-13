@@ -37,6 +37,18 @@ defmodule Wardrik.EventLog.RetentionTest do
              ["000000000003"]
   end
 
+  test "reads back newest first only as far as the oldest event kept", %{events: events} do
+    :ok = Wardrik.EventLog.trim(events, ~U[2000-01-03 00:00:00Z])
+
+    assert {:ok, %{events: [%{"sequence" => "000000000003"}], next: next}} =
+             Wardrik.EventLog.page(events, ["agt_1"], order: :newest, limit: 5)
+
+    assert {:ok, %{{"agt_1", nil} => 2}} = Cursor.decode(next)
+
+    assert {:ok, %{events: []}} =
+             Wardrik.EventLog.page(events, ["agt_1"], order: :newest, before: next)
+  end
+
   test "drops what's already dropped once", %{events: events} do
     :ok = Wardrik.EventLog.trim(events, ~U[2000-01-02 00:00:00Z])
     :ok = Wardrik.EventLog.trim(events, ~U[2000-01-02 00:00:00Z])
