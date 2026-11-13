@@ -271,26 +271,35 @@ rest:
     auth: {oauth2: {credential: google}}
     only: [properties_runReport, properties_getMetadata]
     read_only: [properties_runReport]
+  github:
+    openapi: https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+    base_url: https://api.github.com
+    schemes: {token: bearer}
+    auth: {token: {credential: github}}
+    only: [issues_*, pulls_list]
 ```
 
 | Key | Description |
 | --- | --- |
 | `discovery` | a Google Discovery document: its URL, or its path from the config directory |
+| `openapi` | an OpenAPI 3 document, in JSON or YAML: its URL, or its path from the config directory; an API has `discovery` or `openapi` |
 | `base_url` | where calls go; secrets are sent only here |
 | `auth` | a source for each scheme the description names: `{credential: NAME}` or `{key: NAME}` |
 | `headers` | headers every call sends, each a source or a string |
+| `schemes` | schemes the description doesn't name, each `bearer`, `{header: NAME}` or `{query: NAME}`, sent on every operation before its own; `auth` gives each a source |
 | `argument_headers` | headers each tool takes as optional arguments, by name with what they're for, as `{login-customer-id: The manager account's ID}` |
 | `only` | operations to offer, by name or glob; default: all it can sign in to |
 | `read_only` | operations that change nothing, beyond `GET`s |
 | `idempotent` | operations safe to repeat, beyond `GET`, `PUT` and `DELETE` |
 | `timeout` | a call's limit in seconds; default `30` |
 | `max_result_bytes` | maximum answer size sent to the model, as JSON; default `131072` |
-| `max_schema_bytes` | each tool's schema size, as JSON, where it can be; deeper types are named instead, and `NAME__describe` gives their fields; default `16384` |
+| `max_schema_bytes` | each tool's schema size, as JSON, where it can be; deeper objects are named instead, and `NAME__describe` gives their fields; default `16384` |
 | `trusted` | `true` disables the `outside` label on its results |
 
 Each API is a tool group of the same name: an agent file lists `tools: [ga4]` and gets one tool
 per operation, as `ga4__properties_runReport`. Each tool definition goes into every model call, so
-list only the operations agents need.
+list only the operations agents need. An operation only a glob names is left out where its tool
+name would be over 64 characters.
 
 - `{credential: NAME}` is the signed-in account of the person the agent acts for, from the
   [`oauth`](#oauth) provider `NAME` or an app added for it. Until they sign in, the call waits.

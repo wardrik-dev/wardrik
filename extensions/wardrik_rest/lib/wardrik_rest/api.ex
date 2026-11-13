@@ -25,6 +25,12 @@ defmodule WardrikRest.API do
               doc:
                 "The source of each scheme the description names, as `%{\"oauth2\" => {:credential, \"google\"}}`."
             ],
+            schemes: [
+              type: {:map, :string, :any},
+              default: %{},
+              doc:
+                "Schemes the description doesn't name, each sent on every operation before its own, as `%{\"token\" => :bearer}`, `{:header, name}` or `{:query, name}`. `:auth` gives each a source."
+            ],
             headers: [
               type: {:map, :string, :any},
               default: %{},
@@ -178,14 +184,16 @@ defmodule WardrikRest.API do
   Reads `source`, a `WardrikRest.Reader` and its options, and keeps the operations `opts` offer.
 
   Returns `{:error, reason}` if the description can't be read, `:base_url` fails `:egress`,
-  `:auth` names a scheme the description doesn't, or `:only` names an operation it doesn't have,
-  can't sign in to, or whose tool name would be over 64 characters.
+  `:auth` names a scheme neither the description nor `:schemes` has, or `:only` names an
+  operation it doesn't have, can't sign in to, or whose tool name would be over 64 characters. An
+  operation only a glob offers is left out where its tool name would be over 64 characters.
   """
   @spec load(Reader.t(), keyword()) :: {:ok, t()} | {:error, String.t()}
   def load(source, opts) do
     opts = NimbleOptions.validate!(opts, @schema)
 
     with {:ok, spec} <- Reader.read(source),
+         {:ok, spec} <- added(spec, opts[:schemes]),
          :ok <- opts[:egress].(opts[:base_url]),
          :ok <- schemes(spec, opts[:auth]),
          {:ok, operations} <- offered(spec, opts) do
@@ -227,7 +235,12 @@ defmodule WardrikRest.API do
 
   defp fitted(operation, spec, opts) do
     {properties, cut} =
-      Schema.fit(operation.parameters, spec.types, opts[:max_schema_bytes], describe(opts[:name]))
+      Schema.fit(
+        operation.parameters,
+        spec.types,
+        opts[:max_schema_bytes],
+        {tool_name(opts[:name], operation), describe(opts[:name])}
+      )
 
     required = for %{required: true, name: name} <- operation.parameters, do: name
     schema = %{"type" => "object", "properties" => properties}
@@ -270,6 +283,24 @@ defmodule WardrikRest.API do
     [read_only: read_only, idempotent: idempotent]
   end
 
+  defp added(spec, schemes) when map_size(schemes) == 0, do: {:ok, spec}
+
+  defp added(spec, schemes) do
+    case Enum.reject(schemes, fn {_name, place} -> place?(place) end) do
+      [] ->
+        names = schemes |> Map.keys() |> Enum.sort()
+        operations = Enum.map(spec.operations, &%{&1 | security: [names | &1.security]})
+        {:ok, %{spec | schemes: Map.merge(spec.schemes, schemes), operations: operations}}
+
+      [{name, _place} | _more] ->
+        {:error, "schemes.#{name} is :bearer, {:header, name} or {:query, name}."}
+    end
+  end
+
+  defp place?(:bearer), do: true
+  defp place?({where, name}) when where in [:header, :query] and is_binary(name), do: true
+  defp place?(_other), do: false
+
   defp schemes(spec, auth) do
     case Enum.reject(Map.keys(auth), &Map.has_key?(spec.schemes, &1)) do
       [] ->
@@ -286,12 +317,21 @@ defmodule WardrikRest.API do
 
   defp offered(spec, opts) do
     signed = Enum.filter(spec.operations, &match?({:ok, _schemes}, signed(opts[:auth], &1)))
-    offered = Enum.filter(signed, &listed?(opts[:only], &1.name))
+    exact = Enum.reject(opts[:only], &String.contains?(&1, "*"))
+
+    # A glob leaves out what its names would be too long for; a name given exactly is an error.
+    offered =
+      Enum.filter(signed, fn operation ->
+        operation.name in exact or
+          (listed?(opts[:only], operation.name) and fits?(opts[:name], operation))
+      end)
 
     with :ok <- named(opts[:only], spec, signed),
          :ok <- short(opts[:name], offered),
          do: {:ok, offered}
   end
+
+  defp fits?(prefix, operation), do: String.length(tool_name(prefix, operation)) <= @name_limit
 
   defp named(only, spec, signed) do
     exact = Enum.reject(only, &String.contains?(&1, "*"))
@@ -316,11 +356,14 @@ defmodule WardrikRest.API do
     |> Enum.filter(&(&1.name in names))
     |> Enum.flat_map(& &1.security)
     |> Enum.uniq()
-    |> Enum.map_join(" or ", &Enum.join(&1, " and "))
+    |> case do
+      [] -> "a scheme wardrik_rest can't send"
+      needed -> Enum.map_join(needed, " or ", &Enum.join(&1, " and "))
+    end
   end
 
   defp short(prefix, operations) do
-    case Enum.filter(operations, &(String.length(tool_name(prefix, &1)) > @name_limit)) do
+    case Enum.reject(operations, &fits?(prefix, &1)) do
       [] ->
         :ok
 

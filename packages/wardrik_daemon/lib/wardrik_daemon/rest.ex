@@ -22,7 +22,7 @@ defmodule WardrikDaemon.Rest do
   alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Config.Rest, as: Entry
   alias WardrikDaemon.Owners
-  alias WardrikRest.Discovery
+  @readers %{discovery: WardrikRest.Discovery, openapi: WardrikRest.OpenAPI}
 
   @retry :timer.minutes(1)
 
@@ -90,8 +90,8 @@ defmodule WardrikDaemon.Rest do
     opts =
       [name: name, egress: settings.egress, req_options: settings.req_options] ++ entry.options
 
-    with {:ok, discovery} <- described(settings, entry.discovery),
-         {:ok, api} <- WardrikRest.API.load(discovery, opts) do
+    with {:ok, source} <- described(settings, entry),
+         {:ok, api} <- WardrikRest.API.load(source, opts) do
       Map.put(read, name, api)
     else
       {:error, reason} ->
@@ -100,23 +100,29 @@ defmodule WardrikDaemon.Rest do
     end
   end
 
-  defp described(settings, location) do
+  defp described(settings, %Entry{reader: reader, location: location}) do
+    module = Map.fetch!(@readers, reader)
+
     if URI.parse(location).scheme in ["http", "https"],
-      do: fetched(settings, location),
-      else: file(settings, location)
+      do: fetched(settings, module, location),
+      else: file(settings, module, location)
   end
 
-  defp fetched(settings, url) do
+  defp fetched(settings, module, url) do
     with :ok <- settings.egress.(url),
-         do: {:ok, {Discovery, url: url, req_options: settings.req_options}}
+         do: {:ok, {module, url: url, req_options: settings.req_options}}
   end
 
-  defp file(settings, path) do
+  # OpenAPI reads its own files, in JSON or YAML; a Discovery document is JSON.
+  defp file(settings, WardrikRest.OpenAPI, path),
+    do: {:ok, {WardrikRest.OpenAPI, path: Path.expand(path, settings.dir)}}
+
+  defp file(settings, module, path) do
     full = Path.expand(path, settings.dir)
 
     with {:ok, text} <- File.read(full),
          {:ok, document} <- JSON.decode(text) do
-      {:ok, {Discovery, document: document}}
+      {:ok, {module, document: document}}
     else
       {:error, reason} -> {:error, "#{full} doesn't read: #{inspect(reason)}."}
     end

@@ -12,7 +12,9 @@
   `unreadable`, `attention` includes them, and `wardrik agent show` gives the reason.
 - `rest` in `config.yaml`: HTTP APIs from their Google Discovery documents, each a tool group of
   its name, with sign-in from `oauth` and keys from the vault. Orgs list them as `rest`. Each
-  takes `max_schema_bytes` and `argument_headers`.
+  takes `max_schema_bytes` and `argument_headers`. An API's description is a Discovery document
+  (`discovery`) or an OpenAPI 3 one in JSON or YAML (`openapi`), and `schemes` adds the schemes
+  it doesn't name.
 
 ## 0.1.0-rc.12 (2026-11-12)
 

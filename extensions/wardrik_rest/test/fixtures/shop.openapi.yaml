@@ -1,0 +1,169 @@
+openapi: 3.1.0
+info:
+  title: |
+    Shop
+  version: 1.0.0
+servers:
+  - url: https://shop.test/v1
+security:
+  - bearer: []
+  - key: []
+paths:
+  /orders/{order_id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+      - name: trace
+        in: header
+        schema: {type: string}
+    get:
+      operationId: |
+        orders.get
+      summary: Gets an order.
+      parameters:
+        - name: expand
+          in: query
+          schema:
+            type: array
+            items: {type: string}
+        - name: session
+          in: cookie
+          schema: {type: string}
+      responses:
+        200:
+          description: The order.
+    patch:
+      operationId: orders.update
+      description: Changes an order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderChange'
+      responses:
+        200:
+          description: The order.
+  /orders:
+    post:
+      summary: Places an order.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [lines]
+              properties:
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      sku: {type: string}
+                      quantity: {type: integer}
+                shipping:
+                  description: Where it goes.
+                  anyOf:
+                    - type: object
+                      properties:
+                        address:
+                          type: object
+                          properties:
+                            city: {type: string}
+                            line1: {type: string}
+                        name: {type: string}
+                    - type: string
+                      enum: ['']
+                note:
+                  type: [string, 'null']
+                id:
+                  type: string
+                  readOnly: true
+      security:
+        - bearer: []
+      responses:
+        200:
+          description: The order.
+  /orders/{order_id}/tags:
+    put:
+      operationId: orders.tags
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {type: string}
+      responses:
+        204:
+          description: Tagged.
+  /orders/{order_id}/receipt:
+    put:
+      operationId: orders.receipt
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        204:
+          description: Stored.
+  /health:
+    get:
+      security: []
+      responses:
+        200:
+          description: Up.
+  /admin:
+    get:
+      operationId: admin
+      security:
+        - basic: []
+      responses:
+        200:
+          description: Admin.
+components:
+  parameters:
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      description: The order's ID.
+      schema: {type: string}
+  schemas:
+    OrderChange:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, held, closed]
+          description: What the order is now.
+        customer:
+          $ref: '#/components/schemas/Customer'
+        order_id:
+          type: string
+    Customer:
+      type: object
+      description: Who placed it.
+      properties:
+        name: {type: string}
+        referrer:
+          $ref: '#/components/schemas/Customer'
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+    key:
+      type: apiKey
+      in: query
+      name: api_key
+    basic:
+      type: http
+      scheme: basic

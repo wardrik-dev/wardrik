@@ -94,12 +94,16 @@ defmodule WardrikRestTest do
                {:error,
                 "auth gives no way to sign in to properties_runReport. Each needs oauth2 or key."}
 
+      long = [name: String.duplicate("a", 40), base_url: "https://a.test", auth: oauth]
+
       assert {:error, "These tool names would be over 64 characters" <> _rest} =
-               API.load(@analytics,
-                 name: String.duplicate("a", 40),
-                 base_url: "https://a.test",
-                 auth: oauth
-               )
+               API.load(@analytics, long ++ [only: ["properties_audienceExports_create"]])
+
+      # A glob leaves out what's too long for it, and keeps what fits.
+      assert {:ok, api} = API.load(@analytics, long)
+      names = Enum.map(api.operations, & &1.name)
+      assert "properties_runReport" in names
+      refute "properties_audienceExports_create" in names
 
       assert load(auth: oauth, base_url: "http://analyticsdata.googleapis.com") ==
                {:error, "http://analyticsdata.googleapis.com isn't an https URL."}

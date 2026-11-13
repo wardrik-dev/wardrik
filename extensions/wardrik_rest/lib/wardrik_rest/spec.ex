@@ -35,12 +35,14 @@ defmodule WardrikRest.Operation do
     * `:name` - unique within the API, as `"properties_runReport"`.
     * `:path` - relative to the API's base URL, with `{name}` and `{+name}` templates.
     * `:security` - alternatives, each the schemes that apply together. `[[]]` needs none.
+    * `:encoding` - how its body is sent: `:json`, or `:form` as `application/x-www-form-urlencoded`,
+      nested as `card[number]=4242`.
   """
 
   alias WardrikRest.Parameter
 
   @enforce_keys [:name, :method, :path, :description, :parameters, :security]
-  defstruct [:name, :method, :path, :description, :parameters, :security]
+  defstruct [:name, :method, :path, :description, :parameters, :security, encoding: :json]
 
   @type method() :: :get | :post | :put | :patch | :delete
 
@@ -50,13 +52,18 @@ defmodule WardrikRest.Operation do
           path: String.t(),
           description: String.t(),
           parameters: [Parameter.t()],
-          security: [[String.t()]]
+          security: [[String.t()]],
+          encoding: :json | :form
         }
 end
 
 defmodule WardrikRest.Parameter do
   @moduledoc """
-  One argument of an operation: part of its path, its query, its JSON body or a header.
+  One argument of an operation: part of its path, its query, a field of its body, the whole
+  body, or a header.
+
+    * `in: :body` - one field of an object body, with the operation's other `:body` fields.
+    * `in: :payload` - the whole body, for a body that isn't an object of fields.
 
   `:schema` is a JSON Schema, which may refer to the spec's types. A path parameter with
   `reserved: true` keeps its `/`s, as `properties/123`.
@@ -67,7 +74,7 @@ defmodule WardrikRest.Parameter do
 
   @type t() :: %__MODULE__{
           name: String.t(),
-          in: :path | :query | :body | :header,
+          in: :path | :query | :body | :payload | :header,
           schema: map(),
           required: boolean(),
           reserved: boolean()
