@@ -33,6 +33,9 @@ import type {
   Interrupts,
   Node,
   Nodes,
+  NotifyTarget,
+  NotifyTargetInput,
+  NotifyTargets,
   Provider,
   ProviderInput,
   Providers,
@@ -428,6 +431,28 @@ export const operations = {
     query: [],
     body: false,
   },
+  "notify_targets.list": {
+    method: "GET",
+    path: "/v1/owners/{owner}/notify_targets",
+    path_params: ["owner"],
+    query: [],
+    body: false,
+    unwrap: "targets",
+  },
+  "notify_targets.add": {
+    method: "POST",
+    path: "/v1/owners/{owner}/notify_targets",
+    path_params: ["owner"],
+    query: [],
+    body: true,
+  },
+  "notify_targets.remove": {
+    method: "DELETE",
+    path: "/v1/owners/{owner}/notify_targets/{name}",
+    path_params: ["owner", "name"],
+    query: [],
+    body: false,
+  },
 } as const;
 
 /** An operation's id, as `agent.ask`. */
@@ -707,6 +732,20 @@ export interface Inputs {
     /** The account's name, as connections.list answers it. */
     provider: string;
   };
+  "notify_targets.list": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+  };
+  "notify_targets.add": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+  } & NotifyTargetInput;
+  "notify_targets.remove": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+    /** The notify target's name. */
+    name: string;
+  };
 }
 
 /** What each operation answers, an answer of one property being that property. */
@@ -760,6 +799,9 @@ export interface Outputs {
   "connections.list": Connections["connections"];
   "connections.connect": Connecting;
   "connections.disconnect": void;
+  "notify_targets.list": NotifyTargets["targets"];
+  "notify_targets.add": NotifyTarget;
+  "notify_targets.remove": NotifyTarget;
 }
 
 /** The `agent.*` operations. */
@@ -1553,6 +1595,51 @@ export class ConnectionsOperations {
   }
 }
 
+/** The `notify_targets.*` operations. */
+export class NotifyTargetsOperations {
+  readonly #runner: Runner;
+
+  /** @internal */
+  constructor(runner: Runner) {
+    this.#runner = runner;
+  }
+
+  /**
+   * List the notify targets an owner's agents route to.
+   *
+   * The notify targets the owner keeps. The deployment's include those it starts with.
+   */
+  list(owner: string, options: CallOptions = {}): Promise<Outputs["notify_targets.list"]> {
+    return this.#runner.call("notify_targets.list", { owner }, options);
+  }
+
+  /**
+   * Add a webhook for an owner's agents' notices.
+   *
+   * Adds a webhook for the owner's agents' notices. Your resolver gives each agent the targets it routes to; an agent routing to another owner's is checked as notify_target.use. One of the owner's own by the same name is a conflict. The URL must pass the deployment's egress check, when it's added and before each notice.
+   */
+  add(
+    owner: string,
+    input: NotifyTargetInput,
+    options: CallOptions = {},
+  ): Promise<Outputs["notify_targets.add"]> {
+    return this.#runner.call("notify_targets.add", { ...input, owner }, options);
+  }
+
+  /**
+   * Remove a notify target.
+   *
+   * Removes one of the owner's own.
+   */
+  remove(
+    owner: string,
+    name: string,
+    options: CallOptions = {},
+  ): Promise<Outputs["notify_targets.remove"]> {
+    return this.#runner.call("notify_targets.remove", { owner, name }, options);
+  }
+}
+
 /** Every operation but an agent's, by its namespace. */
 export class Operations {
   /** The `agents.*` operations. */
@@ -1573,6 +1660,8 @@ export class Operations {
   readonly servers: ServersOperations;
   /** The `connections.*` operations. */
   readonly connections: ConnectionsOperations;
+  /** The `notify_targets.*` operations. */
+  readonly notifyTargets: NotifyTargetsOperations;
 
   /** @internal */
   constructor(runner: Runner) {
@@ -1585,5 +1674,6 @@ export class Operations {
     this.providers = new ProvidersOperations(runner);
     this.servers = new ServersOperations(runner);
     this.connections = new ConnectionsOperations(runner);
+    this.notifyTargets = new NotifyTargetsOperations(runner);
   }
 }

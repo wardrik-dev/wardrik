@@ -121,9 +121,9 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     for owner <- ["payments", "payments/@ana", "growth"],
         do: {:ok, _added} = add(admin, owner, target(context, "ops"))
 
-    assert {WardrikDaemon.Webhook, opts} = notify(context, "payments/@ana/notes")["ops"]
+    assert {Wardrik.Notify.OwnedWebhook, opts} = notify(context, "payments/@ana/notes")["ops"]
     assert opts[:owner] == "payments/@ana"
-    assert {WardrikDaemon.Webhook, opts} = notify(context, "payments/@bo/notes")["ops"]
+    assert {Wardrik.Notify.OwnedWebhook, opts} = notify(context, "payments/@bo/notes")["ops"]
     assert opts[:owner] == "payments"
     assert notify(context, "payments/triage")["audit"] == "audit"
     refute Map.has_key?(notify(context, "growth/leads"), "audit")
@@ -139,8 +139,7 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     assert {:ok, %{"targets" => listed}} = list(admin, "payments/@ana")
 
     assert for(target <- listed, do: {target["owner"], target["name"], target["source"]}) == [
-             {"payments/@ana", "ops", "runtime"},
-             {"deployment", "audit", "config"}
+             {"payments/@ana", "ops", "runtime"}
            ]
   end
 

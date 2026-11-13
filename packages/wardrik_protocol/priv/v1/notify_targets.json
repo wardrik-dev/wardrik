@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:notify_targets",
+  "title": "Notify targets",
+  "description": "What notify_targets.list answers: the notify targets an owner keeps.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "targets"
+  ],
+  "properties": {
+    "targets": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:notify_target"
+      }
+    }
+  },
+  "examples": [
+    {
+      "targets": [
+        {
+          "owner": "acme",
+          "name": "ops",
+          "source": "runtime",
+          "kind": "webhook",
+          "url": "https://hooks.acme.example/wardrik",
+          "secret": {
+            "name": "OPS_HOOK_SECRET"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1073,6 +1073,62 @@ export interface Nodes {
   asleep: number;
 }
 /**
+ * A place an owner's agents' notices go: who holds it, where it came from, and what kind it is. Never its secret, nor a config target's options.
+ */
+export interface NotifyTarget {
+  owner: Owner;
+  /**
+   * What agents' definitions route to.
+   */
+  name: string;
+  source: Source;
+  /**
+   * What sends its notices, as webhook or room. A target added at runtime is a webhook.
+   */
+  kind: string;
+  /**
+   * Where a webhook posts. Omitted for other kinds.
+   */
+  url?: string;
+  /**
+   * The vault secret that signs a runtime webhook's notices. Omitted for one without, and for a config target.
+   */
+  secret?: {
+    /**
+     * The name of the secret in the owner's vault.
+     */
+    name: string;
+  };
+}
+/**
+ * A webhook that receives notifications from the owner's agents, and the secret that signs them.
+ */
+export interface NotifyTargetInput {
+  /**
+   * The target's name. An agent sends to this target when its definition sets notify to this name, for example notify: ops. Use up to 32 letters, digits, - and _.
+   */
+  name: string;
+  /**
+   * The HTTPS URL that notifications are posted to. Wardrik checks the URL when you add the target and before each notification. It doesn't follow redirects.
+   */
+  url: string;
+  /**
+   * A secret in the owner's vault. Wardrik uses it to sign the body of each notification. Wardrik reads it each time, so a new value applies immediately.
+   */
+  secret?: {
+    /**
+     * The name of the secret in the owner's vault.
+     */
+    name: string;
+  };
+}
+/**
+ * What notify_targets.list answers: the notify targets an owner keeps.
+ */
+export interface NotifyTargets {
+  targets: NotifyTarget[];
+}
+/**
  * An OAuth app people sign in with: who holds it, where it came from, and the service's app. Never its client secret.
  */
 export interface Provider {

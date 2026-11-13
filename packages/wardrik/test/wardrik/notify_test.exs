@@ -164,7 +164,13 @@ defmodule Wardrik.NotifyTest do
       assert_receive {:told, "audit", %Notice{kind: :parked, agent: "acme/triage", calls: [call]}}
       assert %{interrupt: %Wardrik.Interrupt{name: "echo"}, arguments: %{"text" => "hi"}} = call
 
-      asked = for {:authorize, request} <- Process.info(self(), :messages) |> elem(1), do: request
+      # Defining checks the agent may use the deployment's target, as the agent's principal.
+      asked =
+        for {:authorize, %{action: action} = request} <-
+              Process.info(self(), :messages) |> elem(1),
+            not String.ends_with?(action, ".use"),
+            do: request
+
       assert asked != []
       assert Enum.all?(asked, &(&1.principal.id == "acme/@maria"))
       refute Enum.any?(asked, &(&1.principal.id == "wardrik:notify"))

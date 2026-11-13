@@ -104,7 +104,7 @@ defmodule WardrikProtocolTest do
                audit.list channel.deliver connections.connect connections.disconnect connections.list
                deployment.nodes deployment.reload deployment.runtime events.head events.list
                hook.deliver
-               hook.deliver_with_secret interrupts.list providers.add providers.list providers.remove secrets.delete secrets.list secrets.put servers.add servers.list servers.remove
+               hook.deliver_with_secret interrupts.list notify_targets.add notify_targets.list notify_targets.remove providers.add providers.list providers.remove secrets.delete secrets.list secrets.put servers.add servers.list servers.remove
              )
 
       assert WardrikProtocol.operation("agent.unknown") == nil
@@ -130,7 +130,7 @@ defmodule WardrikProtocolTest do
       for operation <- WardrikProtocol.operations() do
         assert operation.effect in ~w(read change destructive)
 
-        assert operation.subject in ~w(agent agents channel connection deployment hook mcp_server provider secret)
+        assert operation.subject in ~w(agent agents channel connection deployment hook mcp_server notify_target provider secret)
 
         assert is_binary(operation.action)
 

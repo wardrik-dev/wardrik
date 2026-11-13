@@ -6,7 +6,7 @@ defmodule WardrikDaemon.Resolver do
     * It's held to `"*"`'s policy and its org's, and their shared budgets. See `WardrikDaemon.Orgs`.
     * It reaches its owner's MCP server of each name, else the one its owner may use as
       `WardrikDaemon.Authorizer` allows, else the deployment's that serves its org. It reaches
-      the nearest notify target of each name. See `WardrikDaemon.NotifyTargets`.
+      notify targets the same way.
     * A channel posts its notices in the workspace its owner added it to, else its org's.
     * It mounts the workspaces `workspace.shared` gives it.
     * An agent of an undeclared org, or whose policy is missing, isn't started.
@@ -19,7 +19,6 @@ defmodule WardrikDaemon.Resolver do
   alias Wardrik.Resolver.Request
   alias WardrikCore.Principal
   alias WardrikDaemon.AgentRecords
-  alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.Owners
 
   @impl Wardrik.Resolver
@@ -32,7 +31,7 @@ defmodule WardrikDaemon.Resolver do
          policy: settings.policy,
          middleware: middleware(opts.store, org, settings.ceilings),
          servers: servers(opts, owner, org),
-         notify: nearest(NotifyTargets.reached(opts, owner)),
+         notify: targets(opts, owner, org),
          channels: channels(opts, owner),
          workspaces: workspaces(opts.store, opts.config.workspace, record)
        }}
@@ -102,6 +101,26 @@ defmodule WardrikDaemon.Resolver do
     end)
   end
 
-  # Nearest first: the first of each name wins.
-  defp nearest(named), do: named |> Enum.reverse() |> Map.new()
+  # A notify target config.yaml names reaches the orgs it serves alone. Where Wardrik isn't
+  # running, only those are.
+  defp targets(%{wardrik: wardrik, config: config}, owner, org) do
+    reached =
+      case Wardrik.Instance.fetch(wardrik) do
+        {:ok, running} ->
+          Wardrik.Operations.NotifyTargets.reached(running, %Principal{id: owner})
+
+        :error ->
+          Map.new(Keyword.get(config.notify, :targets, []), fn {name, _target} ->
+            {to_string(name), to_string(name)}
+          end)
+      end
+
+    Map.filter(reached, fn
+      {name, name} ->
+        WardrikDaemon.Config.Orgs.serves?(config, kind: :notify, name: name, org: org)
+
+      _added ->
+        true
+    end)
+  end
 end

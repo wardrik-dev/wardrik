@@ -18,6 +18,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.MCPServer
   alias Wardrik.Message
   alias Wardrik.Nodes
+  alias Wardrik.NotifyTarget
   alias Wardrik.OAuthApp
   alias Wardrik.Page
   alias Wardrik.Runs
@@ -51,7 +52,9 @@ defmodule Wardrik.Operations.Types do
     "providers.remove" => OAuthApp,
     "servers.add" => ServerAdded,
     "servers.remove" => MCPServer,
-    "connections.connect" => Connecting
+    "connections.connect" => Connecting,
+    "notify_targets.add" => NotifyTarget,
+    "notify_targets.remove" => NotifyTarget
   }
 
   @lists %{
@@ -61,6 +64,7 @@ defmodule Wardrik.Operations.Types do
     "providers.list" => {"providers", OAuthApp, :from_json},
     "servers.list" => {"servers", MCPServer, :from_json},
     "connections.list" => {"connections", Connection, :from_json},
+    "notify_targets.list" => {"targets", NotifyTarget, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }

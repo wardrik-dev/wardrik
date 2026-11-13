@@ -1,12 +1,12 @@
-defmodule WardrikDaemon.Webhook do
+defmodule Wardrik.Notify.OwnedWebhook do
   @options [
     url: [type: :string, required: true, doc: "Where to post."],
-    owner: [type: :string, required: true, doc: "Who added it, whose vault holds its secret."],
+    owner: [type: :string, required: true, doc: "Who keeps it, whose vault holds its secret."],
     secret: [type: :string, doc: "The name of the secret that signs each notice."]
   ]
 
   @moduledoc """
-  Posts notices to a webhook an org or person added. See `WardrikDaemon.NotifyTargets`.
+  Posts notices to a webhook an owner keeps. See `Wardrik.NotifyTargets`.
 
     * The URL is checked on every send, since its address can change.
     * The secret is read from the owner's vault on every send.

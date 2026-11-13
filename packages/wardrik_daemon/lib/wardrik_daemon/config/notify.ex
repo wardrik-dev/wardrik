@@ -13,7 +13,7 @@ defmodule WardrikDaemon.Config.Notify do
       `webhook` (`Wardrik.Notify.Webhook`'s options).
     * A target's name can't hold `:`.
     * Targets serve the deployment's org unless `orgs` says otherwise.
-    * Orgs and people add their own webhooks. See `WardrikDaemon.NotifyTargets`.
+    * Orgs and people add their own webhooks. See Wardrik's `notify_targets.*` operations.
   """
 
   alias Wardrik.Notify.Room

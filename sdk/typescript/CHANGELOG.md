@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `notifyTargets.list()`, `notifyTargets.add()` and `notifyTargets.remove()`, now in Wardrik's
+  protocol.
 - `connections.list()`, `connections.connect()` and `connections.disconnect()`, now in
   Wardrik's protocol.
 - `servers.list()`, `servers.add()` and `servers.remove()`, now in Wardrik's protocol.

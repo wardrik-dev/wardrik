@@ -7,7 +7,13 @@ defmodule Wardrik.Runner do
   alias Wardrik.Instance
   alias Wardrik.Scope
 
-  @held ~w(secret provider mcp_server)
+  @described %{
+    "secret" => "secrets",
+    "provider" => "OAuth apps",
+    "mcp_server" => "MCP servers",
+    "notify_target" => "notify targets"
+  }
+  @held Map.keys(@described)
 
   @doc "Runs the operation `id` in `scope`, with its handler."
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
@@ -82,7 +88,7 @@ defmodule Wardrik.Runner do
 
     refused(
       Authorizer.authorize(scope, action: action, resource: resource),
-      "#{kind} of #{owner}"
+      "#{Map.fetch!(@described, kind)} of #{owner}"
     )
   end
 
