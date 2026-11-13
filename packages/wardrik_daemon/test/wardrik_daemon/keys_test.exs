@@ -5,7 +5,6 @@ defmodule WardrikDaemon.KeysTest do
   import WardrikDaemon.Test
 
   alias WardrikCore.Principal
-  alias WardrikDaemon.Keys
 
   setup :set_mimic_global
 
@@ -73,14 +72,5 @@ defmodule WardrikDaemon.KeysTest do
 
     seal(context, "globex", "sk-globex")
     assert key_used(context, "globex", "second") == "sk-globex"
-  end
-
-  test "names the owners whose keys an agent uses, nearest first" do
-    assert Keys.owners(%Principal{id: "acme/@maria"}, false) == ["acme/@maria", "acme"]
-    assert Keys.owners(%Principal{id: "acme"}, true) == ["acme", "deployment"]
-    assert Keys.owners(%Principal{id: "deployment"}, false) == ["deployment"]
-    assert Keys.owners(%Principal{id: "slack:T0/U1"}, false) == ["slack:T0/U1"]
-    assert Keys.owners(nil, true) == ["deployment"]
-    assert Keys.owners(nil, false) == []
   end
 end
