@@ -4,7 +4,7 @@ defmodule WardrikCore.MixProject do
   def project do
     [
       app: :wardrik_core,
-      version: "0.1.0-rc.6",
+      version: "0.1.0-rc.7",
       elixir: "~> 1.20",
       description:
         "A durable agent runtime for Elixir. Agents survive a crash, wait for a person, and run " <>

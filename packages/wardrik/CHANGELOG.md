@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.12 (2026-11-13)
 
+- **Upgrading:** defining an agent asks your authorizer `mcp_server.use` and `notify_target.use`
+  for each server and notify target its resolver gives it that the agent's principal doesn't
+  keep, including those Wardrik starts with, owned by `deployment`. Allow them where your agents
+  may use them, as `resource: {_kind, "deployment"}`, or definitions are refused.
 - `notify_targets.list`, `notify_targets.add` and `notify_targets.remove` keep an owner's
   webhooks for notices, at `/v1/owners/{owner}/notify_targets`, as `Wardrik.NotifyTargets`,
   sent by `Wardrik.Notify.OwnedWebhook`. Defining an agent checks `notify_target.use` for each

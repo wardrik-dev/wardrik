@@ -10,7 +10,7 @@ when a webhook arrives.
 Triggered runs call the model, so set your Anthropic key. `:vault_keys` seals the webhook's secret.
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.11"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.12"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do

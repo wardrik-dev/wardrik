@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.13 (2026-11-13)
 
 - No owner chain: `WardrikDaemon.Owners.chain/1` and `WardrikDaemon.Owned` are gone. An agent's
   API key is its owner's of the name, else one another owner lets it use, as

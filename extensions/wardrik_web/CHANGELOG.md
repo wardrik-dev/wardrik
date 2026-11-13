@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.2 (2026-11-13)
 
 - Agents whose saved state can't be read show as `unreadable`, with the reason on the agent's
   page.

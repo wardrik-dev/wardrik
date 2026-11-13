@@ -8,7 +8,7 @@ Create an agent that saves a note. Review the proposed file write before allowin
 ## 1. Install and configure Wardrik
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.12/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.13/install.sh | sh
 wardrik init
 ```
 
