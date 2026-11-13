@@ -44,7 +44,12 @@ defmodule Wardrik.Children do
       check: wardrik.egress
     ]
 
-    [{Wardrik.OAuth, options ++ wardrik.oauth}]
+    oauth =
+      wardrik.oauth
+      |> Keyword.delete(:providers)
+      |> Keyword.put_new(:resolver, {Wardrik.OAuth.Apps, wardrik.name})
+
+    [{Wardrik.OAuth, options ++ oauth}]
   end
 
   defp mcp(wardrik), do: [mcp_spec(wardrik)]

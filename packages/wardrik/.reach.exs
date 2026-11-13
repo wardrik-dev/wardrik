@@ -28,6 +28,8 @@ layers = Keyword.keys(allowed) ++ [:app, :support]
       "Wardrik.Workspace.Agents",
       "Wardrik.Triggers.Agents",
       "Wardrik.Vault.Lookup",
+      "Wardrik.OAuth.Apps",
+      "Wardrik.Owned",
       "Wardrik.MCP.Capability",
       "Wardrik.AgentTools",
       "Wardrik.AgentTools.*",

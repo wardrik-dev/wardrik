@@ -6,7 +6,7 @@ defmodule WardrikDaemon.Running do
 
     1. `WardrikBrave`, for `web_search`, `WardrikGateway`, which every model call goes
        through, `WardrikACP`, and `WardrikDaemon.Rest`, which reads `rest`'s APIs.
-    2. Wardrik, with `WardrikDaemon.Authorizer` and `WardrikDaemon.OAuthApps`.
+    2. Wardrik, with `WardrikDaemon.Authorizer`.
     3. `WardrikDaemon.Pairings`.
     4. `WardrikDaemon.Web.Endpoint`, the dashboard, unless `web.enabled` is `false`.
     5. `WardrikDaemon.HTTP`. Nodes of a cluster share its port; see `WardrikDaemon.Cluster`.
@@ -188,11 +188,8 @@ defmodule WardrikDaemon.Running do
 
   defp oauth(%Config{oauth: nil}, _daemon), do: []
 
-  # config.yaml's providers are the deployment's apps, which WardrikDaemon.OAuthApps gives.
-  defp oauth(%Config{oauth: oauth}, daemon),
-    do: [
-      oauth: Keyword.delete(oauth, :providers) ++ [resolver: {WardrikDaemon.OAuthApps, daemon}]
-    ]
+  # config.yaml's providers are the deployment's apps, which Wardrik.OAuth.Apps gives.
+  defp oauth(%Config{oauth: oauth}, _daemon), do: [oauth: oauth]
 
   defp started(agents, dirs, config) do
     Enum.each(config.warnings, &Logger.warning("config.yaml: #{&1}"))

@@ -7,7 +7,7 @@ defmodule Wardrik.Runner do
   alias Wardrik.Instance
   alias Wardrik.Scope
 
-  @held ~w(secret)
+  @held ~w(secret provider)
 
   @doc "Runs the operation `id` in `scope`, with its handler."
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}

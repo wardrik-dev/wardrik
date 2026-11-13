@@ -4,13 +4,13 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   import WardrikDaemon.Test
 
+  alias Wardrik.OAuth.Apps
   alias Wardrik.OAuth.Resolver.Request
   alias Wardrik.OAuth.Token
   alias Wardrik.Vault.Secret
   alias WardrikCore.Credentials
   alias WardrikCore.Principal
   alias WardrikDaemon.Client
-  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Tokens
 
   setup :set_mimic_global
@@ -78,8 +78,24 @@ defmodule WardrikDaemon.OAuthAppsTest do
   defp remove(client, owner, name),
     do: Client.run(client, "providers.remove", %{"owner" => owner, "name" => name})
 
-  defp resolve(context, id, name),
-    do: OAuthApps.provider(%Request{name: name, principal: %Principal{id: id}}, context.daemon)
+  # The app `id` would sign in to `name` with, as a server or a connection picks it.
+  defp nearest(context, id, name) do
+    case Apps.chosen(context.running, %Principal{id: id}, name) do
+      %{} = app -> app
+      _none -> nil
+    end
+  end
+
+  defp resolve(context, id, name) do
+    case nearest(context, id, name) do
+      nil ->
+        {:error, :not_found}
+
+      app ->
+        request = %Request{name: Apps.reference(app), principal: %Principal{id: id}}
+        Apps.provider(request, context.running.name)
+    end
+  end
 
   defp client_id(url), do: URI.decode_query(URI.parse(url).query)["client_id"]
 
@@ -106,7 +122,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
     Wardrik.Vault.resolve(request, Wardrik.vault(context.running))
   end
 
-  test "signs a principal in only with an app its chain reaches", context do
+  test "signs a principal in with its own app, its org's, or the deployment's", context do
     admin = client(context, "user:admin")
     assert {:ok, _app} = add(admin, "payments", app("crm", "payments-crm"))
     assert {:ok, _app} = add(admin, "growth", app("crm", "growth-crm"))
@@ -132,8 +148,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
     assert {:ok, %{"providers" => listed}} = list(admin, "growth/@cy")
 
     assert for(app <- listed, do: {app["owner"], app["name"], app["source"]}) == [
-             {"growth/@cy", "notes", "runtime"},
-             {"growth", "crm", "runtime"}
+             {"growth/@cy", "notes", "runtime"}
            ]
 
     assert {:ok, %{"providers" => [deployment]}} = list(admin, "deployment")
@@ -154,30 +169,23 @@ defmodule WardrikDaemon.OAuthAppsTest do
   test "refreshes a grant only by the app that issued it", context do
     admin = client(context, "user:admin")
     assert {:ok, _app} = add(admin, "payments", app("crm", "payments-crm"))
-    issuer = OAuthApps.key(OAuthApps.nearest(context.daemon, "payments", "crm"))
+    issuer = Apps.key(nearest(context, "payments", "crm"))
 
     # The issuer refreshes it, though its token endpoint is down.
-    grant(context, {"payments/@ana", "crm"}, issuer)
-    assert {:error, _down} = credential(context, "payments/@ana", "crm")
+    grant(context, {"payments/@ana", "payments:crm"}, issuer)
+    assert {:error, _down} = credential(context, "payments/@ana", "payments:crm")
 
-    # Ana's own app of the name is another app: she signs in again with it.
-    assert {:ok, _app} = add(admin, "payments/@ana", app("crm", "ana-crm"))
-    grant(context, {"payments/@ana", "crm"}, issuer)
-    assert {:authorize, url} = credential(context, "payments/@ana", "crm")
-    assert client_id(url) == "ana-crm"
-
-    # So is an app removed and added again by the same name.
-    assert {:ok, _app} = remove(admin, "payments/@ana", "crm")
+    # An app removed and added again by the same name is another app: Bo signs in again.
     assert {:ok, _app} = remove(admin, "payments", "crm")
     assert {:ok, _app} = add(admin, "payments", app("crm", "payments-crm"))
-    refute OAuthApps.key(OAuthApps.nearest(context.daemon, "payments", "crm")) == issuer
+    refute Apps.key(nearest(context, "payments", "crm")) == issuer
 
-    grant(context, {"payments/@bo", "crm"}, issuer)
-    assert {:authorize, _url} = credential(context, "payments/@bo", "crm")
+    grant(context, {"payments/@bo", "payments:crm"}, issuer)
+    assert {:authorize, _url} = credential(context, "payments/@bo", "payments:crm")
 
     # And the deployment's, for a grant another org's app issued.
-    grant(context, {"initech/@di", "crm"}, issuer)
-    assert {:authorize, url} = credential(context, "initech/@di", "crm")
+    grant(context, {"initech/@di", "deployment:crm"}, issuer)
+    assert {:authorize, url} = credential(context, "initech/@di", "deployment:crm")
     assert client_id(url) == "deployment-crm"
   end
 
@@ -195,8 +203,8 @@ defmodule WardrikDaemon.OAuthAppsTest do
       assert {:error, "not_found", _message} = remove(ana, owner, "crm")
     end
 
-    assert OAuthApps.nearest(context.daemon, "growth", "mine") == nil
-    assert %{owner: "growth"} = OAuthApps.nearest(context.daemon, "growth", "crm")
+    assert nearest(context, "growth", "mine") == nil
+    assert %{owner: "growth"} = nearest(context, "growth", "crm")
 
     cy = client(context, "user:growth/@cy")
     assert {:ok, _app} = add(cy, "growth/@cy", app("notes", "cy-notes"))
@@ -267,15 +275,15 @@ defmodule WardrikDaemon.OAuthAppsTest do
       assert {:error, "invalid_request", _message} = add(admin, "growth", input)
     end
 
-    assert OAuthApps.nearest(context.daemon, "growth", "wiki") == nil
+    assert nearest(context, "growth", "wiki") == nil
   end
 
   test "connections list and forget only the caller's own grants", context do
     admin = client(context, "user:admin")
     assert {:ok, _app} = add(admin, "payments", app("docs", "payments-docs"))
 
-    seal(context, {"payments/@ana", "crm"}, "ana's grant", :grant)
-    seal(context, {"payments/@bo", "docs"}, "bo's grant", :grant)
+    seal(context, {"payments/@ana", "deployment:crm"}, "ana's grant", :grant)
+    seal(context, {"payments/@bo", "payments:docs"}, "bo's grant", :grant)
 
     ana = client(context, "user:payments/@ana")
     bo = client(context, "user:payments/@bo")
@@ -301,10 +309,10 @@ defmodule WardrikDaemon.OAuthAppsTest do
     vault = Wardrik.vault(context.running)
 
     assert {:ok, "ana's grant"} =
-             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@ana"}, "crm")
+             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@ana"}, "deployment:crm")
 
     assert {:error, :not_found} =
-             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@bo"}, "docs")
+             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@bo"}, "payments:docs")
 
     assert {:error, "not_found", _message} =
              Client.run(ana, "connections.connect", %{"provider" => "nope"})
@@ -317,7 +325,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
              Client.run(agent, "connections.disconnect", %{"provider" => "crm"})
 
     assert {:ok, "ana's grant"} =
-             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@ana"}, "crm")
+             Wardrik.Vault.fetch(vault, %Principal{id: "payments/@ana"}, "deployment:crm")
   end
 
   # Removing is its own verb, as Kubernetes' delete: adding doesn't allow it.
@@ -329,6 +337,6 @@ defmodule WardrikDaemon.OAuthAppsTest do
     assert {:error, "forbidden", _message} = remove(adder, "payments", "docs")
     assert {:error, "forbidden", _message} = add(remover, "payments", app("wiki", "wiki"))
     assert {:ok, _removed} = remove(remover, "payments", "docs")
-    assert OAuthApps.nearest(context.daemon, "payments", "docs") == nil
+    assert nearest(context, "payments", "docs") == nil
   end
 end

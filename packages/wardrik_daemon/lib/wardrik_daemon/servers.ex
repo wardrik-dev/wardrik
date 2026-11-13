@@ -13,9 +13,9 @@ defmodule WardrikDaemon.Servers do
   """
 
   alias Wardrik.Error
+  alias Wardrik.OAuth.Apps
   alias WardrikCore.Principal
   alias WardrikDaemon.Config.Orgs
-  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Owned
   alias WardrikDaemon.Owners
 
@@ -196,22 +196,24 @@ defmodule WardrikDaemon.Servers do
   defp signs_in({_daemon, %Wardrik{oauth: nil}}, _owned, %{"auth" => %{"oauth" => _oauth}}),
     do: {:error, Error.new(:not_supported, "Signing in to a server needs config.yaml's oauth.")}
 
-  # A server naming an OAuth app signs in with it, so connecting the app once covers the server.
-  defp signs_in({daemon, _running}, {owner, _key}, %{
+  # A server naming an OAuth app signs in with the one its owner would: its own, one it may use,
+  # or the deployment's. Connecting that app once covers the server.
+  defp signs_in({_daemon, running}, {owner, _key}, %{
          "auth" => %{"oauth" => %{"provider" => provider}}
        }) do
-    if OAuthApps.nearest(daemon, owner, provider) != nil and not String.contains?(provider, ":"),
-      do: {:ok, [credential_name: provider], "oauth"},
-      else: {:error, Error.new(:invalid_request, "#{owner} has no OAuth app #{provider}.")}
+    case Apps.chosen(running, %Principal{id: owner}, provider) do
+      %{} = app -> {:ok, [credential_name: Apps.reference(app)], "oauth"}
+      _none -> {:error, Error.new(:invalid_request, "#{owner} has no OAuth app #{provider}.")}
+    end
   end
 
-  # Its own sign-in is an OAuth app named by its key, which only it uses.
-  defp signs_in({daemon, _running}, {owner, key}, %{"auth" => %{"oauth" => oauth}} = input) do
-    app = Map.merge(oauth, %{"name" => key, "resource" => input["url"]})
+  # Its own sign-in is an OAuth app named for it, which only it uses.
+  defp signs_in({_daemon, running}, {owner, _key}, %{"auth" => %{"oauth" => oauth}} = input) do
+    app = Map.merge(oauth, %{"name" => "server:" <> input["name"], "resource" => input["url"]})
 
-    case OAuthApps.keep(daemon, {owner, app}) do
-      {:ok, _app} ->
-        {:ok, [credential_name: key], "oauth"}
+    case Apps.keep(running, owner, app) do
+      {:ok, kept} ->
+        {:ok, [credential_name: Apps.reference(kept)], "oauth"}
 
       {:error, %Error{message: why}} ->
         {:error, Error.new(:invalid_request, "#{input["name"]} can't be signed in with: #{why}")}
@@ -289,13 +291,18 @@ defmodule WardrikDaemon.Servers do
   end
 
   # A server that names an OAuth app leaves the app, and the accounts connected with it, alone.
-  defp forget_sign_ins({daemon, running}, {owner, key}, %{auth: "oauth", provider: nil}) do
+  defp forget_sign_ins(
+         {_daemon, running},
+         {owner, _key},
+         %{auth: "oauth", provider: nil} = record
+       ) do
     vault = Wardrik.vault(running)
+    credential = Keyword.fetch!(record.opts, :credential_name)
 
-    for {id, ^key, _kind} <- Wardrik.Vault.list(vault),
-        do: Wardrik.Vault.delete(vault, %Principal{id: id}, key)
+    for {id, ^credential, _kind} <- Wardrik.Vault.list(vault),
+        do: Wardrik.Vault.delete(vault, %Principal{id: id}, credential)
 
-    _forgotten = OAuthApps.forget(daemon, {owner, key})
+    _forgotten = Apps.forget(running, owner, "server:" <> record.name)
     :ok
   end
 

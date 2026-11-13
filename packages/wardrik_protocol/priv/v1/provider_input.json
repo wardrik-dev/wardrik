@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:provider_input",
+  "title": "An OAuth app to keep",
+  "description": "An OAuth app that people use to connect an account. Set issuer, resource, or both authorization_endpoint and token_endpoint. Each URL must be allowed by the deployment's egress rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+      "description": "The app's name. Tools use this name to get the person's token. Use up to 32 letters, digits, - and _."
+    },
+    "issuer": {
+      "type": "string",
+      "description": "The authorization server's issuer URL. Its metadata provides the endpoints."
+    },
+    "resource": {
+      "type": "string",
+      "description": "The API or MCP server that the tokens are for. If you don't set issuer, Wardrik finds it from this URL."
+    },
+    "authorization_endpoint": {
+      "type": "string",
+      "description": "The URL where people sign in, for a service that doesn't publish metadata. Set together with token_endpoint."
+    },
+    "token_endpoint": {
+      "type": "string",
+      "description": "The token endpoint. Set together with authorization_endpoint."
+    },
+    "client_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The OAuth app's client ID. If you leave it empty, Wardrik registers itself as a client, if the service allows it."
+    },
+    "client_secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "description": "The OAuth app's client secret, stored in the owner's vault. Wardrik reads it each time it is used, so a new value applies immediately. It is only sent to the token endpoint.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the secret in the owner's vault."
+        }
+      }
+    },
+    "client_auth": {
+      "type": "string",
+      "enum": [
+        "post",
+        "basic"
+      ],
+      "description": "How the client secret is sent: post (in the request body) or basic (HTTP Basic auth). Defaults to post."
+    },
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The scopes to request. Defaults to none."
+    },
+    "flow": {
+      "type": "string",
+      "enum": [
+        "browser",
+        "device"
+      ],
+      "description": "How people sign in. With browser, they sign in in a browser. With device, they enter a code on another device. Defaults to browser."
+    },
+    "authorization_params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "response_type",
+            "client_id",
+            "redirect_uri",
+            "scope",
+            "state",
+            "code_challenge",
+            "code_challenge_method",
+            "resource"
+          ]
+        }
+      },
+      "description": "Extra parameters for the browser sign-in, for example access_type: offline. You can't override the parameters Wardrik sets."
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "issuer"
+      ]
+    },
+    {
+      "required": [
+        "resource"
+      ]
+    },
+    {
+      "required": [
+        "authorization_endpoint",
+        "token_endpoint"
+      ]
+    }
+  ],
+  "dependentRequired": {
+    "client_secret": [
+      "client_id"
+    ],
+    "client_auth": [
+      "client_secret"
+    ],
+    "authorization_endpoint": [
+      "token_endpoint"
+    ],
+    "token_endpoint": [
+      "authorization_endpoint"
+    ]
+  },
+  "examples": [
+    {
+      "name": "google",
+      "issuer": "https://accounts.google.com",
+      "client_id": "868288504182-example.apps.googleusercontent.com",
+      "client_secret": {
+        "name": "GOOGLE_CLIENT_SECRET"
+      },
+      "scopes": [
+        "https://www.googleapis.com/auth/adwords"
+      ],
+      "authorization_params": {
+        "access_type": "offline",
+        "prompt": "consent"
+      }
+    },
+    {
+      "name": "x",
+      "authorization_endpoint": "https://x.com/i/oauth2/authorize",
+      "token_endpoint": "https://api.x.com/2/oauth2/token",
+      "client_id": "cnh3-example",
+      "client_secret": {
+        "name": "X_CLIENT_SECRET"
+      },
+      "client_auth": "basic",
+      "scopes": [
+        "tweet.read",
+        "tweet.write",
+        "offline.access"
+      ]
+    }
+  ]
+}

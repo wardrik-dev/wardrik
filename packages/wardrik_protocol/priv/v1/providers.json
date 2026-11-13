@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:providers",
+  "title": "OAuth apps",
+  "description": "What providers.list answers: the OAuth apps an owner keeps.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "providers"
+  ],
+  "properties": {
+    "providers": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:provider"
+      }
+    }
+  },
+  "examples": [
+    {
+      "providers": [
+        {
+          "owner": "deployment",
+          "name": "google",
+          "source": "runtime",
+          "issuer": "https://accounts.google.com",
+          "client_id": "868288504182-example.apps.googleusercontent.com",
+          "client_secret": {
+            "name": "GOOGLE_CLIENT_SECRET"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adwords"
+          ],
+          "authorization_params": {
+            "access_type": "offline",
+            "prompt": "consent"
+          },
+          "client_auth": "post",
+          "flow": "browser"
+        }
+      ]
+    }
+  ]
+}

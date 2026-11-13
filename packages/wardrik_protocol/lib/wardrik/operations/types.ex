@@ -15,6 +15,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Interrupt
   alias Wardrik.Message
   alias Wardrik.Nodes
+  alias Wardrik.OAuthApp
   alias Wardrik.Page
   alias Wardrik.Runs
   alias Wardrik.Runtime
@@ -40,13 +41,16 @@ defmodule Wardrik.Operations.Types do
     "deployment.runtime" => Runtime,
     "agent.runtime" => AgentRuntime,
     "agent.resolved" => AgentResolved,
-    "agent.file_put" => AgentFile
+    "agent.file_put" => AgentFile,
+    "providers.add" => OAuthApp,
+    "providers.remove" => OAuthApp
   }
 
   @lists %{
     "agent.calls" => {"calls", Call, :from_json},
     "agent.files" => {"files", AgentFile, :from_json},
     "secrets.list" => {"secrets", SealedSecret, :from_json},
+    "providers.list" => {"providers", OAuthApp, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }

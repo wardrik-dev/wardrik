@@ -85,7 +85,8 @@ defmodule WardrikDaemon.PairingTest do
 
   defp connected?(context, id, provider) do
     vault = Wardrik.vault(context.running)
-    match?({:ok, _grant}, Wardrik.Vault.fetch(vault, %Principal{id: id}, provider))
+    credential = Wardrik.Owned.reference("deployment", provider)
+    match?({:ok, _grant}, Wardrik.Vault.fetch(vault, %Principal{id: id}, credential))
   end
 
   test "a code finishes only the sign-in its own principal started", context do
@@ -150,7 +151,7 @@ defmodule WardrikDaemon.PairingTest do
 
   test "pairs a sign-in an agent started while waiting on it, for the person it's for", context do
     ana = %Principal{id: "payments/@ana"}
-    assert {:ok, %{url: url}} = Wardrik.sign_in(context.running, "crm", ana)
+    assert {:ok, %{url: url}} = Wardrik.sign_in(context.running, "deployment:crm", ana)
     state = URI.decode_query(URI.parse(url).query)["state"]
 
     code = code(callback(context, %{"state" => state, "code" => "from-crm"}))

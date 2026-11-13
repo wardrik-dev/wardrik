@@ -8,9 +8,10 @@ defmodule WardrikDaemon.Settings do
   | --- | --- | --- |
   | `servers` | `WardrikDaemon.Servers` | `mcp_server` |
   | `notify_targets` | `WardrikDaemon.NotifyTargets` | `notify_target` |
-  | `oauth_apps` | `WardrikDaemon.OAuthApps` | `provider` |
+  | `oauth_apps` | Wardrik's `providers.*` | `provider` |
 
-  Each checks `read`, `add` or `delete` on the owner's kind, as the HTTP API does.
+  Each checks `read`, `add` or `delete` on the owner's kind, as the HTTP API does. Those that are
+  Wardrik's operations run as the scope.
   """
 
   alias Wardrik.Error
@@ -24,7 +25,7 @@ defmodule WardrikDaemon.Settings do
       kind: :notify_target,
       input: "notify_target_input"
     },
-    "oauth_apps" => %{store: WardrikDaemon.OAuthApps, kind: :provider, input: "provider_input"}
+    "oauth_apps" => %{operation: "providers", kind: :provider, input: "provider_input"}
   }
 
   @typedoc "One of `servers`, `notify_targets` or `oauth_apps`."
@@ -36,7 +37,12 @@ defmodule WardrikDaemon.Settings do
 
   @doc "Returns the JSON Schema of the input that adds one of `kind`."
   @spec input(kind()) :: map()
-  def input(kind), do: WardrikDaemon.HTTP.schema(@kinds[kind].input)
+  def input(kind) do
+    case @kinds[kind] do
+      %{operation: _operation, input: input} -> WardrikProtocol.schema(input)
+      %{input: input} -> WardrikDaemon.HTTP.schema(input)
+    end
+  end
 
   @doc "Returns the owners `scope` may choose from: the deployment's org, each org, the person, and the deployment."
   @spec owners(map(), Wardrik.Scope.t()) :: [String.t()]
@@ -51,33 +57,50 @@ defmodule WardrikDaemon.Settings do
   """
   @spec list(map(), Wardrik.Scope.t(), kind(), String.t()) :: {:ok, [map()]} | {:error, Error.t()}
   def list(daemon, scope, kind, owner) do
-    %{store: store, kind: checked} = @kinds[kind]
+    case @kinds[kind] do
+      %{operation: operation} ->
+        with {:ok, %{^operation => items}} <-
+               Wardrik.run(scope, operation <> ".list", %{"owner" => owner}),
+             do: {:ok, Enum.map(items, &named/1)}
 
-    with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.read", checked}),
-         do: {:ok, Enum.map(store.list(daemon, owner), &named/1)}
+      %{store: store, kind: checked} ->
+        with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.read", checked}),
+             do: {:ok, Enum.map(store.list(daemon, owner), &named/1)}
+    end
   end
 
   @doc "Adds one of `kind` to the owner, or replaces the one with the same name."
   @spec add(map(), Wardrik.Scope.t(), kind(), String.t(), map()) ::
           {:ok, map()} | {:error, Error.t()}
   def add(daemon, scope, kind, owner, input) do
-    %{store: store, kind: checked, input: schema} = @kinds[kind]
+    case @kinds[kind] do
+      %{operation: operation} ->
+        with {:ok, added} <-
+               Wardrik.run(scope, operation <> ".add", Map.put(input, "owner", owner)),
+             do: {:ok, named(added)}
 
-    with {:ok, input} <- WardrikDaemon.HTTP.checked(schema, input),
-         :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.add", checked}),
-         {:ok, added} <- store.add(daemon, {owner, input}, scope.principal),
-         do: {:ok, named(added)}
+      %{store: store, kind: checked, input: schema} ->
+        with {:ok, input} <- WardrikDaemon.HTTP.checked(schema, input),
+             :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.add", checked}),
+             {:ok, added} <- store.add(daemon, {owner, input}, scope.principal),
+             do: {:ok, named(added)}
+    end
   end
 
   @doc "Removes the owner's `name` of `kind`."
   @spec remove(map(), Wardrik.Scope.t(), kind(), String.t(), String.t()) ::
           :ok | {:error, Error.t()}
   def remove(daemon, scope, kind, owner, name) do
-    %{store: store, kind: checked} = @kinds[kind]
+    case @kinds[kind] do
+      %{operation: operation} ->
+        input = %{"owner" => owner, "name" => name}
+        with {:ok, _removed} <- Wardrik.run(scope, operation <> ".remove", input), do: :ok
 
-    with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.delete", checked}),
-         {:ok, _removed} <- store.remove(daemon, {owner, name}, scope.principal),
-         do: :ok
+      %{store: store, kind: checked} ->
+        with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.delete", checked}),
+             {:ok, _removed} <- store.remove(daemon, {owner, name}, scope.principal),
+             do: :ok
+    end
   end
 
   # A notify target names its signing secret as %{"name" => name}.

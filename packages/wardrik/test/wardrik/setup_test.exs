@@ -4,8 +4,8 @@ defmodule Wardrik.SetupTest do
   alias Wardrik.Store.ETS
 
   describe "new/1's oauth" do
-    test "needs a resolver" do
-      assert_raise NimbleOptions.ValidationError, ~r/required :resolver/, fn ->
+    test "resolves apps with Wardrik.OAuth.Apps unless it names a resolver" do
+      wardrik =
         Wardrik.new(
           authorizer: {Wardrik.Test.Allow, []},
           resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
@@ -13,7 +13,9 @@ defmodule Wardrik.SetupTest do
           vault_keys: ["key"],
           oauth: [page: "https://agents.example.com/oauth"]
         )
-      end
+
+      refute Keyword.has_key?(wardrik.oauth, :resolver)
+      assert wardrik.oauth[:providers] == []
     end
 
     test "needs the page sign-ins come back to" do

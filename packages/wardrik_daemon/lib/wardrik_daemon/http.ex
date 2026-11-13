@@ -16,7 +16,6 @@ defmodule WardrikDaemon.HTTP do
   | `GET /v1/owners/{owner}/ceilings` | an org's spend against each ceiling |
   | `GET`, `POST /v1/owners/{owner}/servers`, `DELETE .../{name}` | MCP servers |
   | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../{name}` | webhooks |
-  | `GET`, `POST /v1/owners/{owner}/providers`, `DELETE .../{name}` | OAuth apps |
   | `GET /v1/connections` | your accounts |
   | `POST`, `DELETE /v1/connections/{provider}` | starts a sign-in; forgets an account |
   | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with its code |
@@ -54,7 +53,6 @@ defmodule WardrikDaemon.HTTP do
   alias WardrikDaemon.Connections
   alias WardrikDaemon.CreateAgent
   alias WardrikDaemon.NotifyTargets
-  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
@@ -65,7 +63,7 @@ defmodule WardrikDaemon.HTTP do
   @external_resource @openapi_path
   @openapi @openapi_path |> File.read!() |> JSON.decode!()
   @inputs Map.new(
-            ~w(server_input notify_target_input provider_input token_input pairing_input),
+            ~w(server_input notify_target_input token_input pairing_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
           )
 
@@ -210,27 +208,6 @@ defmodule WardrikDaemon.HTTP do
     served(conn, owner, {"notify_target.delete", :notify_target}, fn scope ->
       with {:ok, removed} <-
              NotifyTargets.remove(conn.assigns.daemon, {owner, name}, scope.principal),
-           do: {:ok, 200, removed}
-    end)
-  end
-
-  get "/v1/owners/:owner/providers" do
-    served(conn, owner, {"provider.read", :provider}, fn _scope ->
-      {:ok, 200, %{"providers" => OAuthApps.list(conn.assigns.daemon, owner)}}
-    end)
-  end
-
-  post "/v1/owners/:owner/providers" do
-    served(conn, owner, {"provider.add", :provider}, fn scope ->
-      with {:ok, input} <- input(conn, "provider_input"),
-           {:ok, added} <- OAuthApps.add(conn.assigns.daemon, {owner, input}, scope.principal),
-           do: {:ok, 201, added}
-    end)
-  end
-
-  delete "/v1/owners/:owner/providers/:name" do
-    served(conn, owner, {"provider.delete", :provider}, fn scope ->
-      with {:ok, removed} <- OAuthApps.remove(conn.assigns.daemon, {owner, name}, scope.principal),
            do: {:ok, 200, removed}
     end)
   end

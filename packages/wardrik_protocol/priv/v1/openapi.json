@@ -2696,6 +2696,146 @@
           }
         }
       }
+    },
+    "/v1/owners/{owner}/providers": {
+      "get": {
+        "operationId": "providers.list",
+        "summary": "List the OAuth apps an owner's people sign in with",
+        "description": "The OAuth apps the owner keeps. The deployment's include those it declares.",
+        "tags": [
+          "OAuth apps"
+        ],
+        "x-wardrik-action": "provider.read",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "provider",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The owner's OAuth apps.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:providers"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "providers.add",
+        "summary": "Add an OAuth app for an owner's people",
+        "description": "Keeps an OAuth app for the owner. A sign-in names it by its owner and name; one by another owner is used only where your authorizer allows provider.use. One of the owner's own by the same name is a conflict. Its client secret is named, and read from the owner's vault, sealed for client_secret, each time it's needed. Each URL must pass the deployment's egress check.",
+        "tags": [
+          "OAuth apps"
+        ],
+        "x-wardrik-action": "provider.add",
+        "x-wardrik-effect": "change",
+        "x-wardrik-subject": "provider",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "urn:wardrik:schema:v1:provider_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The app, without its client secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/owners/{owner}/providers/{name}": {
+      "delete": {
+        "operationId": "providers.remove",
+        "summary": "Remove an OAuth app",
+        "description": "Removes one of the owner's own. Accounts connected with it sign in again.",
+        "tags": [
+          "OAuth apps"
+        ],
+        "x-wardrik-action": "provider.delete",
+        "x-wardrik-effect": "destructive",
+        "x-wardrik-subject": "provider",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/provider_name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The app, as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2907,6 +3047,16 @@
         "schema": {
           "type": "string",
           "pattern": "^[^/\\s]+$"
+        }
+      },
+      "provider_name": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "description": "The OAuth app's name.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"
         }
       }
     },

@@ -29,6 +29,13 @@ export type Ask = Ask1 & Ask2;
 export type Ask1 = {
   [k: string]: unknown;
 };
+/**
+ * An OAuth app that people use to connect an account. Set issuer, resource, or both authorization_endpoint and token_endpoint. Each URL must be allowed by the deployment's egress rules.
+ */
+export type ProviderInput = ProviderInput1 & ProviderInput2;
+export type ProviderInput1 = {
+  [k: string]: unknown;
+};
 
 /**
  * A message in OpenTelemetry's GenAI shape. On message.started and message.delta only its id is given.
@@ -1023,6 +1030,123 @@ export interface Nodes {
    * How many agents sleep, on no node, until something asks them.
    */
   asleep: number;
+}
+/**
+ * An OAuth app people sign in with: who holds it, where it came from, and the service's app. Never its client secret.
+ */
+export interface Provider {
+  owner: Owner;
+  /**
+   * The account it grants.
+   */
+  name: string;
+  source: Source;
+  /**
+   * The authorization server's issuer URL. Its metadata provides the endpoints.
+   */
+  issuer?: string;
+  /**
+   * The API or MCP server that the tokens are for. If you don't set issuer, Wardrik finds it from this URL.
+   */
+  resource?: string;
+  /**
+   * The URL where people sign in, for a service that doesn't publish metadata. Set together with token_endpoint.
+   */
+  authorization_endpoint?: string;
+  /**
+   * The token endpoint. Set together with authorization_endpoint.
+   */
+  token_endpoint?: string;
+  /**
+   * The OAuth app's client ID. If you leave it empty, Wardrik registers itself as a client, if the service allows it.
+   */
+  client_id?: string;
+  /**
+   * The vault secret holding the app's client secret. Omitted for an app without one, and for one in config.yaml.
+   */
+  client_secret?: {
+    /**
+     * The name of the secret in the owner's vault.
+     */
+    name: string;
+  };
+  /**
+   * How the client secret is sent: in the form, or as HTTP Basic.
+   */
+  client_auth: "post" | "basic";
+  /**
+   * The scopes to ask for.
+   */
+  scopes: string[];
+  /**
+   * How a person signs in: in a browser, or with a code on another device.
+   */
+  flow: "browser" | "device";
+  /**
+   * Extra parameters for the browser sign-in, for example access_type: offline. You can't override the parameters Wardrik sets.
+   */
+  authorization_params?: {
+    [k: string]: string;
+  };
+}
+export interface ProviderInput2 {
+  /**
+   * The app's name. Tools use this name to get the person's token. Use up to 32 letters, digits, - and _.
+   */
+  name: string;
+  /**
+   * The authorization server's issuer URL. Its metadata provides the endpoints.
+   */
+  issuer?: string;
+  /**
+   * The API or MCP server that the tokens are for. If you don't set issuer, Wardrik finds it from this URL.
+   */
+  resource?: string;
+  /**
+   * The URL where people sign in, for a service that doesn't publish metadata. Set together with token_endpoint.
+   */
+  authorization_endpoint?: string;
+  /**
+   * The token endpoint. Set together with authorization_endpoint.
+   */
+  token_endpoint?: string;
+  /**
+   * The OAuth app's client ID. If you leave it empty, Wardrik registers itself as a client, if the service allows it.
+   */
+  client_id?: string;
+  /**
+   * The OAuth app's client secret, stored in the owner's vault. Wardrik reads it each time it is used, so a new value applies immediately. It is only sent to the token endpoint.
+   */
+  client_secret?: {
+    /**
+     * The name of the secret in the owner's vault.
+     */
+    name: string;
+  };
+  /**
+   * How the client secret is sent: post (in the request body) or basic (HTTP Basic auth). Defaults to post.
+   */
+  client_auth?: "post" | "basic";
+  /**
+   * The scopes to request. Defaults to none.
+   */
+  scopes?: string[];
+  /**
+   * How people sign in. With browser, they sign in in a browser. With device, they enter a code on another device. Defaults to browser.
+   */
+  flow?: "browser" | "device";
+  /**
+   * Extra parameters for the browser sign-in, for example access_type: offline. You can't override the parameters Wardrik sets.
+   */
+  authorization_params?: {
+    [k: string]: string;
+  };
+}
+/**
+ * What providers.list answers: the OAuth apps an owner keeps.
+ */
+export interface Providers {
+  providers: Provider[];
 }
 /**
  * What deployment.reload answers: the nodes that read every agent's definition again, and what the declarations couldn't read or define.

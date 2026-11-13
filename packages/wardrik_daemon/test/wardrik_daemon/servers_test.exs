@@ -8,7 +8,6 @@ defmodule WardrikDaemon.ServersTest do
   alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
   alias WardrikDaemon.Client
-  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
 
@@ -186,6 +185,12 @@ defmodule WardrikDaemon.ServersTest do
     assert {:error, "invalid_request", _message} = remove(admin, "deployment", "search")
   end
 
+  defp chosen(context, id, name) do
+    context.daemon.wardrik
+    |> Wardrik.Instance.fetch!()
+    |> Wardrik.OAuth.Apps.chosen(%WardrikCore.Principal{id: id}, name)
+  end
+
   test "signs in with the server's own app, made for it, and forgets it as it's removed",
        context do
     admin = client(context, "user:admin")
@@ -203,7 +208,7 @@ defmodule WardrikDaemon.ServersTest do
     assert "https://crm-auth.test/authorize?" <> query = url
     assert %{"client_id" => "growth-app", "scope" => "read"} = URI.decode_query(query)
 
-    assert %{owner: "growth"} = OAuthApps.nearest(context.daemon, "growth/@cy", "growth:crm")
+    assert %{owner: "growth"} = chosen(context, "growth/@cy", "server:crm")
 
     assert {:ok, %{"providers" => []}} =
              Client.run(admin, "providers.list", %{"owner" => "growth"})
@@ -214,7 +219,7 @@ defmodule WardrikDaemon.ServersTest do
              Client.run(cy, "connections.list", %{})
 
     assert {:ok, %{"auth" => "oauth"}} = remove(admin, "growth", "crm")
-    assert OAuthApps.nearest(context.daemon, "growth/@cy", "growth:crm") == nil
+    assert chosen(context, "growth/@cy", "server:crm") == nil
     assert {:ok, %{"connections" => []}} = Client.run(cy, "connections.list", %{})
   end
 
@@ -237,7 +242,7 @@ defmodule WardrikDaemon.ServersTest do
             %{"connected" => false, "authorization" => %{"url" => "https://google.test" <> _}}} =
              add(admin, "growth/@cy", ads)
 
-    assert %Wardrik.MCP.Server{credential_name: "google"} =
+    assert %Wardrik.MCP.Server{credential_name: "growth:google"} =
              Wardrik.MCP.Servers.all(mcp(context))["growth/@cy:ads"]
 
     assert {:error, "invalid_request", "payments has no OAuth app google."} =
