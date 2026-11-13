@@ -86,6 +86,12 @@ defmodule Wardrik.Runner do
     )
   end
 
+  # A principal's connections are their own.
+  defp authorize(scope, %{subject: "connection", action: action}, _input) do
+    resource = {:connection, scope.principal.id}
+    refused(Authorizer.authorize(scope, action: action, resource: resource), "connections")
+  end
+
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
   defp authorize(_scope, %{subject: "hook"}, _input), do: :ok
   defp authorize(_scope, %{subject: "channel"}, _input), do: :ok

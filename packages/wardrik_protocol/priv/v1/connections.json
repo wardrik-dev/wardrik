@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:connections",
+  "title": "Connections",
+  "description": "What connections.list answers: the accounts the caller can connect, and whether they hold each. A value is never answered.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "connections"
+  ],
+  "properties": {
+    "connections": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:connection"
+      }
+    }
+  },
+  "examples": [
+    {
+      "connections": [
+        {
+          "provider": "github",
+          "connected": true,
+          "signing_in": false
+        },
+        {
+          "provider": "linear",
+          "connected": false,
+          "signing_in": true
+        }
+      ]
+    }
+  ]
+}

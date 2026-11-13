@@ -989,6 +989,59 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/servers/crm -H "Authorization: Bearer
 {"owner": "acme", "name": "crm", "source": "runtime", "url": "https://mcp.crm.example/mcp", "auth": "secret"}
 ```
 
+## Connections
+
+The connected accounts of the caller, who sees and changes only their own, authorized on
+`{:connection, principal_id}`. Each OAuth app they may sign in with is offered by its name.
+
+### List connections
+
+`GET /v1/connections`
+
+Lists the available providers, and whether each is connected.
+
+```sh
+curl $WARDRIK_URL/v1/connections -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"connections": [{"provider": "github", "connected": true, "signing_in": false},
+                 {"provider": "linear", "connected": false, "signing_in": true}]}
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `provider` | string | an OAuth app's name, or an MCP server's with its own sign-in |
+| `connected` | boolean | whether it's connected |
+| `signing_in` | boolean | whether a sign-in you started is still under way |
+
+### Connect an account
+
+`POST /v1/connections/{provider}`
+
+Starts a sign-in, or returns `connected: true` if already connected.
+
+```sh
+curl -X POST $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"provider": "github", "connected": false, "authorization": {"url": "https://github.com/login/device", "code": "WDJB-MJHT"}}
+```
+
+Open `authorization.url`. For a device sign-in, enter `code` there.
+
+### Disconnect an account
+
+`DELETE /v1/connections/{provider}`
+
+Forgets your account. The next call that needs it asks you to sign in again. Returns `204`, or
+`404` if there is no such connection.
+
+```sh
+curl -X DELETE $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
 ## Daemon: agents
 
 ### Make an agent
@@ -1100,46 +1153,6 @@ curl -X DELETE $WARDRIK_URL/v1/owners/acme/notify_targets/ops -H "Authorization:
 
 ## Daemon: connections
 
-These routes manage the connected accounts of the authenticated user. Users can manage only
-their own connections.
-
-### List connections
-
-`GET /v1/connections`
-
-Lists the available providers, and whether each is connected.
-
-```sh
-curl $WARDRIK_URL/v1/connections -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-```json
-{"connections": [{"provider": "github", "connected": true, "signing_in": false},
-                 {"provider": "linear", "connected": false, "signing_in": true}]}
-```
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `provider` | string | an OAuth app's name, or an MCP server's with its own sign-in |
-| `connected` | boolean | whether it's connected |
-| `signing_in` | boolean | whether a sign-in you started is still under way |
-
-### Connect an account
-
-`POST /v1/connections/{provider}`
-
-Starts a sign-in, or returns `connected: true` if already connected.
-
-```sh
-curl -X POST $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-```json
-{"provider": "github", "connected": false, "authorization": {"url": "https://github.com/login/device", "code": "WDJB-MJHT"}}
-```
-
-Open `authorization.url`. For a device sign-in, enter `code` there.
-
 ### Finish a browser sign-in
 
 `POST /v1/connections/{provider}/pair`
@@ -1157,17 +1170,6 @@ curl $WARDRIK_URL/v1/connections/linear/pair -H "Authorization: Bearer $WARDRIK_
 
 ```json
 {"provider": "linear", "connected": true, "signing_in": false}
-```
-
-### Disconnect an account
-
-`DELETE /v1/connections/{provider}`
-
-Forgets your account. The next call that needs it asks you to sign in again. Returns `204`, or
-`404` if there is no such connection.
-
-```sh
-curl -X DELETE $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ## Daemon: tokens

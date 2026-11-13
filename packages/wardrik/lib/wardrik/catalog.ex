@@ -4,6 +4,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Agents
   alias Wardrik.Operations.Channels
+  alias Wardrik.Operations.Connections
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Files
   alias Wardrik.Operations.Lifecycle
@@ -69,6 +70,9 @@ defmodule Wardrik.Catalog do
         "providers.list" => &Providers.list/2,
         "providers.add" => &Providers.add/2,
         "providers.remove" => &Providers.remove/2,
+        "connections.list" => &Connections.list/2,
+        "connections.connect" => &Connections.connect/2,
+        "connections.disconnect" => &Connections.disconnect/2,
         "secrets.list" => &Secrets.list/2,
         "servers.list" => &Servers.list/2,
         "servers.add" => &Servers.add/2,

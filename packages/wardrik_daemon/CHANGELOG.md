@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Connections are Wardrik's `connections.*` operations. The daemon keeps `connections.pair`,
+  which pairs a browser sign-in as its callback comes, whoever started it.
 - MCP servers are Wardrik's `servers.*` operations. `servers.list` lists the owner's own. An
   agent reaches its owner's server of each name, else its org's, else the deployment's, as
   `WardrikDaemon.Authorizer` allows `mcp_server.use`. A server runs as its reference, as

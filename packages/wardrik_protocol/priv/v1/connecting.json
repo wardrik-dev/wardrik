@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:connecting",
+  "title": "A connection asked for",
+  "description": "What connections.connect answers: that the caller holds the account already, or where they sign in to it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "connected"
+  ],
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "The account's name: an OAuth app's, or an MCP server's that makes its own sign-in."
+    },
+    "connected": {
+      "type": "boolean",
+      "description": "Whether the caller holds it already."
+    },
+    "authorization": {
+      "$ref": "urn:wardrik:schema:v1:authorization",
+      "description": "Where to sign in, where it is not held yet: the page, and for a device sign-in the code to enter there."
+    }
+  },
+  "examples": [
+    {
+      "provider": "github",
+      "connected": true
+    },
+    {
+      "provider": "linear",
+      "connected": false,
+      "authorization": {
+        "url": "https://auth.example.com/authorize?client_id=…&state=…"
+      }
+    },
+    {
+      "provider": "github",
+      "connected": false,
+      "authorization": {
+        "url": "https://github.com/login/device",
+        "code": "WDJB-MJHT"
+      }
+    }
+  ]
+}

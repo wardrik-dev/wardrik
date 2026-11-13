@@ -8,6 +8,8 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Authorization
   alias Wardrik.Call
   alias Wardrik.ChannelResponse
+  alias Wardrik.Connecting
+  alias Wardrik.Connection
   alias Wardrik.Decision
   alias Wardrik.Definition
   alias Wardrik.Event
@@ -29,7 +31,8 @@ defmodule Wardrik.Operations.Types do
   @snapshots ~w(agent.read agent.define agent.clear)
   @decided ~w(agent.decide agent.approve agent.deny)
   @answered_nothing ~w(agent.cancel agent.forget agent.kill agent.file_delete hook.deliver
-                       hook.deliver_with_secret secrets.put secrets.delete)
+                       hook.deliver_with_secret secrets.put secrets.delete
+                       connections.disconnect)
   @triggers ~w(agent.trigger_set agent.trigger_remove)
   @pages ~w(agent.events events.list audit.list)
 
@@ -47,7 +50,8 @@ defmodule Wardrik.Operations.Types do
     "providers.add" => OAuthApp,
     "providers.remove" => OAuthApp,
     "servers.add" => ServerAdded,
-    "servers.remove" => MCPServer
+    "servers.remove" => MCPServer,
+    "connections.connect" => Connecting
   }
 
   @lists %{
@@ -56,6 +60,7 @@ defmodule Wardrik.Operations.Types do
     "secrets.list" => {"secrets", SealedSecret, :from_json},
     "providers.list" => {"providers", OAuthApp, :from_json},
     "servers.list" => {"servers", MCPServer, :from_json},
+    "connections.list" => {"connections", Connection, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }

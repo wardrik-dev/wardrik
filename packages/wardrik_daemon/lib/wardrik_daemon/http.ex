@@ -15,8 +15,6 @@ defmodule WardrikDaemon.HTTP do
   | `GET`, `POST /v1/owners/{owner}/agents` | finds agents by `?name=`; makes one |
   | `GET /v1/owners/{owner}/ceilings` | an org's spend against each ceiling |
   | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../{name}` | webhooks |
-  | `GET /v1/connections` | your accounts |
-  | `POST`, `DELETE /v1/connections/{provider}` | starts a sign-in; forgets an account |
   | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with its code |
   | `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens |
   | `POST /v1/tokens/web` | a sign-in link for the dashboard |
@@ -189,33 +187,12 @@ defmodule WardrikDaemon.HTTP do
     end)
   end
 
-  get "/v1/connections" do
-    served(conn, {"connection.read", &own_connections/1}, fn scope ->
-      {:ok, 200, %{"connections" => Connections.list(conn.assigns.daemon, scope.principal)}}
-    end)
-  end
-
-  post "/v1/connections/:provider" do
-    served(conn, {"connection.connect", &own_connections/1}, fn scope ->
-      with {:ok, connecting} <-
-             Connections.connect(conn.assigns.daemon, scope.principal, provider),
-           do: {:ok, 200, connecting}
-    end)
-  end
-
   post "/v1/connections/:provider/pair" do
     served(conn, {"connection.connect", &own_connections/1}, fn scope ->
       with {:ok, %{"code" => code}} <- input(conn, "pairing_input"),
            {:ok, connection} <-
              Connections.pair(conn.assigns.daemon, scope.principal, {provider, code}),
            do: {:ok, 200, connection}
-    end)
-  end
-
-  delete "/v1/connections/:provider" do
-    served(conn, {"connection.delete", &own_connections/1}, fn scope ->
-      with :ok <- Connections.disconnect(conn.assigns.daemon, scope.principal, provider),
-           do: {:ok, 204, nil}
     end)
   end
 
