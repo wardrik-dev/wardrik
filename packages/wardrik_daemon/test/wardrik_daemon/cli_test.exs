@@ -13,7 +13,17 @@ defmodule WardrikDaemon.CLITest do
   setup :set_mimic_global
 
   setup context do
-    context = dirs(context)
+    # Hours twelve hours off, in UTC and in Los Angeles, so a daily trigger at one is never due as
+    # a test runs.
+    la = DateTime.now!("America/Los_Angeles", Tz.TimeZoneDatabase)
+
+    context =
+      context
+      |> dirs()
+      |> Map.merge(%{
+        later: rem(DateTime.utc_now().hour + 12, 24),
+        later_la: rem(la.hour + 12, 24)
+      })
 
     write(context, "config.yaml", """
     org: acme
@@ -31,7 +41,7 @@ defmodule WardrikDaemon.CLITest do
     tools: [echo]
     policy: careful
     triggers:
-      - {name: daily, every: "0 9 * * *", prompt: Go.}
+      - {name: daily, every: "0 #{context.later} * * *", prompt: Go.}
     ---
     You watch the queue.
     """)
@@ -321,7 +331,7 @@ defmodule WardrikDaemon.CLITest do
 
       assert {0, triggers} = wardrik(context, ["trigger", "ls", "acme/triage"])
       assert {0, ^triggers} = wardrik(context, ["trigger", "ls", "triage"])
-      assert triggers =~ ~r/daily\s+every 0 9 \* \* \*\s+in \d+[hm][\dhm ]*\s+Go\./
+      assert triggers =~ ~r/daily\s+every 0 #{context.later} \* \* \*\s+in 1\dh( \d+m)?\s+Go\./
 
       assert {0, json} = wardrik(context, ["ls", "--json"])
       triage = id(context, "acme", "triage")
@@ -366,7 +376,7 @@ defmodule WardrikDaemon.CLITest do
       ---
       tools: [files]
       triggers:
-        - {name: morning, every: "0 9 * * *", timezone: America/Los_Angeles, prompt_file: CHECKLIST.md}
+        - {name: morning, every: "0 #{context.later_la} * * *", timezone: America/Los_Angeles, prompt_file: CHECKLIST.md}
         - {name: news, every: 1h, feed: https://example.com/feed.xml, prompt: "#{long}"}
         - {name: pushed, webhook: {secret: "${HOOK_SECRET}"}, prompt: Look.}
       ---
@@ -377,9 +387,9 @@ defmodule WardrikDaemon.CLITest do
       assert {0, listed} = wardrik(context, ["trigger", "ls", "watcher"])
 
       assert listed =~
-               ~r/morning\s+every 0 9 \* \* \* \(America\/Los_Angeles\)\s+in \S+( \S+)?\s+follows CHECKLIST\.md/
+               ~r/morning\s+every 0 #{context.later_la} \* \* \* \(America\/Los_Angeles\)\s+in 1\dh( \d+m)?\s+follows CHECKLIST\.md/
 
-      assert listed =~ ~r/news\s+every 1h\s+in \d+m\s+Read the news\./
+      assert listed =~ ~r/news\s+every 1h\s+in (\d+m|1h)\s+Read the news\./
       assert listed =~ "…"
       assert listed =~ ~r/pushed\s+on a webhook\s+Look\./
     end
@@ -683,7 +693,7 @@ defmodule WardrikDaemon.CLITest do
                ])
 
       assert {0, listed} = wardrik(context, ["trigger", "ls", "triage"])
-      assert listed =~ ~r/hourly\s+every 1h\s+in \d+m\s+Look\./
+      assert listed =~ ~r/hourly\s+every 1h\s+in (\d+m|1h)\s+Look\./
 
       assert {0, "Removed hourly.\n"} = wardrik(context, ["trigger", "rm", "triage", "hourly"])
 
