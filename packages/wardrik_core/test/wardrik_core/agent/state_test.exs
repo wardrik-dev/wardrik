@@ -28,7 +28,8 @@ defmodule WardrikCore.Agent.StateTest do
       context = WardrikCore.Context.new(agent_id: "agent_1", middleware: [])
 
       state =
-        State.new(agent_id: "agent_1", model: "moonshotai:kimi-k3", context: context)
+        [agent_id: "agent_1", model: "moonshotai:kimi-k3", context: context]
+        |> State.new()
         |> Map.put(:task, Task.async(fn -> :ok end))
         |> Map.put(:state, :running)
 
@@ -48,7 +49,7 @@ defmodule WardrikCore.Agent.StateTest do
       state = %{state | in_flight: [:taken], pending_messages: [:queued]}
 
       assert %State{state: :idle, task: nil, in_flight: [], pending_messages: [:taken, :queued]} =
-               state |> State.dump() |> State.load()
+               State.load(State.dump(state))
     end
 
     test "a parked turn round trips", %{state: state} do
@@ -56,7 +57,7 @@ defmodule WardrikCore.Agent.StateTest do
       state = %{state | state: :waiting, parked: parked, in_flight: [:taken]}
 
       assert %State{state: :waiting, in_flight: [:taken], parked: ^parked} =
-               state |> State.dump() |> State.load()
+               State.load(State.dump(state))
     end
 
     test "a resumed turn comes back waiting on the same calls", %{state: state} do
@@ -64,7 +65,7 @@ defmodule WardrikCore.Agent.StateTest do
       state = %{state | parked: parked, in_flight: [:taken], pending_messages: [:queued]}
 
       assert %State{state: :waiting, in_flight: [:taken], pending_messages: [:queued]} =
-               state |> State.dump() |> State.load()
+               State.load(State.dump(state))
     end
 
     test "a turn that checkpointed a batch comes back due to recover it", %{state: state} do
@@ -76,7 +77,7 @@ defmodule WardrikCore.Agent.StateTest do
                checkpoint: ^checkpoint,
                in_flight: [:taken],
                pending_messages: [:queued]
-             } = state |> State.dump() |> State.load()
+             } = State.load(State.dump(state))
     end
 
     test "loads a state saved with fields that have since been removed", %{state: state} do
@@ -93,7 +94,7 @@ defmodule WardrikCore.Agent.StateTest do
     end
 
     test "round trips the model and context", %{state: state} do
-      loaded = state |> State.dump() |> State.load()
+      loaded = State.load(State.dump(state))
 
       assert loaded.model == state.model
       assert loaded.context.agent_id == "agent_1"
@@ -109,7 +110,7 @@ defmodule WardrikCore.Agent.StateTest do
   defp serializable?(term) when is_list(term), do: Enum.all?(term, &serializable?/1)
 
   defp serializable?(term) when is_tuple(term),
-    do: term |> Tuple.to_list() |> serializable?()
+    do: serializable?(Tuple.to_list(term))
 
   defp serializable?(_term), do: true
 

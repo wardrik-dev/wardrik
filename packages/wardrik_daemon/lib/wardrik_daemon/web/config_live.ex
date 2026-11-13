@@ -31,11 +31,16 @@ defmodule WardrikDaemon.Web.ConfigLive do
 
   defp files(dirs) do
     config = Dirs.config(dirs, "config.yaml")
-    policies = dirs |> Dirs.config("policies/*.yaml") |> Path.wildcard() |> Enum.sort()
+
+    policies =
+      dirs
+      |> Dirs.config("policies/*.yaml")
+      |> Path.wildcard()
+      |> Enum.sort()
 
     for path <- [config | policies],
         File.exists?(path),
-        do: {path, path |> File.read!() |> hidden()}
+        do: {path, hidden(File.read!(path))}
   end
 
   defp hidden(text),

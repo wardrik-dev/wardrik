@@ -73,7 +73,10 @@ defmodule Wardrik.Store.Test.S3Bucket do
 
   @impl Plug
   def call(conn, opts) do
-    conn = conn |> fetch_query_params() |> read_whole_body()
+    conn =
+      conn
+      |> fetch_query_params()
+      |> read_whole_body()
 
     case {Process.get({__MODULE__, :refuse}), Process.delete({__MODULE__, :drop})} do
       {status, _drop} when is_integer(status) -> send_resp(conn, status, error("Refused"))
@@ -115,7 +118,10 @@ defmodule Wardrik.Store.Test.S3Bucket do
     cond do
       not Map.get(opts, :conditional_put, true) or meets?(conn, current(key)) ->
         :ets.insert(@table, {key, body, etag})
-        conn |> put_resp_header("etag", etag) |> send_resp(200, "")
+
+        conn
+        |> put_resp_header("etag", etag)
+        |> send_resp(200, "")
 
       Map.get(opts, :no_such_key, false) and current(key) == nil ->
         send_resp(conn, 404, error("NoSuchKey"))
@@ -127,8 +133,13 @@ defmodule Wardrik.Store.Test.S3Bucket do
 
   defp object(%{method: "GET"} = conn, key, _opts) do
     case current(key) do
-      {body, etag} -> conn |> put_resp_header("etag", etag) |> send_resp(200, body)
-      nil -> send_resp(conn, 404, error("NoSuchKey"))
+      {body, etag} ->
+        conn
+        |> put_resp_header("etag", etag)
+        |> send_resp(200, body)
+
+      nil ->
+        send_resp(conn, 404, error("NoSuchKey"))
     end
   end
 

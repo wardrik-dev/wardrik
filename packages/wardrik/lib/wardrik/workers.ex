@@ -64,7 +64,10 @@ defmodule Wardrik.Workers do
 
   @impl WardrikCore.Capability
   def tools(%Context{agent_id: id}, opts) do
-    wardrik = opts |> Keyword.fetch!(:wardrik) |> Instance.fetch!()
+    wardrik =
+      opts
+      |> Keyword.fetch!(:wardrik)
+      |> Instance.fetch!()
 
     wardrik
     |> offered(id)

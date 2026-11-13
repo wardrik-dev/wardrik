@@ -1,6 +1,5 @@
 defmodule WardrikCore.Agent do
   @moduledoc false
-  require Logger
   use DurableServer, vsn: 1
 
   alias WardrikCore.Agent.State
@@ -8,6 +7,8 @@ defmodule WardrikCore.Agent do
   alias WardrikCore.Resume
   alias WardrikCore.Span
   alias WardrikCore.Turn
+
+  require Logger
 
   @impl DurableServer
   def dump_state(%State{} = state), do: State.dump(state)
@@ -185,7 +186,7 @@ defmodule WardrikCore.Agent do
     case State.waiting(state) do
       {:tool_calls, waiting} ->
         ids = for {call, _outcome} <- waiting, do: call.id
-        input |> Map.keys() |> Enum.all?(&(&1 in ids))
+        Enum.all?(Map.keys(input), &(&1 in ids))
 
       _other ->
         false
@@ -263,7 +264,7 @@ defmodule WardrikCore.Agent do
   end
 
   defp message_id,
-    do: "msg_" <> (12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
+    do: "msg_" <> Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false)
 
   defp log_ended(state, {:park, reason, _context}),
     do: Logger.info("Turn parked for agent #{state.agent_id}: #{inspect(reason)}")

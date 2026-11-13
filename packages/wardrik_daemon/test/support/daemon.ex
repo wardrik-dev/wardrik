@@ -75,9 +75,14 @@ defmodule WardrikDaemon.Test do
   and named after the whole label, so labels never share a name. Makes it the first time.
   """
   def recorded(context, label) do
-    {owner, _name} = label |> String.split("/") |> Enum.split(-1)
+    {owner, _name} = Enum.split(String.split(label, "/"), -1)
     owner = Enum.join(owner, "/")
-    name = label |> String.replace("@", "") |> String.replace("/", "-")
+
+    name =
+      label
+      |> String.replace("@", "")
+      |> String.replace("/", "-")
+
     org = WardrikDaemon.Owners.org(owner)
 
     case WardrikDaemon.AgentRecords.named(context.daemon_store, org, name) do

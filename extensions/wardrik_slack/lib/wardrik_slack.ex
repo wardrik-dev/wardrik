@@ -31,6 +31,8 @@ defmodule WardrikSlack do
             ]
           )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Slack for Wardrik. Agents answer in threads, and ask there with Approve and Deny buttons.
 
@@ -71,8 +73,11 @@ defmodule WardrikSlack do
   def schema, do: @schema
 
   @impl Wardrik.Channel
-  def request(request, opts),
-    do: __MODULE__ |> Wardrik.Chat.channel(opts) |> WardrikSlack.HTTP.request(request)
+  def request(request, opts) do
+    __MODULE__
+    |> Wardrik.Chat.channel(opts)
+    |> WardrikSlack.HTTP.request(request)
+  end
 
   @impl Wardrik.Chat
   def children(%Channel{options: options} = channel) do

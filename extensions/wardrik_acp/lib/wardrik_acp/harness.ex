@@ -37,6 +37,8 @@ defmodule WardrikACP.Harness do
              ]
            )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   A coding agent that `WardrikACP` starts over ACP, such as Claude Code.
 

@@ -1,9 +1,9 @@
 defmodule Wardrik.Vault.Lookup do
   @moduledoc false
 
-  require Logger
-
   alias WardrikCore.Principal
+
+  require Logger
 
   @spec fetch(atom() | Wardrik.t(), keyword()) :: {:ok, binary()} | {:error, term()}
   def fetch(instance, args) do

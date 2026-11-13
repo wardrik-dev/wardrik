@@ -9,7 +9,7 @@ defmodule Wardrik.Triggers.WebhookTest do
     do: %{headers: headers, body: body, path_secret: path_secret}
 
   defp signed(id, at, body) do
-    signature = :hmac |> :crypto.mac(:sha256, "key", "#{id}.#{at}.#{body}") |> Base.encode64()
+    signature = Base.encode64(:crypto.mac(:hmac, :sha256, "key", "#{id}.#{at}.#{body}"))
 
     %{
       "webhook-id" => id,
@@ -36,13 +36,15 @@ defmodule Wardrik.Triggers.WebhookTest do
     at = DateTime.to_unix(@now)
     standard = [verify: :standard, secret: secret, now: @now]
 
-    assert :ok = Webhook.verify(request(signed("msg_1", at, "{}")), standard)
+    fresh = signed("msg_1", at, "{}")
+    stale = signed("msg_1", at - 600, "{}")
+
+    assert :ok = Webhook.verify(request(fresh), standard)
 
     assert {:error, "its signature doesn't match"} =
-             Webhook.verify(request(signed("msg_1", at, "{}"), "{\"x\":1}"), standard)
+             Webhook.verify(request(fresh, "{\"x\":1}"), standard)
 
-    assert {:error, "it was signed too long ago"} =
-             Webhook.verify(request(signed("msg_1", at - 600, "{}")), standard)
+    assert {:error, "it was signed too long ago"} = Webhook.verify(request(stale), standard)
 
     assert {:error, "it has no webhook-id header"} = Webhook.verify(request(%{}), standard)
 

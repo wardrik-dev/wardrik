@@ -13,6 +13,8 @@ defmodule Wardrik.Notify do
             ]
           )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Tells people when an agent parks, fails or finishes while nobody watches.
 

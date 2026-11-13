@@ -4,6 +4,7 @@ defmodule Wardrik.EventLog.Heads do
   use GenServer
 
   @doc false
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(settings), do: GenServer.start_link(__MODULE__, settings, name: settings.heads)
 
   @doc "Returns the settings kept in the table `heads`."

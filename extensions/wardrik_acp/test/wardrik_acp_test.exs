@@ -26,12 +26,17 @@ defmodule WardrikACPTest do
       {_output, 0} = System.cmd("git", ["-C", repo | args], env: git, stderr_to_stdout: true)
     end
 
+    env =
+      git
+      |> Map.put("PEER_LOG", log)
+      |> Map.merge(tags[:peer] || %{})
+
     harness =
       Keyword.merge(
         [
           command: "elixir",
           args: [@peer],
-          env: git |> Map.put("PEER_LOG", log) |> Map.merge(tags[:peer] || %{}),
+          env: env,
           instructions: "Be brief.",
           context: ["AGENTS.md", "MISSING.md"]
         ],
@@ -215,7 +220,9 @@ defmodule WardrikACPTest do
   end
 
   test "cancels the prompt of a call that was stopped", %{acp: acp, log: log} do
-    acp |> hang() |> Task.shutdown(:brutal_kill)
+    acp
+    |> hang()
+    |> Task.shutdown(:brutal_kill)
 
     {:ok, output, _context} = call(acp, [%{"say" => "Done."}])
     assert output["message"] == "Done."
@@ -428,8 +435,10 @@ defmodule WardrikACPTest do
 
     for kept <- [open, dirty], do: assert(File.dir?(kept["worktree"]))
 
+    worktrees = Path.dirname(merged["worktree"])
+
     for work <- ["waiting", "running"],
-        do: assert(File.dir?(Path.join(Path.dirname(merged["worktree"]), work)))
+        do: assert(File.dir?(Path.join(worktrees, work)))
 
     Task.shutdown(running, :brutal_kill)
   end
@@ -542,7 +551,12 @@ defmodule WardrikACPTest do
   end
 
   defp sent(log, method) do
-    for line <- log |> File.read!() |> String.split("\n", trim: true),
+    lines =
+      log
+      |> File.read!()
+      |> String.split("\n", trim: true)
+
+    for line <- lines,
         %{"method" => ^method} = message <- [JSON.decode!(line)],
         do: message["params"]
   end

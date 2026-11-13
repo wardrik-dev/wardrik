@@ -57,7 +57,11 @@ defmodule Wardrik.EventLog.Log do
   @spec logs(Wardrik.Store.t(), String.t() | nil) :: [Wardrik.EventLog.log()]
   def logs(store, agent \\ nil)
 
-  def logs(store, nil), do: store |> Wardrik.Store.keys(@index) |> Enum.map(&log/1)
+  def logs(store, nil) do
+    store
+    |> Wardrik.Store.keys(@index)
+    |> Enum.map(&log/1)
+  end
 
   def logs(store, agent) do
     for key <- Wardrik.Store.keys(store, @index <> encode(agent)),
@@ -162,7 +166,11 @@ defmodule Wardrik.EventLog.Log do
   end
 
   defp expired_through(store, log, sequence, cutoff) do
-    expired = store |> taken(log, sequence + 1, @batch) |> Enum.take_while(&expired?(&1, cutoff))
+    expired =
+      store
+      |> taken(log, sequence + 1, @batch)
+      |> Enum.take_while(&expired?(&1, cutoff))
+
     through = sequence + length(expired)
 
     if length(expired) == @batch,
@@ -188,8 +196,14 @@ defmodule Wardrik.EventLog.Log do
     end
   end
 
-  defp key(log, sequence),
-    do: prefix(log) <> (sequence |> Integer.to_string() |> String.pad_leading(@digits, "0"))
+  defp key(log, sequence) do
+    padded =
+      sequence
+      |> Integer.to_string()
+      |> String.pad_leading(@digits, "0")
+
+    prefix(log) <> padded
+  end
 
   defp index_key(log), do: @index <> path(log)
 
@@ -199,7 +213,12 @@ defmodule Wardrik.EventLog.Log do
   defp path({agent, conversation}), do: encode(agent) <> "/" <> encode(conversation)
 
   defp log(@index <> path) do
-    case path |> String.split("/") |> Enum.map(&URI.decode_www_form/1) do
+    segments =
+      path
+      |> String.split("/")
+      |> Enum.map(&URI.decode_www_form/1)
+
+    case segments do
       [agent] -> {agent, nil}
       [agent, conversation] -> {agent, conversation}
     end

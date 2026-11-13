@@ -55,8 +55,8 @@ defmodule Wardrik.HTTPTest do
       conversation = agent <> "/conversations/" <> segment("C1/ 2%")
       answers([answer("Hello.")])
 
-      :ok =
-        Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+      event_log = Wardrik.events(Wardrik.Instance.fetch!(context.wardrik))
+      :ok = Wardrik.EventLog.subscribe(event_log, :all)
 
       conn = request(context, "PUT", agent, %{"model" => "anthropic:claude-haiku-4-5"})
       assert %{"agent" => %{"id" => ^id}} = body(conn)
@@ -154,8 +154,8 @@ defmodule Wardrik.HTTPTest do
          context do
       answers([answer("Triaged.")])
 
-      :ok =
-        Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+      event_log = Wardrik.events(Wardrik.Instance.fetch!(context.wardrik))
+      :ok = Wardrik.EventLog.subscribe(event_log, :all)
 
       conn = hook(context, "/v1/hooks/acme%2Fhooks/issues", [{"authorization", "Bearer s3cret"}])
       assert {conn.status, conn.resp_body} == {202, ""}

@@ -82,8 +82,13 @@ defmodule Wardrik.Listener do
     wardrik = Keyword.fetch!(opts, :wardrik)
     listener = %__MODULE__{wardrik: wardrik, cursor: nil, options: Keyword.delete(opts, :wardrik)}
 
+    events =
+      wardrik
+      |> Instance.fetch!()
+      |> Wardrik.events()
+
     Follower.start_link(module, listener,
-      events: wardrik |> Instance.fetch!() |> Wardrik.events(),
+      events: events,
       logs: Keyword.fetch!(opts, :agents),
       types: Keyword.get(opts, :types, :all)
     )

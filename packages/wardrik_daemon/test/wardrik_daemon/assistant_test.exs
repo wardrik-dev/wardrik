@@ -125,6 +125,6 @@ defmodule WardrikDaemon.AssistantTest do
              "name"
 
     assert AgentRecords.named(context.daemon_store, "growth", "rivals-watch") == :error
-    assert AgentRecords.in_org(context.daemon_store, "growth") |> Enum.map(& &1.name) == ["aide"]
+    assert Enum.map(AgentRecords.in_org(context.daemon_store, "growth"), & &1.name) == ["aide"]
   end
 end

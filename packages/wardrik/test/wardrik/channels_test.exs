@@ -90,7 +90,7 @@ defmodule Wardrik.ChannelsTest do
       "answers" => "mentions"
     }
 
-    events = name |> Wardrik.Instance.fetch!() |> Wardrik.events()
+    events = Wardrik.events(Wardrik.Instance.fetch!(name))
 
     assert Wardrik.EventLog.record(events, {"room.bound", "channels/slack/C1", data},
              actor: scope.principal

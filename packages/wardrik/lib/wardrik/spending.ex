@@ -35,7 +35,11 @@ defmodule Wardrik.Spending do
       #=> %{"tokens" => 12_400, "usd" => 0.03}
   """
   @spec today(Wardrik.t(), String.t()) :: %{String.t() => number()}
-  def today(wardrik, id), do: wardrik |> by_agent([id]) |> Map.fetch!(id)
+  def today(wardrik, id) do
+    wardrik
+    |> by_agent([id])
+    |> Map.fetch!(id)
+  end
 
   @doc "Returns what each of `ids` spent today, by ID, in one read."
   @spec by_agent(Wardrik.t(), [String.t()]) :: %{String.t() => %{String.t() => number()}}

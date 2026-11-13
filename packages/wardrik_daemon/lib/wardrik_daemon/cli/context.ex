@@ -148,8 +148,12 @@ defmodule WardrikDaemon.CLI.Context do
   defp org(%{"org" => org}) when is_binary(org), do: org
   defp org(_config), do: "default"
 
-  defp orgs(%{"orgs" => %{} = orgs}),
-    do: orgs |> Map.keys() |> Enum.reject(&(&1 == "*")) |> Enum.sort()
+  defp orgs(%{"orgs" => %{} = orgs}) do
+    orgs
+    |> Map.keys()
+    |> Enum.reject(&(&1 == "*"))
+    |> Enum.sort()
+  end
 
   defp orgs(_config), do: []
 end

@@ -38,10 +38,15 @@ defmodule Wardrik.Policy.Rules do
   def to_json(rules) do
     {after_label, rules} = Enum.split_with(rules, & &1.after)
 
+    allow_after =
+      after_label
+      |> Enum.group_by(& &1.after)
+      |> patterns()
+
     rules
     |> Enum.group_by(&Atom.to_string(&1.effect))
     |> patterns()
-    |> Map.put("allow_after", after_label |> Enum.group_by(& &1.after) |> patterns())
+    |> Map.put("allow_after", allow_after)
   end
 
   defp patterns(groups), do: Map.new(groups, fn {key, rules} -> {key, written(rules)} end)

@@ -69,7 +69,10 @@ defmodule WardrikSlack.Waiting do
       shown(arguments)
     ]
 
-    lines |> Enum.reject(&(&1 == "")) |> Enum.join("\n") |> Blocks.section()
+    lines
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+    |> Blocks.section()
   end
 
   defp read(labels) when is_list(labels) do

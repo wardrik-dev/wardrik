@@ -55,10 +55,10 @@ defmodule WardrikDaemon.CLI do
   """
   @spec main([String.t()], keyword()) :: 0 | 1
   def main(argv, opts \\ []) do
-    cx = opts |> Keyword.get_lazy(:env, &System.get_env/0) |> Context.new()
+    cx = Context.new(Keyword.get_lazy(opts, :env, &System.get_env/0))
     cx = %{cx | terminal: Keyword.get(opts, :terminal, cx.terminal)}
 
-    case cx |> routed(argv) |> ran(cx) do
+    case ran(routed(cx, argv), cx) do
       :ok -> 0
       {:error, why} -> failed(cx, why)
     end
@@ -115,7 +115,10 @@ defmodule WardrikDaemon.CLI do
   # A :keep switch gives each of its values, in order.
   defp flagged(flags, switches) do
     {kept, single} = Enum.split_with(flags, fn {name, _value} -> switches[name] == :keep end)
-    kept |> Enum.group_by(&elem(&1, 0), &elem(&1, 1)) |> Map.merge(Map.new(single))
+
+    kept
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.merge(Map.new(single))
   end
 
   defp run(command, _args, %{help: true}, _invalid, cx), do: Help.command(cx, command)

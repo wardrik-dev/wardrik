@@ -1,13 +1,13 @@
 defmodule WardrikDaemon.Doctor.Agents do
   @moduledoc false
 
+  import WardrikDaemon.Doctor, only: [counted: 2]
+
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.Policies
-
-  import WardrikDaemon.Doctor, only: [counted: 2]
 
   @doc "Returns a check for each file that doesn't read, or one saying they all did."
   @spec check(Config.t(), Dirs.t()) :: [WardrikDaemon.Doctor.check()]
@@ -19,7 +19,13 @@ defmodule WardrikDaemon.Doctor.Agents do
   end
 
   defp agents(config, dirs, policies) do
-    files = dirs |> Dirs.config("agents") |> Path.join("*.md") |> Path.wildcard() |> Enum.sort()
+    files =
+      dirs
+      |> Dirs.config("agents")
+      |> Path.join("*.md")
+      |> Path.wildcard()
+      |> Enum.sort()
+
     store = Wardrik.Store.ETS.new(name: :"wardrik doctor #{System.unique_integer([:positive])}")
     ulid = if Process.whereis(WardrikDaemon.ULID), do: [], else: [WardrikDaemon.ULID]
 

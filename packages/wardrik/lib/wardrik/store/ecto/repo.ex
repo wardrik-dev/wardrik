@@ -49,7 +49,9 @@ if Code.ensure_loaded?(Ecto.Adapters.Postgres) do
     @moduledoc false
     use Ecto.Migration
 
+    @spec up() :: :ok
     def up, do: Wardrik.Store.Ecto.Migration.up(version: 1)
+    @spec down() :: :ok
     def down, do: Wardrik.Store.Ecto.Migration.down(version: 1)
   end
 end

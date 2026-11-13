@@ -321,15 +321,15 @@ defmodule WardrikDaemon.DoctorTest do
       "---\ntools: [self/*, agents/*, agent_create, files]\n---\nHi.\n"
     )
 
-    assert [{:warn, found}] = context.env |> run() |> found("assistant")
+    assert [{:warn, found}] = found(run(context.env), "assistant")
     assert found =~ "doesn't give ops/agent.runs, ops/agent.timeline"
     assert found =~ "settings, help, web_search, run_lua"
 
     tools = Enum.join(WardrikDaemon.CLI.Init.assistant_tools(), ", ")
     write(context, "agents/assistant.md", "---\ntools: [#{tools}]\n---\nHi.\n")
-    assert [{:ok, _found}] = context.env |> run() |> found("assistant")
+    assert [{:ok, _found}] = found(run(context.env), "assistant")
 
     File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md"))
-    assert [] = context.env |> run() |> found("assistant")
+    assert [] = found(run(context.env), "assistant")
   end
 end

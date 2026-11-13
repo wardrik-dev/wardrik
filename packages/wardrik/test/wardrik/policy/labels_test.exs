@@ -7,10 +7,10 @@ defmodule Wardrik.Policy.LabelsTest do
   @outside ["outside"]
 
   defp explain(rules, name, opts),
-    do: rules |> Wardrik.Policy.new!() |> Wardrik.Policy.explain(name, opts)
+    do: Wardrik.Policy.explain(Wardrik.Policy.new!(rules), name, opts)
 
   defp decide(rules, name, opts),
-    do: rules |> Wardrik.Policy.new!() |> Wardrik.Policy.decide(name, opts)
+    do: Wardrik.Policy.decide(Wardrik.Policy.new!(rules), name, opts)
 
   test "a gated call a rule allows asks once the run has read content from outside" do
     rules = [allow: ["linear/*"]]

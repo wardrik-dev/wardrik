@@ -179,7 +179,7 @@ defmodule WardrikDaemon.Authorizer do
 
   defp matches?(allowed, value), do: "*" in allowed or value in allowed
 
-  defp verb(action), do: action |> String.split(".") |> List.last()
+  defp verb(action), do: List.last(String.split(action, "."))
 
   defp member(
          %Request{resource: {:agent, _id}, context: %{installation: %{owner: within}}} = request,

@@ -1,13 +1,13 @@
 defmodule Wardrik.Triggers.Run do
   @moduledoc false
 
-  require Logger
-
   alias Wardrik.Triggers.Feed
   alias Wardrik.Triggers.Records
   alias Wardrik.Triggers.Target
   alias Wardrik.Triggers.Trigger
   alias Wardrik.Triggers.Webhook
+
+  require Logger
 
   @lateness 60
   @outside ["outside"]
@@ -136,16 +136,18 @@ defmodule Wardrik.Triggers.Run do
   defp conditional(nil), do: []
 
   defp conditional(kept) do
-    [{"if-none-match", kept["etag"]}, {"if-modified-since", kept["modified"]}]
-    |> Enum.reject(fn {_name, value} -> is_nil(value) end)
+    headers = [{"if-none-match", kept["etag"]}, {"if-modified-since", kept["modified"]}]
+    Enum.reject(headers, fn {_name, value} -> is_nil(value) end)
   end
 
   defp feeds(kept, read) do
-    Map.new(read, fn
-      {url, {:ok, _entries, state}} -> {url, state}
-      {url, {:error, _why}} -> {url, Map.get(kept, url)}
-    end)
-    |> Map.reject(fn {_url, state} -> is_nil(state) end)
+    states =
+      Map.new(read, fn
+        {url, {:ok, _entries, state}} -> {url, state}
+        {url, {:error, _why}} -> {url, Map.get(kept, url)}
+      end)
+
+    Map.reject(states, fn {_url, state} -> is_nil(state) end)
   end
 
   defp record(settings, agent_id, name) do

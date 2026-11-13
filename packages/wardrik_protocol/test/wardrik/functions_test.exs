@@ -76,7 +76,8 @@ defmodule Wardrik.FunctionsTest do
 
   test "names two or more path parameters in the input" do
     for operation <- WardrikProtocol.operations(), named?(operation) do
-      module = Code.ensure_loaded!(Functions.module(Functions.prefix(operation)))
+      name = Functions.module(Functions.prefix(operation))
+      module = Code.ensure_loaded!(name)
 
       assert function_exported?(module, Functions.name(operation), 2), operation.id
       refute function_exported?(module, Functions.name(operation), 3), operation.id
@@ -163,7 +164,7 @@ defmodule Wardrik.FunctionsTest do
     do: Enum.all?(value, fn {_key, item} -> wardriks?(item) end)
 
   defp wardriks?(value) when is_list(value), do: Enum.all?(value, &wardriks?/1)
-  defp wardriks?(value) when is_tuple(value), do: value |> Tuple.to_list() |> wardriks?()
+  defp wardriks?(value) when is_tuple(value), do: wardriks?(Tuple.to_list(value))
   defp wardriks?(_value), do: true
 
   test "writes each type back as the protocol's JSON it was read from" do

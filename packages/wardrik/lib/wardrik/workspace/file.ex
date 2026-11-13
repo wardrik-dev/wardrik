@@ -28,7 +28,13 @@ defmodule Wardrik.Workspace.File do
   """
   @spec labelled(map(), [t()]) :: {:ok, map() | ReqLLM.ToolResult.t()}
   def labelled(answer, files) do
-    case files |> Enum.flat_map(&labels/1) |> Enum.uniq() |> Enum.sort() do
+    labels =
+      files
+      |> Enum.flat_map(&labels/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    case labels do
       [] -> {:ok, answer}
       labels -> {:ok, %ReqLLM.ToolResult{output: answer, metadata: %{labels: labels}}}
     end

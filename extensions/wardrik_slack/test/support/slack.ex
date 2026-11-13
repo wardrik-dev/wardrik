@@ -6,9 +6,9 @@ defmodule WardrikSlack.Test do
 
   import ExUnit.Callbacks, only: [start_supervised!: 1]
 
-  @people %{"U1" => "maria", "U2" => "jon", "U3" => "ana"}
-
   alias Wardrik.Testing.Server
+
+  @people %{"U1" => "maria", "U2" => "jon", "U3" => "ana"}
 
   def start_slack(context) do
     n = System.unique_integer([:positive])

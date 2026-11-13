@@ -104,6 +104,13 @@
             {Credo.Check.Readability.UnnecessaryAliasExpansion, []},
             {Credo.Check.Readability.VariableNames, []},
             {Credo.Check.Readability.WithSingleClause, []},
+            # Three calls deep. Credo 1.7 crashes at its default of two, on `opts[:key].(arg)`.
+            {Credo.Check.Readability.NestedFunctionCalls, [min_pipeline_length: 3]},
+            {Credo.Check.Readability.OnePipePerLine, []},
+            {Credo.Check.Readability.SinglePipe, []},
+            {Credo.Check.Readability.Specs, [files: %{included: ["lib/"]}]},
+            {Credo.Check.Readability.StrictModuleLayout, []},
+            {Credo.Check.Refactor.PipeChainStart, []},
 
             #
             ## Refactoring Opportunities
@@ -169,14 +176,9 @@
           {Credo.Check.Readability.BlockPipe, []},
           {Credo.Check.Readability.ImplTrue, []},
           {Credo.Check.Readability.MultiAlias, []},
-          {Credo.Check.Readability.NestedFunctionCalls, []},
           {Credo.Check.Readability.OneArityFunctionInPipe, []},
-          {Credo.Check.Readability.OnePipePerLine, []},
           {Credo.Check.Readability.SeparateAliasRequire, []},
           {Credo.Check.Readability.SingleFunctionToBlockPipe, []},
-          {Credo.Check.Readability.SinglePipe, []},
-          {Credo.Check.Readability.Specs, []},
-          {Credo.Check.Readability.StrictModuleLayout, []},
           {Credo.Check.Readability.WithCustomTaggedTuple, []},
           {Credo.Check.Refactor.ABCSize, []},
           {Credo.Check.Refactor.AppendSingleItem, []},
@@ -188,7 +190,6 @@
           {Credo.Check.Refactor.ModuleDependencies, []},
           {Credo.Check.Refactor.NegatedIsNil, []},
           {Credo.Check.Refactor.PassAsyncInTestCases, []},
-          {Credo.Check.Refactor.PipeChainStart, []},
           {Credo.Check.Refactor.RejectFilter, []},
           {Credo.Check.Refactor.VariableRebinding, []},
           {Credo.Check.Warning.LazyLogging, []},

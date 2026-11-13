@@ -148,8 +148,13 @@ defmodule Wardrik.Triggers.Scheduler do
 
   defp upcoming(%Trigger{clock: clock, timezone: timezone, jitter: jitter}, now) do
     case Clock.next(clock, timezone, now) do
-      nil -> nil
-      next -> next |> DateTime.add(jittered(jitter)) |> DateTime.to_iso8601()
+      nil ->
+        nil
+
+      next ->
+        next
+        |> DateTime.add(jittered(jitter))
+        |> DateTime.to_iso8601()
     end
   end
 
@@ -160,7 +165,13 @@ defmodule Wardrik.Triggers.Scheduler do
 
   defp arm(state, key, next_at) do
     ref = make_ref()
-    delay = next_at |> DateTime.diff(DateTime.utc_now(), :millisecond) |> max(0) |> min(@longest)
+
+    delay =
+      next_at
+      |> DateTime.diff(DateTime.utc_now(), :millisecond)
+      |> max(0)
+      |> min(@longest)
+
     Process.send_after(self(), {:due, key, ref}, delay)
     %{state | timers: Map.put(state.timers, key, ref)}
   end

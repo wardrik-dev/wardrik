@@ -80,11 +80,17 @@ defmodule Wardrik.Operations.NotifyTargets do
 
   defp declared(wardrik) do
     for {name, {module, opts}} <- wardrik.notify.targets do
+      kind =
+        module
+        |> Module.split()
+        |> List.last()
+        |> Macro.underscore()
+
       target = %{
         "owner" => Owned.deployment(),
         "name" => name,
         "source" => "config",
-        "kind" => module |> Module.split() |> List.last() |> Macro.underscore()
+        "kind" => kind
       }
 
       if module == Wardrik.Notify.Webhook, do: Map.put(target, "url", opts[:url]), else: target

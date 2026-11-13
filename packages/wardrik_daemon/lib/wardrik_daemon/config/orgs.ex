@@ -8,6 +8,8 @@ defmodule WardrikDaemon.Config.Orgs do
     policy: [type: :string, doc: "The policy in `policies/` its agents are held to."]
   ]
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Reads `config.yaml`'s `orgs`: the orgs beside the deployment's own.
 

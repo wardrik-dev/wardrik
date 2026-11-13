@@ -56,7 +56,7 @@ defmodule WardrikDaemon.Owners do
       #=> "acme"
   """
   @spec org(String.t()) :: String.t()
-  def org(owner), do: owner |> String.split("/", parts: 2) |> hd()
+  def org(owner), do: hd(String.split(owner, "/", parts: 2))
 
   @doc """
   Returns the owner that is `person` in `org`.

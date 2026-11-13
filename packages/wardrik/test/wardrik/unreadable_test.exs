@@ -114,7 +114,7 @@ defmodule Wardrik.UnreadableTest do
     test "reads every kind of term, and compressed ones" do
       term =
         {self(), make_ref(), [1.5, 2 | 3], "x", <<1::3>>, 10 ** 40, -(10 ** 300), 2 ** 40,
-         &Enum.map/2, fn -> 1 end, %{a: :b}, ~c"chars", Port.list() |> hd(), 1.0e10}
+         &Enum.map/2, fn -> 1 end, %{a: :b}, ~c"chars", hd(Port.list()), 1.0e10}
 
       assert {:ok, atoms} = Unreadable.atoms(:erlang.term_to_binary(term))
       assert "Elixir.Enum" in atoms and "a" in atoms

@@ -52,7 +52,13 @@ defmodule Wardrik.EventLog.Encoder.Value do
   @spec json(term()) :: term()
   def json(%Principal{} = principal), do: principal(principal)
   def json(%DateTime{} = time), do: DateTime.to_iso8601(time)
-  def json(%{__struct__: _module} = struct), do: struct |> Map.from_struct() |> json()
+
+  def json(%{__struct__: _module} = struct) do
+    struct
+    |> Map.from_struct()
+    |> json()
+  end
+
   def json(%{} = map), do: Map.new(map, fn {key, value} -> {json_key(key), json(value)} end)
   def json(list) when is_list(list), do: Enum.map(list, &json/1)
   def json(value) when is_boolean(value) or is_nil(value), do: value
@@ -63,11 +69,18 @@ defmodule Wardrik.EventLog.Encoder.Value do
   @doc "Puts `value` under `key`. If it's longer than 64 KiB, cuts it short and sets `\"truncated\"`."
   @spec capped(map(), String.t(), term()) :: map()
   def capped(map, key, value) do
-    encoded = value |> json() |> JSON.encode!()
+    encoded =
+      value
+      |> json()
+      |> JSON.encode!()
 
-    if byte_size(encoded) > @limit,
-      do: map |> Map.put(key, binary_part(encoded, 0, @limit)) |> Map.put("truncated", true),
-      else: Map.put(map, key, json(value))
+    if byte_size(encoded) > @limit do
+      map
+      |> Map.put(key, binary_part(encoded, 0, @limit))
+      |> Map.put("truncated", true)
+    else
+      Map.put(map, key, json(value))
+    end
   end
 
   @doc "Puts `value` under `key`, unless it's `nil`."
@@ -126,5 +139,9 @@ defmodule Wardrik.EventLog.Encoder.Value do
   defp json_key(key) when is_atom(key), do: Atom.to_string(key)
   defp json_key(key), do: to_string(key)
 
-  defp short_name(module), do: module |> Module.split() |> List.last()
+  defp short_name(module) do
+    module
+    |> Module.split()
+    |> List.last()
+  end
 end

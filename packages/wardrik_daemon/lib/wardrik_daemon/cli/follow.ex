@@ -389,6 +389,6 @@ defmodule WardrikDaemon.CLI.Follow do
     |> Enum.map_join(& &1["content"])
   end
 
-  defp trace(%{"traceparent" => "00-" <> rest}), do: rest |> String.split("-", parts: 2) |> hd()
+  defp trace(%{"traceparent" => "00-" <> rest}), do: hd(String.split(rest, "-", parts: 2))
   defp trace(_event), do: nil
 end

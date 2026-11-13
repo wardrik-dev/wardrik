@@ -51,8 +51,12 @@ defmodule WardrikRest.Schema do
   # sentence.
   defp brief(nil, _how), do: nil
 
-  defp brief(description, %{brief: true}),
-    do: description |> String.split(~r/(?<=[.!?])\s/, parts: 2) |> hd() |> String.slice(0, @brief)
+  defp brief(description, %{brief: true}) do
+    description
+    |> String.split(~r/(?<=[.!?])\s/, parts: 2)
+    |> hd()
+    |> String.slice(0, @brief)
+  end
 
   defp brief(description, _how), do: description
 
@@ -63,10 +67,16 @@ defmodule WardrikRest.Schema do
         {{name, described(inlined, brief(schema["description"], how))}, [more | cut]}
       end)
 
-    {Map.new(schemas), cut |> List.flatten() |> Enum.uniq() |> Enum.sort()}
+    cut =
+      cut
+      |> List.flatten()
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    {Map.new(schemas), cut}
   end
 
-  defp size(schemas), do: schemas |> JSON.encode!() |> byte_size()
+  defp size(schemas), do: byte_size(JSON.encode!(schemas))
 
   @doc """
   Returns the object `name` names, with its fields' descriptions, and the objects inside it as

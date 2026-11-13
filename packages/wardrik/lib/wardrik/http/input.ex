@@ -12,7 +12,12 @@ defmodule Wardrik.HTTP.Input do
           {:ok, map(), Plug.Conn.t()} | {:error, Error.t()}
   def build(conn, operation, params) do
     with {:ok, body, conn} <- body(conn, operation) do
-      {:ok, body |> Map.merge(query(conn, operation)) |> Map.merge(params), conn}
+      input =
+        body
+        |> Map.merge(query(conn, operation))
+        |> Map.merge(params)
+
+      {:ok, input, conn}
     end
   end
 
@@ -21,8 +26,11 @@ defmodule Wardrik.HTTP.Input do
          do: {:ok, %{"body" => raw, "headers" => Map.new(conn.req_headers)}, conn}
   end
 
-  defp body(%Plug.Conn{body_params: %Unfetched{}} = conn, _operation),
-    do: conn |> raw() |> decoded()
+  defp body(%Plug.Conn{body_params: %Unfetched{}} = conn, _operation) do
+    conn
+    |> raw()
+    |> decoded()
+  end
 
   defp body(conn, _operation) do
     case BodyReader.kept(conn) do
@@ -77,7 +85,13 @@ defmodule Wardrik.HTTP.Input do
   defp property(%{input: input}, name), do: get_in(input, ["properties", name]) || %{}
 
   defp typed(values, %{"type" => "array"}), do: values
-  defp typed(values, %{"type" => "integer"}), do: values |> List.last() |> integer()
+
+  defp typed(values, %{"type" => "integer"}) do
+    values
+    |> List.last()
+    |> integer()
+  end
+
   defp typed(values, _property), do: List.last(values)
 
   defp integer(text) do

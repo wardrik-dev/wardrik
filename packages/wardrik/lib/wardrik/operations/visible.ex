@@ -8,7 +8,11 @@ defmodule Wardrik.Operations.Visible do
 
   @doc "Returns the keys of saved or defined agents, and their conversations, that `scope` may see."
   @spec keys(Scope.t(), map()) :: [Running.key()]
-  def keys(scope, input), do: scope |> visible(input, :start) |> Enum.to_list()
+  def keys(scope, input) do
+    scope
+    |> visible(input, :start)
+    |> Enum.to_list()
+  end
 
   @doc """
   Returns up to `input["limit"]` of the keys `keys/2` returns, after the cursor `input["after"]`,
@@ -36,13 +40,16 @@ defmodule Wardrik.Operations.Visible do
 
   defp paged(keys, limit) when length(keys) > limit do
     page = Enum.take(keys, limit)
-    {:ok, page, page |> List.last() |> cursor()}
+    {:ok, page, cursor(List.last(page))}
   end
 
   defp paged(keys, _limit), do: {:ok, keys, nil}
 
-  defp cursor({agent, conversation}),
-    do: [agent, conversation] |> JSON.encode!() |> Base.url_encode64(padding: false)
+  defp cursor({agent, conversation}) do
+    [agent, conversation]
+    |> JSON.encode!()
+    |> Base.url_encode64(padding: false)
+  end
 
   defp start(nil), do: {:ok, :start}
 
@@ -57,8 +64,12 @@ defmodule Wardrik.Operations.Visible do
 
   @doc "Returns the IDs of saved or defined agents that `input` names and `scope` may see."
   @spec agents(Scope.t(), map()) :: [String.t()]
-  def agents(scope, input),
-    do: scope |> keys(input) |> Enum.map(fn {agent, _conversation} -> agent end) |> Enum.uniq()
+  def agents(scope, input) do
+    scope
+    |> keys(input)
+    |> Enum.map(fn {agent, _conversation} -> agent end)
+    |> Enum.uniq()
+  end
 
   @doc "Returns the logs that hold every agent `input` names, with its conversations."
   @spec logs(map()) :: Wardrik.EventLog.resources()

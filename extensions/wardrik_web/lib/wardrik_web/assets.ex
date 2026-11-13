@@ -43,7 +43,9 @@ defmodule WardrikWeb.Assets do
         |> halt()
 
       :error ->
-        conn |> send_resp(404, "") |> halt()
+        conn
+        |> send_resp(404, "")
+        |> halt()
     end
   end
 end

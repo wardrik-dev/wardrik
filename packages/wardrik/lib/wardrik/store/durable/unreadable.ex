@@ -15,8 +15,13 @@ defmodule Wardrik.Store.Durable.Unreadable do
   @spec reason(binary()) :: String.t()
   def reason(binary) do
     case atoms(binary) do
-      {:ok, atoms} -> atoms |> missing() |> named()
-      :error -> "it isn't in a form this release can read"
+      {:ok, atoms} ->
+        atoms
+        |> missing()
+        |> named()
+
+      :error ->
+        "it isn't in a form this release can read"
     end
   end
 
@@ -38,7 +43,11 @@ defmodule Wardrik.Store.Durable.Unreadable do
 
   # Modules first: a module this release doesn't have is the likeliest reason.
   defp missing(atoms) do
-    gone = atoms |> Enum.uniq() |> Enum.reject(&exists?/1)
+    gone =
+      atoms
+      |> Enum.uniq()
+      |> Enum.reject(&exists?/1)
+
     modules = Enum.filter(gone, &String.starts_with?(&1, "Elixir."))
     if modules == [], do: gone, else: modules
   end
@@ -50,12 +59,15 @@ defmodule Wardrik.Store.Durable.Unreadable do
     end
   end
 
-  defp load(path),
-    do:
-      match?(
-        {:module, _module},
-        path |> Path.rootname() |> String.to_charlist() |> :code.load_abs()
-      )
+  defp load(path) do
+    loaded =
+      path
+      |> Path.rootname()
+      |> String.to_charlist()
+      |> :code.load_abs()
+
+    match?({:module, _module}, loaded)
+  end
 
   @doc "Returns every atom `binary` names, as text, or `:error` if it isn't an encoded term."
   @spec atoms(binary()) :: {:ok, [String.t()]} | :error
@@ -74,7 +86,11 @@ defmodule Wardrik.Store.Durable.Unreadable do
   defp named([]), do: "it isn't in a form this release can read"
 
   defp named(missing) do
-    {shown, more} = missing |> Enum.map(&readable/1) |> Enum.split(@shown)
+    {shown, more} =
+      missing
+      |> Enum.map(&readable/1)
+      |> Enum.split(@shown)
+
     listed = if more == [], do: sentence(shown), else: sentence(shown ++ ["#{length(more)} more"])
     "it names #{listed}, which this release doesn't have"
   end

@@ -152,5 +152,9 @@ defmodule Wardrik.HTTP.Worker do
 
   defp keep_alive(state), do: Process.send_after(self(), :keepalive, state.keepalive)
 
-  defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
+  defp version do
+    :wardrik
+    |> Application.spec(:vsn)
+    |> to_string()
+  end
 end

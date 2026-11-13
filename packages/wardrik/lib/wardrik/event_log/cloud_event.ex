@@ -52,8 +52,14 @@ defmodule Wardrik.EventLog.CloudEvent do
 
   @doc "Puts the event's `sequence`, padded to 12 digits."
   @spec sequenced(t(), pos_integer()) :: t()
-  def sequenced(event, sequence),
-    do: Map.put(event, "sequence", sequence |> Integer.to_string() |> String.pad_leading(12, "0"))
+  def sequenced(event, sequence) do
+    padded =
+      sequence
+      |> Integer.to_string()
+      |> String.pad_leading(12, "0")
+
+    Map.put(event, "sequence", padded)
+  end
 
   @doc "Returns the `source` of an agent's events."
   @spec source(String.t(), String.t()) :: String.t()
@@ -75,8 +81,11 @@ defmodule Wardrik.EventLog.CloudEvent do
 
   defp logged(event, nil), do: event
 
-  defp logged(event, {agent, conversation}),
-    do: event |> Map.put("agent", agent) |> put_present("conversation", conversation)
+  defp logged(event, {agent, conversation}) do
+    event
+    |> Map.put("agent", agent)
+    |> put_present("conversation", conversation)
+  end
 
   @doc "Returns the trace ID in the event's `traceparent`, which is its run's ID, or `nil`."
   @spec trace_id(t()) :: String.t() | nil

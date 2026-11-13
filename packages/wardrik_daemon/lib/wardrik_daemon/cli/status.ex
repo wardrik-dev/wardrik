@@ -99,19 +99,20 @@ defmodule WardrikDaemon.CLI.Status do
   def line(%{since: nil} = status, _now), do: Owl.Data.tag(["· ", status.idle], :light_black)
 
   def line(status, now) do
-    [
+    parts = [
       Owl.Data.tag(Enum.at(@frames, rem(status.frame, length(@frames))), :cyan),
       " ",
       doing(status),
       Owl.Data.tag(" · #{seconds(status, now)}", :light_black)
     ]
-    |> Owl.Data.truncate(status.width - 1)
+
+    Owl.Data.truncate(parts, status.width - 1)
   end
 
   defp doing(%{running: running, doing: doing}) when map_size(running) == 0, do: doing
 
   defp doing(%{running: running}) do
-    [first | rest] = running |> Map.values() |> Enum.sort()
+    [first | rest] = Enum.sort(Map.values(running))
     if rest == [], do: first, else: "#{first} and #{length(rest)} more"
   end
 

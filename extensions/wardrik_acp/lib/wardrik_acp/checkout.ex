@@ -13,6 +13,8 @@ defmodule WardrikACP.Checkout do
              ]
            )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   A git repository coding agents work in.
 

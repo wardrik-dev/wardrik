@@ -17,12 +17,12 @@ defmodule WardrikDaemon.Console.Table do
   @doc "Returns a table. Short rows are padded with empty cells. Missing alignments are `:left`."
   @spec new([Owl.Data.t()], [[Owl.Data.t()]], [alignment()]) :: t()
   def new(header, rows, alignments \\ []) when is_list(header) and is_list(rows) do
-    columns = [header | rows] |> Enum.map(&length/1) |> Enum.max()
+    columns = Enum.max(Enum.map([header | rows], &length/1))
 
     %__MODULE__{
       header: square(header, columns),
       rows: Enum.map(rows, &square(&1, columns)),
-      alignments: alignments |> Enum.take(columns) |> square(columns, :left)
+      alignments: square(Enum.take(alignments, columns), columns, :left)
     }
   end
 
@@ -48,10 +48,10 @@ defmodule WardrikDaemon.Console.Table do
 
   def lines(%__MODULE__{} = table, width) when is_integer(width) and width > 0 do
     columns = Enum.to_list(0..(length(table.header) - 1))
-    header = columns |> Enum.zip(table.header) |> Map.new()
+    header = Map.new(Enum.zip(columns, table.header))
 
     table.rows
-    |> Enum.map(&(columns |> Enum.zip(&1) |> Map.new()))
+    |> Enum.map(&Map.new(Enum.zip(columns, &1)))
     |> Owl.Table.new(
       render_cell: [header: &Owl.Data.tag(Map.fetch!(header, &1), :bright), body: & &1],
       border_style: :solid_rounded,

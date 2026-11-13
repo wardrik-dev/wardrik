@@ -24,11 +24,11 @@ defmodule WardrikDaemon.Agents do
 
   @behaviour Wardrik.Declarations
 
-  require Logger
-
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Config.Access
+
+  require Logger
 
   @key "agent files"
 
@@ -68,7 +68,12 @@ defmodule WardrikDaemon.Agents do
   @spec scope(keyword()) :: Wardrik.Scope.t()
   def scope(opts), do: Wardrik.as(opts[:wardrik], Access.admin())
 
-  defp files(opts), do: opts[:dir] |> Path.join("*.md") |> Path.wildcard() |> Enum.sort()
+  defp files(opts) do
+    opts[:dir]
+    |> Path.join("*.md")
+    |> Path.wildcard()
+    |> Enum.sort()
+  end
 
   defp declared(opts), do: Wardrik.Store.get(opts[:store], @key) || %{}
 

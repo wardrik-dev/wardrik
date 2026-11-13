@@ -4,6 +4,8 @@ defmodule Wardrik.Notify.Room do
     room: [type: :string, required: true, doc: "The room, as the channel names it."]
   ]
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Posts notices to a room in one of Wardrik's channels.
 

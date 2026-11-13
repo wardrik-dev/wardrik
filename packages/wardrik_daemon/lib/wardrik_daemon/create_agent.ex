@@ -79,7 +79,11 @@ defmodule WardrikDaemon.CreateAgent do
     }
 
     # A model's arguments are JSON already; this makes any keys strings, as the route's are.
-    input = definition |> JSON.encode!() |> JSON.decode!() |> Map.put("name", name)
+    input =
+      definition
+      |> JSON.encode!()
+      |> JSON.decode!()
+      |> Map.put("name", name)
 
     with :ok <- authorized(scope, principal.id),
          {:ok, record} <- create(daemon, scope, {principal.id, input}) do

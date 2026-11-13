@@ -45,7 +45,7 @@ defmodule WardrikDaemon.ULID do
 
     for shift <- 125..0//-5,
         into: "",
-        do: <<elem(@alphabet, value |> Bitwise.bsr(shift) |> Bitwise.band(31))>>
+        do: <<elem(@alphabet, Bitwise.band(Bitwise.bsr(value, shift), 31))>>
   end
 
   defp random do

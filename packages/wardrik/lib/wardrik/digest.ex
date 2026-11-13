@@ -141,7 +141,12 @@ defmodule Wardrik.Digest do
     end
   end
 
-  defp through(messages), do: messages |> Enum.map(&id/1) |> Enum.reject(&is_nil/1) |> List.last()
+  defp through(messages) do
+    messages
+    |> Enum.map(&id/1)
+    |> Enum.reject(&is_nil/1)
+    |> List.last()
+  end
 
   defp id(%{metadata: %{id: id}}), do: id
   defp id(_message), do: nil

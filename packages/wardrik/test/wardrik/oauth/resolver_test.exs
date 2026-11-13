@@ -1,12 +1,12 @@
 defmodule Wardrik.OAuth.ResolverTest do
   use ExUnit.Case, async: false
 
-  defp credential(name, principal),
-    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
-
   alias Wardrik.OAuth.GitHub
   alias Wardrik.OAuth.Provider
   alias WardrikCore.Principal
+
+  defp credential(name, principal),
+    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
 
   @jon %Principal{id: "user_jon"}
   @ada %Principal{id: "user_ada"}

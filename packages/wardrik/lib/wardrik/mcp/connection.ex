@@ -2,12 +2,12 @@ defmodule Wardrik.MCP.Connection do
   @moduledoc false
   use GenServer
 
-  require Logger
-
   alias Anubis.MCP.Response
   alias Wardrik.MCP.Server
   alias Wardrik.MCP.Servers
   alias Wardrik.MCP.Tool
+
+  require Logger
 
   @first_retry :timer.seconds(1)
   @last_retry :timer.minutes(1)
@@ -87,9 +87,16 @@ defmodule Wardrik.MCP.Connection do
 
   defp open(server, context, attempt) do
     case WardrikCore.Credentials.fetch(context, server.credential_name) do
-      {:ok, token} -> server |> opened(who(context), token) |> retried(server, context, attempt)
-      {:park, authorization} -> {:park, authorization}
-      {:error, reason} -> {:error, reason}
+      {:ok, token} ->
+        server
+        |> opened(who(context), token)
+        |> retried(server, context, attempt)
+
+      {:park, authorization} ->
+        {:park, authorization}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -145,7 +152,7 @@ defmodule Wardrik.MCP.Connection do
   @impl GenServer
   def handle_continue(:connect, state) do
     listen_for_changes(state)
-    {:noreply, state |> claimed() |> connect()}
+    {:noreply, connect(claimed(state))}
   end
 
   @impl GenServer
@@ -170,8 +177,10 @@ defmodule Wardrik.MCP.Connection do
       when is_binary(who),
       do: {:stop, :normal, state}
 
-  def handle_info({:EXIT, client, reason}, %{client: client} = state),
-    do: {:noreply, %{state | client: nil} |> offer([]) |> retry_later(reason)}
+  def handle_info({:EXIT, client, reason}, %{client: client} = state) do
+    state = offer(%{state | client: nil}, [])
+    {:noreply, retry_later(state, reason)}
+  end
 
   def handle_info({:EXIT, _gone, _reason}, state), do: {:noreply, state}
 
@@ -240,8 +249,13 @@ defmodule Wardrik.MCP.Connection do
 
   defp refresh(state) do
     case listed(state) do
-      {:ok, definitions} -> %{offer(state, definitions) | retry: @first_retry, failure: nil}
-      {:error, reason} -> state |> disconnect() |> failed(reason)
+      {:ok, definitions} ->
+        %{offer(state, definitions) | retry: @first_retry, failure: nil}
+
+      {:error, reason} ->
+        state
+        |> disconnect()
+        |> failed(reason)
     end
   end
 
@@ -354,5 +368,9 @@ defmodule Wardrik.MCP.Connection do
   defp hash(nil), do: nil
   defp hash(token), do: :erlang.phash2(token)
 
-  defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
+  defp version do
+    :wardrik
+    |> Application.spec(:vsn)
+    |> to_string()
+  end
 end

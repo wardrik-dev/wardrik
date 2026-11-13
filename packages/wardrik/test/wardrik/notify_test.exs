@@ -167,7 +167,7 @@ defmodule Wardrik.NotifyTest do
       # Defining checks the agent may use the deployment's target, as the agent's principal.
       asked =
         for {:authorize, %{action: action} = request} <-
-              Process.info(self(), :messages) |> elem(1),
+              elem(Process.info(self(), :messages), 1),
             not String.ends_with?(action, ".use"),
             do: request
 

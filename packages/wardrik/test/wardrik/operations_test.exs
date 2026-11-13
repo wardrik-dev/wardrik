@@ -71,7 +71,7 @@ defmodule Wardrik.OperationsTest do
       %{"events" => all} = run!(scope, "agent.events", %{"agent" => "acme/triage"})
       newest = %{"agent" => "acme/triage", "order" => "newest", "limit" => 3}
 
-      pages =
+      paged =
         Stream.unfold(run!(scope, "agent.events", newest), fn
           %{"events" => []} ->
             nil
@@ -79,7 +79,8 @@ defmodule Wardrik.OperationsTest do
           %{"events" => events, "next" => before} ->
             {events, run!(scope, "agent.events", Map.put(newest, "before", before))}
         end)
-        |> Enum.to_list()
+
+      pages = Enum.to_list(paged)
 
       assert List.flatten(pages) == Enum.reverse(all)
       assert Enum.all?(pages, &(Enum.count_until(&1, 4) <= 3))
@@ -303,9 +304,12 @@ defmodule Wardrik.OperationsTest do
       both = %{"agents" => ["acme/triage", "globex/triage"]}
       %{"events" => events, "next" => next} = run!(reader, "events.list", both)
 
-      assert events |> Enum.map(&Visible.agent_id/1) |> Enum.uniq() == [
-               "acme/triage"
-             ]
+      agents =
+        events
+        |> Enum.map(&Visible.agent_id/1)
+        |> Enum.uniq()
+
+      assert agents == ["acme/triage"]
 
       assert {:ok, %{{"acme/triage", nil} => _sequence} = cursor} = Cursor.decode(next)
       assert map_size(cursor) == 1
@@ -319,8 +323,12 @@ defmodule Wardrik.OperationsTest do
           "types" => ["wardrik.run.completed"]
         })
 
-      assert completed |> Enum.map(&Visible.agent_id/1) |> Enum.sort() ==
-               ["acme/@jon/books", "acme/triage"]
+      agents =
+        completed
+        |> Enum.map(&Visible.agent_id/1)
+        |> Enum.sort()
+
+      assert agents == ["acme/@jon/books", "acme/triage"]
     end
 
     test "follows only their events", %{scope: scope, reader: reader} do
@@ -384,7 +392,12 @@ defmodule Wardrik.OperationsTest do
             route,
             do: operation
 
-      assert routed |> Enum.map(& &1.id) |> Enum.sort() ==
+      ids =
+        routed
+        |> Enum.map(& &1.id)
+        |> Enum.sort()
+
+      assert ids ==
                ~w(agent.approve agent.ask agent.authorization agent.calls agent.cancel agent.clear
                   agent.decide agent.deny agent.events agent.kill agent.move agent.read agent.runs
                   agent.stop agent.timeline)

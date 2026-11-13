@@ -108,7 +108,7 @@ defmodule WardrikDaemon.HelpTools do
   defp store(%Config{storage: {kind, _settings}}, _dirs), do: "in #{kind}"
 
   defp search(pages, query) do
-    words = query |> String.downcase() |> String.split(~r/\W+/u, trim: true)
+    words = String.split(String.downcase(query), ~r/\W+/u, trim: true)
 
     found =
       pages
@@ -132,7 +132,7 @@ defmodule WardrikDaemon.HelpTools do
     end)
   end
 
-  defp count(text, word), do: text |> String.split(word) |> length() |> Kernel.-(1)
+  defp count(text, word), do: length(String.split(text, word)) - 1
 
   defp read(pages, url) do
     case Enum.find(pages, &(&1["url"] == url or String.trim_trailing(&1["url"], "/") == url)) do

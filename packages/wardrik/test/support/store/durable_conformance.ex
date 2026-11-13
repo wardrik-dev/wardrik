@@ -98,8 +98,12 @@ defmodule Wardrik.Store.DurableConformance do
           prefix = unique_key(context) <> "/"
           {:ok, _object} = Durable.put_object(backend, prefix <> "a", 1, [])
 
-          assert [%{key: key} = listed] =
-                   backend |> Durable.list_all_objects_stream(prefix, []) |> Enum.to_list()
+          objects =
+            backend
+            |> Durable.list_all_objects_stream(prefix, [])
+            |> Enum.to_list()
+
+          assert [%{key: key} = listed] = objects
 
           assert key == prefix <> "a"
           refute Map.has_key?(listed, :body)

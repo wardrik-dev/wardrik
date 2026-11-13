@@ -3,7 +3,7 @@ defmodule Wardrik.Type do
 
   defmacro __using__(opts) do
     schema = Keyword.fetch!(opts, :schema)
-    fields = opts |> Keyword.fetch!(:fields) |> Macro.prewalk(&Macro.expand(&1, __CALLER__))
+    fields = Macro.prewalk(Keyword.fetch!(opts, :fields), &Macro.expand(&1, __CALLER__))
 
     quote do
       defstruct unquote(Keyword.keys(fields))
@@ -56,7 +56,7 @@ defmodule Wardrik.Type do
   def json(fields) when is_map(fields),
     do: Map.new(fields, fn {key, value} -> {to_string(key), json(value)} end)
 
-  def json([{key, _value} | _rest] = fields) when is_atom(key), do: fields |> Map.new() |> json()
+  def json([{key, _value} | _rest] = fields) when is_atom(key), do: json(Map.new(fields))
   def json(values) when is_list(values), do: Enum.map(values, &json/1)
   def json(value) when is_boolean(value) or is_nil(value), do: value
   def json(value) when is_atom(value), do: Atom.to_string(value)
@@ -81,7 +81,13 @@ defmodule Wardrik.Type do
     do: Map.put(json, key, put_path(Map.get(json, key, %{}), rest, value))
 
   defp read(nil, _json), do: nil
-  defp read({path, cast}, json), do: json |> get_in(path(path)) |> cast(cast)
+
+  defp read({path, cast}, json) do
+    json
+    |> get_in(path(path))
+    |> cast(cast)
+  end
+
   defp read(path, json), do: get_in(json, path(path))
 
   defp cast(nil, _cast), do: nil

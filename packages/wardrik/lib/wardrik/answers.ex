@@ -31,7 +31,10 @@ defmodule Wardrik.Answers do
   end
 
   defp started(%Scope{wardrik: instance} = scope, {agent, conversation} = log, input) do
-    events = instance |> Instance.fetch!() |> Wardrik.events()
+    events =
+      instance
+      |> Instance.fetch!()
+      |> Wardrik.events()
 
     {:ok, _page} =
       allowed(Wardrik.Agent.events(scope, agent, [limit: 1], conversation: conversation))
@@ -119,6 +122,11 @@ defmodule Wardrik.Answers do
     end
   end
 
-  defp trace(%{"traceparent" => "00-" <> rest}), do: rest |> String.split("-", parts: 2) |> hd()
+  defp trace(%{"traceparent" => "00-" <> rest}) do
+    rest
+    |> String.split("-", parts: 2)
+    |> hd()
+  end
+
   defp trace(_event), do: nil
 end

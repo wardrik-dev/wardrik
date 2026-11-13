@@ -24,6 +24,9 @@ defmodule Wardrik.Workspace do
   @behaviour WardrikCore.Capability
 
   @impl WardrikCore.Capability
-  def tools(_context, opts),
-    do: opts |> Wardrik.Workspace.Spec.new() |> Wardrik.Workspace.Tools.build()
+  def tools(_context, opts) do
+    opts
+    |> Wardrik.Workspace.Spec.new()
+    |> Wardrik.Workspace.Tools.build()
+  end
 end

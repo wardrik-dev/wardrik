@@ -106,8 +106,12 @@ defmodule WardrikACP.Tool do
     }
   end
 
-  defp segment(text),
-    do: text |> String.replace(~r/[^A-Za-z0-9_-]+/, "-") |> String.trim("-") |> fallback()
+  defp segment(text) do
+    text
+    |> String.replace(~r/[^A-Za-z0-9_-]+/, "-")
+    |> String.trim("-")
+    |> fallback()
+  end
 
   defp fallback(""), do: "_"
   defp fallback(segment), do: segment

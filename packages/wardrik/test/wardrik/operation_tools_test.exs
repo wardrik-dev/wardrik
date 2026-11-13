@@ -45,7 +45,7 @@ defmodule Wardrik.OperationToolsTest do
     test = self()
 
     stub(ReqLLM, :stream_text, fn _model, messages, opts ->
-      said = messages |> List.last() |> text()
+      said = text(List.last(messages))
       send(test, {:prompted, said, Enum.map(opts[:tools] || [], & &1.name)})
       send(test, {:sent, Enum.map_join(messages, "\n", &text/1)})
       {:ok, Agent.get_and_update(steps, &step(&1, said))}
@@ -64,7 +64,7 @@ defmodule Wardrik.OperationToolsTest do
   defp text(%{role: :user, content: [%{text: said} | _sent]}), do: said
 
   defp text(%{content: content}) when is_list(content),
-    do: Enum.map_join(content, &(&1 |> Map.get(:text, "") |> to_string()))
+    do: Enum.map_join(content, &to_string(Map.get(&1, :text, "")))
 
   defp text(_message), do: ""
 

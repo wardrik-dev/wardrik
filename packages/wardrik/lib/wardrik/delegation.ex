@@ -14,11 +14,11 @@ defmodule Wardrik.Delegation do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Operations.Running
   alias WardrikCore.Context
   alias WardrikCore.Principal
+
+  require Logger
 
   @doc "Starts delegation."
   @spec start_link(Wardrik.t()) :: GenServer.on_start()
@@ -87,7 +87,7 @@ defmodule Wardrik.Delegation do
     for prefix <- ["delegation/asked/", "delegation/runs/"],
         key <- Wardrik.Store.keys(store, prefix),
         uniq: true,
-        do: key |> String.replace_prefix(prefix, "") |> logged()
+        do: logged(String.replace_prefix(key, prefix, ""))
   end
 
   # Each key holds the log's agent and conversation, and the ID, each URL-encoded on its own.
@@ -99,7 +99,12 @@ defmodule Wardrik.Delegation do
   end
 
   defp logged(key) do
-    case key |> String.split("/") |> Enum.map(&URI.decode_www_form/1) do
+    segments =
+      key
+      |> String.split("/")
+      |> Enum.map(&URI.decode_www_form/1)
+
+    case segments do
       [agent, _id] -> {agent, nil}
       [agent, conversation, _id] -> {agent, conversation}
     end
@@ -160,8 +165,13 @@ defmodule Wardrik.Delegation do
 
   defp labels(wardrik, log) do
     case Running.whereis(wardrik, log) do
-      nil -> ["outside"]
-      pid -> pid |> WardrikCore.history() |> Context.labels()
+      nil ->
+        ["outside"]
+
+      pid ->
+        pid
+        |> WardrikCore.history()
+        |> Context.labels()
     end
   end
 

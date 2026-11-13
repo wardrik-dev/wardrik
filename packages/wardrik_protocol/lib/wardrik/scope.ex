@@ -65,7 +65,7 @@ defmodule Wardrik.Scope do
     %__MODULE__{
       server: server,
       wardrik: Keyword.fetch!(args, :wardrik),
-      principal: args |> Keyword.fetch!(:principal) |> principal(),
+      principal: principal(Keyword.fetch!(args, :principal)),
       actor: args[:actor],
       context: args[:context]
     }

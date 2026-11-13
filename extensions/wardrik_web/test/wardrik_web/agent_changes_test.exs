@@ -9,7 +9,7 @@ defmodule WardrikWeb.AgentChangesTest do
   @endpoint WardrikWeb.Test.Endpoint
 
   setup do
-    %{conn: build_conn() |> Plug.Test.init_test_session(%{"user" => "ana"})}
+    %{conn: Plug.Test.init_test_session(build_conn(), %{"user" => "ana"})}
   end
 
   defp asked(id), do: for({^id, input} <- Server.asked(), do: input)
@@ -18,9 +18,17 @@ defmodule WardrikWeb.AgentChangesTest do
     {:ok, view, _html} = live(conn, "/ops/agents/triage?tab=definition")
     assert render(view) =~ "Triage issues."
 
-    view |> element("button", "Edit") |> render_click()
-    view |> form("#definition-form", %{"input" => %{"model" => "zai:glm-5"}}) |> render_change()
-    view |> form("#definition-form") |> render_submit()
+    view
+    |> element("button", "Edit")
+    |> render_click()
+
+    view
+    |> form("#definition-form", %{"input" => %{"model" => "zai:glm-5"}})
+    |> render_change()
+
+    view
+    |> form("#definition-form")
+    |> render_submit()
 
     assert %{"agent" => "triage", "model" => "zai:glm-5", "triggers" => [%{"name" => "sweep"}]} =
              List.last(asked("agent.define"))
@@ -30,7 +38,9 @@ defmodule WardrikWeb.AgentChangesTest do
     {:ok, view, html} = live(conn, "/ops/agents/triage?tab=triggers")
     assert html =~ "sweep"
 
-    view |> element("button", "Add trigger") |> render_click()
+    view
+    |> element("button", "Add trigger")
+    |> render_click()
 
     view
     |> form("#trigger-form", %{
@@ -41,18 +51,26 @@ defmodule WardrikWeb.AgentChangesTest do
     assert %{"agent" => "triage", "trigger" => "daily", "every" => "0 9 * * *"} =
              List.last(asked("agent.trigger_set"))
 
-    view |> element("button", "Remove") |> render_click()
+    view
+    |> element("button", "Remove")
+    |> render_click()
+
     assert %{"agent" => "triage", "trigger" => "sweep"} = List.last(asked("agent.trigger_remove"))
   end
 
   test "moves and forgets an agent", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/agents/triage")
 
-    view |> form("#move-form", %{"node" => "b@host"}) |> render_submit()
+    view
+    |> form("#move-form", %{"node" => "b@host"})
+    |> render_submit()
+
     assert %{"agent" => "triage", "node" => "b@host"} = List.last(asked("agent.move"))
 
     assert {:error, {:live_redirect, %{to: "/ops"}}} =
-             view |> element("button", "Delete") |> render_click()
+             view
+             |> element("button", "Delete")
+             |> render_click()
 
     assert %{"agent" => "triage"} = List.last(asked("agent.forget"))
   end
@@ -60,8 +78,12 @@ defmodule WardrikWeb.AgentChangesTest do
   test "defines a new agent", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/new")
 
-    assert view |> form("#new-agent", %{"agent_id" => ""}) |> render_submit() =~
-             "Enter an agent ID."
+    html =
+      view
+      |> form("#new-agent", %{"agent_id" => ""})
+      |> render_submit()
+
+    assert html =~ "Enter an agent ID."
 
     assert {:error, {:live_redirect, %{to: "/ops/agents/scout?tab=definition"}}} =
              view
@@ -78,9 +100,17 @@ defmodule WardrikWeb.AgentChangesTest do
   test "edits a trigger, renames it and checks its name", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/agents/triage?tab=triggers")
 
-    view |> element("button", "Edit") |> render_click()
-    view |> element("#trigger-form button", "Cancel") |> render_click()
-    view |> element("button", "Edit") |> render_click()
+    view
+    |> element("button", "Edit")
+    |> render_click()
+
+    view
+    |> element("#trigger-form button", "Cancel")
+    |> render_click()
+
+    view
+    |> element("button", "Edit")
+    |> render_click()
 
     view
     |> form("#trigger-form", %{"input" => %{"trigger" => "", "every" => "0 * * * *"}})
@@ -104,7 +134,10 @@ defmodule WardrikWeb.AgentChangesTest do
   test "asks, denies, and runs an agent's actions", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/agents/triage")
 
-    view |> form(".composer", %{"content" => "Any news?"}) |> render_submit()
+    view
+    |> form(".composer", %{"content" => "Any news?"})
+    |> render_submit()
+
     assert %{"agent" => "triage"} = List.last(asked("agent.ask"))
 
     render_click(view, "deny", %{"interrupt" => "toolu_1"})

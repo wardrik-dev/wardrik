@@ -33,7 +33,11 @@ defmodule Wardrik.Triggers.Records do
 
   @doc "Returns every stored trigger as `{agent_id, name}`."
   @spec all(Wardrik.Store.t()) :: [{String.t(), String.t()}]
-  def all(store), do: store |> Wardrik.Store.keys(@prefix) |> Enum.map(&parsed/1)
+  def all(store) do
+    store
+    |> Wardrik.Store.keys(@prefix)
+    |> Enum.map(&parsed/1)
+  end
 
   @doc "Returns the trigger names of `agent_id`."
   @spec of(Wardrik.Store.t(), String.t()) :: [String.t()]

@@ -23,7 +23,7 @@ defmodule WardrikDaemon.Keys do
 
   @impl WardrikCore.Keys
   def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, opts) do
-    wardrik = opts |> Keyword.fetch!(:wardrik) |> Wardrik.Instance.fetch!()
+    wardrik = Wardrik.Instance.fetch!(Keyword.fetch!(opts, :wardrik))
     deployment? = Keyword.get(opts, :deployment, false)
     vault = Wardrik.vault(wardrik)
 

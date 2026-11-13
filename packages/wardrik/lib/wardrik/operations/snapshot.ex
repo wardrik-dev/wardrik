@@ -51,7 +51,11 @@ defmodule Wardrik.Operations.Snapshot do
   @doc "Returns the summaries of `keys`, reading their triggers and spending once for all."
   @spec summaries(Wardrik.t(), [Running.key()]) :: [map()]
   def summaries(wardrik, keys) do
-    agents = keys |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+    agents =
+      keys
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.uniq()
+
     next_runs = Wardrik.Triggers.next_runs(Wardrik.triggers(wardrik), agents)
     spent = Wardrik.Spending.by_agent(wardrik, agents)
 

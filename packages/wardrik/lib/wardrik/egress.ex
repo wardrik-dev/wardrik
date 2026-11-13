@@ -100,7 +100,10 @@ defmodule Wardrik.Egress do
 
   defp integer(address) do
     size = div(width(address), tuple_size(address))
-    address |> Tuple.to_list() |> Enum.reduce(0, &(Bitwise.bsl(&2, size) + &1))
+
+    address
+    |> Tuple.to_list()
+    |> Enum.reduce(0, &(Bitwise.bsl(&2, size) + &1))
   end
 
   defp ipv4(hi, lo),

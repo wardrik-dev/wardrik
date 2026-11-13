@@ -176,8 +176,13 @@ defmodule Wardrik.Testing.Server do
     {:ok, %{"agents" => agents}}
   end
 
-  defp answer(%Scope{wardrik: name}, "agent.definition", %{"agent" => agent}),
-    do: name |> state() |> Map.fetch!(:offered) |> List.keyfind(agent, 0) |> defined(agent)
+  defp answer(%Scope{wardrik: name}, "agent.definition", %{"agent" => agent}) do
+    name
+    |> state()
+    |> Map.fetch!(:offered)
+    |> List.keyfind(agent, 0)
+    |> defined(agent)
+  end
 
   defp answer(%Scope{wardrik: name}, "agent.read", input) do
     {agent, conversation} = log = log(input)

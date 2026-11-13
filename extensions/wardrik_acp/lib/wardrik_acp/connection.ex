@@ -452,10 +452,16 @@ defmodule WardrikACP.Connection do
   end
 
   defp save(state) do
+    pending =
+      state.pending
+      |> Enum.sort()
+      |> Enum.map(&elem(&1, 1))
+      |> List.first()
+
     saved = %{
       "session" => state.session,
       "cost" => state.cost,
-      "pending" => state.pending |> Enum.sort() |> Enum.map(&elem(&1, 1)) |> List.first()
+      "pending" => pending
     }
 
     File.write!(state.spec.file, JSON.encode!(saved))
@@ -506,5 +512,9 @@ defmodule WardrikACP.Connection do
   defp put_present(map, _key, empty) when empty == %{}, do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)
 
-  defp version, do: :wardrik_acp |> Application.spec(:vsn) |> to_string()
+  defp version do
+    :wardrik_acp
+    |> Application.spec(:vsn)
+    |> to_string()
+  end
 end

@@ -73,10 +73,15 @@ defmodule WardrikRest.Discovery do
     names = Schema.names(schemas)
     read = %{document: document, keyed: keyed, schemas: schemas, names: names}
 
+    operations =
+      document
+      |> methods()
+      |> Enum.map(&operation(&1, read))
+
     {:ok,
      %Spec{
        title: Map.get(document, "title", document["name"]),
-       operations: document |> methods() |> Enum.map(&operation(&1, read)),
+       operations: operations,
        schemes: schemes(document, keyed),
        types: Schema.types(schemas)
      }}
@@ -85,16 +90,23 @@ defmodule WardrikRest.Discovery do
   defp spec(_document), do: {:error, "It isn't a Discovery document."}
 
   defp methods(resource) do
-    Map.values(Map.get(resource, "methods", %{})) ++
-      Enum.flat_map(Map.values(Map.get(resource, "resources", %{})), &methods/1)
+    nested = Map.values(Map.get(resource, "resources", %{}))
+
+    Map.values(Map.get(resource, "methods", %{})) ++ Enum.flat_map(nested, &methods/1)
   end
 
   defp operation(method, %{document: document} = read) do
     params = parameters(method)
     taken = MapSet.new(params, & &1.name)
 
+    name =
+      method["id"]
+      |> String.split(".")
+      |> tl()
+      |> Enum.join("_")
+
     %Operation{
-      name: method["id"] |> String.split(".") |> tl() |> Enum.join("_"),
+      name: name,
       method: Map.fetch!(@methods, method["httpMethod"]),
       path: Map.get(document, "servicePath", "") <> method["path"],
       description: Map.get(method, "description", method["id"]),

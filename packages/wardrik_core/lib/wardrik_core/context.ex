@@ -74,6 +74,7 @@ defmodule WardrikCore.Context do
     subagent: nil
   ]
 
+  @spec new(keyword()) :: t()
   def new(opts) do
     struct!(__MODULE__, opts)
   end
@@ -160,8 +161,12 @@ defmodule WardrikCore.Context do
   @spec labels(t() | [ReqLLM.Message.t()]) :: [String.t()]
   def labels(%__MODULE__{messages: messages}), do: labels(messages)
 
-  def labels(messages) when is_list(messages),
-    do: messages |> Enum.flat_map(&message_labels/1) |> Enum.uniq() |> Enum.sort()
+  def labels(messages) when is_list(messages) do
+    messages
+    |> Enum.flat_map(&message_labels/1)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
 
   defp message_labels(%{metadata: %{labels: labels}}), do: labels
   defp message_labels(_message), do: []

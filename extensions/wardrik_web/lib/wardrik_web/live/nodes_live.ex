@@ -23,7 +23,7 @@ defmodule WardrikWeb.NodesLive do
   def handle_event("reload", _params, socket) do
     case Wardrik.Scope.run(socket.assigns.scope, "deployment.reload", %{}) do
       {:ok, _answer} ->
-        {:noreply, socket |> put_flash(:info, "Reloaded agent definitions.") |> load()}
+        {:noreply, load(put_flash(socket, :info, "Reloaded agent definitions."))}
 
       {:error, error} ->
         {:noreply, put_flash(socket, :error, error.message)}
@@ -33,7 +33,7 @@ defmodule WardrikWeb.NodesLive do
   @impl true
   def handle_info(:tick, socket), do: {:noreply, load(socket)}
 
-  defp load(socket), do: socket |> nodes() |> runtime()
+  defp load(socket), do: runtime(nodes(socket))
 
   defp nodes(socket) do
     case Wardrik.Scope.run(socket.assigns.scope, "deployment.nodes", %{}) do
@@ -94,8 +94,12 @@ defmodule WardrikWeb.NodesLive do
     assign(socket, agents: agents, rates: rates, last: last)
   end
 
-  defp series(history, name, field),
-    do: history |> Map.get(name, []) |> Enum.map(& &1[field]) |> Enum.reverse()
+  defp series(history, name, field) do
+    history
+    |> Map.get(name, [])
+    |> Enum.map(& &1[field])
+    |> Enum.reverse()
+  end
 
   # Mounts of the same disk report the same size and use, so show it once, at its shortest path.
   # Disks under 1 GB are system mounts, not storage.

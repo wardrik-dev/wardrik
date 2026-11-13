@@ -73,10 +73,16 @@ defmodule Wardrik.Triggers.Clock do
   end
 
   def next({:cron, expression}, timezone, from) do
-    local = from |> DateTime.shift_zone!(timezone, Tz.TimeZoneDatabase) |> DateTime.to_naive()
+    local =
+      from
+      |> DateTime.shift_zone!(timezone, Tz.TimeZoneDatabase)
+      |> DateTime.to_naive()
 
     minute =
-      local |> NaiveDateTime.truncate(:second) |> Map.put(:second, 0) |> NaiveDateTime.add(60)
+      local
+      |> NaiveDateTime.truncate(:second)
+      |> Map.put(:second, 0)
+      |> NaiveDateTime.add(60)
 
     {:ok, next} = Scheduler.get_next_run_date(expression, minute)
 

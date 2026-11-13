@@ -52,7 +52,7 @@ defmodule WardrikDaemon.AgentFile do
   defp split(text), do: {:ok, %{}, String.trim(text)}
 
   defp agent(path, fields, config) do
-    name = path |> Path.basename() |> Path.rootname()
+    name = Path.rootname(Path.basename(path))
     org = fields["org"] || org(fields["owner"], config.org)
     owner = owner(fields["owner"], org)
 

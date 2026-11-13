@@ -9,12 +9,12 @@ defmodule WardrikSlack.Socket do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Chat.Channel
   alias WardrikSlack.API
   alias WardrikSlack.Dispatch
   alias WardrikSlack.Socket.Connection
+
+  require Logger
 
   @first_backoff 1_000
   @max_backoff 60_000

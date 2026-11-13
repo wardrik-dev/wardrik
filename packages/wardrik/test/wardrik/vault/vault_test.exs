@@ -1,15 +1,15 @@
 defmodule Wardrik.VaultTest do
   use ExUnit.Case, async: true
 
-  defp credential(name, principal),
-    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
-
   import ExUnit.CaptureLog
 
   alias Wardrik.Vault.Sealed
   alias Wardrik.Vault.Secret
   alias Wardrik.Vault.TestGrants
   alias WardrikCore.Principal
+
+  defp credential(name, principal),
+    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
 
   @jon %Principal{id: "user:jon"}
   @acme %Principal{id: "org:acme"}

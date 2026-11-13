@@ -273,7 +273,11 @@ defmodule Wardrik.OAuth.Apps do
 
   defp option(_other), do: []
 
-  defp id, do: 8 |> :crypto.strong_rand_bytes() |> Base.encode32(case: :lower, padding: false)
+  defp id do
+    8
+    |> :crypto.strong_rand_bytes()
+    |> Base.encode32(case: :lower, padding: false)
+  end
 
   defp listed(app) do
     opts = app.opts

@@ -47,7 +47,9 @@ defmodule WardrikDaemon.CLI.Table do
     shown = for {label, value} <- pairs, value not in [nil, "", []], do: {label, to_string(value)}
 
     width =
-      shown |> Enum.map(fn {label, _value} -> String.length(label) end) |> Enum.max(fn -> 0 end)
+      shown
+      |> Enum.map(fn {label, _value} -> String.length(label) end)
+      |> Enum.max(fn -> 0 end)
 
     Enum.each(shown, fn {label, value} ->
       Context.puts(cx, [
@@ -58,12 +60,15 @@ defmodule WardrikDaemon.CLI.Table do
     end)
   end
 
-  defp widest(column),
-    do: column |> Enum.map(fn {text, _style} -> String.length(text) end) |> Enum.max(fn -> 0 end)
+  defp widest(column) do
+    column
+    |> Enum.map(fn {text, _style} -> String.length(text) end)
+    |> Enum.max(fn -> 0 end)
+  end
 
   # Padded as text, so a colour never shifts the columns. The last cell isn't padded.
   defp line(row, widths) do
-    {last, cells} = row |> Enum.zip(widths) |> List.pop_at(-1)
+    {last, cells} = List.pop_at(Enum.zip(row, widths), -1)
 
     padded =
       for {{text, style}, width} <- cells,

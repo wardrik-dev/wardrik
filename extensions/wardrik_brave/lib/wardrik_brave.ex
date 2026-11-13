@@ -28,9 +28,9 @@ defmodule WardrikBrave do
       there's no key, the tool's description and its error say it.
   """
 
-  use GenServer
-
   @behaviour WardrikCore.Capability
+
+  use GenServer
 
   @settings [
     api_key: nil,
@@ -52,8 +52,13 @@ defmodule WardrikBrave do
 
   defp source(opts) do
     case Keyword.fetch(opts, :brave) do
-      {:ok, brave} -> brave
-      :error -> opts |> Keyword.validate!(@settings) |> Map.new()
+      {:ok, brave} ->
+        brave
+
+      :error ->
+        opts
+        |> Keyword.validate!(@settings)
+        |> Map.new()
     end
   end
 

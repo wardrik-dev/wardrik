@@ -56,6 +56,8 @@ defmodule Wardrik.OAuth.Provider do
             ]
           )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   An OAuth app with a service. Its name is the credential a tool asks for.
 
@@ -143,6 +145,7 @@ defmodule Wardrik.OAuth.Provider do
   defp findable?(_provider), do: true
 
   @doc false
+  @spec params(term()) :: {:ok, %{String.t() => String.t()}} | {:error, String.t()}
   def params(params) when is_map(params) or is_list(params) do
     params = Map.new(params, fn {key, value} -> {to_string(key), to_string(value)} end)
 

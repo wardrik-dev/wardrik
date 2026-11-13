@@ -30,8 +30,7 @@ defmodule Wardrik.EventLog.Encoder do
 
   defp described(%Event{name: [:wardrik, noun, verb], metadata: metadata}),
     do: [
-      {"#{noun}.#{verb}", subject(noun, metadata),
-       metadata |> Map.drop(@envelope) |> Value.json()}
+      {"#{noun}.#{verb}", subject(noun, metadata), Value.json(Map.drop(metadata, @envelope))}
     ]
 
   defp described(%Event{name: [:wardrik_core | name]} = event), do: core(name, event)
@@ -191,9 +190,8 @@ defmodule Wardrik.EventLog.Encoder do
   defp step_started(:generate, %{span: span, model: model}) do
     {provider, name} = model_parts(model)
 
-    data =
-      %{"request" => %{"model" => name}, "decided" => default()}
-      |> Value.put("provider", provider && %{"name" => provider})
+    started = %{"request" => %{"model" => name}, "decided" => default()}
+    data = Value.put(started, "provider", provider && %{"name" => provider})
 
     [about_message("message.started", span, data)]
   end
@@ -329,8 +327,11 @@ defmodule Wardrik.EventLog.Encoder do
   defp status(data, %{status: :ok}), do: Map.put(data, "status", "ok")
   defp status(data, metadata), do: error_status(data, metadata[:reason])
 
-  defp error_status(data, reason),
-    do: data |> Map.put("status", "error") |> Map.put("error", Value.error(reason))
+  defp error_status(data, reason) do
+    data
+    |> Map.put("status", "error")
+    |> Map.put("error", Value.error(reason))
+  end
 
   defp exited(:killed), do: "The call was stopped before it finished."
   defp exited(reason), do: {:exit, reason}

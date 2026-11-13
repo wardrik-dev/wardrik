@@ -83,13 +83,14 @@ defmodule WardrikBrave.WebSearch do
   @doc "Returns the API parameters for the tool's arguments and date window."
   @spec body(map(), String.t() | nil) :: map()
   def body(args, window) do
-    %{
+    params = %{
       "q" => args[:query],
       "count" => args[:count] || @default_count,
       "maximum_number_of_tokens" => args[:max_tokens] || @default_max_tokens,
       "freshness" => window
     }
-    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+    Map.reject(params, fn {_key, value} -> is_nil(value) end)
   end
 
   defp window(%{freshness: _freshness, published_between: _between}),

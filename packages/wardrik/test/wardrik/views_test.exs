@@ -27,7 +27,7 @@ defmodule Wardrik.ViewsTest do
     {:ok, %{"events" => json}} = Wardrik.run(scope, "agent.events", %{"agent" => "acme/triage"})
 
     timeline = Timeline.fold(events)
-    assert Timeline.items(timeline) == json |> Timeline.fold() |> Timeline.items()
+    assert Timeline.items(timeline) == Timeline.items(Timeline.fold(json))
 
     assert [%{kind: :user, text: "Hi"}, %{kind: :run, status: :completed} = run] =
              Timeline.items(timeline)

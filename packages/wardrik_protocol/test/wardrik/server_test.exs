@@ -25,7 +25,9 @@ defmodule Wardrik.ServerTest do
       module = Functions.module(Functions.prefix(operation))
       args = [scope | arguments(operation, Map.get(@inputs, id, []))]
 
-      assert apply(module, Functions.name(operation), args) |> answered?(), id
+      answer = apply(module, Functions.name(operation), args)
+
+      assert answered?(answer), id
       assert_received {:ran, ^id, input}
       assert Enum.all?(Functions.path(operation), &(input[&1] == "x")), id
     end
@@ -65,7 +67,7 @@ defmodule Wardrik.ServerTest do
     assert {:error, %Wardrik.Error{type: :unavailable, message: "The run failed: It broke."}} =
              Wardrik.Agent.reply(scope, "acme/broken", "hi")
 
-    assert scope |> Wardrik.Agent.stream("acme/triage", "hi") |> Enum.join() == "Re: hi"
+    assert Enum.join(Wardrik.Agent.stream(scope, "acme/triage", "hi")) == "Re: hi"
 
     assert {:ok, %Wardrik.Reply{text: "In C1: hi"}} =
              Wardrik.Agent.reply(scope, "acme/triage", "hi", conversation: "C1")

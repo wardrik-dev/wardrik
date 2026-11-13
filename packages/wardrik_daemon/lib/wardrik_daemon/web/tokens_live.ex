@@ -35,7 +35,7 @@ defmodule WardrikDaemon.Web.TokensLive do
          {:ok, input} <- WardrikDaemon.HTTP.checked("token_input", input),
          :ok <- Allowed.authorized(scope, "token.create", {:token, input["subject"]}),
          {:ok, created} <- Tokens.issue(daemon.store, input) do
-      {:noreply, socket |> assign(params: %{}, created: created) |> load()}
+      {:noreply, load(assign(socket, params: %{}, created: created))}
     else
       {:error, %{message: message}} -> {:noreply, put_flash(socket, :error, message)}
       {:error, message} -> {:noreply, put_flash(socket, :error, message)}
@@ -48,7 +48,7 @@ defmodule WardrikDaemon.Web.TokensLive do
     case Allowed.authorized(scope, "token.delete", {:token, id}) do
       :ok ->
         :ok = Tokens.revoke(daemon.store, id)
-        {:noreply, socket |> put_flash(:info, "Revoked the token.") |> load()}
+        {:noreply, load(put_flash(socket, :info, "Revoked the token."))}
 
       {:error, error} ->
         {:noreply, put_flash(socket, :error, error.message)}

@@ -4,7 +4,8 @@ defmodule Wardrik.EventLog.Encoder.ValueTest do
   alias ReqLLM.Message.ContentPart
   alias Wardrik.EventLog.Encoder.Value
 
-  @message JSV.build!(WardrikProtocol.schema("defs") |> get_in(["$defs", "message"]))
+  @defs WardrikProtocol.schema("defs")
+  @message JSV.build!(get_in(@defs, ["$defs", "message"]))
 
   defp encoded(message) do
     encoded = Value.message(message)

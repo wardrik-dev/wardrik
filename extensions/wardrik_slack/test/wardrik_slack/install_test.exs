@@ -9,8 +9,13 @@ defmodule WardrikSlack.InstallTest do
 
   setup :start_slack
 
-  defp state(url),
-    do: url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+  defp state(url) do
+    url
+    |> URI.parse()
+    |> Map.fetch!(:query)
+    |> URI.decode_query()
+    |> Map.fetch!("state")
+  end
 
   @tag slack: [
          token: nil,

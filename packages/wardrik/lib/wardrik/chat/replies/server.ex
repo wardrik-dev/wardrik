@@ -3,14 +3,14 @@ defmodule Wardrik.Chat.Replies.Server do
 
   use DurableServer, vsn: 2
 
-  require Logger
-
   alias Wardrik.Chat.Outbound
   alias Wardrik.Chat.Replies.Follower
   alias Wardrik.Chat.Replies.State
   alias Wardrik.Chat.Waiting
   alias Wardrik.Chat.Workspace
   alias Wardrik.EventLog.Cursor
+
+  require Logger
 
   @types ~w(wardrik.message.created wardrik.run.started wardrik.tool_call.started
             wardrik.run.completed wardrik.run.interrupted wardrik.run.failed wardrik.run.cancelled

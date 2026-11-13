@@ -108,7 +108,7 @@ defmodule WardrikDaemon.PairingTest do
 
     # Ana's sign-in stays open for her, and her code reads in any case, with or without its dash.
     assert {:ok, %{"provider" => "crm", "connected" => true}} =
-             pair(ana, "crm", code |> String.downcase() |> String.replace("-", ""))
+             pair(ana, "crm", String.replace(String.downcase(code), "-", ""))
 
     assert_received {:exchanged, "from-crm"}
     assert connected?(context, "payments/@ana", "crm")

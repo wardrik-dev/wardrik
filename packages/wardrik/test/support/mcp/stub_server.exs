@@ -63,14 +63,22 @@ defmodule StubServer do
 
   def run(grown \\ false) do
     case IO.read(:stdio, :line) do
-      :eof -> System.halt(0)
-      {:error, _reason} -> System.halt(0)
-      line -> line |> String.trim() |> handle(grown) |> run()
+      :eof ->
+        System.halt(0)
+
+      {:error, _reason} ->
+        System.halt(0)
+
+      line ->
+        line
+        |> String.trim()
+        |> handle(grown)
+        |> run()
     end
   end
 
   defp handle("", grown), do: grown
-  defp handle(line, grown), do: line |> JSON.decode!() |> respond(grown)
+  defp handle(line, grown), do: respond(JSON.decode!(line), grown)
 
   defp respond(%{"method" => "initialize", "id" => id, "params" => params}, grown) do
     reply(id, %{

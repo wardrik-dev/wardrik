@@ -92,8 +92,11 @@ defmodule Wardrik.Triggers.Webhook do
 
   defp signature("whsec_" <> key, content), do: signature(Base.decode64!(key), content)
 
-  defp signature(key, content),
-    do: :hmac |> :crypto.mac(:sha256, key, content) |> Base.encode64()
+  defp signature(key, content) do
+    :hmac
+    |> :crypto.mac(:sha256, key, content)
+    |> Base.encode64()
+  end
 
   defp same?(presented, expected)
        when is_binary(presented) and byte_size(presented) == byte_size(expected),

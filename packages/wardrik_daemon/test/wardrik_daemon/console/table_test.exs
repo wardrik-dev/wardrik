@@ -3,9 +3,9 @@ defmodule WardrikDaemon.Console.TableTest do
 
   alias WardrikDaemon.Console.Table
 
-  defp plain(data), do: data |> Owl.Data.untag() |> IO.chardata_to_string()
+  defp plain(data), do: IO.chardata_to_string(Owl.Data.untag(data))
 
-  defp lines(table, width), do: table |> Table.lines(width) |> Enum.map(&plain/1)
+  defp lines(table, width), do: Enum.map(Table.lines(table, width), &plain/1)
 
   defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)

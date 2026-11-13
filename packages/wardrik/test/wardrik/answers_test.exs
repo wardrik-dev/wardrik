@@ -25,8 +25,9 @@ defmodule Wardrik.AnswersTest do
   end
 
   test "streams an answer's text as it's written", %{scope: scope} do
-    assert Wardrik.Agent.stream(scope, "acme/triage", "What's on fire?") |> Enum.to_list() ==
-             ["Nothing's ", "on ", "fire."]
+    stream = Wardrik.Agent.stream(scope, "acme/triage", "What's on fire?")
+
+    assert Enum.to_list(stream) == ["Nothing's ", "on ", "fire."]
   end
 
   test "takes the agent as a struct", %{scope: scope} do
@@ -59,7 +60,7 @@ defmodule Wardrik.AnswersTest do
              Wardrik.Agent.reply(nobody, "acme/triage", "Hi")
 
     assert_raise Wardrik.Error, fn ->
-      nobody |> Wardrik.Agent.stream("acme/triage", "Hi") |> Enum.to_list()
+      Enum.to_list(Wardrik.Agent.stream(nobody, "acme/triage", "Hi"))
     end
   end
 end

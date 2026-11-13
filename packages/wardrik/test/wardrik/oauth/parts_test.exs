@@ -133,7 +133,9 @@ defmodule Wardrik.OAuth.PartsTest do
 
     test "reads what the server refuses or garbles" do
       serve(fn _path, conn ->
-        conn |> Plug.Conn.put_status(400) |> Req.Test.json(%{"error" => "invalid_client"})
+        conn
+        |> Plug.Conn.put_status(400)
+        |> Req.Test.json(%{"error" => "invalid_client"})
       end)
 
       assert {:error, {:token_refused, "invalid_client", nil}} =
@@ -158,7 +160,11 @@ defmodule Wardrik.OAuth.PartsTest do
         interval: 5
       }
 
-      serve(fn _path, conn -> conn |> Plug.Conn.put_status(503) |> Req.Test.json(%{}) end)
+      serve(fn _path, conn ->
+        conn
+        |> Plug.Conn.put_status(503)
+        |> Req.Test.json(%{})
+      end)
 
       assert {:retry, {:http, 503}} =
                Device.poll(metadata(), provider(), device: device, req_options: @req)
@@ -174,7 +180,9 @@ defmodule Wardrik.OAuth.PartsTest do
                Device.poll(metadata(), provider(), device: device, req_options: @req)
 
       serve(fn _path, conn ->
-        conn |> Plug.Conn.put_status(400) |> Req.Test.json(%{"error" => "invalid_grant"})
+        conn
+        |> Plug.Conn.put_status(400)
+        |> Req.Test.json(%{"error" => "invalid_grant"})
       end)
 
       assert {:error, {:token_refused, "invalid_grant", nil}} =

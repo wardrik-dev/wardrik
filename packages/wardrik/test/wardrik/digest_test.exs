@@ -1,10 +1,11 @@
 defmodule Wardrik.DigestTest do
   use ExUnit.Case, async: false
   use Mimic
-  @moduletag :capture_log
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
+
+  @moduletag :capture_log
 
   @model "anthropic:claude-haiku-4-5"
   @agent "acme/triage"

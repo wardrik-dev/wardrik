@@ -12,8 +12,13 @@ defmodule WardrikProtocol do
   alias WardrikProtocol.Operations
 
   @dir Application.app_dir(:wardrik_protocol, "priv/v1")
-  @files @dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort()
-  @names @files |> Enum.map(&Path.basename(&1, ".json")) |> List.delete("openapi")
+  @files @dir
+         |> Path.join("*.json")
+         |> Path.wildcard()
+         |> Enum.sort()
+  @names @files
+         |> Enum.map(&Path.basename(&1, ".json"))
+         |> List.delete("openapi")
   @events Enum.filter(@names, &String.contains?(&1, "."))
   @document Operations.document(@dir)
   @operations Operations.build(@document)
@@ -105,6 +110,14 @@ defmodule WardrikProtocol do
   def operation(_id), do: nil
 
   @doc false
-  def __mix_recompile__?,
-    do: @dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort() != @files
+  @spec __mix_recompile__?() :: boolean()
+  def __mix_recompile__? do
+    files =
+      @dir
+      |> Path.join("*.json")
+      |> Path.wildcard()
+      |> Enum.sort()
+
+    files != @files
+  end
 end

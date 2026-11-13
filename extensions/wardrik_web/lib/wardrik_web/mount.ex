@@ -8,6 +8,13 @@ defmodule WardrikWeb.Mount do
   alias WardrikWeb.Resolver.Request
 
   @doc "Assigns the scope the resolver returns, or redirects to the sign-in page."
+  @spec on_mount(
+          Dashboard.t(),
+          map() | :not_mounted_at_router,
+          map(),
+          Phoenix.LiveView.Socket.t()
+        ) ::
+          {:cont | :halt, Phoenix.LiveView.Socket.t()}
   def on_mount(%Dashboard{resolver: {resolver, opts}} = dashboard, _params, session, socket) do
     request = %Request{session: session, endpoint: socket.endpoint, assigns: socket.assigns}
 

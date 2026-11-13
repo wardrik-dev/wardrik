@@ -740,7 +740,12 @@ defmodule Wardrik.DefinitionsTest do
       store = Wardrik.Store.scope(wardrik.store, "wardrik_triggers")
       key = "triggers/" <> URI.encode_www_form(id) <> "/" <> name
       {record, _vsn} = Wardrik.Store.lookup(store, key)
-      past = DateTime.utc_now() |> DateTime.add(-5) |> DateTime.to_iso8601()
+
+      past =
+        DateTime.utc_now()
+        |> DateTime.add(-5)
+        |> DateTime.to_iso8601()
+
       {:ok, _vsn} = Wardrik.Store.put(store, key, %{record | "next_at" => past})
       :ok = Wardrik.Triggers.reconcile(Wardrik.triggers(wardrik))
     end
@@ -842,14 +847,18 @@ defmodule Wardrik.DefinitionsTest do
       answers([answer("Posted.")])
       define(scope, "acme/digest", %{"model" => @model})
 
-      at = DateTime.utc_now() |> DateTime.add(86_400) |> DateTime.truncate(:second)
+      at =
+        DateTime.utc_now()
+        |> DateTime.add(86_400)
+        |> DateTime.truncate(:second)
+
       local = DateTime.shift_zone!(at, "America/Los_Angeles", Tz.TimeZoneDatabase)
 
       assert %{"name" => "launch", "next_at" => next_at} =
                run!(scope, "agent.trigger_set", %{
                  "agent" => "acme/digest",
                  "trigger" => "launch",
-                 "at" => local |> DateTime.to_naive() |> NaiveDateTime.to_iso8601(),
+                 "at" => NaiveDateTime.to_iso8601(DateTime.to_naive(local)),
                  "timezone" => "America/Los_Angeles",
                  "prompt" => "Post it."
                })

@@ -13,7 +13,11 @@ defmodule WardrikDaemon.CLI.Clock do
 
   def from_now(at, now) do
     {:ok, at, _offset} = DateTime.from_iso8601(at)
-    at |> DateTime.diff(now, :minute) |> max(0) |> waited()
+
+    at
+    |> DateTime.diff(now, :minute)
+    |> max(0)
+    |> waited()
   end
 
   defp waited(minutes) when minutes < 1, do: "now"

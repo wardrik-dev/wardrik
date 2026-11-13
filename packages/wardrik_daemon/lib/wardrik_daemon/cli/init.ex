@@ -147,7 +147,12 @@ defmodule WardrikDaemon.CLI.Init do
 
   defp model?(provider, model), do: match?({:ok, _model}, LLMDB.model({provider, model}))
 
-  defp newest(provider), do: provider |> models() |> Enum.take(5) |> Enum.join(", ")
+  defp newest(provider) do
+    provider
+    |> models()
+    |> Enum.take(5)
+    |> Enum.join(", ")
+  end
 
   defp providers do
     for provider <- ReqLLM.Providers.list(),
@@ -258,7 +263,7 @@ defmodule WardrikDaemon.CLI.Init do
 
   # The daemon this CLI reaches runs from another release, as a checkout's or an older install's.
   defp elsewhere(%{env: %{"WARDRIK_SCRIPT" => script}} = cx) do
-    ours = script |> Path.dirname() |> Path.dirname()
+    ours = Path.dirname(Path.dirname(script))
 
     case Occupant.find(cx.env) do
       %Occupant{root: root} = occupant when root != ours ->
@@ -354,7 +359,13 @@ defmodule WardrikDaemon.CLI.Init do
 
       logs ->
         log = Enum.max_by(logs, &File.stat!(&1, time: :posix).mtime)
-        last = log |> File.read!() |> String.split("\n", trim: true) |> Enum.take(-10)
+
+        last =
+          log
+          |> File.read!()
+          |> String.split("\n", trim: true)
+          |> Enum.take(-10)
+
         "The end of its log, #{log}:\n\n  #{Enum.join(last, "\n  ")}\n\nMore: #{cx.program} logs"
     end
   end

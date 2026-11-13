@@ -67,14 +67,23 @@ defmodule Wardrik.EventLog.Runs do
 
   def handle_event(%{"type" => "wardrik.run.started", "data" => data} = event, runs) do
     id = data["run"]["id"]
-    run = id |> started(event, source(runs, data["run"])) |> kept(runs, event)
+
+    run =
+      id
+      |> started(event, source(runs, data["run"]))
+      |> kept(runs, event)
+
     %{runs | runs: Map.put(runs.runs, id, run), order: [id | runs.order]}
   end
 
   def handle_event(%{"type" => type, "data" => data} = event, runs) do
     case Map.fetch(runs.runs, CloudEvent.trace_id(event) || "") do
       {:ok, run} ->
-        run = run |> kept(runs, event) |> step(type, data, event)
+        run =
+          run
+          |> kept(runs, event)
+          |> step(type, data, event)
+
         %{runs | runs: Map.put(runs.runs, run.id, run)}
 
       :error ->
@@ -115,7 +124,12 @@ defmodule Wardrik.EventLog.Runs do
           into: %{},
           do: {key, Enum.sum_by(totals, &Map.fetch!(&1, key))}
 
-    last = totals |> Enum.map(& &1.last_at) |> Enum.reject(&is_nil/1) |> Enum.max(fn -> nil end)
+    last =
+      totals
+      |> Enum.map(& &1.last_at)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.max(fn -> nil end)
+
     Map.put(sums, :last_at, last)
   end
 
@@ -154,8 +168,11 @@ defmodule Wardrik.EventLog.Runs do
 
   defp kept(run, _runs, _event), do: run
 
-  defp source(runs, run),
-    do: run |> Map.get("message_ids", []) |> Enum.find_value(&runs.senders[&1])
+  defp source(runs, run) do
+    run
+    |> Map.get("message_ids", [])
+    |> Enum.find_value(&runs.senders[&1])
+  end
 
   defp step(run, "wardrik.message.started", data, _event),
     do: %{run | model: get_in(data, ["request", "model"]) || run.model}

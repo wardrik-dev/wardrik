@@ -11,8 +11,10 @@ defmodule WardrikWeb.DefinitionComponent do
   # Triggers have their own tab. The page sets the agent.
   @elsewhere ~w(agent triggers)
 
+  @spec common() :: [String.t()]
   def common, do: @common
 
+  @spec schema() :: map()
   def schema, do: @schema
 
   @impl true
@@ -37,7 +39,9 @@ defmodule WardrikWeb.DefinitionComponent do
         )
 
       {:error, error} ->
-        socket |> assign(current: %{}, params: %{}) |> flash(:error, error.message)
+        socket
+        |> assign(current: %{}, params: %{})
+        |> flash(:error, error.message)
     end
   end
 

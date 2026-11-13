@@ -64,7 +64,11 @@ defmodule Wardrik.OAuth.Token do
 
   @doc "Encodes the token as JSON."
   @spec encode(t()) :: String.t()
-  def encode(%__MODULE__{} = token), do: token |> Map.from_struct() |> JSON.encode!()
+  def encode(%__MODULE__{} = token) do
+    token
+    |> Map.from_struct()
+    |> JSON.encode!()
+  end
 
   @doc "Decodes a token from JSON."
   @spec decode(String.t()) :: {:ok, t()} | {:error, :unreadable}

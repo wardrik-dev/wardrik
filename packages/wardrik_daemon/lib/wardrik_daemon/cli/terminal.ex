@@ -65,7 +65,7 @@ defmodule WardrikDaemon.CLI.Terminal do
   end
 
   defp typed(line) when is_binary(line) or is_list(line) do
-    case line |> IO.chardata_to_string() |> String.trim() do
+    case String.trim(IO.chardata_to_string(line)) do
       "" -> nil
       line -> line
     end

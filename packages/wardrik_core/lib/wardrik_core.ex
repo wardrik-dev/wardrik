@@ -56,6 +56,7 @@ defmodule WardrikCore do
 
   Other options go to `DurableServer.Supervisor`.
   """
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     {name, opts} = Keyword.pop(opts, :name, __MODULE__)
 
@@ -69,6 +70,7 @@ defmodule WardrikCore do
   end
 
   @doc false
+  @spec start_loaded({module(), atom(), [term()]}) :: Supervisor.on_start()
   def start_loaded({module, function, args}) do
     :ok = load_kept()
     apply(module, function, args)
@@ -79,7 +81,7 @@ defmodule WardrikCore do
   defp load_kept do
     for {app, _description, _vsn} <- Application.loaded_applications(),
         kept?(app),
-        do: app |> Application.spec(:modules) |> Code.ensure_all_loaded()
+        do: Code.ensure_all_loaded(Application.spec(app, :modules))
 
     :ok
   end
@@ -478,7 +480,12 @@ defmodule WardrikCore do
   end
 
   defp key("agents/" <> encoded) do
-    case encoded |> String.split("/") |> Enum.map(&URI.decode_www_form/1) do
+    parts =
+      encoded
+      |> String.split("/")
+      |> Enum.map(&URI.decode_www_form/1)
+
+    case parts do
       [agent_id] -> [{agent_id, nil}]
       [agent_id, conversation] -> [{agent_id, conversation}]
     end

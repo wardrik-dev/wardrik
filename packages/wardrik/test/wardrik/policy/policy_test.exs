@@ -279,7 +279,7 @@ defmodule Wardrik.PolicyTest do
 
       json = Wardrik.Policy.to_json(policy)
 
-      assert json == json |> JSON.encode!() |> JSON.decode!()
+      assert json == JSON.decode!(JSON.encode!(json))
       assert {:ok, ^policy} = Wardrik.Policy.decode(json)
     end
 

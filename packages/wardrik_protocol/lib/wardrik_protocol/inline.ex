@@ -4,7 +4,7 @@ defmodule WardrikProtocol.Inline do
   @prefix "urn:wardrik:schema:v1:"
 
   @spec schema(Path.t(), String.t()) :: map()
-  def schema(dir, name), do: dir |> read(name) |> whole(dir)
+  def schema(dir, name), do: whole(read(dir, name), dir)
 
   @spec read(Path.t(), String.t()) :: map()
   def read(dir, name) do
@@ -16,7 +16,7 @@ defmodule WardrikProtocol.Inline do
   end
 
   @spec whole(term(), Path.t()) :: term()
-  def whole(%{"$ref" => @prefix <> ref}, dir), do: ref |> referenced(dir) |> whole(dir)
+  def whole(%{"$ref" => @prefix <> ref}, dir), do: whole(referenced(ref, dir), dir)
 
   def whole(%{} = schema, dir),
     do: Map.new(schema, fn {key, value} -> {key, whole(value, dir)} end)
@@ -26,7 +26,7 @@ defmodule WardrikProtocol.Inline do
 
   defp referenced(ref, dir) do
     case String.split(ref, "#/$defs/") do
-      [name, type] -> dir |> read(name) |> get_in(["$defs", type])
+      [name, type] -> get_in(read(dir, name), ["$defs", type])
       [name] -> read(dir, name)
     end
   end

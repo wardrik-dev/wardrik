@@ -77,8 +77,11 @@ defmodule Wardrik.Operations.Agent do
     decide(scope, decided_input(input, decision))
   end
 
-  defp decided_input(input, decision),
-    do: input |> Map.take(["agent", "conversation"]) |> Map.put("decisions", [decision])
+  defp decided_input(input, decision) do
+    input
+    |> Map.take(["agent", "conversation"])
+    |> Map.put("decisions", [decision])
+  end
 
   @doc "Returns the sign-in URL for a call that waits on a person signing in."
   @spec authorization(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
@@ -171,11 +174,20 @@ defmodule Wardrik.Operations.Agent do
   defp text(%{"parts" => parts}),
     do: Enum.map_join(parts, "\n\n", &Map.get(&1, "content", ""))
 
-  defp message_id,
-    do: "msg_" <> (12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
+  defp message_id do
+    random =
+      12
+      |> :crypto.strong_rand_bytes()
+      |> Base.url_encode64(padding: false)
+
+    "msg_" <> random
+  end
 
   defp waiting_on(pid, key, decisions) do
-    waiting = pid |> WardrikCore.parked() |> waiting()
+    waiting =
+      pid
+      |> WardrikCore.parked()
+      |> waiting()
 
     case Enum.reject(decisions, &Map.has_key?(waiting, &1["id"])) do
       [] ->

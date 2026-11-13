@@ -80,7 +80,11 @@ defmodule Wardrik.Workspace.Files do
   defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_workspace")
   defp key(args), do: Keyword.fetch!(args, :tree) <> "//" <> Keyword.fetch!(args, :path)
 
-  defp version(vsn), do: vsn |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
+  defp version(vsn) do
+    vsn
+    |> :erlang.term_to_binary()
+    |> Base.url_encode64(padding: false)
+  end
 
   defp vsn(nil), do: {:ok, nil}
 

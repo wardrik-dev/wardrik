@@ -34,7 +34,7 @@ defmodule WardrikDaemon.EnvFile do
   end
 
   defp variable(line) do
-    line = line |> String.trim() |> String.replace_prefix("export ", "")
+    line = String.replace_prefix(String.trim(line), "export ", "")
 
     case String.split(line, "=", parts: 2) do
       ["#" <> _comment | _rest] ->

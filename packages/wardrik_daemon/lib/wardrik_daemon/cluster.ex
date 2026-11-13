@@ -129,7 +129,12 @@ defmodule WardrikDaemon.Cluster do
       config: [query: dns, node_basename: basename(node), polling_interval: @poll]
     ]
 
-  defp basename(node), do: node |> Atom.to_string() |> String.split("@", parts: 2) |> hd()
+  defp basename(node) do
+    node
+    |> Atom.to_string()
+    |> String.split("@", parts: 2)
+    |> hd()
+  end
 
   @doc "Returns the options the EKV store counts its quorum with: a quorum of one without a cluster."
   @spec store_options(t() | nil) :: keyword()

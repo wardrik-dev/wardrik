@@ -33,5 +33,5 @@ defmodule WardrikCore.Span do
     |> Base.encode16(case: :lower)
   end
 
-  defp random(bytes), do: bytes |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+  defp random(bytes), do: Base.encode16(:crypto.strong_rand_bytes(bytes), case: :lower)
 end

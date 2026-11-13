@@ -73,7 +73,8 @@ defmodule Wardrik.OwnerServersTest do
     assert {:ok, %{"server" => "crm", "connected" => true}} = add(scope, "acme", "crm")
     assert {:error, %Wardrik.Error{type: :conflict}} = add(scope, "acme", "crm")
     assert {:error, %Wardrik.Error{type: :conflict}} = add(scope, "deployment", "wiki")
-    assert "acme:crm" in Map.keys(Wardrik.MCP.Servers.all(Wardrik.mcp(wardrik)))
+    servers = Wardrik.MCP.Servers.all(Wardrik.mcp(wardrik))
+    assert Map.has_key?(servers, "acme:crm")
 
     assert {:ok, [%Wardrik.MCPServer{owner: "acme", name: "crm", source: :runtime}]} =
              Wardrik.Servers.list(scope, "acme")
@@ -87,7 +88,8 @@ defmodule Wardrik.OwnerServersTest do
     assert {:ok, %Wardrik.MCPServer{name: "crm"}} =
              Wardrik.Servers.remove(scope, owner: "acme", name: "crm")
 
-    refute "acme:crm" in Map.keys(Wardrik.MCP.Servers.all(Wardrik.mcp(wardrik)))
+    remaining = Wardrik.MCP.Servers.all(Wardrik.mcp(wardrik))
+    refute Map.has_key?(remaining, "acme:crm")
 
     assert %{"events" => [%{"type" => "wardrik.server.added"}, %{"type" => removed}]} =
              run!(scope, "audit.list", %{})

@@ -26,7 +26,14 @@ defmodule WardrikACP.RPCTest do
   end
 
   test "encodes an error answering a request" do
-    assert RPC.error(7, -32_601, "Method not found: x") |> IO.iodata_to_binary() |> JSON.decode!() ==
+    encoded = RPC.error(7, -32_601, "Method not found: x")
+
+    decoded =
+      encoded
+      |> IO.iodata_to_binary()
+      |> JSON.decode!()
+
+    assert decoded ==
              %{
                "jsonrpc" => "2.0",
                "id" => 7,

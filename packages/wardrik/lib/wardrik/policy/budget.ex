@@ -199,8 +199,14 @@ defmodule Wardrik.Policy.Budget do
 
   defp used(spent, kind), do: Map.get(spent, kind, 0)
 
-  defp limit(budget, spent, kind),
-    do: Map.fetch!(budget, kind) + (spent |> Map.get(:granted, %{}) |> Map.get(kind, 0))
+  defp limit(budget, spent, kind) do
+    granted =
+      spent
+      |> Map.get(:granted, %{})
+      |> Map.get(kind, 0)
+
+    Map.fetch!(budget, kind) + granted
+  end
 
   defp more(budget, kind), do: budget.grant[kind] || Map.fetch!(budget, kind)
 
@@ -234,7 +240,9 @@ defmodule Wardrik.Policy.Budget do
     places = max(2, 3 - floor(:math.log10(amount)))
 
     [whole, cents] =
-      (amount / 1) |> :erlang.float_to_binary([:compact, decimals: places]) |> String.split(".")
+      (amount / 1)
+      |> :erlang.float_to_binary([:compact, decimals: places])
+      |> String.split(".")
 
     "$#{whole}.#{String.pad_trailing(cents, 2, "0")}"
   end

@@ -76,7 +76,12 @@ defmodule WardrikDaemon.Pairings do
 
   def handle_call({:started, state, sign_in}, _from, sign_ins) do
     key = key(sign_in)
-    sign_ins = sign_ins |> Map.reject(fn {_state, held} -> key(held) == key end) |> live()
+
+    sign_ins =
+      sign_ins
+      |> Map.reject(fn {_state, held} -> key(held) == key end)
+      |> live()
+
     held = Map.merge(sign_in, %{code: nil, attempts: 0, until: now() + @started_for})
     {:reply, :ok, Map.put(sign_ins, state, held)}
   end
@@ -135,7 +140,12 @@ defmodule WardrikDaemon.Pairings do
 
   defp sign_in(held), do: Map.take(held, [:principal, :provider, :credential])
 
-  defp normal(code), do: code |> String.replace("-", "") |> String.trim() |> String.upcase()
+  defp normal(code) do
+    code
+    |> String.replace("-", "")
+    |> String.trim()
+    |> String.upcase()
+  end
 
   # Each letter is drawn evenly: bytes past the last whole run of the alphabet are drawn again.
   defp code, do: code([])

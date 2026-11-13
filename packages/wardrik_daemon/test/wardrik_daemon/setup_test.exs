@@ -138,7 +138,7 @@ defmodule WardrikDaemon.SetupTest do
     assert {:ok, %{"coding.claude" => true, "other" => 1}} = Answers.given(%{answers: file})
 
     assert {:ok, %{"coding.claude" => "no"}} =
-             Answers.given(%{answers: file, set: ["coding.claude=no"]}) |> only("coding.claude")
+             only(Answers.given(%{answers: file, set: ["coding.claude=no"]}), "coding.claude")
 
     assert {:error, "--set coding: is KEY=VALUE" <> _} = Answers.given(%{set: ["coding"]})
 

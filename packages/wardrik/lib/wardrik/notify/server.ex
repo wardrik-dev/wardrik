@@ -6,12 +6,12 @@ defmodule Wardrik.Notify.Server do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Notice
   alias Wardrik.Notify
   alias Wardrik.Operations.Snapshot
   alias WardrikCore.Retry
+
+  require Logger
 
   @doc "Starts the node's notifier."
   @spec start_link(Wardrik.t()) :: GenServer.on_start()

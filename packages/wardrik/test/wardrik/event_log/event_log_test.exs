@@ -43,7 +43,7 @@ defmodule Wardrik.EventLogTest do
     start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
     stopped(events, "agt_1")
 
-    assert sequences(events, ["agt_1"]) |> List.last() == "000000000003"
+    assert List.last(sequences(events, ["agt_1"])) == "000000000003"
   end
 
   test "rebuilds activity from the log after a restart", %{events: events, store: store} do
@@ -289,7 +289,9 @@ defmodule Wardrik.EventLogTest do
       read = first ++ rest
       assert Enum.all?(read, &(&1["source"] == "wardrik://test/agents/agt_1"))
 
-      assert read |> Enum.map(& &1["conversation"]) |> Enum.frequencies() == %{
+      conversations = Enum.map(read, & &1["conversation"])
+
+      assert Enum.frequencies(conversations) == %{
                nil => 2,
                "C1" => 2
              }
@@ -341,8 +343,13 @@ defmodule Wardrik.EventLogTest do
     } do
       for log <- @odd, do: stopped(events, log)
 
-      assert store |> Wardrik.Store.scope("wardrik_events") |> Log.logs() |> Enum.sort() ==
-               Enum.sort(@odd)
+      logs =
+        store
+        |> Wardrik.Store.scope("wardrik_events")
+        |> Log.logs()
+        |> Enum.sort()
+
+      assert logs == Enum.sort(@odd)
 
       for log <- @odd do
         assert sequences(events, [log]) == ["000000000001"]
@@ -351,7 +358,7 @@ defmodule Wardrik.EventLogTest do
 
       assert {:ok, head} = Cursor.decode(Wardrik.EventLog.head(events, @odd))
       assert head == Map.new(@odd, &{&1, 1})
-      assert {:ok, ^head} = head |> Cursor.encode() |> Cursor.decode()
+      assert {:ok, ^head} = Cursor.decode(Cursor.encode(head))
     end
 
     test "keep each agent's logs apart from an agent whose ID starts the same", %{

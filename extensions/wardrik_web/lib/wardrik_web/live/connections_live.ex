@@ -36,10 +36,10 @@ defmodule WardrikWeb.ConnectionsLive do
 
     case module.connect(scope, provider, opts) do
       {:ok, %{"connected" => true}} ->
-        {:noreply, socket |> put_flash(:info, "#{provider} is already connected.") |> load()}
+        {:noreply, load(put_flash(socket, :info, "#{provider} is already connected."))}
 
       {:ok, connecting} ->
-        {:noreply, socket |> assign(:signing_in, connecting) |> load()}
+        {:noreply, load(assign(socket, :signing_in, connecting))}
 
       {:error, error} ->
         {:noreply, put_flash(socket, :error, message(error))}
@@ -68,14 +68,14 @@ defmodule WardrikWeb.ConnectionsLive do
     %{source: {module, opts}, scope: scope} = socket.assigns
 
     case module.disconnect(scope, provider, opts) do
-      :ok -> {:noreply, socket |> put_flash(:info, "Disconnected #{provider}.") |> load()}
+      :ok -> {:noreply, load(put_flash(socket, :info, "Disconnected #{provider}."))}
       {:error, error} -> {:noreply, put_flash(socket, :error, message(error))}
     end
   end
 
   defp load(%{assigns: %{source: {module, opts}, scope: scope}} = socket) do
     case module.list(scope, opts) do
-      {:ok, connections} -> socket |> assign(connections: connections, error: nil) |> finished()
+      {:ok, connections} -> finished(assign(socket, connections: connections, error: nil))
       {:error, error} -> assign(socket, connections: [], error: message(error))
     end
   end

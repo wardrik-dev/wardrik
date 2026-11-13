@@ -57,7 +57,9 @@ defmodule WardrikDaemon.Doctor do
   @spec lines([check()]) :: [Owl.Data.t()]
   def lines(checks) do
     width =
-      checks |> Enum.map(fn {_status, name, _found} -> String.length(name) end) |> Enum.max()
+      checks
+      |> Enum.map(fn {_status, name, _found} -> String.length(name) end)
+      |> Enum.max()
 
     for {status, name, found} <- checks,
         do: [label(status), "  ", String.pad_trailing(name, width), "  ", found]
@@ -97,7 +99,9 @@ defmodule WardrikDaemon.Doctor do
     with {:ok, %{url: url, secret: secret}} <-
            CLIToken.read(Dirs.data_home(dirs, "cli_token")),
          {:ok, agents} <- listed(%Client{url: url, secret: secret, req_options: req_options}, %{}) do
-      agents |> Enum.filter(&(&1["status"] == "unreadable")) |> unreadable_checks()
+      agents
+      |> Enum.filter(&(&1["status"] == "unreadable"))
+      |> unreadable_checks()
     else
       _unreached -> []
     end

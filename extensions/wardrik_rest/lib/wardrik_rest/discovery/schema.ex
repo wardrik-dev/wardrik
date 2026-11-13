@@ -23,7 +23,12 @@ defmodule WardrikRest.Discovery.Schema do
     all = Map.keys(schemas)
     prefixes = for name <- all, [prefix, _rest] <- [split(name)], uniq: true, do: prefix
     short = Map.new(all, &{&1, short(&1, prefixes)})
-    taken = short |> Map.values() |> Enum.frequencies()
+
+    taken =
+      short
+      |> Map.values()
+      |> Enum.frequencies()
+
     Map.new(short, fn {name, short} -> {name, if(taken[short] == 1, do: short, else: name)} end)
   end
 
@@ -45,7 +50,11 @@ defmodule WardrikRest.Discovery.Schema do
   @doc "Returns the JSON Schema of a method's parameter, with its description."
   @spec parameter(map()) :: map()
   def parameter(param) do
-    one = param |> Map.take(["type", "enum", "pattern"]) |> enum()
+    one =
+      param
+      |> Map.take(["type", "enum", "pattern"])
+      |> enum()
+
     schema = if param["repeated"], do: %{"type" => "array", "items" => one}, else: one
     described(schema, param["description"])
   end
@@ -56,7 +65,11 @@ defmodule WardrikRest.Discovery.Schema do
   """
   @spec fields(map(), map(), map()) :: [{String.t(), map()}]
   def fields(%{"$ref" => ref}, schemas, names) do
-    schemas |> Map.fetch!(ref) |> json(names) |> Map.get("properties", %{}) |> Map.to_list()
+    schemas
+    |> Map.fetch!(ref)
+    |> json(names)
+    |> Map.get("properties", %{})
+    |> Map.to_list()
   end
 
   defp json(%{"$ref" => ref} = node, names),

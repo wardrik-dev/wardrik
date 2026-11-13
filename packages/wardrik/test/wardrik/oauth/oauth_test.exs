@@ -1,13 +1,13 @@
 defmodule Wardrik.OAuthTest do
   use ExUnit.Case, async: false
 
-  defp credential(name, principal),
-    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
-
   alias Wardrik.OAuth.GitHub
   alias Wardrik.OAuth.Token
   alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
+
+  defp credential(name, principal),
+    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
 
   @jon %Principal{id: "user:jon"}
   @acme_jon %Principal{id: "acme/@jon"}
@@ -117,7 +117,7 @@ defmodule Wardrik.OAuthTest do
   defp state({:authorize, url}), do: URI.decode_query(URI.parse(url).query)["state"]
 
   defp challenge(verifier),
-    do: :sha256 |> :crypto.hash(verifier) |> Base.url_encode64(padding: false)
+    do: Base.url_encode64(:crypto.hash(:sha256, verifier), padding: false)
 
   defp keep(vault, token) do
     secret = %Secret{principal: @jon, name: "github", value: Token.encode(token)}

@@ -118,8 +118,8 @@ defmodule WardrikDaemon.CeilingTest do
     assert {:ok, %Wardrik.Reply{}} = reply(context, "payments", "first")
     second = agent(context, "payments", "second")
 
-    :ok =
-      Wardrik.EventLog.subscribe(Wardrik.events(Wardrik.Instance.fetch!(context.wardrik)), :all)
+    event_log = Wardrik.events(Wardrik.Instance.fetch!(context.wardrik))
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
 
     {:ok, _asked} =
       Wardrik.run(context.admin, "agent.ask", %{"agent" => second, "content" => "Go"})

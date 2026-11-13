@@ -109,5 +109,9 @@ defmodule Wardrik.OAuth.Plug do
     """)
   end
 
-  defp escape(text), do: text |> HTML.html_escape() |> IO.iodata_to_binary()
+  defp escape(text) do
+    text
+    |> HTML.html_escape()
+    |> IO.iodata_to_binary()
+  end
 end

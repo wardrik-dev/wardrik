@@ -16,7 +16,7 @@ defmodule WardrikDaemon.Policies do
   def read(dir) do
     read =
       for path <- Path.wildcard(Path.join(dir, "*.{yaml,yml}")),
-          do: {path |> Path.basename() |> Path.rootname(), policy(path)}
+          do: {Path.rootname(Path.basename(path)), policy(path)}
 
     case Enum.find(read, &match?({_name, {:error, _why}}, &1)) do
       nil -> {:ok, Map.new(read, fn {name, {:ok, policy}} -> {name, policy} end)}
@@ -25,7 +25,7 @@ defmodule WardrikDaemon.Policies do
   end
 
   defp policy(path) do
-    name = path |> Path.basename() |> Path.rootname()
+    name = Path.rootname(Path.basename(path))
 
     with {:ok, fields} <- fields(path),
          {:ok, policy} <- Wardrik.Policy.decode(fields, name: name) do

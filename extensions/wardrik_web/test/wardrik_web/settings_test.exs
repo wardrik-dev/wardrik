@@ -12,7 +12,7 @@ defmodule WardrikWeb.SettingsTest do
   setup do
     Servers.reset()
     Connections.reset()
-    %{conn: build_conn() |> Plug.Test.init_test_session(%{"user" => "ana"})}
+    %{conn: Plug.Test.init_test_session(build_conn(), %{"user" => "ana"})}
   end
 
   test "lists the settings pages, and marks the ones that are off", %{conn: conn} do
@@ -44,7 +44,10 @@ defmodule WardrikWeb.SettingsTest do
     refute has_element?(view, "button[phx-value-name=search]")
     assert has_element?(view, "input[type=password][name='input[token]']")
 
-    view |> element("#owner-picker") |> render_change(%{"owner" => "ana"})
+    view
+    |> element("#owner-picker")
+    |> render_change(%{"owner" => "ana"})
+
     assert_patch(view, "/ops/servers?owner=ana")
     assert render(view) =~ "search"
     refute render(view) =~ "crm.test"
@@ -53,11 +56,22 @@ defmodule WardrikWeb.SettingsTest do
   test "adds and removes a server", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/servers")
 
-    view |> form("#settings-form", %{"input" => %{"name" => ""}}) |> render_change()
-    html = view |> form("#settings-form", %{"input" => %{"name" => ""}}) |> render_submit()
+    view
+    |> form("#settings-form", %{"input" => %{"name" => ""}})
+    |> render_change()
+
+    html =
+      view
+      |> form("#settings-form", %{"input" => %{"name" => ""}})
+      |> render_submit()
+
     assert html =~ "Fill in the server&#39;s required fields."
 
-    html = view |> form("#settings-form", %{"input" => %{"name" => "bad"}}) |> render_submit()
+    html =
+      view
+      |> form("#settings-form", %{"input" => %{"name" => "bad"}})
+      |> render_submit()
+
     assert html =~ "That name is taken."
 
     html =
@@ -67,9 +81,20 @@ defmodule WardrikWeb.SettingsTest do
 
     assert html =~ "Added jira."
     assert html =~ "https://jira.test"
-    refute view |> element("button", "Done") |> render_click() =~ ~s("owner": "acme")
 
-    assert view |> element("button[phx-value-name=jira]") |> render_click() =~ "Removed jira."
+    html =
+      view
+      |> element("button", "Done")
+      |> render_click()
+
+    refute html =~ ~s("owner": "acme")
+
+    html =
+      view
+      |> element("button[phx-value-name=jira]")
+      |> render_click()
+
+    assert html =~ "Removed jira."
     refute render(view) =~ "jira.test"
   end
 
@@ -105,13 +130,21 @@ defmodule WardrikWeb.SettingsTest do
     assert html =~ "signing in"
     assert html =~ "not connected"
 
-    assert view |> element("button[phx-value-provider=google]") |> render_click() =~
-             "Disconnected google."
+    html =
+      view
+      |> element("button[phx-value-provider=google]")
+      |> render_click()
+
+    assert html =~ "Disconnected google."
 
     assert render_click(view, "connect", %{"provider" => "google"}) =~
              "google is already connected."
 
-    html = view |> element("button[phx-value-provider=github]") |> render_click()
+    html =
+      view
+      |> element("button[phx-value-provider=github]")
+      |> render_click()
+
     assert html =~ "ABCD-1234"
     assert html =~ "https://github.test/device"
 
@@ -119,25 +152,53 @@ defmodule WardrikWeb.SettingsTest do
     send(view.pid, :refresh)
     refute render(view) =~ "ABCD-1234"
 
-    html = view |> element("button[phx-value-provider=linear]") |> render_click()
-    assert html =~ "Enter the code here"
-    assert view |> form("#pair-form", %{"code" => "BAD"}) |> render_submit() =~ "Wrong code."
+    html =
+      view
+      |> element("button[phx-value-provider=linear]")
+      |> render_click()
 
-    assert view |> form("#pair-form", %{"code" => " GOOD "}) |> render_submit() =~
-             "Connected linear."
+    assert html =~ "Enter the code here"
+
+    html =
+      view
+      |> form("#pair-form", %{"code" => "BAD"})
+      |> render_submit()
+
+    assert html =~ "Wrong code."
+
+    html =
+      view
+      |> form("#pair-form", %{"code" => " GOOD "})
+      |> render_submit()
+
+    assert html =~ "Connected linear."
 
     refute has_element?(view, "#signing-in")
 
-    view |> element("button[phx-value-provider=slack]", "Connect") |> render_click()
+    view
+    |> element("button[phx-value-provider=slack]", "Connect")
+    |> render_click()
+
     assert render(view) =~ "slack isn&#39;t set up."
 
     assert render_click(view, "disconnect", %{"provider" => "slack"}) =~
              "Slack can&#39;t be disconnected."
 
-    html = view |> element("button[phx-value-provider=linear]") |> render_click()
+    html =
+      view
+      |> element("button[phx-value-provider=linear]")
+      |> render_click()
+
     assert html =~ "Disconnected linear."
-    view |> element("button[phx-value-provider=linear]") |> render_click()
-    view |> element("#signing-in button", "Cancel") |> render_click()
+
+    view
+    |> element("button[phx-value-provider=linear]")
+    |> render_click()
+
+    view
+    |> element("#signing-in button", "Cancel")
+    |> render_click()
+
     refute has_element?(view, "#signing-in")
   end
 

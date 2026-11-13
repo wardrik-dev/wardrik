@@ -3,9 +3,9 @@ defmodule Wardrik.Sleeper do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Operations.Running
+
+  require Logger
 
   @idle ~w(wardrik.agent.started wardrik.run.completed wardrik.run.failed wardrik.run.cancelled
            wardrik.run.deadline_exceeded)
@@ -35,11 +35,11 @@ defmodule Wardrik.Sleeper do
   end
 
   @impl GenServer
-  def handle_cast({:watch, id}, state), do: {:noreply, state |> disarm(id) |> arm(id)}
+  def handle_cast({:watch, id}, state), do: {:noreply, arm(disarm(state, id), id)}
 
   @impl GenServer
   def handle_info({Wardrik.EventLog, id, %{"type" => type}}, state) when type in @idle,
-    do: {:noreply, state |> disarm(id) |> arm(id)}
+    do: {:noreply, arm(disarm(state, id), id)}
 
   def handle_info({Wardrik.EventLog, id, %{"type" => type}}, state) when type in @busy,
     do: {:noreply, disarm(state, id)}

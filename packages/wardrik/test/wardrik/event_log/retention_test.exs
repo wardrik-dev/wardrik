@@ -76,7 +76,9 @@ defmodule Wardrik.EventLog.RetentionTest do
     events: events
   } do
     {Retention, retention, :worker, _modules} =
-      events |> Supervisor.which_children() |> List.keyfind(Retention, 0)
+      events
+      |> Supervisor.which_children()
+      |> List.keyfind(Retention, 0)
 
     send(retention, :trim)
     trimmed(events)
@@ -96,6 +98,6 @@ defmodule Wardrik.EventLog.RetentionTest do
       id: :infinite
     )
 
-    refute :infinite |> Supervisor.which_children() |> List.keyfind(Retention, 0)
+    refute List.keyfind(Supervisor.which_children(:infinite), Retention, 0)
   end
 end

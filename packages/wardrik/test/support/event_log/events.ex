@@ -16,7 +16,9 @@ defmodule Wardrik.EventLog.Test.Events do
 
   def trimmed(events) do
     {Wardrik.EventLog.Retention, retention, :worker, _modules} =
-      events |> Supervisor.which_children() |> List.keyfind(Wardrik.EventLog.Retention, 0)
+      events
+      |> Supervisor.which_children()
+      |> List.keyfind(Wardrik.EventLog.Retention, 0)
 
     :sys.get_state(retention)
   end

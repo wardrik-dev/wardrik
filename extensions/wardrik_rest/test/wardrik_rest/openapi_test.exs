@@ -23,7 +23,12 @@ defmodule WardrikRest.OpenAPITest do
     assert spec.title == "Shop"
     assert spec.schemes == %{"bearer" => :bearer, "key" => {:query, "api_key"}}
 
-    assert spec.operations |> Enum.map(& &1.name) |> Enum.sort() ==
+    names =
+      spec.operations
+      |> Enum.map(& &1.name)
+      |> Enum.sort()
+
+    assert names ==
              ["admin", "get_health", "orders_get", "orders_tags", "orders_update", "post_orders"]
 
     get = operation(spec, "orders_get")
@@ -135,7 +140,12 @@ defmodule WardrikRest.OpenAPITest do
 
       Req.Test.stub(test, fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
-        type = conn |> Plug.Conn.get_req_header("content-type") |> List.first()
+
+        type =
+          conn
+          |> Plug.Conn.get_req_header("content-type")
+          |> List.first()
+
         send(pid, {:called, conn.method, conn.request_path, type, body, conn.req_headers})
         Req.Test.json(conn, %{"ok" => true})
       end)

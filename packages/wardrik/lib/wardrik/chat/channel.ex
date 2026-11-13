@@ -113,6 +113,7 @@ defmodule Wardrik.Chat.Channel do
   end
 
   @doc false
+  @spec schema() :: NimbleOptions.t()
   def schema, do: @schema
 
   @doc "Returns the channel's installation in `workspace`, as the chat app names it."

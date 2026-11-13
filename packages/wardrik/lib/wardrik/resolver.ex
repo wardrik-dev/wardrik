@@ -37,8 +37,11 @@ defmodule Wardrik.Resolver do
   Returns what the request's agent gets, with each policy built, or an error.
   """
   @spec resolve(Wardrik.t(), Request.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
-  def resolve(%Wardrik{resolver: {module, opts}} = wardrik, %Request{agent: id} = request),
-    do: request |> module.resolve(opts) |> read(wardrik, id)
+  def resolve(%Wardrik{resolver: {module, opts}} = wardrik, %Request{agent: id} = request) do
+    request
+    |> module.resolve(opts)
+    |> read(wardrik, id)
+  end
 
   @doc "Returns what the agent `id` gets, as defined now."
   @spec defined(Wardrik.t(), String.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}

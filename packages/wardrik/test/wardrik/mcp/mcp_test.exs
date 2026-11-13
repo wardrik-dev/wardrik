@@ -73,17 +73,23 @@ defmodule Wardrik.MCPTest do
   end
 
   test "offers a server's tools under its name" do
-    names = :stub |> tools() |> Enum.map(& &1.name)
+    names = Enum.map(tools(:stub), & &1.name)
 
     assert "stub__echo" in names
     assert "stub__charge" in names
   end
 
   test "offers only the tools a server is given" do
-    assert ["cheap__charge", "cheap__echo"] =
-             :cheap |> tools() |> Enum.map(& &1.name) |> Enum.sort()
+    cheap =
+      :cheap
+      |> tools()
+      |> Enum.map(& &1.name)
+      |> Enum.sort()
 
-    refute "metered__slow" in (:metered |> tools() |> Enum.map(& &1.name))
+    assert ["cheap__charge", "cheap__echo"] = cheap
+
+    metered = Enum.map(tools(:metered), & &1.name)
+    refute "metered__slow" in metered
   end
 
   test "gives several servers' tools together" do
@@ -258,7 +264,7 @@ defmodule Wardrik.MCPTest do
       on_exit(fn -> Wardrik.MCP.remove(@mcp, name) end)
       connected(name)
 
-      assert ["#{name}__ping"] == name |> tools() |> Enum.map(& &1.name)
+      assert ["#{name}__ping"] == Enum.map(tools(name), & &1.name)
       assert [^path | _rest] = paths = requested()
       assert Enum.uniq(paths) == [path]
     end

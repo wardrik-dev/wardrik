@@ -76,8 +76,7 @@ defmodule Wardrik.Triggers.TriggerTest do
 
     assert {:error, "at has an offset, so it takes no timezone"} =
              Trigger.decode(
-               %{at | "at" => "2026-11-17T17:00:00Z"}
-               |> Map.put("timezone", "Etc/UTC")
+               Map.put(%{at | "at" => "2026-11-17T17:00:00Z"}, "timezone", "Etc/UTC")
              )
 
     assert {:error, "a trigger with at has no feed"} =

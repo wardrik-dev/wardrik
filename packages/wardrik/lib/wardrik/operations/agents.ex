@@ -62,10 +62,11 @@ defmodule Wardrik.Operations.Agents do
   @doc "Lists the calls the agents wait on a person for."
   @spec interrupts(Scope.t(), map()) :: {:ok, map()}
   def interrupts(scope, input) do
+    events = Wardrik.events(scope.wardrik)
+
     interrupts =
       for {agent, conversation} = key <- Visible.keys(scope, input),
-          interrupt <-
-            Snapshot.interrupts(Wardrik.EventLog.activity(Wardrik.events(scope.wardrik), key)),
+          interrupt <- Snapshot.interrupts(Wardrik.EventLog.activity(events, key)),
           do:
             Snapshot.conversation(
               %{"agent" => %{"id" => agent}, "interrupt" => interrupt},

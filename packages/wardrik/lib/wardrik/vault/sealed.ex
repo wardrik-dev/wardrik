@@ -58,7 +58,11 @@ defmodule Wardrik.Vault.Sealed do
 
   @doc "Returns a new key, base64-encoded."
   @spec generate_key() :: String.t()
-  def generate_key, do: @key_bytes |> :crypto.strong_rand_bytes() |> Base.encode64()
+  def generate_key do
+    @key_bytes
+    |> :crypto.strong_rand_bytes()
+    |> Base.encode64()
+  end
 
   defp opened(key, sealed, aad) do
     case :crypto.crypto_one_time_aead(
@@ -90,6 +94,7 @@ defmodule Wardrik.Vault.Sealed do
   defp decode_key(_key), do: []
 
   defimpl Inspect do
+    @impl true
     def inspect(%{kind: kind, ciphertext: ciphertext}, _opts),
       do: "#Wardrik.Vault.Sealed<#{kind}, #{byte_size(ciphertext)} bytes>"
   end

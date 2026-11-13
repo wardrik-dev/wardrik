@@ -6,7 +6,12 @@ defmodule WardrikDaemon.CLI.StatusTest do
 
   defp status(now \\ 0, opts \\ []), do: Status.new(%Terminal{live: :screen}, now, opts)
 
-  defp text(status, now), do: status |> Status.line(now) |> Owl.Data.untag() |> to_string()
+  defp text(status, now) do
+    status
+    |> Status.line(now)
+    |> Owl.Data.untag()
+    |> to_string()
+  end
 
   defp event(type, data), do: %{"type" => "wardrik." <> type, "data" => data}
 

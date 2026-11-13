@@ -9,6 +9,8 @@ defmodule Wardrik.Notify.Webhook do
     req_options: [type: :keyword_list, default: [], doc: "Merged into the `Req` request."]
   ]
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Posts notices as JSON to a URL.
 
@@ -32,7 +34,10 @@ defmodule Wardrik.Notify.Webhook do
 
   @impl Wardrik.Notify
   def deliver(notice, opts) do
-    body = notice |> Notice.json() |> JSON.encode!()
+    body =
+      notice
+      |> Notice.json()
+      |> JSON.encode!()
 
     options =
       Keyword.merge(

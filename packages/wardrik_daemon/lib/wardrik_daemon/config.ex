@@ -243,6 +243,8 @@ defmodule WardrikDaemon.Config do
             ]
           ] ++ Keyword.take(Wardrik.schema().schema, @wardrik)
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   Reads `config.yaml`.
 
@@ -372,7 +374,7 @@ defmodule WardrikDaemon.Config do
 
     with {:ok, yaml} <- yaml(path, env),
          {:ok, early} <- interpolated(Map.take(yaml, @bootstrap), env, nil),
-         {:ok, opts} <- Options.validate(Map.merge(Map.drop(yaml, @later), early), @schema, nil),
+         {:ok, opts} <- validated(yaml, early),
          {:ok, cluster} <- Cluster.new(opts[:cluster]),
          {:ok, storage} <- storage(opts[:storage]) do
       {:ok,
@@ -392,8 +394,14 @@ defmodule WardrikDaemon.Config do
   @spec sealable(Dirs.t()) :: [String.t()]
   def sealable(dirs) do
     case yaml(Dirs.config(dirs, "config.yaml")) do
-      {:ok, yaml} -> yaml |> Map.drop(@bootstrap ++ @later) |> names() |> Enum.uniq()
-      {:error, _why} -> []
+      {:ok, yaml} ->
+        yaml
+        |> Map.drop(@bootstrap ++ @later)
+        |> names()
+        |> Enum.uniq()
+
+      {:error, _why} ->
+        []
     end
   end
 
@@ -408,10 +416,12 @@ defmodule WardrikDaemon.Config do
   def base_url(%__MODULE__{base_url: base_url}), do: String.trim_trailing(base_url, "/")
 
   @doc false
+  @spec port(term()) :: {:ok, 0..65_535} | {:error, String.t()}
   def port(port) when is_integer(port) and port in 0..65_535, do: {:ok, port}
   def port(_port), do: {:error, "is a port number"}
 
   @doc false
+  @spec ip(term()) :: {:ok, :inet.ip_address()} | {:error, String.t()}
   def ip(text) when is_binary(text) do
     case :inet.parse_address(to_charlist(text)) do
       {:ok, ip} -> {:ok, ip}
@@ -422,6 +432,7 @@ defmodule WardrikDaemon.Config do
   def ip(_ip), do: {:error, "is an address, as 127.0.0.1"}
 
   @doc false
+  @spec postgres(term()) :: {:ok, String.t()} | {:error, String.t()}
   def postgres("postgres" <> _rest = url), do: {:ok, url}
   def postgres(_url), do: {:error, "is a postgres:// URL"}
 
@@ -653,10 +664,23 @@ defmodule WardrikDaemon.Config do
     name
   end
 
-  defp mounting(rule, mode), do: rule |> Map.get(mode, []) |> Enum.map(&name/1)
+  defp mounting(rule, mode), do: Enum.map(Map.get(rule, mode, []), &name/1)
+
+  defp validated(yaml, early) do
+    settings =
+      yaml
+      |> Map.drop(@later)
+      |> Map.merge(early)
+
+    Options.validate(settings, @schema, nil)
+  end
 
   defp interpolated(term, env, vault) do
-    values = term |> names() |> Enum.uniq() |> Map.new(&{&1, value(&1, env, vault)})
+    values =
+      term
+      |> names()
+      |> Enum.uniq()
+      |> Map.new(&{&1, value(&1, env, vault)})
 
     case for {name, :error} <- values, do: name do
       [] -> {:ok, replaced(term, values)}

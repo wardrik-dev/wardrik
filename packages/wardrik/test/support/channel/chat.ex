@@ -61,13 +61,13 @@ end
 defmodule Wardrik.Test.Channel do
   @moduledoc "Starts a Wardrik with a chat channel for a test, and stubs the model's answers."
 
+  import ExUnit.Callbacks, only: [start_supervised!: 1]
+
   @doc "Returns the channel the Wardrik `wardrik` runs as `name`, as the Wardrik builds it."
   def fetch(wardrik, name) do
     with {:ok, {adapter, opts}} <- Wardrik.Operations.Channels.fetch(wardrik, name),
          do: {:ok, Wardrik.Chat.channel(adapter, opts)}
   end
-
-  import ExUnit.Callbacks, only: [start_supervised!: 1]
 
   @model "anthropic:claude-haiku-4-5"
 

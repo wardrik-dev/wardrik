@@ -44,5 +44,6 @@ defmodule WardrikDaemon.Web.Settings do
   defp fixed(item), do: item
 
   @doc false
+  @spec daemon() :: map()
   def daemon, do: Endpoint.config(:daemon)
 end

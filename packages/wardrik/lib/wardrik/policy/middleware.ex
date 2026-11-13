@@ -47,13 +47,23 @@ if Code.ensure_loaded?(WardrikCore.Middleware) do
     def call(%Context{step: {:tool_call, call}} = context, next, policies) do
       decision = Wardrik.Policy.explain(policies, call.name, decide_opts(context, call))
       emit(:decision, context, call, %{decision: decision})
-      context = context |> decided(decision) |> Context.measure(decision.measurements)
+
+      context =
+        context
+        |> decided(decision)
+        |> Context.measure(decision.measurements)
+
       follow(decision, context, call, next, next)
     end
 
     def call(%Context{step: :generate} = context, next, policies) do
       policies = List.wrap(policies)
-      context = context |> Spending.start(policies) |> Spending.catch_up(policies)
+
+      context =
+        context
+        |> Spending.start(policies)
+        |> Spending.catch_up(policies)
+
       metered = &metered(&1, next, policies)
 
       case Spending.explain(context, policies) do

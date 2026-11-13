@@ -57,7 +57,11 @@ defmodule Wardrik.MCP.Result do
   defp cut(text, limit) when byte_size(text) <= limit, do: text
 
   defp cut(text, limit) do
-    kept = text |> binary_part(0, limit) |> String.replace_invalid("")
+    kept =
+      text
+      |> binary_part(0, limit)
+      |> String.replace_invalid("")
+
     kept <> "\n[Cut to #{limit} of #{byte_size(text)} bytes.]"
   end
 end

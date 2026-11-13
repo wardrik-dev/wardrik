@@ -29,7 +29,7 @@ defmodule WardrikWeb.ApprovalsLive do
 
   def handle_event("deny", %{"agent" => agent, "interrupt" => id} = params, socket) do
     input =
-      %{"agent" => agent, "interrupt" => id} |> present("conversation", params["conversation"])
+      present(%{"agent" => agent, "interrupt" => id}, "conversation", params["conversation"])
 
     {:noreply, decide(socket, "agent.deny", input, "Rejected.")}
   end
@@ -40,8 +40,13 @@ defmodule WardrikWeb.ApprovalsLive do
 
   defp decide(socket, id, input, done) do
     case Wardrik.Scope.run(socket.assigns.scope, id, input) do
-      {:ok, _answer} -> socket |> put_flash(:info, done) |> load()
-      {:error, error} -> put_flash(socket, :error, error.message)
+      {:ok, _answer} ->
+        socket
+        |> put_flash(:info, done)
+        |> load()
+
+      {:error, error} ->
+        put_flash(socket, :error, error.message)
     end
   end
 

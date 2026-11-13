@@ -254,7 +254,7 @@ defmodule Wardrik.AgentTools do
         run(
           %{me | policy: policy(wardrik, me.id)},
           "agent.define",
-          definition |> Wardrik.Type.json() |> Map.put("agent", agent)
+          Map.put(Wardrik.Type.json(definition), "agent", agent)
         )
   end
 

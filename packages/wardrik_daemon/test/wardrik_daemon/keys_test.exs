@@ -24,7 +24,7 @@ defmodule WardrikDaemon.KeysTest do
   end
 
   defp seal(context, owner, value, kind \\ :api_key) do
-    vault = context.wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()
+    vault = Wardrik.vault(Wardrik.Instance.fetch!(context.wardrik))
 
     secret = %Wardrik.Vault.Secret{
       principal: %Principal{id: owner},

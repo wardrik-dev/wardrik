@@ -45,8 +45,17 @@ defmodule WardrikResearchTest do
     }
   end
 
-  defp system(messages), do: messages |> Enum.find(&(&1.role == :system)) |> text()
-  defp prompt(messages), do: messages |> Enum.find(&(&1.role == :user)) |> text()
+  defp system(messages) do
+    messages
+    |> Enum.find(&(&1.role == :system))
+    |> text()
+  end
+
+  defp prompt(messages) do
+    messages
+    |> Enum.find(&(&1.role == :user))
+    |> text()
+  end
 
   defp text(%ReqLLM.Message{content: parts}), do: Enum.map_join(parts, "", & &1.text)
 

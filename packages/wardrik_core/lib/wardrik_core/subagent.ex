@@ -32,7 +32,10 @@ defmodule WardrikCore.Subagent do
     emit(context, span, :started, %{agent: %{name: opts[:name]}, prompt: prompt})
 
     outcome =
-      context |> within(prompt, span, metered, opts) |> turned(opts[:timeout]) |> answered()
+      context
+      |> within(prompt, span, metered, opts)
+      |> turned(opts[:timeout])
+      |> answered()
 
     measured = Meter.total(meter)
     tool_calls = Meter.tool_calls(meter)

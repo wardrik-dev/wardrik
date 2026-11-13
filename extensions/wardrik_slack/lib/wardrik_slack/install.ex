@@ -146,7 +146,11 @@ defmodule WardrikSlack.Install do
   end
 
   defp sign(state, secret) do
-    payload = state |> JSON.encode!() |> Base.url_encode64(padding: false)
+    payload =
+      state
+      |> JSON.encode!()
+      |> Base.url_encode64(padding: false)
+
     payload <> "." <> mac(payload, secret)
   end
 
@@ -172,6 +176,9 @@ defmodule WardrikSlack.Install do
   defp same?(given, expected),
     do: byte_size(given) == byte_size(expected) and :crypto.hash_equals(given, expected)
 
-  defp mac(payload, secret),
-    do: :hmac |> :crypto.mac(:sha256, secret, payload) |> Base.url_encode64(padding: false)
+  defp mac(payload, secret) do
+    :hmac
+    |> :crypto.mac(:sha256, secret, payload)
+    |> Base.url_encode64(padding: false)
+  end
 end

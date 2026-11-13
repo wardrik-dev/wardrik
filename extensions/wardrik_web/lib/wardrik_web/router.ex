@@ -105,6 +105,7 @@ defmodule WardrikWeb.Router do
   end
 
   @doc false
+  @spec __dashboard__(String.t(), keyword()) :: {atom(), [term()], WardrikWeb.Dashboard.t()}
   def __dashboard__(prefix, opts) do
     opts = NimbleOptions.validate!(opts, @schema)
     {name, opts} = Keyword.pop!(opts, :live_session)

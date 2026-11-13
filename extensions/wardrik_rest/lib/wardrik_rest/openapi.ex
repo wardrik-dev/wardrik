@@ -141,7 +141,7 @@ defmodule WardrikRest.OpenAPI do
         %Operation{
           name: name(operation["operationId"], verb, path),
           method: method,
-          path: path |> text() |> String.trim_leading("/"),
+          path: String.trim_leading(text(path), "/"),
           description: description(operation, verb, path),
           parameters: parameters ++ body,
           security: security(operation["security"] || document["security"], schemes),
@@ -167,10 +167,16 @@ defmodule WardrikRest.OpenAPI do
   defp parameter(param, document, path) do
     location = Map.fetch!(@locations, param["in"])
 
+    schema =
+      param
+      |> param_schema()
+      |> Schema.json(document)
+      |> described(param["description"])
+
     %Parameter{
       name: param["name"],
       in: location,
-      schema: param |> param_schema() |> Schema.json(document) |> described(param["description"]),
+      schema: schema,
       required: location == :path or param["required"] == true,
       reserved: String.contains?(path, "{+#{param["name"]}}")
     }
@@ -214,7 +220,12 @@ defmodule WardrikRest.OpenAPI do
   end
 
   defp json?(type) do
-    type = type |> String.split(";", parts: 2) |> hd() |> String.trim()
+    type =
+      type
+      |> String.split(";", parts: 2)
+      |> hd()
+      |> String.trim()
+
     type == "application/json" or String.ends_with?(type, "+json")
   end
 
@@ -233,7 +244,11 @@ defmodule WardrikRest.OpenAPI do
         end
 
       _other ->
-        whole = schema |> Schema.json(document) |> described(object["description"])
+        whole =
+          schema
+          |> Schema.json(document)
+          |> described(object["description"])
+
         [%Parameter{name: "body", in: :payload, schema: whole, required: required}]
     end
   end
@@ -243,7 +258,7 @@ defmodule WardrikRest.OpenAPI do
 
   defp security(requirements, schemes) when is_list(requirements) do
     for %{} = requirement <- requirements,
-        names = requirement |> Map.keys() |> Enum.sort(),
+        names = Enum.sort(Map.keys(requirement)),
         Enum.all?(names, &Map.has_key?(schemes, &1)),
         uniq: true,
         do: names
@@ -256,7 +271,12 @@ defmodule WardrikRest.OpenAPI do
       text(id) ||
         Enum.join([verb | String.split(String.replace(path, ~r/[{}]/, ""), "/", trim: true)], "_")
 
-    case raw |> String.replace(~r/[^A-Za-z0-9_]+/, "_") |> String.trim("_") do
+    safe =
+      raw
+      |> String.replace(~r/[^A-Za-z0-9_]+/, "_")
+      |> String.trim("_")
+
+    case safe do
       "" -> verb
       name -> name
     end

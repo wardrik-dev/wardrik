@@ -1,10 +1,11 @@
 defmodule WardrikCore.ToolRunnerTest do
   use ExUnit.Case, async: true
-  @moduletag :capture_log
 
   alias WardrikCore.Context
   alias WardrikCore.ToolCall
   alias WardrikCore.ToolRunner
+
+  @moduletag :capture_log
 
   defmodule Deny do
     @behaviour WardrikCore.Middleware
@@ -247,7 +248,7 @@ defmodule WardrikCore.ToolRunnerTest do
 
     @impl true
     def call(context, next, _opts),
-      do: context |> Context.put_private(:secret, "s3cret") |> next.()
+      do: next.(Context.put_private(context, :secret, "s3cret"))
   end
 
   test "private data set during a tool call stays with that call", %{context: context} do

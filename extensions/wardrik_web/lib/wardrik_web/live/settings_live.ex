@@ -49,7 +49,7 @@ defmodule WardrikWeb.SettingsLive do
 
   def handle_params(params, _uri, socket) do
     owner = params["owner"] || List.first(socket.assigns.owners)
-    {:noreply, socket |> assign(:owner, owner) |> load()}
+    {:noreply, load(assign(socket, :owner, owner))}
   end
 
   @impl true
@@ -84,7 +84,7 @@ defmodule WardrikWeb.SettingsLive do
     %{source: {module, opts}, scope: scope, owner: owner} = socket.assigns
 
     case module.remove(scope, owner, name, opts) do
-      :ok -> {:noreply, socket |> put_flash(:info, "Removed #{name}.") |> load()}
+      :ok -> {:noreply, load(put_flash(socket, :info, "Removed #{name}."))}
       {:error, error} -> {:noreply, put_flash(socket, :error, message(error))}
     end
   end

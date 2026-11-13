@@ -10,8 +10,13 @@ defmodule Wardrik.Slack.InstallTest do
   setup :set_mimic_global
   setup :start_wardrik
 
-  defp state(url),
-    do: url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+  defp state(url) do
+    url
+    |> URI.parse()
+    |> Map.fetch!(:query)
+    |> URI.decode_query()
+    |> Map.fetch!("state")
+  end
 
   @tag slack: [
          token: nil,

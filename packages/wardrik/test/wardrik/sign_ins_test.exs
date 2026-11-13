@@ -66,7 +66,11 @@ defmodule Wardrik.SignInsTest do
     assert {:ok, %Wardrik.Authorization{url: url}} =
              Wardrik.Agent.authorization(scope, agent: "acme/@maria/mail", interrupt: "call_1")
 
-    %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+    %{"state" => state} =
+      url
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
 
     assert {:ok, _signed_in} =
              Wardrik.finish_sign_in(wardrik, %{"state" => state, "code" => "c"}, as: maria())

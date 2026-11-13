@@ -136,7 +136,11 @@ defmodule WardrikResearch.Deep do
            timeout: opts[:timeout]
          ) do
       {:ok, report, more} ->
-        labels = found |> Enum.flat_map(fn {_brief, answer} -> answer.labels end) |> Enum.uniq()
+        labels =
+          found
+          |> Enum.flat_map(fn {_brief, answer} -> answer.labels end)
+          |> Enum.uniq()
+
         output = %{"topic" => topic, "report" => report.text, "gaps" => gaps}
 
         {:ok, %ReqLLM.ToolResult{output: output, metadata: %{labels: Enum.sort(labels)}},

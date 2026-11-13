@@ -164,9 +164,8 @@ defmodule WardrikDaemon.CLI.Servers do
   end
 
   defp added([name], %{url: url} = flags, cx) do
-    input =
-      %{"owner" => owner(cx, flags), "name" => name, "url" => url, "auth" => auth(flags)}
-      |> Context.put("only", only(flags[:only]))
+    server = %{"owner" => owner(cx, flags), "name" => name, "url" => url, "auth" => auth(flags)}
+    input = Context.put(server, "only", only(flags[:only]))
 
     with {:ok, answer} <- Context.call(cx, "servers.add", input),
          do: Context.done(cx, answer, "Added #{name}. Agents reach it as #{name}/*.")
@@ -200,9 +199,8 @@ defmodule WardrikDaemon.CLI.Servers do
   end
 
   defp target_added([name], %{url: url} = flags, cx) do
-    input =
-      %{"owner" => owner(cx, flags), "name" => name, "url" => url}
-      |> Context.put("secret", flags[:secret] && %{"name" => flags[:secret]})
+    target = %{"owner" => owner(cx, flags), "name" => name, "url" => url}
+    input = Context.put(target, "secret", flags[:secret] && %{"name" => flags[:secret]})
 
     with {:ok, answer} <- Context.call(cx, "notify_targets.add", input),
          do: Context.done(cx, answer, "Added #{name}. Agents route to it with notify: #{name}.")
@@ -338,7 +336,7 @@ defmodule WardrikDaemon.CLI.Servers do
         {:error, "No code given. Finish with: #{cx.program} connection pair #{provider} CODE"}
 
       code ->
-        cx |> paired_with(provider, code) |> retried(cx, provider)
+        retried(paired_with(cx, provider, code), cx, provider)
     end
   end
 

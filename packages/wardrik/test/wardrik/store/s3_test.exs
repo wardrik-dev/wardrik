@@ -1,5 +1,7 @@
 defmodule Wardrik.Store.S3Test do
   use ExUnit.Case, async: false
+  use Wardrik.Store.Conformance
+  use Wardrik.Store.DurableConformance
 
   alias Wardrik.Store.S3
   alias Wardrik.Store.Test.S3Bucket
@@ -10,9 +12,6 @@ defmodule Wardrik.Store.S3Test do
     start_supervised!({Wardrik.Store, store})
     %{store: store, lost: Wardrik.Store.scope(store, "lost")}
   end
-
-  use Wardrik.Store.Conformance
-  use Wardrik.Store.DurableConformance
 
   describe "a write whose answer is lost" do
     test "is answered as written where it landed", %{lost: store} do
@@ -124,6 +123,7 @@ end
 
 defmodule Wardrik.Store.S3TombstoneTest do
   use ExUnit.Case, async: false
+  use Wardrik.Store.Conformance
 
   alias Wardrik.Store.Test.S3Bucket
 
@@ -138,8 +138,6 @@ defmodule Wardrik.Store.S3TombstoneTest do
     start_supervised!({Wardrik.Store, store})
     %{store: store}
   end
-
-  use Wardrik.Store.Conformance
 
   test "a conditional delete leaves a tombstone that reads, lists and writes as nothing", %{
     store: store

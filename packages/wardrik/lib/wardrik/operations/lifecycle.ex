@@ -19,7 +19,10 @@ defmodule Wardrik.Operations.Lifecycle do
   """
   @spec define(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def define(%Scope{wardrik: wardrik} = scope, %{"agent" => id} = input) do
-    definition = input |> Map.delete("agent") |> Definition.named()
+    definition =
+      input
+      |> Map.delete("agent")
+      |> Definition.named()
 
     with :ok <- bounded(wardrik, id, scope.policy),
          :ok <- written_after(wardrik, id, definition["policy"]),
@@ -219,7 +222,9 @@ defmodule Wardrik.Operations.Lifecycle do
   end
 
   defp idle(wardrik, key) do
-    case Snapshot.status(Wardrik.EventLog.activity(Wardrik.events(wardrik), key)) do
+    activity = Wardrik.EventLog.activity(Wardrik.events(wardrik), key)
+
+    case Snapshot.status(activity) do
       "idle" ->
         :ok
 

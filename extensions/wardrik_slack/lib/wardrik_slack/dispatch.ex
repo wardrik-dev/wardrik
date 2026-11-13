@@ -13,12 +13,12 @@ defmodule WardrikSlack.Dispatch do
   Anything from a workspace the channel isn't added to is logged and ignored.
   """
 
-  require Logger
-
   alias Wardrik.Chat.Channel
   alias WardrikSlack.Answers
   alias WardrikSlack.Messages
   alias WardrikSlack.Rooms
+
+  require Logger
 
   @doc "Handles an `event_callback`."
   @spec event(Channel.t(), map()) :: term()

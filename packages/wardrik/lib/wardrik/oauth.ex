@@ -101,7 +101,11 @@ defmodule Wardrik.OAuth do
 
   @doc "Returns the Client ID Metadata Document served at `{page}/client`."
   @spec client_document(atom()) :: map()
-  def client_document(oauth), do: oauth |> settings() |> Registration.document()
+  def client_document(oauth) do
+    oauth
+    |> settings()
+    |> Registration.document()
+  end
 
   @doc """
   Forgets the client Wardrik registered for the provider `key`. Call it when you delete that app.
@@ -109,7 +113,11 @@ defmodule Wardrik.OAuth do
       :ok = Wardrik.OAuth.forget_client(MyApp.OAuth, "linear/app_1")
   """
   @spec forget_client(atom(), String.t()) :: :ok | {:error, term()}
-  def forget_client(oauth, key), do: oauth |> settings() |> Registration.forget(key)
+  def forget_client(oauth, key) do
+    oauth
+    |> settings()
+    |> Registration.forget(key)
+  end
 
   @doc """
   Starts `principal`'s sign-in with the provider `name`, or returns the one under way.
@@ -226,6 +234,8 @@ defmodule Wardrik.OAuth do
     do: Renewal.expire(settings(oauth), name, principal)
 
   @doc false
+  @spec keep(map(), Provider.t(), Principal.t(), Token.t()) ::
+          {:ok, Wardrik.Store.vsn()} | {:error, term()}
   def keep(settings, provider, principal, %Token{} = token) do
     condition = over_current(settings.vault, principal, provider.name)
 
@@ -238,9 +248,9 @@ defmodule Wardrik.OAuth do
   def init(opts) do
     settings = %{
       vault: Map.fetch!(opts, :vault),
-      store: opts |> Map.fetch!(:store) |> Wardrik.Store.scope("wardrik_oauth"),
+      store: Wardrik.Store.scope(Map.fetch!(opts, :store), "wardrik_oauth"),
       client_name: opts.client_name,
-      page: opts |> Map.fetch!(:page) |> String.trim_trailing("/"),
+      page: String.trim_trailing(Map.fetch!(opts, :page), "/"),
       resolver: opts.resolver,
       on_granted: opts.on_granted,
       req_options: checked(opts.check) ++ opts.req_options,

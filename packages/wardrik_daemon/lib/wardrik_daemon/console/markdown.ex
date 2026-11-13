@@ -100,11 +100,11 @@ defmodule WardrikDaemon.Console.Markdown do
   def tail(%__MODULE__{pending: ""}), do: nil
 
   def tail(%__MODULE__{pending: pending, fenced?: fenced?}),
-    do: pending |> line(fenced?) |> elem(0)
+    do: elem(line(pending, fenced?), 0)
 
   @doc "Renders one complete line of markdown, outside any fence."
   @spec line(String.t()) :: Owl.Data.t()
-  def line(text) when is_binary(text), do: text |> line(false) |> elem(0)
+  def line(text) when is_binary(text), do: elem(line(text, false), 0)
 
   defp line(text, true) do
     if Regex.match?(@fence, text), do: {[], false}, else: {code(text), true}
@@ -158,7 +158,7 @@ defmodule WardrikDaemon.Console.Markdown do
   defp table([]), do: []
 
   defp table(rows) do
-    rows = rows |> Enum.reverse() |> Enum.map(&cells/1)
+    rows = Enum.map(Enum.reverse(rows), &cells/1)
     {header, alignments, body} = split_header(rows)
 
     [Table.new(header, Enum.reject(body, &rule?/1), alignments)]
@@ -185,7 +185,7 @@ defmodule WardrikDaemon.Console.Markdown do
 
   defp rule?(cells), do: Enum.all?(cells, &Regex.match?(~r/^:?-{2,}:?$/, plain(&1)))
 
-  defp plain(cell), do: cell |> Owl.Data.untag() |> IO.chardata_to_string()
+  defp plain(cell), do: IO.chardata_to_string(Owl.Data.untag(cell))
 
   defp inline(text) do
     @inline

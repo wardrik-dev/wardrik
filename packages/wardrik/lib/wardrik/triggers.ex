@@ -252,7 +252,8 @@ defmodule Wardrik.Triggers do
   defp remove_others(triggers, agent_id, keeping) do
     store = settings(triggers).store
 
-    Records.of(store, agent_id)
+    store
+    |> Records.of(agent_id)
     |> Enum.reject(&(&1 in keeping))
     |> Enum.reduce_while(:ok, fn name, :ok ->
       case remove(triggers, agent_id: agent_id, name: name) do

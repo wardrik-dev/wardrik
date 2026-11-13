@@ -1,8 +1,6 @@
 defmodule Wardrik.Operations.Triggers do
   @moduledoc false
 
-  require Logger
-
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
@@ -10,13 +8,18 @@ defmodule Wardrik.Operations.Triggers do
   alias Wardrik.Scope
   alias Wardrik.Triggers.Trigger
 
+  require Logger
+
   @doc """
   Sets one of the agent's triggers, and saves it in the agent's definition. Returns the trigger
   with its next run, if it has one, as `"next_at"` in its time zone.
   """
   @spec set(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def set(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "trigger" => name} = input) do
-    fields = input |> Map.drop(["agent", "trigger"]) |> Map.put("name", name)
+    fields =
+      input
+      |> Map.drop(["agent", "trigger"])
+      |> Map.put("name", name)
 
     with {:ok, definition} <- Running.definition(wardrik, id),
          :ok <- Wardrik.Resolution.trigger(wardrik, definition, fields, 1),
@@ -94,9 +97,9 @@ defmodule Wardrik.Operations.Triggers do
   defp next(wardrik, id, trigger) do
     encoded = Trigger.encode(trigger)
 
-    case Enum.find(Wardrik.Triggers.list(Wardrik.triggers(wardrik), id), fn {listed, _next_at} ->
-           listed.name == trigger.name
-         end) do
+    scheduled = Wardrik.Triggers.list(Wardrik.triggers(wardrik), id)
+
+    case Enum.find(scheduled, fn {listed, _next_at} -> listed.name == trigger.name end) do
       {_listed, %DateTime{} = next_at} ->
         local =
           next_at
@@ -149,9 +152,9 @@ defmodule Wardrik.Operations.Triggers do
        Error.new(:unavailable, "#{id}'s triggers weren't saved: #{inspect(reason)}. Try again.")}
 
   defp kept(wardrik, id, name) do
-    case Enum.find(Wardrik.Triggers.list(Wardrik.triggers(wardrik), id), fn {trigger, _next_at} ->
-           trigger.name == name
-         end) do
+    scheduled = Wardrik.Triggers.list(Wardrik.triggers(wardrik), id)
+
+    case Enum.find(scheduled, fn {trigger, _next_at} -> trigger.name == name end) do
       {trigger, _next_at} -> {:ok, trigger}
       nil -> {:error, Error.new(:not_found, "There's no trigger #{name} of #{id}.")}
     end
@@ -165,6 +168,9 @@ defmodule Wardrik.Operations.Triggers do
       else: triggers ++ [fields]
   end
 
-  defp without(definition, name),
-    do: definition |> Map.get("triggers", []) |> Enum.reject(&(&1["name"] == name))
+  defp without(definition, name) do
+    definition
+    |> Map.get("triggers", [])
+    |> Enum.reject(&(&1["name"] == name))
+  end
 end

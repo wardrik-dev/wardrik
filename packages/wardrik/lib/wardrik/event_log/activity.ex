@@ -58,7 +58,10 @@ defmodule Wardrik.EventLog.Activity do
   defp doing(_doing, type, _data, _time) when type in @ended, do: []
 
   defp doing(doing, type, data, time) when type in @running do
-    call = type |> described(data) |> Map.put("since", time)
+    call =
+      type
+      |> described(data)
+      |> Map.put("since", time)
 
     if calls?(doing),
       do: Enum.reject(doing, &same_call?(&1, data)) ++ [call],
@@ -85,10 +88,17 @@ defmodule Wardrik.EventLog.Activity do
   defp same_call?(running, %{"tool" => %{"call" => %{"id" => id}}}),
     do: running["tool"]["call"]["id"] == id
 
-  defp described(type, %{"tool" => tool} = data),
-    do: type |> described(Map.delete(data, "tool")) |> Map.put("tool", tool_ref(tool))
+  defp described(type, %{"tool" => tool} = data) do
+    type
+    |> described(Map.delete(data, "tool"))
+    |> Map.put("tool", tool_ref(tool))
+  end
 
-  defp described(type, data), do: data |> Map.take(@described) |> Map.put("type", type)
+  defp described(type, data) do
+    data
+    |> Map.take(@described)
+    |> Map.put("type", type)
+  end
 
   defp tool_ref(%{"name" => name, "call" => %{"id" => id}}),
     do: %{"name" => name, "call" => %{"id" => id}}

@@ -194,7 +194,10 @@ defmodule WardrikRest.Call do
   end
 
   defp cut(text, limit) do
-    kept = text |> binary_part(0, limit) |> String.replace_invalid("")
+    kept =
+      text
+      |> binary_part(0, limit)
+      |> String.replace_invalid("")
 
     kept <>
       "\n[Cut to #{limit} of #{byte_size(text)} bytes. Ask for less, such as fewer rows or fields.]"
@@ -203,7 +206,7 @@ defmodule WardrikRest.Call do
   defp message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
   defp message(%{"message" => message}) when is_binary(message), do: message
   defp message(body) when is_binary(body), do: String.slice(body, 0, @message_limit)
-  defp message(body), do: body |> inspect() |> String.slice(0, @message_limit)
+  defp message(body), do: String.slice(inspect(body), 0, @message_limit)
 
   defp text(reason) when is_binary(reason), do: reason
   defp text(reason), do: inspect(reason)

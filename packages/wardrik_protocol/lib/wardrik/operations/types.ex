@@ -84,7 +84,7 @@ defmodule Wardrik.Operations.Types do
   @doc "Converts an Elixir caller's `input` to the operation's JSON input."
   @spec encode(String.t(), term()) :: map()
   def encode("agent.define", %Definition{} = definition), do: Definition.to_json(definition)
-  def encode("agent.define", fields), do: fields |> Definition.new!() |> Definition.to_json()
+  def encode("agent.define", fields), do: Definition.to_json(Definition.new!(fields))
   def encode("agent.ask", text) when is_binary(text), do: %{"content" => text}
 
   def encode("agent.decide", input) when is_list(input) do
@@ -154,7 +154,7 @@ defmodule Wardrik.Operations.Types do
   """
   @spec checked(String.t(), map()) :: map()
   def checked(id, input) do
-    case id |> WardrikProtocol.operation() |> fields() do
+    case fields(WardrikProtocol.operation(id)) do
       :any ->
         input
 

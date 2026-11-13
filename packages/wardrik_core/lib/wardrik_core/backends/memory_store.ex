@@ -10,9 +10,9 @@ defmodule WardrikCore.Backends.MemoryStore do
         {WardrikCore, backend: {WardrikCore.Backends.MemoryStore, name: :agents}}
       ]
   """
-  use GenServer
-
   @behaviour DurableServer.StorageBackend
+
+  use GenServer
 
   @doc "Starts the store. Takes a required `:name`."
   @spec start_link(keyword()) :: GenServer.on_start()

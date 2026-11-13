@@ -106,13 +106,14 @@ defmodule Wardrik.Operations.Servers do
 
   defp declared(wardrik) do
     for {name, opts} <- wardrik.mcp do
-      %{
+      server = %{
         "owner" => Owned.deployment(),
         "name" => to_string(name),
         "source" => "config",
         "auth" => declared_auth(opts)
       }
-      |> put("url", url(opts[:transport]))
+
+      put(server, "url", url(opts[:transport]))
     end
   end
 

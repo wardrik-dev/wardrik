@@ -25,13 +25,13 @@ defmodule Wardrik.Vault do
 
   use GenServer
 
-  require Logger
-
   alias Wardrik.Vault.Grants
   alias Wardrik.Vault.Sealed
   alias Wardrik.Vault.Secret
   alias WardrikCore.Credentials
   alias WardrikCore.Principal
+
+  require Logger
 
   @typedoc "A vault, by the name your app gave it."
   @type t() :: atom()
@@ -248,8 +248,12 @@ defmodule Wardrik.Vault do
 
   @doc "Removes what `principal` holds as `name`. Returns `:ok` even if there's nothing."
   @spec delete(t(), Principal.t(), String.t()) :: :ok | {:error, term()}
-  def delete(vault, %Principal{} = principal, name),
-    do: vault |> settings() |> Map.fetch!(:store) |> Wardrik.Store.delete(path(principal, name))
+  def delete(vault, %Principal{} = principal, name) do
+    vault
+    |> settings()
+    |> Map.fetch!(:store)
+    |> Wardrik.Store.delete(path(principal, name))
+  end
 
   @doc "Returns the names `principal` holds. Needs no key."
   @spec names(t(), Principal.t()) :: [String.t()]
@@ -328,17 +332,13 @@ defmodule Wardrik.Vault do
     if length(decoded) < length(keys), do: Logger.warning("A vault key isn't 32 bytes of base64")
 
     settings = %{
-      store: opts |> Keyword.fetch!(:store) |> Wardrik.Store.scope("wardrik_vault"),
+      store: Wardrik.Store.scope(Keyword.fetch!(opts, :store), "wardrik_vault"),
       keys: decoded,
       grants: Keyword.fetch!(opts, :grants)
     }
 
-    table =
-      :ets.new(table(Keyword.fetch!(opts, :name)), [
-        :named_table,
-        :protected,
-        read_concurrency: true
-      ])
+    table_name = table(Keyword.fetch!(opts, :name))
+    table = :ets.new(table_name, [:named_table, :protected, read_concurrency: true])
 
     true = :ets.insert(table, {:settings, settings})
     {:ok, table}

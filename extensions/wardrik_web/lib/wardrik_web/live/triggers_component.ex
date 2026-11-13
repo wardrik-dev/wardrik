@@ -31,7 +31,9 @@ defmodule WardrikWeb.TriggersComponent do
         )
 
       {:error, error} ->
-        socket |> assign(triggers: []) |> flash(:error, error.message)
+        socket
+        |> assign(triggers: [])
+        |> flash(:error, error.message)
     end
   end
 
@@ -77,7 +79,13 @@ defmodule WardrikWeb.TriggersComponent do
   def handle_event("remove", %{"name" => name}, socket) do
     case remove(socket, name) do
       {:ok, _answer} ->
-        {:noreply, socket |> assign(triggers: nil) |> load() |> flash(:info, "Removed #{name}.")}
+        socket =
+          socket
+          |> assign(triggers: nil)
+          |> load()
+          |> flash(:info, "Removed #{name}.")
+
+        {:noreply, socket}
 
       {:error, error} ->
         {:noreply, flash(socket, :error, error.message)}

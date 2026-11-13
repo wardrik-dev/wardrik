@@ -57,7 +57,7 @@ defmodule WardrikDaemon.SecretsTest do
 
   defp list(client, owner), do: Client.run(client, "secrets.list", %{"owner" => owner})
 
-  defp vault(context), do: context.wardrik |> Wardrik.Instance.fetch!() |> Wardrik.vault()
+  defp vault(context), do: Wardrik.vault(Wardrik.Instance.fetch!(context.wardrik))
 
   test "a token bound in one org reaches no other org's secrets, nor the deployment's", context do
     admin = client(context, "user:admin")

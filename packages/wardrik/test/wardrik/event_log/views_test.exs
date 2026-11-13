@@ -395,10 +395,14 @@ defmodule Wardrik.EventLog.ViewsTest do
     test "keeps each run's events where asked, and adds totals up" do
       events = [event("run.started", run()), event("tool_call.started", tool("a"))]
 
-      assert [%{events: ^events}] = events |> View.fold(Runs, events: true) |> Runs.runs()
-      refute events |> View.fold(Runs) |> Runs.runs() |> hd() |> Map.has_key?(:events)
+      with_events = View.fold(events, Runs, events: true)
+      assert [%{events: ^events}] = Runs.runs(with_events)
 
-      totals = events |> View.fold(Runs) |> Runs.totals()
+      folded = View.fold(events, Runs)
+      first = hd(Runs.runs(folded))
+      refute Map.has_key?(first, :events)
+
+      totals = Runs.totals(folded)
       none = Runs.totals(Runs.init([]))
 
       assert Runs.sum([totals, totals, none]) == %{

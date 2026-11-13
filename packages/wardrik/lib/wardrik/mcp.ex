@@ -36,6 +36,9 @@ defmodule Wardrik.MCP do
   @behaviour WardrikCore.Capability
   use Supervisor
 
+  alias Wardrik.MCP.Connection
+  alias Wardrik.MCP.Servers
+
   @options NimbleOptions.new!(
              name: [
                type: :atom,
@@ -73,9 +76,6 @@ defmodule Wardrik.MCP do
                """
              ]
            )
-
-  alias Wardrik.MCP.Connection
-  alias Wardrik.MCP.Servers
 
   @doc """
   Starts `Wardrik.MCP` and connects to its servers.
@@ -122,7 +122,12 @@ defmodule Wardrik.MCP do
 
   @doc "Returns the names of all servers, sorted."
   @spec servers(atom()) :: [String.t()]
-  def servers(mcp), do: mcp |> Servers.all() |> Map.keys() |> Enum.sort()
+  def servers(mcp) do
+    mcp
+    |> Servers.all()
+    |> Map.keys()
+    |> Enum.sort()
+  end
 
   @doc "Re-reads the store now, for servers added or removed on other nodes."
   @spec reconcile(atom()) :: :ok

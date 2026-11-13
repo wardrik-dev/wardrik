@@ -75,14 +75,22 @@ defmodule Wardrik.Chat.Installations.Stored do
     end
   end
 
-  defp sealed(config, owner, name), do: config |> vault() |> sealed_in(owner, name)
+  defp sealed(config, owner, name) do
+    config
+    |> vault()
+    |> sealed_in(owner, name)
+  end
 
   defp sealed_in(nil, _owner, _name), do: {:error, :no_keys}
 
   defp sealed_in(vault, owner, name),
     do: Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :token)
 
-  defp seal(config, owner, name, token), do: config |> vault() |> seal_in(owner, name, token)
+  defp seal(config, owner, name, token) do
+    config
+    |> vault()
+    |> seal_in(owner, name, token)
+  end
 
   defp seal_in(nil, _owner, _name, _token), do: {:error, :no_keys}
 
@@ -91,7 +99,11 @@ defmodule Wardrik.Chat.Installations.Stored do
     Wardrik.Vault.put(vault, secret, kind: :token)
   end
 
-  defp unseal(config, owner, name), do: config |> vault() |> unseal_in(owner, name)
+  defp unseal(config, owner, name) do
+    config
+    |> vault()
+    |> unseal_in(owner, name)
+  end
 
   defp unseal_in(nil, _owner, _name), do: :ok
   defp unseal_in(vault, owner, name), do: Wardrik.Vault.delete(vault, %Principal{id: owner}, name)

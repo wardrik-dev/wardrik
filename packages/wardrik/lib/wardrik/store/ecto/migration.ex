@@ -20,14 +20,20 @@ if Code.ensure_loaded?(Ecto.Migration) do
     @doc "Creates what `:version` needs. Raises `ArgumentError` for an unknown version."
     @spec up(keyword()) :: :ok
     def up(opts) do
-      opts |> version() |> change(:up)
+      opts
+      |> version()
+      |> change(:up)
+
       :ok
     end
 
     @doc "Drops what `:version` created. Raises `ArgumentError` for an unknown version."
     @spec down(keyword()) :: :ok
     def down(opts) do
-      opts |> version() |> change(:down)
+      opts
+      |> version()
+      |> change(:down)
+
       :ok
     end
 

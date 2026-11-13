@@ -95,6 +95,8 @@ defmodule WardrikRest.API do
             ]
           )
 
+  # The moduledoc lists the options from the schema above.
+  # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
   An API loaded for agents: the operations offered from its description, where it's reached, and
   where each credential comes from.
@@ -200,6 +202,13 @@ defmodule WardrikRest.API do
       operations = Enum.map(operations, &headed(&1, opts[:argument_headers]))
       fitted = Map.new(operations, &{&1.name, fitted(&1, spec, opts)})
 
+      described =
+        fitted
+        |> Map.values()
+        |> Enum.flat_map(&elem(&1, 1))
+        |> Enum.uniq()
+        |> Enum.sort()
+
       {:ok,
        %__MODULE__{
          name: opts[:name],
@@ -208,8 +217,7 @@ defmodule WardrikRest.API do
          schemes: spec.schemes,
          schemas: Map.new(fitted, fn {name, {schema, _cut}} -> {name, schema} end),
          types: spec.types,
-         described:
-           fitted |> Map.values() |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort(),
+         described: described,
          auth: opts[:auth],
          headers: opts[:headers],
          read_only: opts[:read_only],
@@ -288,7 +296,11 @@ defmodule WardrikRest.API do
   defp added(spec, schemes) do
     case Enum.reject(schemes, fn {_name, place} -> place?(place) end) do
       [] ->
-        names = schemes |> Map.keys() |> Enum.sort()
+        names =
+          schemes
+          |> Map.keys()
+          |> Enum.sort()
+
         operations = Enum.map(spec.operations, &%{&1 | security: [names | &1.security]})
         {:ok, %{spec | schemes: Map.merge(spec.schemes, schemes), operations: operations}}
 
@@ -313,7 +325,13 @@ defmodule WardrikRest.API do
   end
 
   defp known(%Spec{schemes: schemes}) when map_size(schemes) == 0, do: "none"
-  defp known(%Spec{schemes: schemes}), do: schemes |> Map.keys() |> Enum.sort() |> Enum.join(", ")
+
+  defp known(%Spec{schemes: schemes}) do
+    schemes
+    |> Map.keys()
+    |> Enum.sort()
+    |> Enum.join(", ")
+  end
 
   defp offered(spec, opts) do
     signed = Enum.filter(spec.operations, &match?({:ok, _schemes}, signed(opts[:auth], &1)))
@@ -380,7 +398,11 @@ defmodule WardrikRest.API do
   defp listed?(globs, name), do: Enum.any?(globs, &glob?(&1, name))
 
   defp glob?(glob, name) do
-    pattern = glob |> String.split("*") |> Enum.map_join(".*", &Regex.escape/1)
+    pattern =
+      glob
+      |> String.split("*")
+      |> Enum.map_join(".*", &Regex.escape/1)
+
     Regex.match?(~r/\A#{pattern}\z/, name)
   end
 end

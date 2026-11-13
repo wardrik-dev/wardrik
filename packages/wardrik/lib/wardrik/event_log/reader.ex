@@ -18,15 +18,21 @@ defmodule Wardrik.EventLog.Reader do
     |> Enum.uniq()
   end
 
-  defp logs(store, {agent, _conversation} = log),
-    do: store |> Log.logs(agent) |> Enum.filter(&(&1 == log))
+  defp logs(store, {agent, _conversation} = log) do
+    store
+    |> Log.logs(agent)
+    |> Enum.filter(&(&1 == log))
+  end
 
   defp logs(store, agent), do: Log.logs(store, agent)
 
   @doc "Returns the cursor at the end of the logs `resources` cover."
   @spec head(Wardrik.Store.t(), Wardrik.EventLog.resources()) :: Cursor.t()
-  def head(store, resources),
-    do: store |> covered(resources) |> Map.new(fn log -> {log, Log.last(store, log)} end)
+  def head(store, resources) do
+    store
+    |> covered(resources)
+    |> Map.new(fn log -> {log, Log.last(store, log)} end)
+  end
 
   @doc """
   Returns up to `:limit` entries after the cursor `:after` from the logs `resources` cover,
@@ -74,7 +80,9 @@ defmodule Wardrik.EventLog.Reader do
     read =
       tops
       |> Enum.map(fn {log, top} ->
-        settings.store |> before(log, top, limit) |> Enum.reverse()
+        settings.store
+        |> before(log, top, limit)
+        |> Enum.reverse()
       end)
       |> Stream.unfold(&next_newest/1)
       |> Enum.take(limit)
@@ -192,7 +200,11 @@ defmodule Wardrik.EventLog.Reader do
     at
   end
 
-  defp merged(reads, limit), do: reads |> Stream.unfold(&next_oldest/1) |> Enum.take(limit)
+  defp merged(reads, limit) do
+    reads
+    |> Stream.unfold(&next_oldest/1)
+    |> Enum.take(limit)
+  end
 
   defp next_oldest(reads) do
     case Enum.reject(reads, &(&1 == [])) do

@@ -23,15 +23,19 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     @behaviour DurableServer.StorageBackend
 
-    require Logger
-
     alias DurableServer.StoredState
     alias Wardrik.Store.Durable.Unreadable
+
+    require Logger
 
     @max_retries 5
 
     @impl DurableServer.StorageBackend
-    def init_backend(opts) when is_map(opts), do: opts |> Map.to_list() |> init_backend()
+    def init_backend(opts) when is_map(opts) do
+      opts
+      |> Map.to_list()
+      |> init_backend()
+    end
 
     def init_backend(opts) do
       heartbeat = Keyword.get(opts, :heartbeat_interval_ms, 10_000)
@@ -93,7 +97,9 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     def delete_object(store, key, opts) do
       with {_value, current} <- Wardrik.Store.lookup(store, key),
            {:ok, vsn} <- expected(opts, current) do
-        store |> Wardrik.Store.delete(key, if_vsn: vsn) |> deleted(store, key)
+        store
+        |> Wardrik.Store.delete(key, if_vsn: vsn)
+        |> deleted(store, key)
       else
         nil -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
@@ -286,7 +292,11 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
       ArgumentError -> :error
     end
 
-    defp etag(vsn), do: vsn |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
+    defp etag(vsn) do
+      vsn
+      |> :erlang.term_to_binary()
+      |> Base.url_encode64(padding: false)
+    end
 
     defp vsn(etag) when is_binary(etag) do
       case Base.url_decode64(etag, padding: false) do

@@ -167,7 +167,7 @@ defmodule Wardrik.ResolverTest do
                define(scope, %{})
     end
 
-    assert Wardrik.run(scope, "agent.read", %{"agent" => @scout}) |> elem(0) == :error
+    assert elem(Wardrik.run(scope, "agent.read", %{"agent" => @scout}), 0) == :error
   end
 
   test "an agent is held to the policy it's resolved with, which its own can't loosen, from when it's refreshed",

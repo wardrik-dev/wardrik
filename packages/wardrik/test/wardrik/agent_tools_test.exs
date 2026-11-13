@@ -36,7 +36,7 @@ defmodule Wardrik.AgentToolsTest do
     test = self()
 
     stub(ReqLLM, :stream_text, fn _model, messages, _opts ->
-      said = messages |> List.last() |> text()
+      said = text(List.last(messages))
       send(test, {:prompted, said})
       {:ok, Agent.get_and_update(steps, &step(&1, said))}
     end)
@@ -48,7 +48,7 @@ defmodule Wardrik.AgentToolsTest do
   end
 
   defp text(%{content: content}) when is_list(content),
-    do: Enum.map_join(content, &(&1 |> Map.get(:text, "") |> to_string()))
+    do: Enum.map_join(content, &to_string(Map.get(&1, :text, "")))
 
   defp text(_message), do: ""
 
@@ -168,10 +168,15 @@ defmodule Wardrik.AgentToolsTest do
   end
 
   test "schedules a message to itself or another agent, once or every so often", %{scope: scope} do
-    at = DateTime.utc_now() |> DateTime.add(86_400) |> DateTime.truncate(:second)
+    at =
+      DateTime.utc_now()
+      |> DateTime.add(86_400)
+      |> DateTime.truncate(:second)
 
     local =
-      at |> DateTime.shift_zone!("Europe/Berlin", Tz.TimeZoneDatabase) |> DateTime.to_naive()
+      at
+      |> DateTime.shift_zone!("Europe/Berlin", Tz.TimeZoneDatabase)
+      |> DateTime.to_naive()
 
     model([
       {"Plan the week",
@@ -203,11 +208,10 @@ defmodule Wardrik.AgentToolsTest do
     run!(scope, "agent.ask", %{"agent" => "acme/front", "content" => "Plan the week"})
     until("wardrik.run.completed")
 
+    triggers = Wardrik.triggers(Wardrik.Instance.fetch!(scope.wardrik))
+
     assert [{%Wardrik.Triggers.Trigger{name: "schedule-" <> _made_up, overlap: :queue}, ^at}] =
-             Wardrik.Triggers.list(
-               Wardrik.triggers(Wardrik.Instance.fetch!(scope.wardrik)),
-               "acme/front"
-             )
+             Wardrik.Triggers.list(triggers, "acme/front")
 
     assert %{"definition" => %{"triggers" => [%{"name" => "standup", "every" => "0 9 * * 1-5"}]}} =
              run!(scope, "agent.definition", %{"agent" => "acme/worker"})
@@ -279,14 +283,17 @@ defmodule Wardrik.AgentToolsTest do
     answer =
       scope
       |> history("acme/front")
-      |> Enum.find(&(&1.metadata[:id] |> to_string() |> String.starts_with?("answer_")))
+      |> Enum.find(&String.starts_with?(to_string(&1.metadata[:id]), "answer_"))
 
     assert %{metadata: %{labels: ["outside"]}} = answer
   end
 
   defp history(scope, id) do
     wardrik = Wardrik.Instance.fetch!(scope.wardrik)
-    wardrik |> Wardrik.Operations.Running.whereis(id) |> WardrikCore.history()
+
+    wardrik
+    |> Wardrik.Operations.Running.whereis(id)
+    |> WardrikCore.history()
   end
 
   test "names agents by their exact IDs, and lists those it may read without conversations", %{

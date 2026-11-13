@@ -9,7 +9,7 @@ defmodule WardrikWeb.DashboardTest do
   @endpoint WardrikWeb.Test.Endpoint
 
   setup do
-    conn = build_conn() |> Plug.Test.init_test_session(%{"user" => "ana"})
+    conn = Plug.Test.init_test_session(build_conn(), %{"user" => "ana"})
     %{conn: conn}
   end
 
@@ -23,8 +23,20 @@ defmodule WardrikWeb.DashboardTest do
     assert html =~ "triage"
     assert html =~ "Panel sees 2 agents"
     assert has_element?(view, "a.nav", "Extra")
-    assert view |> element("form.filters") |> render_change(%{"only" => "idle"}) =~ "digest"
-    refute view |> element("form.filters") |> render_change(%{"only" => "idle"}) =~ ">triage<"
+
+    html =
+      view
+      |> element("form.filters")
+      |> render_change(%{"only" => "idle"})
+
+    assert html =~ "digest"
+
+    html =
+      view
+      |> element("form.filters")
+      |> render_change(%{"only" => "idle"})
+
+    refute html =~ ">triage<"
 
     {:ok, _extra, extra} = live(conn, "/ops/x/extra")
     assert extra =~ "Extra page for ana"
@@ -36,7 +48,9 @@ defmodule WardrikWeb.DashboardTest do
     assert html =~ "File the flaky test"
     assert html =~ "Open an issue?"
 
-    view |> form(".ask form", %{"note" => "ok"}) |> render_submit()
+    view
+    |> form(".ask form", %{"note" => "ok"})
+    |> render_submit()
 
     assert {"agent.approve", %{"agent" => "triage", "interrupt" => "toolu_1", "note" => "ok"}} in Server.asked()
   end
@@ -49,13 +63,22 @@ defmodule WardrikWeb.DashboardTest do
   test "rejects from the approvals page", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/approvals")
 
-    view |> element("button", "Reject") |> render_click()
+    view
+    |> element("button", "Reject")
+    |> render_click()
+
     assert {"agent.deny", %{"agent" => "triage", "interrupt" => "toolu_1"}} in Server.asked()
   end
 
   test "runs any operation from its form", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/operations/deployment.nodes")
-    assert view |> form("#operation-form") |> render_submit() =~ "a@host"
+
+    html =
+      view
+      |> form("#operation-form")
+      |> render_submit()
+
+    assert html =~ "a@host"
 
     {:ok, view, _html} = live(conn, "/ops/operations/agent.ask")
 
@@ -71,8 +94,13 @@ defmodule WardrikWeb.DashboardTest do
   test "decides several calls with groups added to the form", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/operations/agent.decide")
 
-    view |> element("button", "Add decisions") |> render_click()
-    view |> element("button", "Add decisions") |> render_click()
+    view
+    |> element("button", "Add decisions")
+    |> render_click()
+
+    view
+    |> element("button", "Add decisions")
+    |> render_click()
 
     view
     |> form("#operation-form", %{
@@ -101,7 +129,11 @@ defmodule WardrikWeb.DashboardTest do
     assert html =~ "Called by webhooks and chat apps"
     assert html =~ "hook.deliver"
 
-    html = view |> form("#operations-filter", %{"query" => "trigger"}) |> render_change()
+    html =
+      view
+      |> form("#operations-filter", %{"query" => "trigger"})
+      |> render_change()
+
     assert html =~ "agent.trigger_set"
     refute html =~ "agents.list"
 
@@ -111,9 +143,9 @@ defmodule WardrikWeb.DashboardTest do
 
   test "serves its assets", %{conn: conn} do
     {js, css} = WardrikWeb.Assets.names()
-    assert conn |> get("/ops/assets/" <> js) |> response(200) =~ "LiveSocket"
-    assert conn |> get("/ops/assets/" <> css) |> response(200) =~ ":root"
-    assert conn |> get("/ops/assets/nope.js") |> response(404)
+    assert response(get(conn, "/ops/assets/" <> js), 200) =~ "LiveSocket"
+    assert response(get(conn, "/ops/assets/" <> css), 200) =~ ":root"
+    assert response(get(conn, "/ops/assets/nope.js"), 404)
   end
 
   test "follows a stream and shows a run's error", %{conn: conn} do

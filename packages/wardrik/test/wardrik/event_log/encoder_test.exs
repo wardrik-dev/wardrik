@@ -79,7 +79,8 @@ defmodule Wardrik.EventLog.EncoderTest do
 
     test "puts the event's place in its log" do
       event =
-        core([:agent, :stop], %{reason: :normal})
+        [:agent, :stop]
+        |> core(%{reason: :normal})
         |> one()
         |> Wardrik.EventLog.CloudEvent.sequenced(42)
 

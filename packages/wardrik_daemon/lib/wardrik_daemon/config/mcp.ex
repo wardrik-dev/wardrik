@@ -55,8 +55,11 @@ defmodule WardrikDaemon.Config.MCP do
     end
   end
 
-  defp renamed(%{"credential" => name} = own),
-    do: own |> Map.delete("credential") |> Map.put("credential_name", name)
+  defp renamed(%{"credential" => name} = own) do
+    own
+    |> Map.delete("credential")
+    |> Map.put("credential_name", name)
+  end
 
   defp renamed(own), do: own
 

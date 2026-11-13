@@ -18,11 +18,16 @@ defmodule Wardrik.Operations.Functions do
 
   @doc "Returns the prefix of `operation`'s ID, which names its module."
   @spec prefix(WardrikProtocol.operation()) :: String.t()
-  def prefix(%{id: id}), do: id |> parts() |> hd()
+  def prefix(%{id: id}), do: hd(parts(id))
 
   @doc "Returns the name of the function that does `operation`."
   @spec name(WardrikProtocol.operation()) :: atom()
-  def name(%{id: id}), do: id |> parts() |> List.last() |> String.to_atom()
+  def name(%{id: id}) do
+    id
+    |> parts()
+    |> List.last()
+    |> String.to_atom()
+  end
 
   @doc "Returns the names of `operation`'s path parameters, in the order its route takes them."
   @spec path(WardrikProtocol.operation()) :: [String.t()]
