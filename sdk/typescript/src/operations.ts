@@ -31,6 +31,9 @@ import type {
   Interrupts,
   Node,
   Nodes,
+  Provider,
+  ProviderInput,
+  Providers,
   Reloaded,
   Runs,
   Runtime,
@@ -353,6 +356,28 @@ export const operations = {
     query: [],
     body: false,
   },
+  "providers.list": {
+    method: "GET",
+    path: "/v1/owners/{owner}/providers",
+    path_params: ["owner"],
+    query: [],
+    body: false,
+    unwrap: "providers",
+  },
+  "providers.add": {
+    method: "POST",
+    path: "/v1/owners/{owner}/providers",
+    path_params: ["owner"],
+    query: [],
+    body: true,
+  },
+  "providers.remove": {
+    method: "DELETE",
+    path: "/v1/owners/{owner}/providers/{name}",
+    path_params: ["owner", "name"],
+    query: [],
+    body: false,
+  },
 } as const;
 
 /** An operation's id, as `agent.ask`. */
@@ -595,6 +620,20 @@ export interface Inputs {
     /** The secret's name, as GITHUB_TOKEN. */
     name: string;
   };
+  "providers.list": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+  };
+  "providers.add": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+  } & ProviderInput;
+  "providers.remove": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+    /** The OAuth app's name. */
+    name: string;
+  };
 }
 
 /** What each operation answers, an answer of one property being that property. */
@@ -639,6 +678,9 @@ export interface Outputs {
   "secrets.list": Secrets["secrets"];
   "secrets.put": void;
   "secrets.delete": void;
+  "providers.list": Providers["providers"];
+  "providers.add": Provider;
+  "providers.remove": Provider;
 }
 
 /** The `agent.*` operations. */
@@ -1302,6 +1344,51 @@ export class SecretsOperations {
   }
 }
 
+/** The `providers.*` operations. */
+export class ProvidersOperations {
+  readonly #runner: Runner;
+
+  /** @internal */
+  constructor(runner: Runner) {
+    this.#runner = runner;
+  }
+
+  /**
+   * List the OAuth apps an owner's people sign in with.
+   *
+   * The OAuth apps the owner keeps. The deployment's include those it declares.
+   */
+  list(owner: string, options: CallOptions = {}): Promise<Outputs["providers.list"]> {
+    return this.#runner.call("providers.list", { owner }, options);
+  }
+
+  /**
+   * Add an OAuth app for an owner's people.
+   *
+   * Keeps an OAuth app for the owner. A sign-in names it by its owner and name; one by another owner is used only where your authorizer allows provider.use. One of the owner's own by the same name is a conflict. Its client secret is named, and read from the owner's vault, sealed for client_secret, each time it's needed. Each URL must pass the deployment's egress check.
+   */
+  add(
+    owner: string,
+    input: ProviderInput,
+    options: CallOptions = {},
+  ): Promise<Outputs["providers.add"]> {
+    return this.#runner.call("providers.add", { ...input, owner }, options);
+  }
+
+  /**
+   * Remove an OAuth app.
+   *
+   * Removes one of the owner's own. Accounts connected with it sign in again.
+   */
+  remove(
+    owner: string,
+    name: string,
+    options: CallOptions = {},
+  ): Promise<Outputs["providers.remove"]> {
+    return this.#runner.call("providers.remove", { owner, name }, options);
+  }
+}
+
 /** Every operation but an agent's, by its namespace. */
 export class Operations {
   /** The `agents.*` operations. */
@@ -1316,6 +1403,8 @@ export class Operations {
   readonly deployment: DeploymentOperations;
   /** The `secrets.*` operations. */
   readonly secrets: SecretsOperations;
+  /** The `providers.*` operations. */
+  readonly providers: ProvidersOperations;
 
   /** @internal */
   constructor(runner: Runner) {
@@ -1325,5 +1414,6 @@ export class Operations {
     this.audit = new AuditOperations(runner);
     this.deployment = new DeploymentOperations(runner);
     this.secrets = new SecretsOperations(runner);
+    this.providers = new ProvidersOperations(runner);
   }
 }

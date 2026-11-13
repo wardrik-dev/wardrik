@@ -60,9 +60,9 @@ defmodule WardrikDaemon.Config.OAuth do
     end
   end
 
-  # The daemon names each app; see `WardrikDaemon.OAuthApps.key/1`.
+  # Wardrik names each app; see `Wardrik.OAuth.Apps.key/1`.
   defp built(name, opts) do
-    key = WardrikDaemon.OAuthApps.key(%{owner: "deployment", name: to_string(name)})
+    key = Wardrik.OAuth.Apps.key(%{owner: "deployment", name: to_string(name)})
     Wardrik.OAuth.Provider.new(name, [key: key] ++ opts)
   end
 

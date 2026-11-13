@@ -98,8 +98,19 @@ defmodule Wardrik do
                 ],
                 resolver: [
                   type: :mod_arg,
-                  required: true,
-                  doc: "The `Wardrik.OAuth.Resolver` that gives each person's providers."
+                  doc: """
+                  The `Wardrik.OAuth.Resolver` that gives each person's providers.
+                  `Wardrik.OAuth.Apps` unless set.
+                  """
+                ],
+                providers: [
+                  type: {:list, {:tuple, [{:or, [:atom, :string]}, :keyword_list]}},
+                  default: [],
+                  doc: """
+                  The deployment's OAuth apps, by name, each as `Wardrik.OAuth.Provider` takes
+                  it, less `:key`, with its `:client_secret`. Held by `"deployment"`. See
+                  `Wardrik.OAuth.Apps`.
+                  """
                 ],
                 client_name: [
                   type: :string,
@@ -558,11 +569,15 @@ defmodule Wardrik do
       Wardrik.signing_in?(MyApp.AgentRuntime, "github", Wardrik.principal("user_42"))
       #=> true
 
-  `false` once it's finished, declined or expired.
+  `false` once it's finished, declined or expired, and always without `:oauth`.
   """
   @spec signing_in?(atom() | t(), String.t(), Principal.t()) :: boolean()
-  def signing_in?(instance, provider, %Principal{} = principal),
-    do: instance |> Instance.fetch!() |> oauth() |> Wardrik.OAuth.signing_in?(provider, principal)
+  def signing_in?(instance, provider, %Principal{} = principal) do
+    case Instance.fetch!(instance) do
+      %__MODULE__{oauth: nil} -> false
+      wardrik -> wardrik |> oauth() |> Wardrik.OAuth.signing_in?(provider, principal)
+    end
+  end
 
   @doc """
   Forgets the client Wardrik registered for the OAuth app `key`. Call it when you delete that app.

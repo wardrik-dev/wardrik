@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `providers.list`, `providers.add` and `providers.remove` keep an owner's OAuth apps, at
+  `/v1/owners/{owner}/providers`, as `Wardrik.Providers`. `Wardrik.OAuth.Apps` is Wardrik's own
+  `Wardrik.OAuth.Resolver`, used unless `:oauth` names another, and `:oauth`'s `:providers` are
+  the deployment's apps. A sign-in names one app by its reference, as `acme:linear`; another
+  owner's is used only where the authorizer allows `provider.use`. `Wardrik.Owned` keeps what
+  owners hold.
+- `Wardrik.signing_in?/3` answers `false` without `:oauth`.
 - `secrets.list`, `secrets.put` and `secrets.delete` seal an owner's secrets in Wardrik's vault,
   at `/v1/owners/{owner}/secrets`, as `Wardrik.Secrets`. The owner is a name your app gives,
   never read: your authorizer decides on `{:secret, owner}`. Without `:vault_keys` they answer

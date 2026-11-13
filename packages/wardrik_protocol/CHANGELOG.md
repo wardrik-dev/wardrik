@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `providers.list`, `providers.add` and `providers.remove`, with `Wardrik.Providers` and
+  `Wardrik.OAuthApp`.
 - `secrets.list`, `secrets.put` and `secrets.delete`, with `Wardrik.Secrets` and
   `Wardrik.SealedSecret`. An operation's subject can be what an owner holds, as `"secret"`,
   authorized on `{:secret, owner}`.

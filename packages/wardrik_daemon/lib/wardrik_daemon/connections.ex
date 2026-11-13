@@ -13,8 +13,8 @@ defmodule WardrikDaemon.Connections do
   """
 
   alias Wardrik.Error
+  alias Wardrik.OAuth.Apps
   alias WardrikCore.Principal
-  alias WardrikDaemon.OAuthApps
   alias WardrikDaemon.Pairings
   alias WardrikDaemon.Servers
 
@@ -175,24 +175,14 @@ defmodule WardrikDaemon.Connections do
         "That code doesn't match a #{provider} sign-in you started. Check it, or connect again."
       )
 
-  # A server's own sign-in is an app named by its key, `owner:name`.
-  defp offered(daemon, %Principal{id: id}) do
-    {servers, apps} =
-      daemon
-      |> OAuthApps.reached(id)
-      |> Enum.split_with(&String.contains?(&1.name, ":"))
-
-    servers =
-      Enum.uniq_by(
-        for(
-          app <- servers,
-          do: {String.replace_prefix(app.name, app.owner <> ":", ""), app.name}
-        ),
-        &elem(&1, 0)
-      )
-
-    named = Enum.map(servers, &elem(&1, 0))
-    for(app <- apps, app.name not in named, do: {app.name, app.name}) ++ servers
+  # Each app the person may sign in with, by the name they know it by, and the reference a
+  # sign-in to it goes by. A server's own sign-in goes by the server's name.
+  defp offered(%{wardrik: wardrik}, principal) do
+    wardrik
+    |> Wardrik.Instance.fetch!()
+    |> Apps.offered(principal)
+    |> Enum.map(&{Apps.shown(&1), Apps.reference(&1)})
+    |> Enum.uniq_by(&elem(&1, 0))
   end
 
   defp credential(daemon, principal, provider) do

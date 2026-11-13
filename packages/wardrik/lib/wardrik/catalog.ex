@@ -7,6 +7,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Deployment
   alias Wardrik.Operations.Files
   alias Wardrik.Operations.Lifecycle
+  alias Wardrik.Operations.Providers
   alias Wardrik.Operations.Resolved
   alias Wardrik.Operations.Runtime
   alias Wardrik.Operations.Secrets
@@ -64,6 +65,9 @@ defmodule Wardrik.Catalog do
         "agent.resolved" => &Resolved.agent/2,
         "agent.files" => &Files.list/2,
         "agent.file" => &Files.read/2,
+        "providers.list" => &Providers.list/2,
+        "providers.add" => &Providers.add/2,
+        "providers.remove" => &Providers.remove/2,
         "secrets.list" => &Secrets.list/2,
         "secrets.put" => &Secrets.put/2,
         "secrets.delete" => &Secrets.delete/2,

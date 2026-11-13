@@ -38,6 +38,7 @@ defmodule WardrikDaemon.Authorizer do
   @member ~w(ask read events)
   @deciding ~w(decide approve deny)
 
+  @uses ~w(provider.use mcp_server.use notify_target.use)
   @held [:secret, :mcp_server, :notify_target, :provider, :ceiling, :agents]
 
   @typedoc """
@@ -91,8 +92,19 @@ defmodule WardrikDaemon.Authorizer do
     end
   end
 
+  # Using what another owner holds, as an OAuth app, is for its owner's people alone, and the
+  # deployment's is for everyone. No role grants more.
+  defp decided(%Request{action: action, resource: {_kind, owner}} = request, _opts)
+       when action in @uses do
+    if uses?(request.principal, owner), do: :ok, else: {:error, :forbidden}
+  end
+
   defp decided(%Request{} = request, opts),
     do: if(owns?(request, opts), do: :ok, else: bound(request, opts))
+
+  defp uses?(_principal, "deployment"), do: true
+  defp uses?(%{id: id}, owner), do: Owners.valid?(id) and Owners.within?(id, owner)
+  defp uses?(_principal, _owner), do: false
 
   defp owns?(%Request{actor: nil, principal: %{id: id}, resource: {:agent, _id}}, opts),
     do: opts.record.owner == id

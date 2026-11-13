@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- OAuth apps are Wardrik's `providers.*` operations. `providers.list` lists the owner's own.
+  A person signs in with their own app of a name, else their org's, else the deployment's, as
+  `WardrikDaemon.Authorizer` allows `provider.use`. Connected accounts are kept by the app's
+  reference, as `acme:linear`, so each is connected again once.
 - Secrets are Wardrik's `secrets.*` operations. An owner the daemon doesn't know answers
   `not_found`, from `WardrikDaemon.Authorizer`, where it answered `invalid_request`.
 - A sign-in an agent asked for, while waiting on it, finishes from the browser like one

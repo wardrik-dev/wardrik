@@ -863,6 +863,70 @@ Removes the secret. Returns `204`, even if it didn't exist.
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/secrets/ANTHROPIC_API_KEY -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
+## OAuth apps
+
+The OAuth apps an owner keeps, for people to connect accounts with. A sign-in names one app by
+its owner and name, as `acme:linear`. Signing in with another owner's app is `provider.use` on
+`{:provider, owner}`, as your authorizer decides; the daemon allows an org's apps to its people,
+and the deployment's to everyone.
+
+### List OAuth apps
+
+`GET /v1/owners/{owner}/providers`
+
+Lists the owner's OAuth apps, never client secrets.
+
+```sh
+curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"providers": [{"owner": "deployment", "name": "google", "source": "runtime", "issuer": "https://accounts.google.com",
+                "client_id": "868288504182-example.apps.googleusercontent.com", "client_secret": {"name": "GOOGLE_CLIENT_SECRET"},
+                "scopes": ["https://www.googleapis.com/auth/adwords"], "client_auth": "post", "flow": "browser"}]}
+```
+
+### Add an OAuth app
+
+`POST /v1/owners/{owner}/providers`
+
+Adds an OAuth app for the owner's users. Returns `201`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string, required | the account it grants; letters, digits, `-`, `_`, up to 32 |
+| `issuer` | string | the issuer URL; its metadata names the endpoints |
+| `resource` | string | the API its tokens are for; finds the issuer if none is given |
+| `authorization_endpoint`, `token_endpoint` | string | for a service without metadata |
+| `client_id` | string | the app's client ID |
+| `client_secret.name` | string | a vault secret stored as `client_secret` |
+| `client_auth` | string | `post` (default) or `basic` |
+| `scopes` | array | scopes to ask for |
+| `flow` | string | `browser` (default) or `device` |
+| `authorization_params` | object | extra browser sign-in params, like `access_type` |
+
+It requires `issuer`, `resource`, or both endpoints.
+
+```sh
+curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TOKEN" \
+  --json '{"name": "x", "authorization_endpoint": "https://x.com/i/oauth2/authorize",
+           "token_endpoint": "https://api.x.com/2/oauth2/token", "client_id": "cnh3-example",
+           "client_secret": {"name": "X_CLIENT_SECRET"}, "client_auth": "basic",
+           "scopes": ["tweet.read", "tweet.write", "offline.access"]}'
+```
+
+Returns the stored app, in the format of [List OAuth apps](#list-oauth-apps).
+
+### Remove an OAuth app
+
+`DELETE /v1/owners/{owner}/providers/{name}`
+
+Removes one of the owner's apps. Returns its last state.
+
+```sh
+curl -X DELETE $WARDRIK_URL/v1/owners/acme/providers/x -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
 ## Daemon: agents
 
 ### Make an agent
@@ -1027,65 +1091,6 @@ Removes one of the owner's targets. Returns its last state.
 
 ```sh
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/notify_targets/ops -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-## Daemon: OAuth apps
-
-### List OAuth apps
-
-`GET /v1/owners/{owner}/providers`
-
-Lists the owner's OAuth apps, never client secrets.
-
-```sh
-curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-```json
-{"providers": [{"owner": "deployment", "name": "google", "source": "runtime", "issuer": "https://accounts.google.com",
-                "client_id": "868288504182-example.apps.googleusercontent.com", "client_secret": {"name": "GOOGLE_CLIENT_SECRET"},
-                "scopes": ["https://www.googleapis.com/auth/adwords"], "client_auth": "post", "flow": "browser"}]}
-```
-
-### Add an OAuth app
-
-`POST /v1/owners/{owner}/providers`
-
-Adds an OAuth app for the owner's users. Returns `201`.
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `name` | string, required | the account it grants; letters, digits, `-`, `_`, up to 32 |
-| `issuer` | string | the issuer URL; its metadata names the endpoints |
-| `resource` | string | the API its tokens are for; finds the issuer if none is given |
-| `authorization_endpoint`, `token_endpoint` | string | for a service without metadata |
-| `client_id` | string | the app's client ID |
-| `client_secret.name` | string | a vault secret stored as `client_secret` |
-| `client_auth` | string | `post` (default) or `basic` |
-| `scopes` | array | scopes to ask for |
-| `flow` | string | `browser` (default) or `device` |
-| `authorization_params` | object | extra browser sign-in params, like `access_type` |
-
-It requires `issuer`, `resource`, or both endpoints.
-
-```sh
-curl $WARDRIK_URL/v1/owners/acme/providers -H "Authorization: Bearer $WARDRIK_TOKEN" \
-  --json '{"name": "x", "authorization_endpoint": "https://x.com/i/oauth2/authorize",
-           "token_endpoint": "https://api.x.com/2/oauth2/token", "client_id": "cnh3-example",
-           "client_secret": {"name": "X_CLIENT_SECRET"}, "client_auth": "basic",
-           "scopes": ["tweet.read", "tweet.write", "offline.access"]}'
-```
-
-Returns the stored app, in the format of [List OAuth apps](#list-oauth-apps).
-
-### Remove an OAuth app
-
-`DELETE /v1/owners/{owner}/providers/{name}`
-
-Removes one of the owner's apps. Returns its last state.
-
-```sh
-curl -X DELETE $WARDRIK_URL/v1/owners/acme/providers/x -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
 ## Daemon: connections
