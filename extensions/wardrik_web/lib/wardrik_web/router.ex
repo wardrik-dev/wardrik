@@ -70,7 +70,9 @@ defmodule WardrikWeb.Router do
   defmacro wardrik_dashboard(path, opts) do
     quote bind_quoted: [path: path, opts: opts] do
       {session_name, hooks, dashboard} =
-        WardrikWeb.Router.__dashboard__(Phoenix.Router.scoped_path(__MODULE__, path), opts)
+        __MODULE__
+        |> Phoenix.Router.scoped_path(path)
+        |> WardrikWeb.Router.__dashboard__(opts)
 
       scope path, alias: false, as: false do
         get "/assets/:asset", WardrikWeb.Assets, :show

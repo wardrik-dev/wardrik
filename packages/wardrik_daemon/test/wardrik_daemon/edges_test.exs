@@ -48,7 +48,10 @@ defmodule WardrikDaemon.EdgesTest do
     setup context do
       context = dirs(context)
       path = Path.join(context.env["WARDRIK_DATA_HOME"], "cli_token")
-      File.mkdir_p!(Path.dirname(path))
+
+      path
+      |> Path.dirname()
+      |> File.mkdir_p!()
 
       File.write!(
         path,

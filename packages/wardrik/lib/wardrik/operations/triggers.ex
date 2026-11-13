@@ -80,7 +80,9 @@ defmodule Wardrik.Operations.Triggers do
 
     delivery = [agent_id: id, name: name, request: request]
 
-    case Wardrik.Triggers.deliver(Wardrik.triggers(wardrik), delivery) do
+    triggers = Wardrik.triggers(wardrik)
+
+    case Wardrik.Triggers.deliver(triggers, delivery) do
       :ok ->
         {:ok, nil}
 
@@ -96,8 +98,8 @@ defmodule Wardrik.Operations.Triggers do
   # The next run reads in the trigger's zone, so whoever set it sees the time they meant.
   defp next(wardrik, id, trigger) do
     encoded = Trigger.encode(trigger)
-
-    scheduled = Wardrik.Triggers.list(Wardrik.triggers(wardrik), id)
+    triggers = Wardrik.triggers(wardrik)
+    scheduled = Wardrik.Triggers.list(triggers, id)
 
     case Enum.find(scheduled, fn {listed, _next_at} -> listed.name == trigger.name end) do
       {_listed, %DateTime{} = next_at} ->
@@ -114,7 +116,9 @@ defmodule Wardrik.Operations.Triggers do
   end
 
   defp set_trigger(wardrik, id, fields) do
-    case Wardrik.Triggers.set(Wardrik.triggers(wardrik), id, fields) do
+    triggers = Wardrik.triggers(wardrik)
+
+    case Wardrik.Triggers.set(triggers, id, fields) do
       {:ok, trigger} ->
         {:ok, trigger}
 
@@ -127,7 +131,9 @@ defmodule Wardrik.Operations.Triggers do
   end
 
   defp removed(wardrik, id, name) do
-    case Wardrik.Triggers.remove(Wardrik.triggers(wardrik), agent_id: id, name: name) do
+    triggers = Wardrik.triggers(wardrik)
+
+    case Wardrik.Triggers.remove(triggers, agent_id: id, name: name) do
       :ok ->
         :ok
 
@@ -152,7 +158,8 @@ defmodule Wardrik.Operations.Triggers do
        Error.new(:unavailable, "#{id}'s triggers weren't saved: #{inspect(reason)}. Try again.")}
 
   defp kept(wardrik, id, name) do
-    scheduled = Wardrik.Triggers.list(Wardrik.triggers(wardrik), id)
+    triggers = Wardrik.triggers(wardrik)
+    scheduled = Wardrik.Triggers.list(triggers, id)
 
     case Enum.find(scheduled, fn {trigger, _next_at} -> trigger.name == name end) do
       {trigger, _next_at} -> {:ok, trigger}

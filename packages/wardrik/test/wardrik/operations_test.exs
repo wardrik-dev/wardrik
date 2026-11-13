@@ -13,7 +13,8 @@ defmodule Wardrik.OperationsTest do
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{scope: owner(wardrik)}
   end
 
@@ -71,8 +72,10 @@ defmodule Wardrik.OperationsTest do
       %{"events" => all} = run!(scope, "agent.events", %{"agent" => "acme/triage"})
       newest = %{"agent" => "acme/triage", "order" => "newest", "limit" => 3}
 
+      first_page = run!(scope, "agent.events", newest)
+
       paged =
-        Stream.unfold(run!(scope, "agent.events", newest), fn
+        Stream.unfold(first_page, fn
           %{"events" => []} ->
             nil
 
@@ -522,7 +525,8 @@ defmodule Wardrik.OperationsTest do
 
   test "reads the audit", %{wardrik: wardrik, scope: scope} do
     change = {"agent.forgotten", "agents/acme%2Ftriage", %{"agent" => %{"id" => "acme/triage"}}}
-    :ok = Wardrik.EventLog.record(Wardrik.events(wardrik), change, actor: maria())
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.record(event_log, change, actor: maria())
 
     assert %{"events" => [%{"type" => "wardrik.agent.forgotten"}], "next" => next} =
              run!(scope, "audit.list", %{"limit" => 10})

@@ -108,7 +108,10 @@ defmodule WardrikDaemon.HelpTools do
   defp store(%Config{storage: {kind, _settings}}, _dirs), do: "in #{kind}"
 
   defp search(pages, query) do
-    words = String.split(String.downcase(query), ~r/\W+/u, trim: true)
+    words =
+      query
+      |> String.downcase()
+      |> String.split(~r/\W+/u, trim: true)
 
     found =
       pages

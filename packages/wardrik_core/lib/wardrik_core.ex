@@ -79,9 +79,10 @@ defmodule WardrikCore do
   @kept [:wardrik_core, :req_llm]
 
   defp load_kept do
-    for {app, _description, _vsn} <- Application.loaded_applications(),
-        kept?(app),
-        do: Code.ensure_all_loaded(Application.spec(app, :modules))
+    for {app, _description, _vsn} <- Application.loaded_applications(), kept?(app) do
+      modules = Application.spec(app, :modules)
+      Code.ensure_all_loaded(modules)
+    end
 
     :ok
   end
@@ -158,7 +159,9 @@ defmodule WardrikCore do
       {WardrikCore.Agent,
        key: durable({ids[:agent_id], ids[:conversation]}), initial_state: state}
 
-    case DurableServer.Supervisor.start_child(agents(instance), child) do
+    supervisor = agents(instance)
+
+    case DurableServer.Supervisor.start_child(supervisor, child) do
       {:ok, {pid, _meta}} -> {:ok, pid}
       {:error, reason} -> {:error, reason}
     end
@@ -197,7 +200,9 @@ defmodule WardrikCore do
   """
   @spec whereis(atom(), agent()) :: pid() | nil
   def whereis(instance \\ __MODULE__, agent) do
-    case DurableServer.Supervisor.lookup(agents(instance), durable(agent)) do
+    supervisor = agents(instance)
+
+    case DurableServer.Supervisor.lookup(supervisor, durable(agent)) do
       {pid, _meta} -> pid
       nil -> nil
     end
@@ -262,7 +267,10 @@ defmodule WardrikCore do
     instance
     |> agents()
     |> DurableServer.Supervisor.stream_all_server_info()
-    |> Enum.flat_map(fn info -> Enum.map(key(info.key), &{&1, placed(info)}) end)
+    |> Enum.flat_map(fn info ->
+      keys = key(info.key)
+      Enum.map(keys, &{&1, placed(info)})
+    end)
     |> Map.new()
   end
 
@@ -277,7 +285,11 @@ defmodule WardrikCore do
     instance
     |> agents()
     |> DurableServer.Supervisor.global_members()
-    |> Enum.flat_map(fn {durable, {pid, _meta}} -> Enum.map(key(durable), &{&1, pid}) end)
+    |> Enum.flat_map(fn {durable, {pid, _meta}} ->
+      durable
+      |> key()
+      |> Enum.map(&{&1, pid})
+    end)
     |> Map.new()
   end
 
@@ -293,8 +305,9 @@ defmodule WardrikCore do
     with {:ok, target} <- node(Keyword.fetch!(args, :to), nodes(instance)),
          :ok <- saved(instance, keyed(agent)) do
       child = {WardrikCore.Agent, key: durable(agent), initial_state: %{}}
+      supervisor = agents(instance)
 
-      case DurableServer.Supervisor.rehome_child(agents(instance), child, target_node: target) do
+      case DurableServer.Supervisor.rehome_child(supervisor, child, target_node: target) do
         {:ok, {pid, _meta}} -> {:ok, pid}
         {:error, reason} -> {:error, reason}
       end
@@ -304,7 +317,9 @@ defmodule WardrikCore do
   @doc "Stops the agent and deletes its saved state. Returns `:ok` if there's no such agent."
   @spec delete(atom(), agent()) :: :ok | {:error, term()}
   def delete(instance \\ __MODULE__, agent) do
-    case DurableServer.Supervisor.terminate_and_delete_child(agents(instance), durable(agent)) do
+    supervisor = agents(instance)
+
+    case DurableServer.Supervisor.terminate_and_delete_child(supervisor, durable(agent)) do
       :ok -> :ok
       {:error, :not_found} -> :ok
       {:error, reason} -> {:error, reason}
@@ -455,7 +470,11 @@ defmodule WardrikCore do
   """
   @spec saved_key(atom(), String.t() | {String.t(), String.t() | nil}) :: String.t()
   def saved_key(instance \\ __MODULE__, agent) do
-    %{prefix: prefix} = DurableServer.Supervisor.__get_config__(agents(instance))
+    %{prefix: prefix} =
+      instance
+      |> agents()
+      |> DurableServer.Supervisor.__get_config__()
+
     prefix <> durable(agent)
   end
 

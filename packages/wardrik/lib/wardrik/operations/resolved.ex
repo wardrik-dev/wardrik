@@ -18,14 +18,17 @@ defmodule Wardrik.Operations.Resolved do
   end
 
   defp view(wardrik, id, %Resolved{} = resolved) do
+    policy = List.wrap(resolved.policy)
+    notify = Enum.sort(resolved.notify)
+
     view = %{
       "agent" => id,
       "servers" => servers(Wardrik.mcp(wardrik), resolved.servers),
-      "policy" => Enum.map(List.wrap(resolved.policy), &Wardrik.Policy.to_json/1),
+      "policy" => Enum.map(policy, &Wardrik.Policy.to_json/1),
       "policies" =>
         Map.new(resolved.policies, fn {name, p} -> {name, Wardrik.Policy.to_json(p)} end),
       "defaults" => resolved.defaults,
-      "notify" => Enum.map(Enum.sort(resolved.notify), &target/1),
+      "notify" => Enum.map(notify, &target/1),
       "channels" => resolved.channels,
       "workspaces" =>
         Map.new(resolved.workspaces, fn {agent, access} -> {agent, to_string(access)} end)

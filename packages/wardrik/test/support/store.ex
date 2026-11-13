@@ -14,12 +14,12 @@ defmodule Wardrik.Test.Store do
 
   @doc "Returns a store named `name`, of the test's own."
   def new(name) do
-    if System.get_env("DATABASE_URL"),
-      do:
-        Wardrik.Store.scope(
-          Wardrik.Store.Ecto.new(repo: Wardrik.Store.Ecto.Repo),
-          "t#{System.unique_integer([:positive])}"
-        ),
-      else: Wardrik.Store.ETS.new(name: name)
+    if System.get_env("DATABASE_URL") do
+      [repo: Wardrik.Store.Ecto.Repo]
+      |> Wardrik.Store.Ecto.new()
+      |> Wardrik.Store.scope("t#{System.unique_integer([:positive])}")
+    else
+      Wardrik.Store.ETS.new(name: name)
+    end
   end
 end

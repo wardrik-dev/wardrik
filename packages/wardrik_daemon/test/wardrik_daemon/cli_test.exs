@@ -79,18 +79,19 @@ defmodule WardrikDaemon.CLITest do
 
   test "writes a first config and agent, keeps what's there, and starts the daemon", context do
     {context, log} = script(context)
-    File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml"))
+    config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
+    File.rm!(config)
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
 
     assert {0, output} = wardrik(context, @init ++ ~w(--org globex --model claude-sonnet-5))
     assert output =~ "ANTHROPIC_API_KEY is read from " <> context.env["WARDRIK_CONFIG_DIR"]
-    assert output =~ "Wrote " <> Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
+    assert output =~ "Wrote " <> config
     assert output =~ "agents/assistant.md"
     assert output =~ "Kept  " <> Path.join(context.env["WARDRIK_CONFIG_DIR"], "env")
     assert output =~ ~s(wardrik ask assistant "Tell me when)
     assert File.read!(log) == "start\n"
 
-    assert File.read!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")) =~
+    assert File.read!(config) =~
              "org: globex\n\ndefaults:\n  model: anthropic:claude-sonnet-5\n"
 
     assert {0, again} = wardrik(context, @init ++ ~w(--no-service))
@@ -108,8 +109,9 @@ defmodule WardrikDaemon.CLITest do
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
     bin = Path.join(context.root, "bin")
     File.mkdir_p!(bin)
-    File.write!(Path.join(bin, "claude"), "#!/bin/sh\n")
-    File.chmod!(Path.join(bin, "claude"), 0o755)
+    claude = Path.join(bin, "claude")
+    File.write!(claude, "#!/bin/sh\n")
+    File.chmod!(claude, 0o755)
     context = put_in(context.env["PATH"], bin)
     config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
 
@@ -194,7 +196,8 @@ defmodule WardrikDaemon.CLITest do
     assert failing(context, ~w(init --provider anthropic --key-from-env NOPE)) =~
              "--key-from-env NOPE names a variable this environment doesn't set."
 
-    refute File.exists?(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md"))
+    agent = Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md")
+    refute File.exists?(agent)
   end
 
   test "always gives the assistant web_search, and keys Brave in config.yaml where a key is set",
@@ -348,7 +351,8 @@ defmodule WardrikDaemon.CLITest do
         |> Enum.map(& &1["id"])
       end
 
-      assert Enum.sort(ids.(["org:acme"])) == Enum.sort([mine, triage])
+      in_org = ids.(["org:acme"])
+      assert Enum.sort(in_org) == Enum.sort([mine, triage])
       assert ids.(["user:acme/@jon"]) == [mine]
       assert ids.(["user:jon"]) == []
       assert ids.(["name:triage", "status:idle"]) == [triage]
@@ -626,7 +630,10 @@ defmodule WardrikDaemon.CLITest do
       assert {0, "Sealed GITHUB_TOKEN.\n"} =
                wardrik(context, ~w(vault put GITHUB_TOKEN --org acme --for header), "ghp_1\n")
 
-      vault = Wardrik.vault(Wardrik.Instance.fetch!(context.wardrik))
+      vault =
+        context.wardrik
+        |> Wardrik.Instance.fetch!()
+        |> Wardrik.vault()
 
       assert {:ok, "ghp_1"} =
                Wardrik.Vault.fetch(vault, %WardrikCore.Principal{id: "acme"}, "GITHUB_TOKEN")
@@ -663,7 +670,8 @@ defmodule WardrikDaemon.CLITest do
       {:ok, _stopped} = Wardrik.run(context.admin, "agent.stop", %{"agent" => triage})
       wardrik = Wardrik.Instance.fetch!(context.wardrik)
       durable = Wardrik.Store.scope(wardrik.store, "durable")
-      key = WardrikCore.saved_key(Wardrik.agents(wardrik), {triage, nil})
+      agents = Wardrik.agents(wardrik)
+      key = WardrikCore.saved_key(agents, {triage, nil})
       {value, vsn} = Wardrik.Store.lookup(durable, key)
       gone = <<131, 119, 24, "Elixir.WardrikGoneModule">>
       {:ok, _vsn} = Wardrik.Store.put(durable, key, %{value | "state" => gone}, if_vsn: vsn)
@@ -721,11 +729,16 @@ defmodule WardrikDaemon.CLITest do
 
     test "syncs a directory into an agent's files, and reads, writes and deletes one", context do
       skills = Path.join(context.root, "skills")
-      File.mkdir_p!(Path.join(skills, "triage"))
-      File.mkdir_p!(Path.join(skills, ".git"))
-      File.write!(Path.join(skills, "triage/SKILL.md"), "---\nname: triage\n---\nLook first.\n")
-      File.write!(Path.join(skills, "logo.png"), <<0xFF, 0xD8, 0xFF>>)
-      File.write!(Path.join(skills, ".git/HEAD"), "ref: main\n")
+      triage_dir = Path.join(skills, "triage")
+      git_dir = Path.join(skills, ".git")
+      skill = Path.join(triage_dir, "SKILL.md")
+      logo = Path.join(skills, "logo.png")
+      head = Path.join(git_dir, "HEAD")
+      File.mkdir_p!(triage_dir)
+      File.mkdir_p!(git_dir)
+      File.write!(skill, "---\nname: triage\n---\nLook first.\n")
+      File.write!(logo, <<0xFF, 0xD8, 0xFF>>)
+      File.write!(head, "ref: main\n")
       sync = ["agent", "files", "sync", "triage", skills, "--to", "skills"]
 
       assert {0, "Wrote 1, kept 0.\nLeft out logo.png: it isn't text.\n"} =
@@ -754,8 +767,9 @@ defmodule WardrikDaemon.CLITest do
       assert {0, "Nothing matches.\n"} =
                wardrik(context, ["agent", "files", "search", "triage", "coffee", "--limit", "2"])
 
-      File.write!(Path.join(skills, "triage/SKILL.md"), "---\nname: triage\n---\nLook twice.\n")
-      File.write!(Path.join(skills, "deploy.md"), "Ship it.\n")
+      deploy = Path.join(skills, "deploy.md")
+      File.write!(skill, "---\nname: triage\n---\nLook twice.\n")
+      File.write!(deploy, "Ship it.\n")
       put = ["agent", "files", "put", "triage", "skills/old.md", "-"]
       assert {0, "Wrote skills/old.md.\n"} = wardrik(context, put, "Old.")
 
@@ -999,8 +1013,8 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "reaches another daemon by its URL and token", context do
-      {:ok, %{url: url, secret: secret}} =
-        WardrikDaemon.CLIToken.read(Path.join(context.env["WARDRIK_DATA_HOME"], "cli_token"))
+      path = Path.join(context.env["WARDRIK_DATA_HOME"], "cli_token")
+      {:ok, %{url: url, secret: secret}} = WardrikDaemon.CLIToken.read(path)
 
       remote =
         Map.merge(context.env, %{

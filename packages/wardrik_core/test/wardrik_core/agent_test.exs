@@ -17,7 +17,8 @@ defmodule WardrikCore.AgentTest do
     def call(%WardrikCore.Context{step: :turn} = context, next, _opts) do
       trace = Map.get_lazy(context.metadata, :trace, fn -> System.unique_integer() end)
       send(WardrikCore.AgentTest, {:trace, trace})
-      next.(put_in(context.metadata[:trace], trace))
+      context = put_in(context.metadata[:trace], trace)
+      next.(context)
     end
 
     def call(context, next, _opts), do: next.(context)
@@ -246,7 +247,8 @@ defmodule WardrikCore.AgentTest do
       WardrikCore.ask(agent, "hi")
       assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :ok}}
 
-      assert [:user, :assistant] = Enum.map(WardrikCore.history(agent), & &1.role)
+      history = WardrikCore.history(agent)
+      assert [:user, :assistant] = Enum.map(history, & &1.role)
 
       :ok = WardrikCore.configure(agent, instructions: "Be kind.")
       WardrikCore.ask(agent, "hello")
@@ -403,8 +405,8 @@ defmodule WardrikCore.AgentTest do
     assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :ok}}
     assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :ok}}
 
-    assert [:user, :assistant, :tool, :user, :assistant] =
-             Enum.map(WardrikCore.history(agent), & &1.role)
+    history = WardrikCore.history(agent)
+    assert [:user, :assistant, :tool, :user, :assistant] = Enum.map(history, & &1.role)
   end
 
   test "status, history and stop" do
@@ -435,7 +437,8 @@ defmodule WardrikCore.AgentTest do
     assert_receive {[:turn, :stop],
                     %{agent_id: ^id, outcome: :ok, messages: [%{role: :assistant}]}}
 
-    assert [:user, :assistant] = Enum.map(WardrikCore.history(agent), & &1.role)
+    history = WardrikCore.history(agent)
+    assert [:user, :assistant] = Enum.map(history, & &1.role)
   end
 
   test "an ask, a park and a resume emit their lifecycle in order" do
@@ -637,7 +640,8 @@ defmodule WardrikCore.AgentTest do
              WardrikCore.Context.run(summarizing, {:step, "summary"}, &WardrikCore.generate/1)
 
     assert ReqLLM.Response.text(summarized.response) == "A summary."
-    assert [:user, :assistant] = Enum.map(WardrikCore.history(agent), & &1.role)
+    history = WardrikCore.history(agent)
+    assert [:user, :assistant] = Enum.map(history, & &1.role)
   end
 
   test "an unknown cast is ignored" do

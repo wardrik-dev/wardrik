@@ -36,7 +36,11 @@ defmodule Wardrik.Views.Runs do
 
   @doc "Folds one more event into `runs`."
   @spec apply(t(), Wardrik.Event.t() | map()) :: t()
-  def apply(runs, event), do: Runs.handle_event(Wardrik.Views.json(event), runs)
+  def apply(runs, event) do
+    event
+    |> Wardrik.Views.json()
+    |> Runs.handle_event(runs)
+  end
 
   @doc "Returns the runs, newest first."
   @spec runs(t()) :: [map()]

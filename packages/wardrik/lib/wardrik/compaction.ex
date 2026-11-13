@@ -33,8 +33,10 @@ defmodule Wardrik.Compaction do
   """
 
   @impl WardrikCore.Middleware
-  def call(%Context{step: :turn, resume: nil} = context, next, opts),
-    do: next.(compacted(context, opts))
+  def call(%Context{step: :turn, resume: nil} = context, next, opts) do
+    compacted = compacted(context, opts)
+    next.(compacted)
+  end
 
   def call(context, next, _opts), do: next.(context)
 

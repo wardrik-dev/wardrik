@@ -114,8 +114,11 @@ defmodule WardrikRest.OpenAPI.Schema do
 
   defp read_only?(field, document), do: resolve(field, document)["readOnly"] == true
 
-  defp nested(%{} = node, document, seen),
-    do: Map.delete(json(node, document, seen), "description")
+  defp nested(%{} = node, document, seen) do
+    node
+    |> json(document, seen)
+    |> Map.delete("description")
+  end
 
   defp nested(_none, _document, _seen), do: nil
 

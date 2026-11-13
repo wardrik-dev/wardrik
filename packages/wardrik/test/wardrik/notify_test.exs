@@ -55,7 +55,8 @@ defmodule Wardrik.NotifyTest do
   setup {Req.Test, :set_req_test_to_shared}
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
     {:ok, answers} = Agent.start_link(fn -> Map.get(context, :answers, []) end)
 
     targets = [
@@ -90,7 +91,8 @@ defmodule Wardrik.NotifyTest do
       seal(wardrik, {"deployment", "HOOK_SECRET"}, "shh", :signing_secret)
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -388,8 +390,10 @@ defmodule Wardrik.NotifyTest do
             {{String, []}, ~r/String isn't a notify target/},
             {:hook, ~r/isn't a target's name or \{module, opts\}/}
           ] do
+        given = giving(wardrik, %{"hook" => target})
+
         assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
-                 Wardrik.Resolver.defined(giving(wardrik, %{"hook" => target}), "acme/triage")
+                 Wardrik.Resolver.defined(given, "acme/triage")
 
         assert message =~ why
       end

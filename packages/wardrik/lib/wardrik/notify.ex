@@ -139,8 +139,10 @@ defmodule Wardrik.Notify do
       #=> %{to: ["ops"], on: [:parked, :failed]}
   """
   @spec route(map()) :: route() | nil
-  def route(%{"notify" => %{"to" => to} = notify}),
-    do: %{to: List.wrap(to), on: Enum.map(Map.get(notify, "on", ~w(parked failed)), &kind/1)}
+  def route(%{"notify" => %{"to" => to} = notify}) do
+    kinds = Map.get(notify, "on", ~w(parked failed))
+    %{to: List.wrap(to), on: Enum.map(kinds, &kind/1)}
+  end
 
   def route(%{"notify" => to}) when is_binary(to) or is_list(to),
     do: %{to: List.wrap(to), on: [:parked, :failed]}

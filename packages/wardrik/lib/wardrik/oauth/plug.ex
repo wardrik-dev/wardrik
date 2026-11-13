@@ -57,10 +57,12 @@ defmodule Wardrik.OAuth.Plug do
   end
 
   def call(%Plug.Conn{method: "GET", path_info: ["client"]} = conn, %{oauth: oauth}) do
+    document = Wardrik.OAuth.client_document(oauth)
+
     conn
     |> put_resp_content_type("application/json")
     |> put_resp_header("cache-control", "public, max-age=3600")
-    |> send_resp(200, JSON.encode!(Wardrik.OAuth.client_document(oauth)))
+    |> send_resp(200, JSON.encode!(document))
   end
 
   def call(conn, _opts), do: send_resp(conn, 404, "Not found")

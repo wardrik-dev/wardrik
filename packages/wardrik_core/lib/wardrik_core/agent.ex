@@ -186,7 +186,10 @@ defmodule WardrikCore.Agent do
     case State.waiting(state) do
       {:tool_calls, waiting} ->
         ids = for {call, _outcome} <- waiting, do: call.id
-        Enum.all?(Map.keys(input), &(&1 in ids))
+
+        input
+        |> Map.keys()
+        |> Enum.all?(&(&1 in ids))
 
       _other ->
         false
@@ -263,8 +266,10 @@ defmodule WardrikCore.Agent do
     |> Enum.reverse()
   end
 
-  defp message_id,
-    do: "msg_" <> Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false)
+  defp message_id do
+    random = :crypto.strong_rand_bytes(12)
+    "msg_" <> Base.url_encode64(random, padding: false)
+  end
 
   defp log_ended(state, {:park, reason, _context}),
     do: Logger.info("Turn parked for agent #{state.agent_id}: #{inspect(reason)}")

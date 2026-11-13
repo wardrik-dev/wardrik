@@ -68,7 +68,10 @@ defmodule WardrikDaemon.CLI.Table do
 
   # Padded as text, so a colour never shifts the columns. The last cell isn't padded.
   defp line(row, widths) do
-    {last, cells} = List.pop_at(Enum.zip(row, widths), -1)
+    {last, cells} =
+      row
+      |> Enum.zip(widths)
+      |> List.pop_at(-1)
 
     padded =
       for {{text, style}, width} <- cells,

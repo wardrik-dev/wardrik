@@ -52,8 +52,8 @@ defmodule WardrikCore.KeysTest do
       {:ok, answer("Hi.")}
     end)
 
-    assert {:ok, _called} =
-             WardrikCore.generate(context(%{{"acme", "ANTHROPIC_API_KEY"} => "sk-acme"}))
+    with_key = context(%{{"acme", "ANTHROPIC_API_KEY"} => "sk-acme"})
+    assert {:ok, _called} = WardrikCore.generate(with_key)
 
     expect(ReqLLM, :stream_text, fn _model, _messages, opts ->
       refute Keyword.has_key?(opts, :api_key)
@@ -62,7 +62,8 @@ defmodule WardrikCore.KeysTest do
       {:ok, answer("Hi.")}
     end)
 
-    assert {:ok, _called} = WardrikCore.generate(context(%{}))
+    without_key = context(%{})
+    assert {:ok, _called} = WardrikCore.generate(without_key)
   end
 
   test "gives a model call the agent's model_options over the defaults" do

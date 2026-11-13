@@ -168,8 +168,10 @@ defmodule WardrikDaemon.Running do
   end
 
   defp read(dirs, env, vault) do
+    path = Dirs.config(dirs, "policies")
+
     with {:ok, config} <- Config.read(dirs, env, vault),
-         {:ok, policies} <- Policies.read(Dirs.config(dirs, "policies")),
+         {:ok, policies} <- Policies.read(path),
          do: {:ok, {config, policies}}
   end
 

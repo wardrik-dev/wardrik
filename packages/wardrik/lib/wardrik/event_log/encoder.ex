@@ -28,10 +28,14 @@ defmodule Wardrik.EventLog.Encoder do
 
   def encode(%Event{}, _deployment), do: []
 
-  defp described(%Event{name: [:wardrik, noun, verb], metadata: metadata}),
-    do: [
-      {"#{noun}.#{verb}", subject(noun, metadata), Value.json(Map.drop(metadata, @envelope))}
-    ]
+  defp described(%Event{name: [:wardrik, noun, verb], metadata: metadata}) do
+    data =
+      metadata
+      |> Map.drop(@envelope)
+      |> Value.json()
+
+    [{"#{noun}.#{verb}", subject(noun, metadata), data}]
+  end
 
   defp described(%Event{name: [:wardrik_core | name]} = event), do: core(name, event)
   defp described(_event), do: []
@@ -80,11 +84,10 @@ defmodule Wardrik.EventLog.Encoder do
   defp core([:message, :retrying], %{metadata: metadata}),
     do: [about_message("message.retrying", metadata.span, retried(metadata))]
 
-  defp core([:tool_call, :retrying], %{metadata: %{call: call} = metadata}),
-    do: [
-      {"tool_call.retrying", "tool_calls/" <> call.id,
-       Map.put(retried(metadata), "tool", tool(call))}
-    ]
+  defp core([:tool_call, :retrying], %{metadata: %{call: call} = metadata}) do
+    retried = retried(metadata)
+    [{"tool_call.retrying", "tool_calls/" <> call.id, Map.put(retried, "tool", tool(call))}]
+  end
 
   defp core([:step, :start], %{metadata: metadata}), do: step_started(metadata.step, metadata)
   defp core([:step, :stop], event), do: step_stopped(event.metadata.step, event)

@@ -247,8 +247,11 @@ defmodule WardrikCore.ToolRunnerTest do
     @behaviour WardrikCore.Middleware
 
     @impl true
-    def call(context, next, _opts),
-      do: next.(Context.put_private(context, :secret, "s3cret"))
+    def call(context, next, _opts) do
+      context
+      |> Context.put_private(:secret, "s3cret")
+      |> next.()
+    end
   end
 
   test "private data set during a tool call stays with that call", %{context: context} do

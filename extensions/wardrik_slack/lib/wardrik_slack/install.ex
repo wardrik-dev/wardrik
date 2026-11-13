@@ -177,8 +177,7 @@ defmodule WardrikSlack.Install do
     do: byte_size(given) == byte_size(expected) and :crypto.hash_equals(given, expected)
 
   defp mac(payload, secret) do
-    :hmac
-    |> :crypto.mac(:sha256, secret, payload)
-    |> Base.url_encode64(padding: false)
+    mac = :crypto.mac(:hmac, :sha256, secret, payload)
+    Base.url_encode64(mac, padding: false)
   end
 end

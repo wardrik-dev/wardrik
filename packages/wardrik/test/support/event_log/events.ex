@@ -54,7 +54,11 @@ defmodule Wardrik.EventLog.Test.Protocol do
   import ExUnit.Assertions
 
   def valid!(cloud_event) do
-    envelope = JSV.build!(WardrikProtocol.schema("cloudevent"))
+    envelope =
+      "cloudevent"
+      |> WardrikProtocol.schema()
+      |> JSV.build!()
+
     assert {:ok, _event} = JSV.validate(cloud_event, envelope)
     "wardrik." <> type = cloud_event["type"]
 

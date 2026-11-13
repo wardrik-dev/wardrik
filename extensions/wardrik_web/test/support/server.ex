@@ -120,19 +120,21 @@ defmodule WardrikWeb.Test.Server do
   defp reply("interrupts.list", _input),
     do: {:ok, %{"interrupts" => [%{"agent" => %{"id" => "triage"}, "interrupt" => @interrupt}]}}
 
-  defp reply("agent.read", %{"agent" => "triage"}),
-    do:
-      {:ok,
-       Map.merge(hd(@agents), %{
-         "cursor" => "c1",
-         "interrupts" => [@interrupt],
-         "activity" => %{
-           "since" => "2026-11-10T18:00:00Z",
-           "doing" => [
-             %{"type" => "wardrik.tool_call.started", "tool" => %{"name" => "github__search"}}
-           ]
-         }
-       })}
+  defp reply("agent.read", %{"agent" => "triage"}) do
+    agent = hd(@agents)
+
+    {:ok,
+     Map.merge(agent, %{
+       "cursor" => "c1",
+       "interrupts" => [@interrupt],
+       "activity" => %{
+         "since" => "2026-11-10T18:00:00Z",
+         "doing" => [
+           %{"type" => "wardrik.tool_call.started", "tool" => %{"name" => "github__search"}}
+         ]
+       }
+     })}
+  end
 
   defp reply("agent.runs", _input),
     do:

@@ -223,7 +223,17 @@ defmodule Wardrik.Testing.Server do
     end
   end
 
-  defp state(name), do: Agent.get(state_name(name), & &1)
-  defp update(name, change), do: Agent.update(state_name(name), change)
+  defp state(name) do
+    name
+    |> state_name()
+    |> Agent.get(& &1)
+  end
+
+  defp update(name, change) do
+    name
+    |> state_name()
+    |> Agent.update(change)
+  end
+
   defp state_name(name), do: Module.concat(name, Wardrik.Testing)
 end

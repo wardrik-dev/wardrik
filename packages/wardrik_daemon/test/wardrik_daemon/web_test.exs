@@ -125,12 +125,10 @@ defmodule WardrikDaemon.WebTest do
     assert render_submit(tokens, "create", %{"input" => input}) =~ "laptop"
     render_click(tokens, "dismiss", %{})
 
+    issued = WardrikDaemon.Tokens.list(context.daemon_store)
+
     [%{"id" => id}] =
-      for token <-
-            Enum.map(
-              WardrikDaemon.Tokens.list(context.daemon_store),
-              &WardrikDaemon.Tokens.json/1
-            ),
+      for token <- Enum.map(issued, &WardrikDaemon.Tokens.json/1),
           token["name"] == "laptop",
           do: token
 

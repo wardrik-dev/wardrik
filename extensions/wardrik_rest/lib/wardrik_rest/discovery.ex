@@ -68,7 +68,8 @@ defmodule WardrikRest.Discovery do
   end
 
   defp spec(%{"kind" => "discovery#restDescription"} = document) do
-    keyed = Map.has_key?(Map.get(document, "parameters", %{}), "key")
+    parameters = Map.get(document, "parameters", %{})
+    keyed = Map.has_key?(parameters, "key")
     schemas = Map.get(document, "schemas", %{})
     names = Schema.names(schemas)
     read = %{document: document, keyed: keyed, schemas: schemas, names: names}
@@ -90,9 +91,13 @@ defmodule WardrikRest.Discovery do
   defp spec(_document), do: {:error, "It isn't a Discovery document."}
 
   defp methods(resource) do
-    nested = Map.values(Map.get(resource, "resources", %{}))
+    nested =
+      resource
+      |> Map.get("resources", %{})
+      |> Map.values()
 
-    Map.values(Map.get(resource, "methods", %{})) ++ Enum.flat_map(nested, &methods/1)
+    methods = Map.get(resource, "methods", %{})
+    Map.values(methods) ++ Enum.flat_map(nested, &methods/1)
   end
 
   defp operation(method, %{document: document} = read) do

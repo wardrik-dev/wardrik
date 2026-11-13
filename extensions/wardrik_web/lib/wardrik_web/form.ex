@@ -174,7 +174,9 @@ defmodule WardrikWeb.Form do
   end
 
   defp read(:union, schema, %{@variant => variant} = params, path) when variant != "" do
-    case Enum.fetch!(alternatives(schema), String.to_integer(variant)) do
+    alternatives = alternatives(schema)
+
+    case Enum.fetch!(alternatives, String.to_integer(variant)) do
       %{"const" => const} -> {:ok, const}
       alternative -> read(kind(alternative), alternative, params["value"], path)
     end

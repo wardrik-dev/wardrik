@@ -60,7 +60,11 @@ defmodule Wardrik.Workers do
 
   @doc false
   @spec group(atom() | Wardrik.t()) :: atom()
-  def group(instance), do: Module.concat(Instance.name(instance), Workers)
+  def group(instance) do
+    instance
+    |> Instance.name()
+    |> Module.concat(Workers)
+  end
 
   @impl WardrikCore.Capability
   def tools(%Context{agent_id: id}, opts) do
@@ -117,16 +121,19 @@ defmodule Wardrik.Workers do
   defp hints(_annotations), do: %{}
 
   defp since(group) do
-    case List.keyfind(Group.local_members(group, @group), self(), 0) do
+    members = Group.local_members(group, @group)
+
+    case List.keyfind(members, self(), 0) do
       {_worker, %{since: since}} -> since
       nil -> System.system_time()
     end
   end
 
   defp offered(wardrik, id) do
+    group = group(wardrik)
+
     offers =
-      for {worker, %{scope: scope, tools: tools, since: since}} <-
-            Group.members(group(wardrik), @group),
+      for {worker, %{scope: scope, tools: tools, since: since}} <- Group.members(group, @group),
           serves?(wardrik, scope, id),
           tool <- tools,
           do: %{worker: worker, principal: scope.principal.id, since: since, tool: tool}

@@ -328,9 +328,13 @@ if Code.ensure_loaded?(Req) do
           {objects, next} = listing(body)
           pages = [objects | pages]
 
-          if next,
-            do: list(store, prefix, next, pages),
-            else: Enum.concat(Enum.reverse(pages))
+          if next do
+            list(store, prefix, next, pages)
+          else
+            pages
+            |> Enum.reverse()
+            |> Enum.concat()
+          end
 
         {:ok, response} ->
           raise Error.exception(response)
@@ -348,11 +352,16 @@ if Code.ensure_loaded?(Req) do
 
       objects =
         for contents <- :xmerl_xpath.string(~c"//Contents", document) do
-          {field(contents, ~c"Key/text()"), String.to_integer(field(contents, ~c"Size/text()")),
+          size = field(contents, ~c"Size/text()")
+
+          {field(contents, ~c"Key/text()"), String.to_integer(size),
            field(contents, ~c"ETag/text()")}
         end
 
-      truncated = Enum.map(:xmerl_xpath.string(~c"//IsTruncated/text()", document), &text/1)
+      truncated =
+        ~c"//IsTruncated/text()"
+        |> :xmerl_xpath.string(document)
+        |> Enum.map(&text/1)
 
       next =
         case {truncated, :xmerl_xpath.string(~c"//NextContinuationToken/text()", document)} do

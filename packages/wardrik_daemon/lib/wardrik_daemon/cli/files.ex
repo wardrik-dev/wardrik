@@ -159,7 +159,10 @@ defmodule WardrikDaemon.CLI.Files do
     do: Context.call(cx, "agent.file_put", %{"agent" => id, "path" => path, "content" => content})
 
   defp synced([agent, dir], flags, cx) do
-    prefix = String.trim(Map.get(flags, :to, ""), "/")
+    prefix =
+      flags
+      |> Map.get(:to, "")
+      |> String.trim("/")
 
     with :ok <- directory(dir),
          {:ok, id} <- Context.agent(cx, agent),
@@ -198,7 +201,10 @@ defmodule WardrikDaemon.CLI.Files do
       dir
       |> walk("")
       |> Enum.sort()
-      |> Enum.map(&{&1, File.read!(Path.join(dir, &1))})
+      |> Enum.map(fn relative ->
+        path = Path.join(dir, relative)
+        {relative, File.read!(path)}
+      end)
       |> Enum.split_with(fn {_relative, content} -> String.valid?(content) end)
 
     {Map.new(text, fn {relative, content} -> {joined(prefix, relative), content} end),
@@ -212,7 +218,8 @@ defmodule WardrikDaemon.CLI.Files do
     |> Enum.reject(&String.starts_with?(&1, "."))
     |> Enum.flat_map(fn name ->
       inner = joined(relative, name)
-      if File.dir?(Path.join(dir, inner)), do: walk(dir, inner), else: [inner]
+      path = Path.join(dir, inner)
+      if File.dir?(path), do: walk(dir, inner), else: [inner]
     end)
   end
 

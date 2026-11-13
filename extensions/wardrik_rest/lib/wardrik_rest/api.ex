@@ -314,7 +314,9 @@ defmodule WardrikRest.API do
   defp place?(_other), do: false
 
   defp schemes(spec, auth) do
-    case Enum.reject(Map.keys(auth), &Map.has_key?(spec.schemes, &1)) do
+    names = Map.keys(auth)
+
+    case Enum.reject(names, &Map.has_key?(spec.schemes, &1)) do
       [] ->
         :ok
 
@@ -349,7 +351,10 @@ defmodule WardrikRest.API do
          do: {:ok, offered}
   end
 
-  defp fits?(prefix, operation), do: String.length(tool_name(prefix, operation)) <= @name_limit
+  defp fits?(prefix, operation) do
+    name = tool_name(prefix, operation)
+    String.length(name) <= @name_limit
+  end
 
   defp named(only, spec, signed) do
     exact = Enum.reject(only, &String.contains?(&1, "*"))

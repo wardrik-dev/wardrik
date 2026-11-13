@@ -9,15 +9,22 @@ defmodule Wardrik.Vault.Lookup do
   def fetch(instance, args) do
     {owner, name, opts} = named(args)
 
-    with {:ok, wardrik} <- sealing(instance),
-         do: Wardrik.Vault.fetch(Wardrik.vault(wardrik), principal(owner), name, opts)
+    with {:ok, wardrik} <- sealing(instance) do
+      vault = Wardrik.vault(wardrik)
+      Wardrik.Vault.fetch(vault, principal(owner), name, opts)
+    end
   end
 
   @spec list(atom() | Wardrik.t()) :: [{String.t(), String.t(), Wardrik.Vault.kind()}]
   def list(instance) do
     case sealing(instance) do
-      {:ok, wardrik} -> Wardrik.Vault.list(Wardrik.vault(wardrik))
-      {:error, :no_keys} -> []
+      {:ok, wardrik} ->
+        wardrik
+        |> Wardrik.vault()
+        |> Wardrik.Vault.list()
+
+      {:error, :no_keys} ->
+        []
     end
   end
 
@@ -55,7 +62,12 @@ defmodule Wardrik.Vault.Lookup do
   defp resolved_pair(_wardrik, _what, pair), do: pair
 
   defp value(%Wardrik{vault_keys: []}, _ref), do: {:error, :no_keys}
-  defp value(wardrik, ref), do: Wardrik.Vault.value(Wardrik.vault(wardrik), ref)
+
+  defp value(wardrik, ref) do
+    wardrik
+    |> Wardrik.vault()
+    |> Wardrik.Vault.value(ref)
+  end
 
   defp sealing(instance) do
     case Wardrik.Instance.fetch!(instance) do

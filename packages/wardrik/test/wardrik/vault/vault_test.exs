@@ -226,7 +226,12 @@ defmodule Wardrik.VaultTest do
 
     {:ok, _vsn} = Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "github", value: "c"})
 
-    assert Enum.sort(Wardrik.Vault.list(vault)) == [
+    listed =
+      vault
+      |> Wardrik.Vault.list()
+      |> Enum.sort()
+
+    assert listed == [
              {"org:acme", "github", :secret},
              {"user:jon", "github", :grant},
              {"user:jon", "linear/api", :secret}
@@ -239,30 +244,38 @@ defmodule Wardrik.VaultTest do
 
   describe "as an agent's credentials" do
     test "resolves a secret", %{vault: vault} do
+      github = credential("github", @jon)
+
       {:ok, _vsn} =
         Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "ghp_secret"})
 
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "ghp_secret"}
+      assert Wardrik.Vault.resolve(github, vault) == {:ok, "ghp_secret"}
     end
 
     test "renews a grant through its grants", %{vault: vault} do
+      github = credential("github", @jon)
+
       {:ok, vsn} =
         Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
           kind: :grant
         )
 
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "renewed token"}
+      assert Wardrik.Vault.resolve(github, vault) == {:ok, "renewed token"}
       assert_received {:renew, "github", %{value: "token", vsn: ^vsn}}
     end
 
     test "asks for a name nobody holds", %{vault: vault} do
-      assert Wardrik.Vault.resolve(credential("github", @jon), vault) ==
+      github = credential("github", @jon)
+
+      assert Wardrik.Vault.resolve(github, vault) ==
                {:authorize, "https://example.com/authorize/github"}
 
       assert_received {:ask, "github", "user:jon"}
     end
 
     test "asks again for a grant it can't unseal", %{vault: vault, store: store} do
+      github = credential("github", @jon)
+
       {:ok, _vsn} =
         Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
           kind: :grant
@@ -272,11 +285,14 @@ defmodule Wardrik.VaultTest do
 
       assert capture_log(fn ->
                assert {:authorize, _url} =
-                        Wardrik.Vault.resolve(credential("github", @jon), rotated)
+                        Wardrik.Vault.resolve(github, rotated)
              end) =~ "asking again"
     end
 
     test "tells its grants a grant was refused, and ignores a refused secret", %{vault: vault} do
+      github = credential("github", @jon)
+      linear = credential("linear", @jon)
+
       {:ok, _vsn} =
         Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "github", value: "token"},
           kind: :grant
@@ -285,18 +301,21 @@ defmodule Wardrik.VaultTest do
       {:ok, _vsn} =
         Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "linear", value: "secret"})
 
-      assert :ok = Wardrik.Vault.refused(credential("github", @jon), vault)
-      assert :ok = Wardrik.Vault.refused(credential("linear", @jon), vault)
+      assert :ok = Wardrik.Vault.refused(github, vault)
+      assert :ok = Wardrik.Vault.refused(linear, vault)
       assert_received {:refused, "github"}
       refute_received {:refused, "linear"}
     end
 
     test "resolves nothing without a principal, or without grants", %{vault: vault, store: store} do
-      assert Wardrik.Vault.resolve(credential("github", nil), vault) == {:error, :no_principal}
-      assert Wardrik.Vault.refused(credential("github", nil), vault) == :ok
+      unowned = credential("github", nil)
+      github = credential("github", @jon)
+
+      assert Wardrik.Vault.resolve(unowned, vault) == {:error, :no_principal}
+      assert Wardrik.Vault.refused(unowned, vault) == :ok
 
       plain = start_vault(store, [Wardrik.Vault.generate_key()], nil)
-      assert Wardrik.Vault.resolve(credential("github", @jon), plain) == {:error, :not_found}
+      assert Wardrik.Vault.resolve(github, plain) == {:error, :not_found}
     end
 
     test "parks a tool's call on the sign-in its grants ask for", %{vault: vault} do

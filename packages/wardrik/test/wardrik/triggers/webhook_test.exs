@@ -9,7 +9,8 @@ defmodule Wardrik.Triggers.WebhookTest do
     do: %{headers: headers, body: body, path_secret: path_secret}
 
   defp signed(id, at, body) do
-    signature = Base.encode64(:crypto.mac(:hmac, :sha256, "key", "#{id}.#{at}.#{body}"))
+    mac = :crypto.mac(:hmac, :sha256, "key", "#{id}.#{at}.#{body}")
+    signature = Base.encode64(mac)
 
     %{
       "webhook-id" => id,
@@ -21,14 +22,17 @@ defmodule Wardrik.Triggers.WebhookTest do
   test "takes the shared secret as a bearer token, or at the end of the path" do
     shared = [verify: :shared, secret: "s3cret", now: @now]
 
-    assert :ok = Webhook.verify(request(%{"authorization" => "Bearer s3cret"}), shared)
+    request = request(%{"authorization" => "Bearer s3cret"})
+    assert :ok = Webhook.verify(request, shared)
 
-    assert :ok = Webhook.verify(request(%{}, "{}", "s3cret"), shared)
+    request = request(%{}, "{}", "s3cret")
+    assert :ok = Webhook.verify(request, shared)
 
-    assert {:error, "it doesn't present the secret"} =
-             Webhook.verify(request(%{"authorization" => "Bearer nope"}), shared)
+    request = request(%{"authorization" => "Bearer nope"})
+    assert {:error, "it doesn't present the secret"} = Webhook.verify(request, shared)
 
-    assert {:error, _why} = Webhook.verify(request(%{}), shared)
+    request = request(%{})
+    assert {:error, _why} = Webhook.verify(request, shared)
   end
 
   test "checks a Standard Webhooks signature, and how old it is" do
@@ -39,27 +43,34 @@ defmodule Wardrik.Triggers.WebhookTest do
     fresh = signed("msg_1", at, "{}")
     stale = signed("msg_1", at - 600, "{}")
 
-    assert :ok = Webhook.verify(request(fresh), standard)
+    request = request(fresh)
+    assert :ok = Webhook.verify(request, standard)
 
-    assert {:error, "its signature doesn't match"} =
-             Webhook.verify(request(fresh, "{\"x\":1}"), standard)
+    request = request(fresh, "{\"x\":1}")
+    assert {:error, "its signature doesn't match"} = Webhook.verify(request, standard)
 
-    assert {:error, "it was signed too long ago"} = Webhook.verify(request(stale), standard)
+    request = request(stale)
+    assert {:error, "it was signed too long ago"} = Webhook.verify(request, standard)
 
-    assert {:error, "it has no webhook-id header"} = Webhook.verify(request(%{}), standard)
+    request = request(%{})
+    assert {:error, "it has no webhook-id header"} = Webhook.verify(request, standard)
 
     headers = %{signed("msg_1", at, "{}") | "webhook-timestamp" => "soon"}
 
-    assert {:error, "its webhook-timestamp isn't a time"} =
-             Webhook.verify(request(headers), standard)
+    request = request(headers)
+    assert {:error, "its webhook-timestamp isn't a time"} = Webhook.verify(request, standard)
   end
 
   test "names a request by its idempotency key, its webhook id, or its body" do
-    assert Webhook.id(request(%{"idempotency-key" => "k", "webhook-id" => "w"})) == "k"
-    assert Webhook.id(request(%{"webhook-id" => "w"})) == "w"
+    request = request(%{"idempotency-key" => "k", "webhook-id" => "w"})
+    assert Webhook.id(request) == "k"
+    request = request(%{"webhook-id" => "w"})
+    assert Webhook.id(request) == "w"
 
-    assert Webhook.id(request(%{}, "{}")) ==
-             Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower)
+    request = request(%{}, "{}")
+
+    hash = :crypto.hash(:sha256, "{}")
+    assert Webhook.id(request) == Base.encode16(hash, case: :lower)
   end
 
   test "writes the body under the prompt, its first 32,768 characters" do

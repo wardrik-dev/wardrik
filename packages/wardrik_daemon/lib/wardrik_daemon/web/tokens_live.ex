@@ -72,7 +72,8 @@ defmodule WardrikDaemon.Web.TokensLive do
 
     case Allowed.authorized(scope, "token.read", {:token, "*"}) do
       :ok ->
-        assign(socket, tokens: Enum.map(Tokens.list(daemon.store), &Tokens.json/1), error: nil)
+        tokens = Tokens.list(daemon.store)
+        assign(socket, tokens: Enum.map(tokens, &Tokens.json/1), error: nil)
 
       {:error, error} ->
         assign(socket, tokens: [], error: error.message)

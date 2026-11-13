@@ -5,8 +5,13 @@ defmodule WardrikDaemon.EnvFile do
   @spec load(Path.t(), %{String.t() => String.t()}) :: %{String.t() => String.t()}
   def load(path, env) do
     case File.read(path) do
-      {:ok, text} -> Map.merge(variables(text), env)
-      {:error, _reason} -> env
+      {:ok, text} ->
+        text
+        |> variables()
+        |> Map.merge(env)
+
+      {:error, _reason} ->
+        env
     end
   end
 
@@ -34,7 +39,10 @@ defmodule WardrikDaemon.EnvFile do
   end
 
   defp variable(line) do
-    line = String.replace_prefix(String.trim(line), "export ", "")
+    line =
+      line
+      |> String.trim()
+      |> String.replace_prefix("export ", "")
 
     case String.split(line, "=", parts: 2) do
       ["#" <> _comment | _rest] ->

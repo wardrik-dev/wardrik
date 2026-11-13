@@ -138,10 +138,12 @@ defmodule WardrikRest.OpenAPI do
 
     case body(document, operation, taken) do
       {:ok, encoding, body} ->
+        text = text(path)
+
         %Operation{
           name: name(operation["operationId"], verb, path),
           method: method,
-          path: String.trim_leading(text(path), "/"),
+          path: String.trim_leading(text, "/"),
           description: description(operation, verb, path),
           parameters: parameters ++ body,
           security: security(operation["security"] || document["security"], schemes),
@@ -258,7 +260,8 @@ defmodule WardrikRest.OpenAPI do
 
   defp security(requirements, schemes) when is_list(requirements) do
     for %{} = requirement <- requirements,
-        names = Enum.sort(Map.keys(requirement)),
+        keys = Map.keys(requirement),
+        names = Enum.sort(keys),
         Enum.all?(names, &Map.has_key?(schemes, &1)),
         uniq: true,
         do: names
@@ -285,8 +288,9 @@ defmodule WardrikRest.OpenAPI do
   # Names made from paths, or ids that differ only in punctuation, can repeat.
   defp unique(operations) do
     {unique, _taken} =
-      Enum.map_reduce(Enum.sort_by(operations, &{&1.name, &1.path, &1.method}), %{}, fn op,
-                                                                                        taken ->
+      operations
+      |> Enum.sort_by(&{&1.name, &1.path, &1.method})
+      |> Enum.map_reduce(%{}, fn op, taken ->
         count = Map.get(taken, op.name, 0)
         name = if count == 0, do: op.name, else: "#{op.name}_#{count + 1}"
         {%{op | name: name}, Map.put(taken, op.name, count + 1)}

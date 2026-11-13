@@ -198,8 +198,10 @@ defmodule WardrikWeb.AgentLive do
   # agent.events returns the oldest events first. Start from the cursor that events.head returns.
   defp newest(scope, input) do
     with {:ok, %{"events" => events}} <-
-           Wardrik.Scope.run(scope, "agent.events", Map.put(input, "limit", 500)),
-         do: {:ok, %{"events" => Enum.reverse(Enum.take(events, -100))}}
+           Wardrik.Scope.run(scope, "agent.events", Map.put(input, "limit", 500)) do
+      latest = Enum.take(events, -100)
+      {:ok, %{"events" => Enum.reverse(latest)}}
+    end
   end
 
   # Show Move only when there's another node and the scope can list nodes.

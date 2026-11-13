@@ -87,8 +87,12 @@ defmodule WardrikDaemon.CLI.Decide do
   defp card(cx, interrupt, arguments) do
     arguments =
       case arguments do
-        empty when empty in [nil, %{}] -> []
-        arguments -> [Owl.Data.tag(pretty(arguments), :light_black)]
+        empty when empty in [nil, %{}] ->
+          []
+
+        arguments ->
+          pretty = pretty(arguments)
+          [Owl.Data.tag(pretty, :light_black)]
       end
 
     [why(interrupt, arguments), held(interrupt), arguments]

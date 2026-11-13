@@ -45,7 +45,8 @@ defmodule Wardrik.Spending do
   @spec by_agent(Wardrik.t(), [String.t()]) :: %{String.t() => %{String.t() => number()}}
   def by_agent(wardrik, ids) do
     today = today()
-    found = Wardrik.Store.lookup_many(store(wardrik), Enum.map(ids, &key/1))
+    store = store(wardrik)
+    found = Wardrik.Store.lookup_many(store, Enum.map(ids, &key/1))
 
     Map.new(ids, fn id ->
       case found[key(id)] do

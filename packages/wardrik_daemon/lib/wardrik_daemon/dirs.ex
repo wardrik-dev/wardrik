@@ -27,19 +27,14 @@ defmodule WardrikDaemon.Dirs do
   @doc "Returns the directories `env`, a map of environment variables, names."
   @spec new(%{String.t() => String.t()}) :: t()
   def new(env) do
-    config =
-      env["WARDRIK_CONFIG_DIR"] || Path.join(xdg(env, "XDG_CONFIG_HOME", ".config"), "wardrik")
-
-    data_home =
-      env["WARDRIK_DATA_HOME"] || Path.join(xdg(env, "XDG_DATA_HOME", ".local/share"), "wardrik")
+    config = env["WARDRIK_CONFIG_DIR"] || wardrik(env, "XDG_CONFIG_HOME", ".config")
+    data_home = env["WARDRIK_DATA_HOME"] || wardrik(env, "XDG_DATA_HOME", ".local/share")
 
     %__MODULE__{
       config: config,
       data: env["WARDRIK_DATA_DIR"] || Path.join(data_home, "store"),
       data_home: data_home,
-      state:
-        env["WARDRIK_STATE_DIR"] ||
-          Path.join(xdg(env, "XDG_STATE_HOME", ".local/state"), "wardrik"),
+      state: env["WARDRIK_STATE_DIR"] || wardrik(env, "XDG_STATE_HOME", ".local/state"),
       env_file: env["WARDRIK_ENV_FILE"] || Path.join(config, "env")
     }
   end
@@ -51,6 +46,12 @@ defmodule WardrikDaemon.Dirs do
   @doc "Returns the path of `name` in the data home, as `cli_token`."
   @spec data_home(t(), String.t()) :: Path.t()
   def data_home(%__MODULE__{data_home: data_home}, name), do: Path.join(data_home, name)
+
+  defp wardrik(env, variable, fallback) do
+    env
+    |> xdg(variable, fallback)
+    |> Path.join("wardrik")
+  end
 
   defp xdg(env, variable, fallback),
     do: env[variable] || Path.join(env["HOME"] || System.user_home!(), fallback)

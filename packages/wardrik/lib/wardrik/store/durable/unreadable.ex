@@ -53,7 +53,9 @@ defmodule Wardrik.Store.Durable.Unreadable do
   end
 
   defp beam(text) do
-    case :code.where_is_file(String.to_charlist(text <> ".beam")) do
+    file = String.to_charlist(text <> ".beam")
+
+    case :code.where_is_file(file) do
       :non_existing -> []
       path -> [path]
     end

@@ -34,7 +34,8 @@ defmodule WardrikDaemon.ChannelMembersTest do
 
   defp workspace(context, name) do
     {:ok, {adapter, opts}} = Wardrik.Operations.Channels.fetch(context.wardrik, name)
-    {:ok, workspace} = Wardrik.Chat.workspace(Wardrik.Chat.channel(adapter, opts), "T1")
+    channel = Wardrik.Chat.channel(adapter, opts)
+    {:ok, workspace} = Wardrik.Chat.workspace(channel, "T1")
     workspace
   end
 

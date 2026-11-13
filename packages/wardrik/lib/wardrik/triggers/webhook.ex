@@ -51,7 +51,9 @@ defmodule Wardrik.Triggers.Webhook do
          :ok <- recent(timestamp, now) do
       expected = signature(secret, "#{id}.#{timestamp}.#{body}")
 
-      if Enum.any?(String.split(signatures, " "), &same?(&1, "v1," <> expected)),
+      sent = String.split(signatures, " ")
+
+      if Enum.any?(sent, &same?(&1, "v1," <> expected)),
         do: :ok,
         else: {:error, "its signature doesn't match"}
     end
@@ -60,8 +62,12 @@ defmodule Wardrik.Triggers.Webhook do
   @doc "Returns the request's id: its `Idempotency-Key`, its `webhook-id`, or a SHA-256 of its body."
   @spec id(request()) :: String.t()
   def id(%{headers: headers, body: body}) do
-    headers["idempotency-key"] || headers["webhook-id"] ||
-      Base.encode16(:crypto.hash(:sha256, body), case: :lower)
+    headers["idempotency-key"] || headers["webhook-id"] || body_digest(body)
+  end
+
+  defp body_digest(body) do
+    digest = :crypto.hash(:sha256, body)
+    Base.encode16(digest, case: :lower)
   end
 
   @doc "Appends the first #{@body} characters of the request's body to `prompt`."
@@ -93,9 +99,8 @@ defmodule Wardrik.Triggers.Webhook do
   defp signature("whsec_" <> key, content), do: signature(Base.decode64!(key), content)
 
   defp signature(key, content) do
-    :hmac
-    |> :crypto.mac(:sha256, key, content)
-    |> Base.encode64()
+    mac = :crypto.mac(:hmac, :sha256, key, content)
+    Base.encode64(mac)
   end
 
   defp same?(presented, expected)

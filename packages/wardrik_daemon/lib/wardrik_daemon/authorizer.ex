@@ -72,8 +72,12 @@ defmodule WardrikDaemon.Authorizer do
 
   defp known?("deployment", _opts), do: true
 
-  defp known?(owner, %{orgs: orgs}),
-    do: Owners.valid?(owner) and WardrikDaemon.Orgs.known(Owners.org(owner), orgs) == :ok
+  defp known?(owner, %{orgs: orgs}) do
+    with true <- Owners.valid?(owner) do
+      org = Owners.org(owner)
+      WardrikDaemon.Orgs.known(org, orgs) == :ok
+    end
+  end
 
   defp known?(owner, _opts), do: Owners.valid?(owner)
 
@@ -179,7 +183,11 @@ defmodule WardrikDaemon.Authorizer do
 
   defp matches?(allowed, value), do: "*" in allowed or value in allowed
 
-  defp verb(action), do: List.last(String.split(action, "."))
+  defp verb(action) do
+    action
+    |> String.split(".")
+    |> List.last()
+  end
 
   defp member(
          %Request{resource: {:agent, _id}, context: %{installation: %{owner: within}}} = request,

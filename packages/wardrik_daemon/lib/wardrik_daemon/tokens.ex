@@ -49,7 +49,8 @@ defmodule WardrikDaemon.Tokens do
           | {:error, NimbleOptions.ValidationError.t()}
   def create(store, opts) do
     with {:ok, opts} <- NimbleOptions.validate(opts, @schema) do
-      id = Base.encode32(:crypto.strong_rand_bytes(10), case: :lower, padding: false)
+      bytes = :crypto.strong_rand_bytes(10)
+      id = Base.encode32(bytes, case: :lower, padding: false)
       secret = "wdk_#{id}_#{Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)}"
       token = struct!(Token, [id: id] ++ opts)
 
@@ -78,8 +79,12 @@ defmodule WardrikDaemon.Tokens do
     ]
 
     case create(store, opts) do
-      {:ok, %{token: created, secret: secret}} -> {:ok, Map.put(json(created), "secret", secret)}
-      {:error, error} -> {:error, Wardrik.Error.new(:invalid_request, Exception.message(error))}
+      {:ok, %{token: created, secret: secret}} ->
+        json = json(created)
+        {:ok, Map.put(json, "secret", secret)}
+
+      {:error, error} ->
+        {:error, Wardrik.Error.new(:invalid_request, Exception.message(error))}
     end
   end
 
@@ -109,7 +114,10 @@ defmodule WardrikDaemon.Tokens do
   def verify(store, secret) do
     with ["wdk", id, _random] <- String.split(secret, "_", parts: 3),
          %{token: token, hash: hash} <- Wardrik.Store.get(store, @prefix <> id),
-         true <- Plug.Crypto.secure_compare(hash(secret), hash),
+         true <-
+           secret
+           |> hash()
+           |> Plug.Crypto.secure_compare(hash),
          :gt <- DateTime.compare(token.expires, DateTime.utc_now()) do
       {:ok, token}
     else

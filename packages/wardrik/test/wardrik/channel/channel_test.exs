@@ -74,8 +74,12 @@ defmodule Wardrik.Channel.PackageTest do
       assert Wardrik.Chat.received(context.workspace, mention("Hi", "1.1")) == :ignored
       assert Rooms.left(context.workspace, "C1") == :ok
 
-      assert ["wardrik.room.bound", "wardrik.room.unbound"] =
-               Enum.map(audited(context.owner), & &1.type)
+      types =
+        context.owner
+        |> audited()
+        |> Enum.map(& &1.type)
+
+      assert ["wardrik.room.bound", "wardrik.room.unbound"] = types
     end
 
     test "has the agent answer every message, or only mentions", context do

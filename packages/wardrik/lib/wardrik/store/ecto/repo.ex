@@ -14,7 +14,8 @@ if Code.ensure_loaded?(Ecto.Adapters.Postgres) do
     @spec options(String.t()) :: keyword()
     def options(url) do
       %URI{host: host, query: query} = parsed = URI.parse(url)
-      {ssl, rest} = Map.pop(URI.decode_query(query || ""), "ssl")
+      params = URI.decode_query(query || "")
+      {ssl, rest} = Map.pop(params, "ssl")
       url = URI.to_string(%{parsed | query: if(rest != %{}, do: URI.encode_query(rest))})
 
       [url: url, log: false] ++ if(ssl == "true", do: [ssl: tls(host)], else: [])

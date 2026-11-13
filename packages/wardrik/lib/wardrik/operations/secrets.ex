@@ -21,8 +21,10 @@ defmodule Wardrik.Operations.Secrets do
   @spec list(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def list(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
     with :ok <- sealing(wardrik) do
+      vault = Wardrik.vault(wardrik)
+
       secrets =
-        for {^owner, name, kind} <- Wardrik.Vault.list(Wardrik.vault(wardrik)),
+        for {^owner, name, kind} <- Wardrik.Vault.list(vault),
             do: %{"name" => name, "purpose" => Atom.to_string(kind)}
 
       {:ok, %{"secrets" => Enum.sort_by(secrets, & &1["name"])}}
@@ -39,7 +41,9 @@ defmodule Wardrik.Operations.Secrets do
     kind = Map.fetch!(@purposes, input["purpose"])
 
     with :ok <- sealing(wardrik) do
-      case Wardrik.Vault.put(Wardrik.vault(wardrik), secret, kind: kind) do
+      vault = Wardrik.vault(wardrik)
+
+      case Wardrik.Vault.put(vault, secret, kind: kind) do
         {:ok, _vsn} -> changed(scope, "secret.stored", {owner, name})
         {:error, reason} -> unkept(reason)
       end
@@ -50,7 +54,9 @@ defmodule Wardrik.Operations.Secrets do
   @spec delete(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def delete(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name}) do
     with :ok <- sealing(wardrik) do
-      case Wardrik.Vault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, name) do
+      vault = Wardrik.vault(wardrik)
+
+      case Wardrik.Vault.delete(vault, %Principal{id: owner}, name) do
         :ok -> changed(scope, "secret.removed", {owner, name})
         {:error, reason} -> unkept(reason)
       end

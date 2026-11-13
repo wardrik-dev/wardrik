@@ -58,7 +58,8 @@ defmodule WardrikDaemon.CLI.StatusTest do
         &Status.seen(&2, event("tool_call.started", tool("c#{&1}", "a_long_tool_name")), 13_000)
       )
 
-    assert String.length(text(many, 13_000)) <= 79
+    line = text(many, 13_000)
+    assert String.length(line) <= 79
   end
 
   test "says it's idle between turns, and times a turn from its start" do

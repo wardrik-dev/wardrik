@@ -9,7 +9,8 @@ defmodule Wardrik.StoreFailuresTest do
   @trigger %{"name" => "daily", "every" => "1d", "prompt" => "Go."}
 
   setup context do
-    store = FailingStore.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = FailingStore.new(store_name)
 
     wardrik =
       Wardrik.new(

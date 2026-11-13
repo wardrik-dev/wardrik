@@ -48,7 +48,10 @@ defmodule WardrikBrave do
   end
 
   @impl WardrikCore.Capability
-  def tools(context, opts), do: [WardrikBrave.WebSearch.tool(source(opts), context)]
+  def tools(context, opts) do
+    source = source(opts)
+    [WardrikBrave.WebSearch.tool(source, context)]
+  end
 
   defp source(opts) do
     case Keyword.fetch(opts, :brave) do
@@ -78,8 +81,8 @@ defmodule WardrikBrave do
 
   @impl GenServer
   def init(opts) do
-    table =
-      :ets.new(Keyword.fetch!(opts, :name), [:named_table, :protected, read_concurrency: true])
+    name = Keyword.fetch!(opts, :name)
+    table = :ets.new(name, [:named_table, :protected, read_concurrency: true])
 
     true = :ets.insert(table, {:settings, Map.new(Keyword.delete(opts, :name))})
     {:ok, table}

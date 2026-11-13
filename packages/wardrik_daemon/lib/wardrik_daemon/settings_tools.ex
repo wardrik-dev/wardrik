@@ -143,10 +143,14 @@ defmodule WardrikDaemon.SettingsTools do
 
   defp page(%{web: nil}, _owner), do: nil
 
-  defp page(%{config: config}, owner),
-    do:
-      String.trim_trailing(Config.base_url(config), "/") <>
-        "/web/secrets?" <> URI.encode_query(%{"owner" => owner})
+  defp page(%{config: config}, owner) do
+    base =
+      config
+      |> Config.base_url()
+      |> String.trim_trailing("/")
+
+    base <> "/web/secrets?" <> URI.encode_query(%{"owner" => owner})
+  end
 
   defp command(config, owner, name, purpose) do
     case flag(config, owner) do

@@ -12,7 +12,8 @@ defmodule Wardrik.WorkersTest do
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{scope: owner(wardrik)}
   end
 
@@ -87,10 +88,21 @@ defmodule Wardrik.WorkersTest do
 
     worker(wardrik, "acme/@shop", ["acme"], listed)
 
-    assert Enum.sort(tools(wardrik, "acme/triage")) == ["workers__odd", "workers__plain"]
+    offered =
+      wardrik
+      |> tools("acme/triage")
+      |> Enum.sort()
+
+    assert offered == ["workers__odd", "workers__plain"]
 
     worker(wardrik, "acme/@other", ["acme"], %{"not" => "a list"})
-    assert Enum.sort(tools(wardrik, "acme/triage")) == ["workers__odd", "workers__plain"]
+
+    offered =
+      wardrik
+      |> tools("acme/triage")
+      |> Enum.sort()
+
+    assert offered == ["workers__odd", "workers__plain"]
   end
 
   test "reads whatever a worker answers without failing", %{wardrik: wardrik} do

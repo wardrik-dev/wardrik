@@ -109,8 +109,7 @@ process_files = %{included: ["lib/"], excluded: [~r"lib/[^/]+/test/"]}
             {Credo.Check.Readability.UnnecessaryAliasExpansion, []},
             {Credo.Check.Readability.VariableNames, []},
             {Credo.Check.Readability.WithSingleClause, []},
-            # Three calls deep. Credo 1.7 crashes at its default of two, on `opts[:key].(arg)`.
-            {Credo.Check.Readability.NestedFunctionCalls, [min_pipeline_length: 3]},
+            {Credo.Check.Readability.NestedFunctionCalls, []},
             {Credo.Check.Readability.OnePipePerLine, []},
             {Credo.Check.Readability.SinglePipe, []},
             {Credo.Check.Readability.Specs, [files: %{included: ["lib/"]}]},

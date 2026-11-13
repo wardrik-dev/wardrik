@@ -131,7 +131,9 @@ defmodule Wardrik.Resolution do
   """
   @spec refresh(Wardrik.t(), [String.t()] | :all) :: [String.t()]
   def refresh(wardrik, ids) do
-    for {agent, _conversation} = key <- WardrikCore.list(Wardrik.agents(wardrik)),
+    agents = Wardrik.agents(wardrik)
+
+    for {agent, _conversation} = key <- WardrikCore.list(agents),
         refreshing?(ids, agent),
         Running.whereis(wardrik, key) != nil,
         {:error, error} <- [refreshed(wardrik, key)],
@@ -189,7 +191,8 @@ defmodule Wardrik.Resolution do
   @doc "Returns whether the agent `id` writes a digest of each conversation before it sleeps."
   @spec digest?(Wardrik.t(), String.t(), map()) :: boolean()
   def digest?(wardrik, id, definition) do
-    definition = Map.merge(defaults(wardrik, id, definition), definition)
+    defaults = defaults(wardrik, id, definition)
+    definition = Map.merge(defaults, definition)
     files?(definition) and Map.get(definition, "digest", true)
   end
 
@@ -265,7 +268,9 @@ defmodule Wardrik.Resolution do
 
   defp capabilities(wardrik, servers, definition) do
     named =
-      Enum.map(expanded(wardrik, servers, Map.get(definition, "tools", [])), &named(wardrik, &1))
+      wardrik
+      |> expanded(servers, Map.get(definition, "tools", []))
+      |> Enum.map(&named(wardrik, &1))
 
     with :ok <- joined(named), do: {:ok, entries(wardrik, definition, named)}
   end
@@ -279,10 +284,12 @@ defmodule Wardrik.Resolution do
 
   defp expanded(wardrik, servers, tools), do: Enum.flat_map(tools, &expand(wardrik, servers, &1))
 
-  defp expand(wardrik, servers, "*"),
-    do:
-      Map.keys(wardrik.capabilities) ++
-        Enum.map(Map.keys(servers), &"#{&1}/*") ++ ["servers/*", "workers/*", "files"]
+  defp expand(wardrik, servers, "*") do
+    names = Map.keys(servers)
+
+    Map.keys(wardrik.capabilities) ++
+      Enum.map(names, &"#{&1}/*") ++ ["servers/*", "workers/*", "files"]
+  end
 
   defp expand(_wardrik, _servers, tool), do: [tool]
 

@@ -14,7 +14,8 @@ defmodule Wardrik.Workspace.ContextTest do
       shared: [%Mount{name: "runbooks", tree: "shared/acme/runbooks", mode: :read}]
     ]
 
-    tools = Map.new(Wardrik.Workspace.tools(nil, opts), &{&1.name, &1})
+    offered = Wardrik.Workspace.tools(nil, opts)
+    tools = Map.new(offered, &{&1.name, &1})
 
     write = fn path, content ->
       tools["write_file"].run.(
@@ -41,12 +42,8 @@ defmodule Wardrik.Workspace.ContextTest do
         version: nil
       )
 
-    text =
-      Context.text(
-        Wardrik.Workspace.Spec.new(opts),
-        ["MEMORY.md", "SOUL.md", "shared/runbooks/deploy.md"],
-        16_384
-      )
+    spec = Wardrik.Workspace.Spec.new(opts)
+    text = Context.text(spec, ["MEMORY.md", "SOUL.md", "shared/runbooks/deploy.md"], 16_384)
 
     assert text =~ "# Your workspace"
     assert text =~ ~r/<file path="MEMORY.md" version="[^"]+">\nLikes tea.\n<\/file>/
@@ -60,7 +57,8 @@ defmodule Wardrik.Workspace.ContextTest do
     write.("MEMORY.md", Enum.map_join(1..200, "\n", &"line #{&1}"))
     write.("SOUL.md", "short")
 
-    text = Context.text(Wardrik.Workspace.Spec.new(opts), ["MEMORY.md", "SOUL.md"], 200)
+    spec = Wardrik.Workspace.Spec.new(opts)
+    text = Context.text(spec, ["MEMORY.md", "SOUL.md"], 200)
 
     assert text =~ "line 1\n"
     assert text =~ "line 200\n</file>"
@@ -75,7 +73,8 @@ defmodule Wardrik.Workspace.ContextTest do
       | messages: [ReqLLM.Context.user("Hi.", %{labels: ["outside"]})]
     }
 
-    tools = Map.new(Wardrik.Workspace.tools(nil, opts), &{&1.name, &1})
+    offered = Wardrik.Workspace.tools(nil, opts)
+    tools = Map.new(offered, &{&1.name, &1})
     tools["write_file"].run.(%{path: "MEMORY.md", content: "From a page."}, reader)
 
     turn = %{

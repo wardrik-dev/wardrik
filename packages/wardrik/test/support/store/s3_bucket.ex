@@ -113,7 +113,8 @@ defmodule Wardrik.Store.Test.S3Bucket do
 
   defp object(%{method: "PUT"} = conn, key, opts) do
     body = conn.assigns.body
-    etag = ~s(") <> Base.encode16(:crypto.hash(:md5, body), case: :lower) <> ~s(")
+    md5 = :crypto.hash(:md5, body)
+    etag = ~s(") <> Base.encode16(md5, case: :lower) <> ~s(")
 
     cond do
       not Map.get(opts, :conditional_put, true) or meets?(conn, current(key)) ->

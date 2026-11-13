@@ -21,8 +21,10 @@ defmodule WardrikACPTest do
     File.write!(gitconfig, "[user]\n\tname = Test\n\temail = test@example.com\n")
     git = %{"GIT_CONFIG_GLOBAL" => gitconfig, "GIT_CONFIG_NOSYSTEM" => "1"}
 
+    agents_file = Path.join(repo, "AGENTS.md")
+
     for args <- [["init", "-q", "-b", "main"], ["add", "."], ["commit", "-q", "-m", "First"]] do
-      if args == ["add", "."], do: File.write!(Path.join(repo, "AGENTS.md"), "Run mix test.")
+      if args == ["add", "."], do: File.write!(agents_file, "Run mix test.")
       {_output, 0} = System.cmd("git", ["-C", repo | args], env: git, stderr_to_stdout: true)
     end
 
@@ -325,7 +327,8 @@ defmodule WardrikACPTest do
   @tag harness: [idle: 1]
   test "stops the agent once no call uses it", %{acp: acp} do
     {:ok, _output, _context} = call(acp, [])
-    [{_id, pid, _type, _modules}] = DynamicSupervisor.which_children(Connection.supervisor(acp))
+    supervisor = Connection.supervisor(acp)
+    [{_id, pid, _type, _modules}] = DynamicSupervisor.which_children(supervisor)
     ref = Process.monitor(pid)
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
   end
@@ -338,8 +341,9 @@ defmodule WardrikACPTest do
 
   test "reports an agent stopped while it works", %{acp: acp} do
     task = hang(acp)
-    [{_id, pid, _type, _modules}] = DynamicSupervisor.which_children(Connection.supervisor(acp))
-    :ok = DynamicSupervisor.terminate_child(Connection.supervisor(acp), pid)
+    supervisor = Connection.supervisor(acp)
+    [{_id, pid, _type, _modules}] = DynamicSupervisor.which_children(supervisor)
+    :ok = DynamicSupervisor.terminate_child(supervisor, pid)
 
     assert {:error, "peer stopped: :shutdown"} = Task.await(task)
   end
@@ -427,7 +431,8 @@ defmodule WardrikACPTest do
     git(context, repo, ["merge", "--squash", "-q", merged["branch"]])
     git(context, repo, ["commit", "-q", "-m", "Squashed A"])
 
-    assert Enum.sort(WardrikACP.sweep(acp)) == Enum.sort([merged["worktree"], idle["worktree"]])
+    swept = WardrikACP.sweep(acp)
+    assert Enum.sort(swept) == Enum.sort([merged["worktree"], idle["worktree"]])
 
     refute File.exists?(merged["worktree"])
     refute File.exists?(merged["worktree"] <> ".json")
@@ -437,8 +442,10 @@ defmodule WardrikACPTest do
 
     worktrees = Path.dirname(merged["worktree"])
 
-    for work <- ["waiting", "running"],
-        do: assert(File.dir?(Path.join(worktrees, work)))
+    for work <- ["waiting", "running"] do
+      path = Path.join(worktrees, work)
+      assert File.dir?(path)
+    end
 
     Task.shutdown(running, :brutal_kill)
   end
@@ -537,15 +544,17 @@ defmodule WardrikACPTest do
   defp approve, do: %Resume{reason: :ask, input: %{"call-1" => :approve}}
 
   defp stop_connection(acp) do
-    [_one] = DynamicSupervisor.which_children(Connection.supervisor(acp))
+    supervisor = Connection.supervisor(acp)
+    [_one] = DynamicSupervisor.which_children(supervisor)
     stop_connections(acp)
   end
 
   defp stop_connections(acp) do
-    for {_id, pid, _type, _modules} <-
-          DynamicSupervisor.which_children(Connection.supervisor(acp)) do
+    supervisor = Connection.supervisor(acp)
+
+    for {_id, pid, _type, _modules} <- DynamicSupervisor.which_children(supervisor) do
       ref = Process.monitor(pid)
-      :ok = DynamicSupervisor.terminate_child(Connection.supervisor(acp), pid)
+      :ok = DynamicSupervisor.terminate_child(supervisor, pid)
       assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
     end
   end

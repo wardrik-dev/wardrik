@@ -57,9 +57,11 @@ defmodule WardrikSlack.Waiting do
         n: interrupt.name || "the model"
       })
 
+    block_id = buttons_block(interrupt.id)
+
     [question(waiting)] ++
       note_box(interrupt) ++
-      [Blocks.actions(buttons_block(interrupt.id), buttons(interrupt, value))]
+      [Blocks.actions(block_id, buttons(interrupt, value))]
   end
 
   defp question(%Waiting{interrupt: interrupt, arguments: arguments}) do

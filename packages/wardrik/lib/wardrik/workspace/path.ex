@@ -46,7 +46,11 @@ defmodule Wardrik.Workspace.Path do
 
   @doc "Returns whether `glob` matches `path`."
   @spec match?(String.t(), String.t()) :: boolean()
-  def match?(glob, path), do: Regex.match?(compile(glob), path)
+  def match?(glob, path) do
+    glob
+    |> compile()
+    |> Regex.match?(path)
+  end
 
   @doc "Compiles `glob` to a regular expression."
   @spec compile(String.t()) :: Regex.t()

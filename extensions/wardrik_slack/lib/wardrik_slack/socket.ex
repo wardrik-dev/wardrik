@@ -90,7 +90,8 @@ defmodule WardrikSlack.Socket do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp run(state, work) do
-    {:ok, _pid} = Task.Supervisor.start_child(WardrikSlack.tasks(state.channel), work)
+    tasks = WardrikSlack.tasks(state.channel)
+    {:ok, _pid} = Task.Supervisor.start_child(tasks, work)
     {:noreply, state}
   end
 

@@ -41,7 +41,9 @@ defmodule Wardrik.Chat.Rooms do
   def get(%Workspace{installation: installation} = workspace, room) do
     owner = installation.owner
 
-    case Wardrik.Store.get(store(workspace), key(workspace, room)) do
+    store = store(workspace)
+
+    case Wardrik.Store.get(store, key(workspace, room)) do
       %{"agent" => agent, "answers" => answers, "owner" => ^owner} ->
         %Binding{room: room, agent: agent, answers: answers(answers)}
 
@@ -84,7 +86,9 @@ defmodule Wardrik.Chat.Rooms do
     agent = Keyword.fetch!(opts, :agent)
     by = Keyword.get(opts, :by)
 
-    case Enum.find(Workspace.offered(workspace, by), &(&1.agent == agent)) do
+    offered = Workspace.offered(workspace, by)
+
+    case Enum.find(offered, &(&1.agent == agent)) do
       %Offer{} = offer -> {:ok, bind(workspace, room, agent, :mentions, by), offer}
       nil -> {:error, :not_offered}
     end
@@ -105,7 +109,8 @@ defmodule Wardrik.Chat.Rooms do
   def left(workspace, room, by \\ nil) do
     case get(workspace, room) do
       %Binding{agent: agent} ->
-        :ok = Wardrik.Store.delete(store(workspace), key(workspace, room))
+        store = store(workspace)
+        :ok = Wardrik.Store.delete(store, key(workspace, room))
         :ok = Replies.forget(workspace, room)
         record(workspace, by, "room.unbound", room, %{"agent" => %{"id" => agent}})
 
@@ -120,8 +125,10 @@ defmodule Wardrik.Chat.Rooms do
       Wardrik.Chat.Rooms.started?(workspace, room: "C024BE91L", thread: "1696.1234")
   """
   @spec started?(Workspace.t(), room: String.t(), thread: String.t()) :: boolean()
-  def started?(workspace, opts),
-    do: Wardrik.Store.get(store(workspace), thread_key(workspace, opts)) != nil
+  def started?(workspace, opts) do
+    store = store(workspace)
+    Wardrik.Store.get(store, thread_key(workspace, opts)) != nil
+  end
 
   @doc """
   Marks `:thread` as one `:room`'s agent answers in.
@@ -130,7 +137,8 @@ defmodule Wardrik.Chat.Rooms do
   """
   @spec start(Workspace.t(), room: String.t(), thread: String.t()) :: :ok
   def start(workspace, opts) do
-    {:ok, _vsn} = Wardrik.Store.put(store(workspace), thread_key(workspace, opts), true)
+    store = store(workspace)
+    {:ok, _vsn} = Wardrik.Store.put(store, thread_key(workspace, opts), true)
     :ok
   end
 
@@ -141,7 +149,8 @@ defmodule Wardrik.Chat.Rooms do
       "owner" => workspace.installation.owner
     }
 
-    {:ok, _vsn} = Wardrik.Store.put(store(workspace), key(workspace, room), bound)
+    store = store(workspace)
+    {:ok, _vsn} = Wardrik.Store.put(store, key(workspace, room), bound)
 
     data = %{"agent" => %{"id" => agent}, "answers" => bound["answers"]}
     :ok = record(workspace, by, "room.bound", room, data)

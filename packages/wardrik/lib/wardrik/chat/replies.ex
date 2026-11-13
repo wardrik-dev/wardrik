@@ -42,8 +42,8 @@ defmodule Wardrik.Chat.Replies do
     child =
       {Server, key: key(workspace, room), initial_state: State.new(installation.workspace, room)}
 
-    {:ok, {pid, _meta}} =
-      DurableServer.Supervisor.ensure_started_child(supervisor(channel), child)
+    supervisor = supervisor(channel)
+    {:ok, {pid, _meta}} = DurableServer.Supervisor.ensure_started_child(supervisor, child)
 
     GenServer.call(pid, {:follow, held(opts)})
   end
@@ -62,7 +62,9 @@ defmodule Wardrik.Chat.Replies do
   def remind(%Workspace{channel: channel} = workspace, opts) do
     room = Keyword.fetch!(opts, :room)
 
-    case DurableServer.Supervisor.lookup(supervisor(channel), key(workspace, room)) do
+    supervisor = supervisor(channel)
+
+    case DurableServer.Supervisor.lookup(supervisor, key(workspace, room)) do
       {pid, _meta} -> GenServer.cast(pid, {:remind, held(opts)})
       nil -> :ok
     end
@@ -73,11 +75,10 @@ defmodule Wardrik.Chat.Replies do
   @doc "Stops posting in `room` and deletes its saved position."
   @spec forget(Workspace.t(), String.t()) :: :ok
   def forget(%Workspace{channel: channel} = workspace, room) do
+    supervisor = supervisor(channel)
+
     _deleted =
-      DurableServer.Supervisor.terminate_and_delete_child(
-        supervisor(channel),
-        key(workspace, room)
-      )
+      DurableServer.Supervisor.terminate_and_delete_child(supervisor, key(workspace, room))
 
     :ok
   end

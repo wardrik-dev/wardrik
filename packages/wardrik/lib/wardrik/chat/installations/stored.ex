@@ -17,8 +17,9 @@ defmodule Wardrik.Chat.Installations.Stored do
 
   @impl Wardrik.Channel.Installations
   def fetch(%Request{channel: channel, workspace: workspace}, config) do
-    with %{"owner" => owner} <-
-           Wardrik.Store.get(store(config), key(channel, workspace)),
+    store = store(config)
+
+    with %{"owner" => owner} <- Wardrik.Store.get(store, key(channel, workspace)),
          {:ok, token} <- sealed(config, owner, secret(channel, workspace)) do
       {:ok,
        %Installation{
@@ -56,7 +57,8 @@ defmodule Wardrik.Chat.Installations.Stored do
     kept = %{"owner" => owner}
 
     with {:ok, _sealed} <- seal(config, owner, secret(channel, workspace), installation.token),
-         {:ok, _vsn} <- Wardrik.Store.put(store(config), key(channel, workspace), kept) do
+         store = store(config),
+         {:ok, _vsn} <- Wardrik.Store.put(store, key(channel, workspace), kept) do
       :ok
     else
       {:error, reason} -> {:error, "#{channel} wasn't kept for #{workspace}: #{inspect(reason)}"}
@@ -65,10 +67,12 @@ defmodule Wardrik.Chat.Installations.Stored do
 
   @impl Wardrik.Channel.Installations
   def delete(%Request{channel: channel, workspace: workspace}, config) do
-    case Wardrik.Store.get(store(config), key(channel, workspace)) do
+    store = store(config)
+
+    case Wardrik.Store.get(store, key(channel, workspace)) do
       %{"owner" => owner} ->
         :ok = unseal(config, owner, secret(channel, workspace))
-        Wardrik.Store.delete(store(config), key(channel, workspace))
+        Wardrik.Store.delete(store, key(channel, workspace))
 
       nil ->
         :ok

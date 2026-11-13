@@ -75,8 +75,13 @@ defmodule Wardrik.Agent do
           Enumerable.t() | {:ok, reference()}
   def stream(scope, agent, input, opts \\ []) do
     case Keyword.fetch(opts, :to) do
-      {:ok, pid} -> send_to(scope, agent, input, pid, opts)
-      :error -> Stream.flat_map(follow(scope, agent, input, opts), &text/1)
+      {:ok, pid} ->
+        send_to(scope, agent, input, pid, opts)
+
+      :error ->
+        scope
+        |> follow(agent, input, opts)
+        |> Stream.flat_map(&text/1)
     end
   end
 

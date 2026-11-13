@@ -22,8 +22,10 @@ defmodule WardrikWeb.Assets do
   @doc "Returns the names of the JavaScript and CSS files, as `{js, css}`."
   @spec names() :: {String.t(), String.t()}
   def names do
-    {Enum.find(Map.keys(@assets), &String.ends_with?(&1, ".js")),
-     Enum.find(Map.keys(@assets), &String.ends_with?(&1, ".css"))}
+    names = Map.keys(@assets)
+
+    {Enum.find(names, &String.ends_with?(&1, ".js")),
+     Enum.find(names, &String.ends_with?(&1, ".css"))}
   end
 
   @impl Plug

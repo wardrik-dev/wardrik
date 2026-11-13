@@ -10,7 +10,8 @@ defmodule Wardrik.MCP.Capability do
   end
 
   defp resolved(id, opts) do
-    wardrik = Wardrik.Instance.fetch!(Keyword.fetch!(opts, :wardrik))
+    instance = Keyword.fetch!(opts, :wardrik)
+    wardrik = Wardrik.Instance.fetch!(instance)
 
     case Wardrik.Resolver.resolve(wardrik, %Wardrik.Resolver.Request{
            agent: id,
@@ -26,7 +27,11 @@ defmodule Wardrik.MCP.Capability do
   """
   @spec picked(atom(), %{String.t() => String.t()}, keyword()) :: [String.t()]
   def picked(mcp, servers, opts) do
-    available = MapSet.new(Wardrik.MCP.servers(mcp))
+    available =
+      mcp
+      |> Wardrik.MCP.servers()
+      |> MapSet.new()
+
     keys = if Keyword.get(opts, :all, false), do: Map.values(servers), else: named(servers, opts)
     for key <- Enum.uniq(keys), MapSet.member?(available, key), do: key
   end

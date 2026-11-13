@@ -328,7 +328,10 @@ defmodule WardrikDaemon.CLI.Follow do
   defp noted(state, event), do: %{state | status: Status.seen(state.status, event, now())}
 
   defp printed(event, %{cx: %{json?: true}} = state) do
-    IO.puts(JSON.encode!(event))
+    event
+    |> JSON.encode!()
+    |> IO.puts()
+
     state
   end
 

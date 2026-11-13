@@ -44,7 +44,7 @@ defmodule Wardrik.Authorizer do
   def authorize(%Scope{wardrik: %{authorizer: {module, opts}}} = scope, fields) do
     {context, fields} = Keyword.pop(fields, :context, %{})
 
-    module.authorize(
+    request =
       struct!(
         Request,
         [
@@ -53,9 +53,9 @@ defmodule Wardrik.Authorizer do
           scope: scope,
           context: Map.merge(scope.context, context)
         ] ++ fields
-      ),
-      opts
-    )
+      )
+
+    module.authorize(request, opts)
   end
 
   def authorize(%Scope{wardrik: instance} = scope, fields),

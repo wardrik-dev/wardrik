@@ -32,7 +32,11 @@ defmodule Wardrik.HTTP.WorkerTest do
       answer("It shipped.")
     ])
 
-    event_log = Wardrik.events(Wardrik.Instance.fetch!(context.wardrik))
+    event_log =
+      context.wardrik
+      |> Wardrik.Instance.fetch!()
+      |> Wardrik.events()
+
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
 
     request(context, "PUT", "/v1/agents/acme%2Ftriage", %{

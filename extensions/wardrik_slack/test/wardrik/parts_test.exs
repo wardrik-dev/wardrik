@@ -49,8 +49,10 @@ defmodule Wardrik.Slack.PartsTest do
       for n <- 1..6, do: define(context.owner, "acme/agent-#{n}", channels: ["slack"])
       {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
 
+      choices = Wardrik.Chat.Rooms.choices(workspace)
+
       assert %{blocks: [_question, %{elements: [%{type: "static_select", options: options}]}]} =
-               Rooms.message(Wardrik.Chat.Rooms.choices(workspace), workspace, nil)
+               Rooms.message(choices, workspace, nil)
 
       assert Enum.count(options) == 6
     end
@@ -60,10 +62,11 @@ defmodule Wardrik.Slack.PartsTest do
       {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
       {:bound, binding, offer} = Wardrik.Chat.Rooms.joined(workspace, "C1")
 
-      assert JSON.encode!(Rooms.message({:bound, binding, offer}, workspace, nil)) =~
-               "Mention the app"
+      message = Rooms.message({:bound, binding, offer}, workspace, nil)
+      assert JSON.encode!(message) =~ "Mention the app"
 
-      shown = JSON.encode!(Rooms.message({:bound, binding, offer}, workspace, "UBOT"))
+      message = Rooms.message({:bound, binding, offer}, workspace, "UBOT")
+      shown = JSON.encode!(message)
       assert shown =~ "<@UBOT>"
       assert shown =~ "someone who may decide it"
     end

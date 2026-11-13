@@ -73,7 +73,16 @@ defmodule Wardrik.Triggers.Run do
 
   defp read(settings, agent_id, trigger) do
     record = Records.lookup(settings.store, agent_id: agent_id, name: trigger.name)
-    kept = if record, do: Map.get(elem(record, 0), "feeds", %{}), else: %{}
+
+    kept =
+      if record do
+        record
+        |> elem(0)
+        |> Map.get("feeds", %{})
+      else
+        %{}
+      end
+
     read = Map.new(trigger.feeds, &{&1, fetch(settings, &1, Map.get(kept, &1))})
     new = for {_url, {:ok, entries, _state}} <- read, entry <- entries, do: entry
 
@@ -85,9 +94,15 @@ defmodule Wardrik.Triggers.Run do
       )
 
     cond do
-      Enum.all?(read, &match?({_url, {:error, _why}}, &1)) -> :failed
-      new == [] -> :nothing_new
-      true -> ask(settings, agent_id, trigger, Feed.prompt(prompt(trigger), new), @outside)
+      Enum.all?(read, &match?({_url, {:error, _why}}, &1)) ->
+        :failed
+
+      new == [] ->
+        :nothing_new
+
+      true ->
+        prompt = prompt(trigger)
+        ask(settings, agent_id, trigger, Feed.prompt(prompt, new), @outside)
     end
   end
 
@@ -112,8 +127,14 @@ defmodule Wardrik.Triggers.Run do
     end
   end
 
-  defp noted(entries, response, nil),
-    do: {:ok, [], state(response, Enum.take(Enum.map(entries, & &1.id), @remembered))}
+  defp noted(entries, response, nil) do
+    seen =
+      entries
+      |> Enum.map(& &1.id)
+      |> Enum.take(@remembered)
+
+    {:ok, [], state(response, seen)}
+  end
 
   defp noted(entries, response, kept) do
     {new, seen} = Feed.unseen(entries, kept["seen"])
@@ -126,11 +147,9 @@ defmodule Wardrik.Triggers.Run do
   end
 
   defp state(response, seen) do
-    %{
-      "seen" => seen,
-      "etag" => List.first(Req.Response.get_header(response, "etag")),
-      "modified" => List.first(Req.Response.get_header(response, "last-modified"))
-    }
+    etag = Req.Response.get_header(response, "etag")
+    modified = Req.Response.get_header(response, "last-modified")
+    %{"seen" => seen, "etag" => List.first(etag), "modified" => List.first(modified)}
   end
 
   defp conditional(nil), do: []
@@ -183,7 +202,8 @@ defmodule Wardrik.Triggers.Run do
   end
 
   defp delivered(settings, agent_id, trigger, id, request) do
-    status = ask(settings, agent_id, trigger, Webhook.prompt(prompt(trigger), request), @outside)
+    prompt = prompt(trigger)
+    status = ask(settings, agent_id, trigger, Webhook.prompt(prompt, request), @outside)
 
     fired(
       settings,

@@ -19,16 +19,16 @@ defmodule Wardrik.SealedOptionsTest do
 
   test "reads a channel's {:secret, name} from the deployment's secrets as it starts and answers",
        context do
-    store = Wardrik.Test.Store.new(:"sealed store #{context.test}")
+    store_name = :"sealed store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
     key = Wardrik.Vault.generate_key()
     start_supervised!({Wardrik.Store, store})
 
-    start_supervised!(
-      {Wardrik.Vault, name: :"sealing #{context.test}", store: store, keys: [key]}
-    )
+    vault = :"sealing #{context.test}"
+    start_supervised!({Wardrik.Vault, name: vault, store: store, keys: [key]})
 
     {:ok, _vsn} =
-      Wardrik.Vault.put(:"sealing #{context.test}", %Wardrik.Vault.Secret{
+      Wardrik.Vault.put(vault, %Wardrik.Vault.Secret{
         principal: Wardrik.Vault.deployment(),
         name: "SIGNING",
         value: "first"
@@ -54,7 +54,7 @@ defmodule Wardrik.SealedOptionsTest do
     :ok = seal(name, {"deployment", "SIGNING"}, "second")
     request = %{"channel" => "slack", "path" => "events", "body" => "{}", "headers" => %{}}
 
-    assert {:ok, %{"body" => "second"}} =
-             Wardrik.run(Wardrik.as(name, "anonymous"), "channel.deliver", request)
+    anonymous = Wardrik.as(name, "anonymous")
+    assert {:ok, %{"body" => "second"}} = Wardrik.run(anonymous, "channel.deliver", request)
   end
 end

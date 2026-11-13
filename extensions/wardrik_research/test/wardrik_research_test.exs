@@ -31,7 +31,9 @@ defmodule WardrikResearchTest do
 
   defp answering(answer) do
     stub(ReqLLM, :stream_text, fn _model, messages, _opts ->
-      {:ok, response(answer.(system(messages), prompt(messages)))}
+      system = system(messages)
+      message = answer.(system, prompt(messages))
+      {:ok, response(message)}
     end)
   end
 

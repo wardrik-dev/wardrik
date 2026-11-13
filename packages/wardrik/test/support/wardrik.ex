@@ -7,7 +7,8 @@ defmodule Wardrik.Test.Wardrik do
   alias WardrikCore.Principal
 
   def start_wardrik(context) do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
@@ -33,21 +34,27 @@ defmodule Wardrik.Test.Wardrik do
   def seal(wardrik, {owner, name}, value, kind \\ :secret) do
     wardrik = Wardrik.Instance.fetch!(wardrik)
     secret = %Wardrik.Vault.Secret{principal: %Principal{id: owner}, name: name, value: value}
-    {:ok, _vsn} = Wardrik.Vault.put(Wardrik.vault(wardrik), secret, kind: kind)
-    :ok = Wardrik.MCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
+    vault = Wardrik.vault(wardrik)
+    {:ok, _vsn} = Wardrik.Vault.put(vault, secret, kind: kind)
+    mcp = Wardrik.mcp(wardrik)
+    :ok = Wardrik.MCP.reconnect(mcp, owner: owner, secret: name)
   end
 
   @doc "Removes `owner`'s secret `name`, as a host does, and reconnects the servers that read it."
   def unseal(wardrik, {owner, name}) do
     wardrik = Wardrik.Instance.fetch!(wardrik)
-    :ok = Wardrik.Vault.delete(Wardrik.vault(wardrik), %Principal{id: owner}, name)
-    :ok = Wardrik.MCP.reconnect(Wardrik.mcp(wardrik), owner: owner, secret: name)
+    vault = Wardrik.vault(wardrik)
+    :ok = Wardrik.Vault.delete(vault, %Principal{id: owner}, name)
+    mcp = Wardrik.mcp(wardrik)
+    :ok = Wardrik.MCP.reconnect(mcp, owner: owner, secret: name)
   end
 
   @doc "Returns `owner`'s secret `name`, unsealed."
   def unsealed(wardrik, {owner, name}) do
-    wardrik = Wardrik.Instance.fetch!(wardrik)
-    Wardrik.Vault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, name)
+    wardrik
+    |> Wardrik.Instance.fetch!()
+    |> Wardrik.vault()
+    |> Wardrik.Vault.fetch(%Principal{id: owner}, name)
   end
 
   def owner(wardrik), do: Wardrik.as(wardrik, maria())
@@ -66,7 +73,8 @@ defmodule Wardrik.Test.Wardrik do
   might. It's refused anything else they own, and finds nothing of anyone else's.
   """
   def limited(wardrik, principal, opts) do
-    actions = Enum.flat_map(Keyword.fetch!(opts, :roles), &Map.fetch!(@roles, &1))
+    roles = Keyword.fetch!(opts, :roles)
+    actions = Enum.flat_map(roles, &Map.fetch!(@roles, &1))
     reach = Keyword.take(opts, [:owners, :agents_of])
     Wardrik.as(wardrik, principal, context: %{decide: &decide(&1, actions, reach)})
   end

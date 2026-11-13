@@ -82,7 +82,8 @@ defmodule Wardrik.Notify.Server do
              definition: definition
            }),
          defaults = Map.merge(state.wardrik.defaults, resolved.defaults),
-         %{to: to, on: on} <- Notify.route(Map.merge(defaults, definition)),
+         merged = Map.merge(defaults, definition),
+         %{to: to, on: on} <- Notify.route(merged),
          true <- notice.kind in on,
          do: Enum.each(to, &tell(state, &1, notice))
 

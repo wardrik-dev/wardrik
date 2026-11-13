@@ -24,7 +24,9 @@ defmodule WardrikDaemon.Connections do
           {:ok, map()} | {:error, Error.t()}
   def pair(%{wardrik: wardrik} = daemon, %Principal{} = principal, {provider, code}) do
     with {:ok, credential} <- credential(daemon, principal, provider) do
-      case Pairings.pair(Pairings.name(wardrik), {principal, credential}, code) do
+      pairings = Pairings.name(wardrik)
+
+      case Pairings.pair(pairings, {principal, credential}, code) do
         {:ok, params} -> finished(wardrik, params, principal, provider)
         {:error, :mismatch} -> {:error, unpaired(provider)}
         {:error, {:ended, sign_in, state}} -> ended(wardrik, sign_in, state, provider)
@@ -40,7 +42,9 @@ defmodule WardrikDaemon.Connections do
   def called_back(daemon, params), do: called_back(daemon, params, :adopt)
 
   defp called_back(%{wardrik: wardrik} = daemon, params, adopt) do
-    case {Pairings.called_back(Pairings.name(wardrik), params), adopt} do
+    pairings = Pairings.name(wardrik)
+
+    case {Pairings.called_back(pairings, params), adopt} do
       {{:ok, code, sign_in}, _adopt} ->
         {:ok, %{provider: sign_in.provider, code: code}}
 
@@ -65,12 +69,8 @@ defmodule WardrikDaemon.Connections do
       {:ok, %{provider: credential, principal: principal}} ->
         sign_in = %{principal: principal, provider: provider(daemon, principal, credential)}
 
-        :ok =
-          Pairings.started(
-            Pairings.name(wardrik),
-            state,
-            Map.put(sign_in, :credential, credential)
-          )
+        pairings = Pairings.name(wardrik)
+        :ok = Pairings.started(pairings, state, Map.put(sign_in, :credential, credential))
 
         true
 
@@ -114,9 +114,15 @@ defmodule WardrikDaemon.Connections do
         "That code doesn't match a #{provider} sign-in you started. Check it, or connect again."
       )
 
-  defp credential(%{wardrik: wardrik}, principal, provider),
-    do: Connections.credential(Wardrik.Instance.fetch!(wardrik), principal, provider)
+  defp credential(%{wardrik: wardrik}, principal, provider) do
+    wardrik
+    |> Wardrik.Instance.fetch!()
+    |> Connections.credential(principal, provider)
+  end
 
-  defp provider(%{wardrik: wardrik}, principal, credential),
-    do: Connections.provider(Wardrik.Instance.fetch!(wardrik), principal, credential)
+  defp provider(%{wardrik: wardrik}, principal, credential) do
+    wardrik
+    |> Wardrik.Instance.fetch!()
+    |> Connections.provider(principal, credential)
+  end
 end

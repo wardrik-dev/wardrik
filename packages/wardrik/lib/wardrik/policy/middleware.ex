@@ -72,7 +72,13 @@ if Code.ensure_loaded?(WardrikCore.Middleware) do
 
         decision ->
           emit(:decision, context, nil, %{decision: decision})
-          approved = &metered.(Spending.grant(&1, policies))
+
+          approved = fn resumed ->
+            resumed
+            |> Spending.grant(policies)
+            |> metered.()
+          end
+
           follow(decision, decided(context, decision), nil, metered, approved)
       end
     end

@@ -79,5 +79,9 @@ defmodule WardrikDaemon.CLI.Command do
     end)
   end
 
-  defp flag(name), do: String.replace(Atom.to_string(name), "_", "-")
+  defp flag(name) do
+    name
+    |> Atom.to_string()
+    |> String.replace("_", "-")
+  end
 end

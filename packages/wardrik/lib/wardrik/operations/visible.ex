@@ -31,7 +31,11 @@ defmodule Wardrik.Operations.Visible do
   end
 
   defp visible(%Scope{wardrik: wardrik} = scope, input, start) do
-    (WardrikCore.list(Wardrik.agents(wardrik)) ++ Enum.map(Definitions.ids(wardrik), &{&1, nil}))
+    agents = Wardrik.agents(wardrik)
+    saved = WardrikCore.list(agents)
+    ids = Definitions.ids(wardrik)
+
+    (saved ++ Enum.map(ids, &{&1, nil}))
     |> Enum.uniq()
     |> Enum.sort()
     |> Stream.drop_while(&(start != :start and &1 <= start))

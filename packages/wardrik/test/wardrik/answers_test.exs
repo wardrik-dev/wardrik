@@ -10,8 +10,13 @@ defmodule Wardrik.AnswersTest do
 
   setup %{wardrik: wardrik} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, opts ->
-      for chunk <- ["Nothing's ", "on ", "fire."],
-          do: opts[:on_chunk].(ReqLLM.StreamChunk.text(chunk))
+      on_chunk = opts[:on_chunk]
+
+      for chunk <- ["Nothing's ", "on ", "fire."] do
+        chunk
+        |> ReqLLM.StreamChunk.text()
+        |> on_chunk.()
+      end
 
       {:ok, response}
     end)
@@ -60,7 +65,9 @@ defmodule Wardrik.AnswersTest do
              Wardrik.Agent.reply(nobody, "acme/triage", "Hi")
 
     assert_raise Wardrik.Error, fn ->
-      Enum.to_list(Wardrik.Agent.stream(nobody, "acme/triage", "Hi"))
+      nobody
+      |> Wardrik.Agent.stream("acme/triage", "Hi")
+      |> Enum.to_list()
     end
   end
 end

@@ -22,7 +22,10 @@ defmodule WardrikWeb.OperationsLive do
   end
 
   defp matching(query) do
-    query = String.downcase(String.trim(query))
+    query =
+      query
+      |> String.trim()
+      |> String.downcase()
 
     Enum.filter(WardrikProtocol.operations(), fn operation ->
       query == "" or

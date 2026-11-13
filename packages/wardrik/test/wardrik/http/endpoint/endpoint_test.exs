@@ -69,7 +69,10 @@ defmodule Wardrik.HTTP.EndpointTest do
 
   describe "refusals" do
     test "asks for credentials where none are sent, or the authenticator refuses them", context do
-      conn = Endpoint.call(conn("GET", "/v1/agents"), settings(context))
+      conn =
+        "GET"
+        |> conn("/v1/agents")
+        |> Endpoint.call(settings(context))
 
       assert conn.status == 401
       assert get_resp_header(conn, "www-authenticate") == ["Bearer"]
@@ -150,7 +153,10 @@ defmodule Wardrik.HTTP.EndpointTest do
       assert input["headers"]["content-type"] == "application/x-www-form-urlencoded"
 
       document =
-        body(Endpoint.call(conn("GET", "/v1/openapi.json"), settings(context)))
+        "GET"
+        |> conn("/v1/openapi.json")
+        |> Endpoint.call(settings(context))
+        |> body()
 
       assert %{"content" => %{"*/*" => %{}}} =
                document["paths"]["/v1/hooks/{agent}/{trigger}"]["post"]["requestBody"]
@@ -219,18 +225,33 @@ defmodule Wardrik.HTTP.EndpointTest do
 
   describe "documents and pages" do
     test "answers the OpenAPI document", context do
-      conn = Endpoint.call(conn("GET", "/v1/openapi.json"), settings(context))
+      conn =
+        "GET"
+        |> conn("/v1/openapi.json")
+        |> Endpoint.call(settings(context))
+
       assert %{"openapi" => "3.1.0"} = body(conn)
     end
 
     test "has no sign-in pages where its server signs no one in", context do
       settings = settings(context, sign_in: {__MODULE__, :pages, [:none]})
-      assert Endpoint.call(conn("GET", "/oauth/device/x"), settings).status == 404
+
+      conn =
+        "GET"
+        |> conn("/oauth/device/x")
+        |> Endpoint.call(settings)
+
+      assert conn.status == 404
     end
 
     test "serves the sign-in pages its server has", context do
       settings = settings(context, sign_in: {__MODULE__, :pages, [:some]})
-      conn = Endpoint.call(conn("GET", "/oauth/device/x"), settings)
+
+      conn =
+        "GET"
+        |> conn("/oauth/device/x")
+        |> Endpoint.call(settings)
+
       assert {conn.status, conn.resp_body} == {200, "Sign in at /device/x"}
     end
   end

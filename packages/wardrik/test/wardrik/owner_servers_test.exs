@@ -22,7 +22,8 @@ defmodule Wardrik.OwnerServersTest do
   end
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
     name = :"wardrik #{context.test}"
 
     # Anyone may use the deployment's servers, Ana acme's too, and nobody globex's.
@@ -73,7 +74,8 @@ defmodule Wardrik.OwnerServersTest do
     assert {:ok, %{"server" => "crm", "connected" => true}} = add(scope, "acme", "crm")
     assert {:error, %Wardrik.Error{type: :conflict}} = add(scope, "acme", "crm")
     assert {:error, %Wardrik.Error{type: :conflict}} = add(scope, "deployment", "wiki")
-    servers = Wardrik.MCP.Servers.all(Wardrik.mcp(wardrik))
+    mcp = Wardrik.mcp(wardrik)
+    servers = Wardrik.MCP.Servers.all(mcp)
     assert Map.has_key?(servers, "acme:crm")
 
     assert {:ok, [%Wardrik.MCPServer{owner: "acme", name: "crm", source: :runtime}]} =
@@ -88,7 +90,7 @@ defmodule Wardrik.OwnerServersTest do
     assert {:ok, %Wardrik.MCPServer{name: "crm"}} =
              Wardrik.Servers.remove(scope, owner: "acme", name: "crm")
 
-    remaining = Wardrik.MCP.Servers.all(Wardrik.mcp(wardrik))
+    remaining = Wardrik.MCP.Servers.all(mcp)
     refute Map.has_key?(remaining, "acme:crm")
 
     assert %{"events" => [%{"type" => "wardrik.server.added"}, %{"type" => removed}]} =
@@ -137,8 +139,8 @@ defmodule Wardrik.OwnerServersTest do
 
     secret = %{"secret" => %{"name" => "CRM_KEY"}}
 
-    assert {:error, %Wardrik.Error{message: "acme holds no secret CRM_KEY" <> _}} =
-             run.(server.("crm", secret))
+    crm = server.("crm", secret)
+    assert {:error, %Wardrik.Error{message: "acme holds no secret CRM_KEY" <> _}} = run.(crm)
 
     {:ok, nil} =
       Wardrik.run(scope, "secrets.put", %{
@@ -148,10 +150,10 @@ defmodule Wardrik.OwnerServersTest do
         "purpose" => "header"
       })
 
-    assert {:ok, %{"connected" => true}} = run.(server.("crm", secret))
+    assert {:ok, %{"connected" => true}} = run.(crm)
 
-    oauth = %{"oauth" => %{"provider" => "linear"}}
-    assert {:error, %Wardrik.Error{type: :not_supported}} = run.(server.("issues", oauth))
+    issues = server.("issues", %{"oauth" => %{"provider" => "linear"}})
+    assert {:error, %Wardrik.Error{type: :not_supported}} = run.(issues)
   end
 
   @tag oauth: true
@@ -182,19 +184,22 @@ defmodule Wardrik.OwnerServersTest do
       ran
     end
 
+    issues = server.("issues", %{"oauth" => %{"provider" => "linear"}})
+
     assert {:ok, %{"connected" => false, "authorization" => %{"url" => "https://auth.test" <> _}}} =
-             run.(server.("issues", %{"oauth" => %{"provider" => "linear"}}))
+             run.(issues)
 
-    assert {:error, %Wardrik.Error{message: "acme has no OAuth app nope."}} =
-             run.(server.("other", %{"oauth" => %{"provider" => "nope"}}))
+    other = server.("other", %{"oauth" => %{"provider" => "nope"}})
+    assert {:error, %Wardrik.Error{message: "acme has no OAuth app nope."}} = run.(other)
 
-    assert {:ok, %{"connected" => false}} = run.(server.("crm", %{"oauth" => endpoints}))
+    crm = server.("crm", %{"oauth" => endpoints})
+    assert {:ok, %{"connected" => false}} = run.(crm)
 
     assert %{owner: "acme"} =
              Wardrik.OAuth.Apps.chosen(wardrik, %Principal{id: "acme"}, "server:crm")
 
-    assert {:error, %Wardrik.Error{type: :invalid_request}} =
-             run.(server.("bad", %{"oauth" => Map.put(endpoints, "flow", "nope")}))
+    bad = server.("bad", %{"oauth" => Map.put(endpoints, "flow", "nope")})
+    assert {:error, %Wardrik.Error{type: :invalid_request}} = run.(bad)
 
     assert {:ok, _removed} =
              Wardrik.run(scope, "servers.remove", %{"owner" => "acme", "name" => "crm"})

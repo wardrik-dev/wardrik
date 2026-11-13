@@ -39,7 +39,11 @@ defmodule WardrikDaemon.CLI.Context do
 
   @doc "Writes `answer` as JSON if the command was given `--json`. Otherwise calls `shown` with it."
   @spec show(t(), term(), (term() -> term())) :: :ok
-  def show(%__MODULE__{json?: true}, answer, _shown), do: IO.puts(JSON.encode!(answer))
+  def show(%__MODULE__{json?: true}, answer, _shown) do
+    answer
+    |> JSON.encode!()
+    |> IO.puts()
+  end
 
   def show(_cx, answer, shown) do
     shown.(answer)
@@ -72,7 +76,9 @@ defmodule WardrikDaemon.CLI.Context do
     do: {:ok, %Client{url: url, secret: secret}}
 
   def client(cx) do
-    case CLIToken.read(Dirs.data_home(cx.dirs, "cli_token")) do
+    path = Dirs.data_home(cx.dirs, "cli_token")
+
+    case CLIToken.read(path) do
       {:ok, %{url: url, secret: secret}} ->
         {:ok, %Client{url: url, secret: secret}}
 
@@ -139,7 +145,9 @@ defmodule WardrikDaemon.CLI.Context do
   def put(map, key, value), do: Map.put(map, key, value)
 
   defp config(dirs) do
-    case YamlElixir.read_from_file(Dirs.config(dirs, "config.yaml")) do
+    path = Dirs.config(dirs, "config.yaml")
+
+    case YamlElixir.read_from_file(path) do
       {:ok, %{} = config} -> config
       _none -> %{}
     end

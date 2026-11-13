@@ -27,7 +27,11 @@ defmodule WardrikDaemon.Test do
 
   def write(%{env: env}, name, text) do
     path = Path.join(env["WARDRIK_CONFIG_DIR"], name)
-    File.mkdir_p!(Path.dirname(path))
+
+    path
+    |> Path.dirname()
+    |> File.mkdir_p!()
+
     File.write!(path, text)
     path
   end
@@ -48,13 +52,12 @@ defmodule WardrikDaemon.Test do
   end
 
   defp store(context) do
-    if System.get_env("DATABASE_URL"),
-      do:
-        Wardrik.Store.scope(
-          Wardrik.Store.Ecto.new(repo: Wardrik.Store.Ecto.Repo),
-          "t#{System.unique_integer([:positive])}"
-        ),
-      else: Wardrik.Store.ETS.new(name: :"store #{context.test}")
+    if System.get_env("DATABASE_URL") do
+      ecto = Wardrik.Store.Ecto.new(repo: Wardrik.Store.Ecto.Repo)
+      Wardrik.Store.scope(ecto, "t#{System.unique_integer([:positive])}")
+    else
+      Wardrik.Store.ETS.new(name: :"store #{context.test}")
+    end
   end
 
   @doc "Makes the agent `name` for `owner`, as the daemon's route does, and returns its ID."
@@ -75,7 +78,11 @@ defmodule WardrikDaemon.Test do
   and named after the whole label, so labels never share a name. Makes it the first time.
   """
   def recorded(context, label) do
-    {owner, _name} = Enum.split(String.split(label, "/"), -1)
+    {owner, _name} =
+      label
+      |> String.split("/")
+      |> Enum.split(-1)
+
     owner = Enum.join(owner, "/")
 
     name =

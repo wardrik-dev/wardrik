@@ -76,7 +76,12 @@ defmodule Wardrik.OAuth.Token do
     case JSON.decode(json) do
       {:ok, %{"access_token" => access_token, "token_endpoint" => endpoint} = map}
       when is_binary(access_token) and is_binary(endpoint) ->
-        {:ok, struct!(__MODULE__, Enum.map(Map.take(map, @fields), &field/1))}
+        fields =
+          map
+          |> Map.take(@fields)
+          |> Enum.map(&field/1)
+
+        {:ok, struct!(__MODULE__, fields)}
 
       _other ->
         {:error, :unreadable}

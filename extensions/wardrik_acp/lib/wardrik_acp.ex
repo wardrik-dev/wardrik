@@ -130,7 +130,8 @@ defmodule WardrikACP do
   """
   @spec sweep(atom()) :: [Path.t()]
   def sweep(acp) do
-    {:ok, settings} = Registry.meta(Connection.registry(acp), :settings)
+    registry = Connection.registry(acp)
+    {:ok, settings} = Registry.meta(registry, :settings)
     Sweep.run(settings)
   end
 
@@ -146,7 +147,8 @@ defmodule WardrikACP do
   @impl WardrikCore.Capability
   def tools(_context, opts) do
     acp = Keyword.fetch!(opts, :name)
-    {:ok, settings} = Registry.meta(Connection.registry(acp), :settings)
+    registry = Connection.registry(acp)
+    {:ok, settings} = Registry.meta(registry, :settings)
 
     checkouts =
       opts

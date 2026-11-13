@@ -231,9 +231,8 @@ defmodule Wardrik.OAuth.Flow do
   defp redirect_uri(flow), do: flow.settings.page <> "/callback"
 
   defp random do
-    18
-    |> :crypto.strong_rand_bytes()
-    |> Base.url_encode64(padding: false)
+    bytes = :crypto.strong_rand_bytes(18)
+    Base.url_encode64(bytes, padding: false)
   end
 
   defp schedule(interval), do: Process.send_after(self(), :poll, interval)

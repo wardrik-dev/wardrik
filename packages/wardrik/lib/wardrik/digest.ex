@@ -79,8 +79,10 @@ defmodule Wardrik.Digest do
 
     """
 
+    text = ReqLLM.Response.text(summarized.response)
+
     %File{
-      content: front <> String.trim(ReqLLM.Response.text(summarized.response)) <> "\n",
+      content: front <> String.trim(text) <> "\n",
       by: context.agent_id,
       at: at,
       labels: Context.labels(messages)
@@ -115,7 +117,9 @@ defmodule Wardrik.Digest do
   end
 
   defp through_line(front) do
-    Enum.find_value(String.split(front, "\n"), fn
+    front
+    |> String.split("\n")
+    |> Enum.find_value(fn
       "through: " <> id -> String.trim(id)
       _line -> nil
     end)

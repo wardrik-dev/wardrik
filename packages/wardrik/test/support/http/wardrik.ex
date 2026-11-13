@@ -53,12 +53,17 @@ defmodule Wardrik.Test.HTTP do
     }
 
   def request(context, method, path, body \\ nil, headers \\ []) do
+    opts =
+      context
+      |> http()
+      |> Wardrik.HTTP.init()
+
     method
     |> conn(path, encoded(body))
     |> put_req_header("authorization", "Bearer " <> context.secret)
     |> put_req_header("content-type", "application/json")
     |> merge_req_headers(headers)
-    |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
+    |> Wardrik.HTTP.call(opts)
   end
 
   def body(conn), do: JSON.decode!(conn.resp_body)
@@ -92,19 +97,29 @@ defmodule Wardrik.Test.HTTP.Authenticator do
 
   @doc "Signs `principal` in too. Returns the secret it sends."
   def sign_in(name, principal) do
-    secret = "secret-" <> Integer.to_string(System.unique_integer([:positive]))
-    Agent.update(signed_in(name), &Map.put(&1, secret, principal))
+    unique = System.unique_integer([:positive])
+    secret = "secret-" <> Integer.to_string(unique)
+
+    name
+    |> signed_in()
+    |> Agent.update(&Map.put(&1, secret, principal))
+
     secret
   end
 
   @doc "Signs out whoever sends `secret`."
-  def revoke(name, secret), do: Agent.update(signed_in(name), &Map.delete(&1, secret))
+  def revoke(name, secret) do
+    name
+    |> signed_in()
+    |> Agent.update(&Map.delete(&1, secret))
+  end
 
   @impl Wardrik.HTTP.Authenticator
   def authenticate(%{conn: conn, wardrik: wardrik}, _opts) do
+    signed_in = signed_in(wardrik)
+
     with ["Bearer " <> secret] <- get_req_header(conn, "authorization"),
-         principal when is_binary(principal) <-
-           Agent.get(signed_in(wardrik), &Map.get(&1, secret)) do
+         principal when is_binary(principal) <- Agent.get(signed_in, &Map.get(&1, secret)) do
       {:ok, Wardrik.as(wardrik, principal)}
     else
       _unknown -> {:error, Wardrik.Error.new(:unauthorized, "Sign in first.")}

@@ -68,7 +68,9 @@ defmodule WardrikRest.DiscoveryTest do
         }
       })
 
-    assert Enum.sort(Map.keys(spec.types)) ==
+    names = Map.keys(spec.types)
+
+    assert Enum.sort(names) ==
              ["Ads__Label", "Campaign", "Campaign_ShoppingSetting", "Other__Label"]
 
     assert spec.types["Campaign"]["properties"] == %{
@@ -134,7 +136,8 @@ defmodule WardrikRest.DiscoveryTest do
 
     create = operation(spec, "notes_create")
     fields = Map.new(create.parameters, &{&1.name, &1.schema})
-    assert Enum.sort(Map.keys(fields)) == ["extra", "tags", "text"]
+    names = Map.keys(fields)
+    assert Enum.sort(names) == ["extra", "tags", "text"]
     assert fields["extra"] == %{"type" => "object", "additionalProperties" => %{}}
   end
 

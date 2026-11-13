@@ -3,7 +3,11 @@ defmodule WardrikDaemon.Console.MarkdownTest do
 
   alias WardrikDaemon.Console.Markdown
 
-  defp plain(data), do: IO.chardata_to_string(Owl.Data.untag(data))
+  defp plain(data) do
+    data
+    |> Owl.Data.untag()
+    |> IO.chardata_to_string()
+  end
 
   defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
@@ -123,7 +127,8 @@ defmodule WardrikDaemon.Console.MarkdownTest do
       assert render("see [the docs](https://example.com)") == "see the docs"
 
       link = Markdown.line("[the docs](https://example.com)")
-      assert Enum.member?(sequences(link), {:hyperlink, "https://example.com"})
+      sequences = sequences(link)
+      assert Enum.member?(sequences, {:hyperlink, "https://example.com"})
     end
 
     test "a bare link shows its url" do
@@ -239,7 +244,8 @@ defmodule WardrikDaemon.Console.MarkdownTest do
         |> elem(1)
         |> Markdown.flush()
 
-      assert Enum.member?(sequences(name), :bright)
+      sequences = sequences(name)
+      assert Enum.member?(sequences, :bright)
     end
 
     test "a table still pending at the end of the stream is flushed" do

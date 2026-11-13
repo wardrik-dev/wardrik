@@ -147,7 +147,9 @@ defmodule Wardrik.OAuth do
   """
   @spec flow(atom(), String.t()) :: {:ok, map()} | :error
   def flow(oauth, id) do
-    case Registry.lookup(registry(oauth), {:id, id}) do
+    registry = registry(oauth)
+
+    case Registry.lookup(registry, {:id, id}) do
       [{pid, _value}] -> described(pid)
       [] -> :error
     end
@@ -161,7 +163,9 @@ defmodule Wardrik.OAuth do
   """
   @spec started(atom(), String.t()) :: {:ok, map()} | :error
   def started(oauth, state) do
-    case Registry.lookup(registry(oauth), {:state, state}) do
+    registry = registry(oauth)
+
+    case Registry.lookup(registry, {:state, state}) do
       [{pid, _value}] -> described(pid)
       [] -> :error
     end
@@ -176,8 +180,10 @@ defmodule Wardrik.OAuth do
   `false` once it's granted, declined or expired.
   """
   @spec signing_in?(atom(), String.t(), Principal.t()) :: boolean()
-  def signing_in?(oauth, name, %Principal{id: id}),
-    do: Registry.lookup(registry(oauth), {:flow, name, id}) != []
+  def signing_in?(oauth, name, %Principal{id: id}) do
+    registry = registry(oauth)
+    Registry.lookup(registry, {:flow, name, id}) != []
+  end
 
   defp described(pid) do
     {:ok, Flow.describe(pid)}
@@ -202,7 +208,8 @@ defmodule Wardrik.OAuth do
     %Principal{} = principal = Keyword.fetch!(opts, :as)
 
     with %{"state" => state} when is_binary(state) <- params,
-         [{pid, _value}] <- Registry.lookup(registry(oauth), {:state, state}) do
+         registry = registry(oauth),
+         [{pid, _value}] <- Registry.lookup(registry, {:state, state}) do
       finished(pid, params, principal)
     else
       _none -> {:error, :no_such_flow}
@@ -230,8 +237,11 @@ defmodule Wardrik.OAuth do
   end
 
   @impl Wardrik.Vault.Grants
-  def refused(%Grants.Request{name: name, principal: principal}, oauth),
-    do: Renewal.expire(settings(oauth), name, principal)
+  def refused(%Grants.Request{name: name, principal: principal}, oauth) do
+    oauth
+    |> settings()
+    |> Renewal.expire(name, principal)
+  end
 
   @doc false
   @spec keep(map(), Provider.t(), Principal.t(), Token.t()) ::
@@ -246,11 +256,15 @@ defmodule Wardrik.OAuth do
 
   @impl Supervisor
   def init(opts) do
+    vault = Map.fetch!(opts, :vault)
+    store = Map.fetch!(opts, :store)
+    page = Map.fetch!(opts, :page)
+
     settings = %{
-      vault: Map.fetch!(opts, :vault),
-      store: Wardrik.Store.scope(Map.fetch!(opts, :store), "wardrik_oauth"),
+      vault: vault,
+      store: Wardrik.Store.scope(store, "wardrik_oauth"),
       client_name: opts.client_name,
-      page: String.trim_trailing(Map.fetch!(opts, :page), "/"),
+      page: String.trim_trailing(page, "/"),
       resolver: opts.resolver,
       on_granted: opts.on_granted,
       req_options: checked(opts.check) ++ opts.req_options,
@@ -270,7 +284,8 @@ defmodule Wardrik.OAuth do
   defp checked(check), do: [check: check]
 
   defp settings(oauth) do
-    {:ok, settings} = Registry.meta(registry(oauth), :settings)
+    registry = registry(oauth)
+    {:ok, settings} = Registry.meta(registry, :settings)
     settings
   rescue
     ArgumentError ->

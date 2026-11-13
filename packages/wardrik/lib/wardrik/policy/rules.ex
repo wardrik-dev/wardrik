@@ -142,7 +142,9 @@ defmodule Wardrik.Policy.Rules do
   defp listed(other), do: [{other, :not_a_list}]
 
   defp after_labels(labels) when is_map(labels) do
-    case Enum.reject(Map.keys(labels), &(is_binary(&1) and &1 != "")) do
+    keys = Map.keys(labels)
+
+    case Enum.reject(keys, &(is_binary(&1) and &1 != "")) do
       [] ->
         {:ok,
          for({label, patterns} <- labels, entry <- listed(patterns), do: {{:allow, label}, entry})}

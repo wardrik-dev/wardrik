@@ -35,7 +35,8 @@ defmodule Wardrik.ResolverTest do
   setup :set_mimic_global
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
     resolved = start_supervised!({Agent, fn -> %{} end})
 
     wardrik =
@@ -54,7 +55,8 @@ defmodule Wardrik.ResolverTest do
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{wardrik: wardrik, resolved: resolved, scope: owner(wardrik)}
   end
 

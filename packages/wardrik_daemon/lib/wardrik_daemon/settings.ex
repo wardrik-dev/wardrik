@@ -75,8 +75,10 @@ defmodule WardrikDaemon.Settings do
              do: {:ok, Enum.map(items, &named/1)}
 
       %{store: store, kind: checked} ->
-        with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.read", checked}),
-             do: {:ok, Enum.map(store.list(daemon, owner), &named/1)}
+        with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.read", checked}) do
+          items = store.list(daemon, owner)
+          {:ok, Enum.map(items, &named/1)}
+        end
     end
   end
 

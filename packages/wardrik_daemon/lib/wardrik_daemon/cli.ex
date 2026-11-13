@@ -42,7 +42,8 @@ defmodule WardrikDaemon.CLI do
   @spec halt([String.t()]) :: no_return()
   def halt(argv) do
     {:ok, _started} = Application.ensure_all_started([:req, :req_llm, :yaml_elixir, :owl])
-    System.halt(main(argv))
+    status = main(argv)
+    System.halt(status)
   end
 
   @doc """
@@ -55,7 +56,8 @@ defmodule WardrikDaemon.CLI do
   """
   @spec main([String.t()], keyword()) :: 0 | 1
   def main(argv, opts \\ []) do
-    cx = Context.new(Keyword.get_lazy(opts, :env, &System.get_env/0))
+    env = Keyword.get_lazy(opts, :env, &System.get_env/0)
+    cx = Context.new(env)
     cx = %{cx | terminal: Keyword.get(opts, :terminal, cx.terminal)}
 
     case ran(routed(cx, argv), cx) do

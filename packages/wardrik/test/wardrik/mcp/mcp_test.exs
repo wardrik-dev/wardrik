@@ -73,7 +73,10 @@ defmodule Wardrik.MCPTest do
   end
 
   test "offers a server's tools under its name" do
-    names = Enum.map(tools(:stub), & &1.name)
+    names =
+      :stub
+      |> tools()
+      |> Enum.map(& &1.name)
 
     assert "stub__echo" in names
     assert "stub__charge" in names
@@ -88,7 +91,11 @@ defmodule Wardrik.MCPTest do
 
     assert ["cheap__charge", "cheap__echo"] = cheap
 
-    metered = Enum.map(tools(:metered), & &1.name)
+    metered =
+      :metered
+      |> tools()
+      |> Enum.map(& &1.name)
+
     refute "metered__slow" in metered
   end
 
@@ -106,18 +113,26 @@ defmodule Wardrik.MCPTest do
     assert false == Tool.annotation(charge, :read_only)
     assert true == Tool.annotation(charge, :destructive)
     assert nil == Tool.annotation(charge, :idempotent)
-    assert nil == Tool.annotation(tool(:stub, "boom"), :read_only)
+    boom = tool(:stub, "boom")
+    assert nil == Tool.annotation(boom, :read_only)
   end
 
   test "gates a tool unless it's read-only, and labels answers outside unless trusted" do
-    assert false == Tool.annotation(tool(:stub, "echo"), :gated)
-    assert true == Tool.annotation(tool(:stub, "charge"), :gated)
-    assert true == Tool.annotation(tool(:stub, "boom"), :gated)
-    assert ["outside"] == Tool.annotation(tool(:stub, "echo"), :labels)
+    echo = tool(:stub, "echo")
+    charge = tool(:stub, "charge")
+    boom = tool(:stub, "boom")
 
-    assert true == Tool.annotation(tool(:cheap, "echo"), :gated)
-    assert false == Tool.annotation(tool(:cheap, "charge"), :gated)
-    assert [] == Tool.annotation(tool(:cheap, "echo"), :labels)
+    assert false == Tool.annotation(echo, :gated)
+    assert true == Tool.annotation(charge, :gated)
+    assert true == Tool.annotation(boom, :gated)
+    assert ["outside"] == Tool.annotation(echo, :labels)
+
+    cheap_echo = tool(:cheap, "echo")
+    cheap_charge = tool(:cheap, "charge")
+
+    assert true == Tool.annotation(cheap_echo, :gated)
+    assert false == Tool.annotation(cheap_charge, :gated)
+    assert [] == Tool.annotation(cheap_echo, :labels)
   end
 
   test "a call answers with the server's text" do
@@ -155,7 +170,8 @@ defmodule Wardrik.MCPTest do
 
   test "the arguments are checked against the server's schema" do
     calls = [%ToolCall{id: "1", name: "stub__echo", arguments: %{}}]
-    assert {:error, _reason} = Tool.call(tools(:stub), hd(calls), context())
+    stub = tools(:stub)
+    assert {:error, _reason} = Tool.call(stub, hd(calls), context())
   end
 
   test "a server that says its tools changed is asked for them again" do
@@ -190,13 +206,11 @@ defmodule Wardrik.MCPTest do
 
     assert_receive {:tools, Wardrik.MCPTest.Other, "stub", %{count: 1}}, 10_000
 
-    assert ["stub__echo"] =
-             Enum.map(
-               Wardrik.MCP.tools(context(), name: Wardrik.MCPTest.Other, servers: :stub),
-               & &1.name
-             )
+    other = Wardrik.MCP.tools(context(), name: Wardrik.MCPTest.Other, servers: :stub)
+    assert ["stub__echo"] = Enum.map(other, & &1.name)
 
-    assert "stub__charge" in Enum.map(tools(:stub), & &1.name)
+    stub = tools(:stub)
+    assert "stub__charge" in Enum.map(stub, & &1.name)
   end
 
   describe "servers added as the app runs" do
@@ -209,7 +223,8 @@ defmodule Wardrik.MCPTest do
       assert_receive {:tools, @mcp, "added", %{count: 1}}, 10_000
 
       assert "added" in Wardrik.MCP.servers(@mcp)
-      assert ["extra__echo"] = Enum.map(tools("added"), & &1.name)
+      added = tools("added")
+      assert ["extra__echo"] = Enum.map(added, & &1.name)
 
       assert :ok = Wardrik.MCP.remove(@mcp, "added")
       refute "added" in Wardrik.MCP.servers(@mcp)
@@ -264,7 +279,8 @@ defmodule Wardrik.MCPTest do
       on_exit(fn -> Wardrik.MCP.remove(@mcp, name) end)
       connected(name)
 
-      assert ["#{name}__ping"] == Enum.map(tools(name), & &1.name)
+      offered = tools(name)
+      assert ["#{name}__ping"] == Enum.map(offered, & &1.name)
       assert [^path | _rest] = paths = requested()
       assert Enum.uniq(paths) == [path]
     end
@@ -422,21 +438,26 @@ defmodule Wardrik.MCPTest do
 
     defp ask(context, name) do
       call = %ToolCall{id: "1", name: "own__" <> name, arguments: %{}}
-      Tool.call(own(context), call, context)
+
+      context
+      |> own()
+      |> Tool.call(call, context)
     end
 
     test "offers connecting until someone has, then each calls it as themselves" do
       ada = context("ada", %{"ada" => "ada-token"})
       grace = context("grace", %{})
 
-      assert ["own__connect"] = Enum.map(own(ada), & &1.name)
+      offered = own(ada)
+      assert ["own__connect"] = Enum.map(offered, & &1.name)
 
       assert {:park, %WardrikCore.Authorization{url: "https://sign.in/grace", credential: "stub"}} =
                ask(grace, "connect")
 
       assert {:ok, "Connected to own." <> _} = ask(ada, "connect")
 
-      assert ["own__whoami"] = Enum.map(own(ada), & &1.name)
+      offered = own(ada)
+      assert ["own__whoami"] = Enum.map(offered, & &1.name)
       assert {:ok, "ada-token", _context} = ask(ada, "whoami")
 
       linus = context("linus", %{"linus" => "linus-token"})
@@ -458,8 +479,8 @@ defmodule Wardrik.MCPTest do
       ada = context("ada", %{"ada" => "ada-token"})
       call = %ToolCall{id: "1", name: "broken__connect", arguments: %{}}
 
-      assert {:error, "broken didn't connect" <> _} =
-               Tool.call(Wardrik.MCP.tools(ada, name: @mcp, servers: "broken"), call, ada)
+      broken = Wardrik.MCP.tools(ada, name: @mcp, servers: "broken")
+      assert {:error, "broken didn't connect" <> _} = Tool.call(broken, call, ada)
 
       bare = Context.new(agent_id: "mcp-test", principal: %WardrikCore.Principal{id: "ada"})
       assert {:error, "own didn't connect" <> _} = ask(bare, "connect")
@@ -519,7 +540,9 @@ defmodule Wardrik.MCPTest do
 
   defp flaky_client do
     [{connection, _hash}] =
-      Registry.lookup(Wardrik.MCP.Connection.registry(@mcp), {:connection, "flaky", nil})
+      @mcp
+      |> Wardrik.MCP.Connection.registry()
+      |> Registry.lookup({:connection, "flaky", nil})
 
     {:ok, :sys.get_state(connection).client}
   end
@@ -542,11 +565,18 @@ defmodule Wardrik.MCPTest do
 
   defp tools(server), do: Wardrik.MCP.tools(context(), name: @mcp, servers: server)
 
-  defp tool(server, name), do: Enum.find(tools(server), &(&1.name == "#{server}__#{name}"))
+  defp tool(server, name) do
+    server
+    |> tools()
+    |> Enum.find(&(&1.name == "#{server}__#{name}"))
+  end
 
   defp call(server, name, arguments \\ %{}) do
     call = %ToolCall{id: "1", name: "#{server}__#{name}", arguments: arguments}
-    Tool.call(tools(server), call, context())
+
+    server
+    |> tools()
+    |> Tool.call(call, context())
   end
 
   defp context, do: Context.new(agent_id: "mcp-test")

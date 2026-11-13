@@ -60,7 +60,9 @@ defmodule Wardrik.OAuth.Metadata do
   defp issuer(%Provider{issuer: issuer}, _req_options) when is_binary(issuer), do: {:ok, issuer}
 
   defp issuer(%Provider{resource: resource}, req_options) do
-    case Request.get_json(well_known(resource, "oauth-protected-resource"), req_options) do
+    url = well_known(resource, "oauth-protected-resource")
+
+    case Request.get_json(url, req_options) do
       {:ok, %{"authorization_servers" => [issuer | _rest]}} -> {:ok, issuer}
       {:ok, _body} -> {:error, {:no_authorization_server, resource}}
       {:error, reason} -> {:error, reason}
@@ -68,9 +70,16 @@ defmodule Wardrik.OAuth.Metadata do
   end
 
   defp server_metadata(issuer, req_options) do
-    case Request.get_json(well_known(issuer, "oauth-authorization-server"), req_options) do
-      {:ok, body} -> {:ok, body}
-      {:error, _reason} -> Request.get_json(openid(issuer), req_options)
+    url = well_known(issuer, "oauth-authorization-server")
+
+    case Request.get_json(url, req_options) do
+      {:ok, body} ->
+        {:ok, body}
+
+      {:error, _reason} ->
+        issuer
+        |> openid()
+        |> Request.get_json(req_options)
     end
   end
 

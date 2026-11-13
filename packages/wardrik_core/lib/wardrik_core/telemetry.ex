@@ -51,7 +51,11 @@ defmodule WardrikCore.Telemetry do
 
     try do
       result = fun.(inner)
-      measured = Map.put(measured(result, context), :duration, System.monotonic_time() - began)
+
+      measured =
+        result
+        |> measured(context)
+        |> Map.put(:duration, System.monotonic_time() - began)
 
       Event.emit(
         context,

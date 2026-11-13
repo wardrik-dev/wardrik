@@ -10,7 +10,8 @@ defmodule Wardrik.AgentToolsTest do
   setup :set_mimic_global
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
@@ -26,7 +27,8 @@ defmodule Wardrik.AgentToolsTest do
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{scope: owner(wardrik)}
   end
 
@@ -104,8 +106,8 @@ defmodule Wardrik.AgentToolsTest do
     assert %{"definition" => %{"instructions" => "Watch."}} =
              run!(scope, "agent.definition", %{"agent" => "acme/watcher"})
 
-    assert %{"budget" => _budget} =
-             Wardrik.Definitions.boundary(Wardrik.Instance.fetch!(scope.wardrik), "acme/watcher")
+    wardrik = Wardrik.Instance.fetch!(scope.wardrik)
+    assert %{"budget" => _budget} = Wardrik.Definitions.boundary(wardrik, "acme/watcher")
   end
 
   test "reads agents freely, and changes their triggers only once allowed", %{scope: scope} do
@@ -208,7 +210,10 @@ defmodule Wardrik.AgentToolsTest do
     run!(scope, "agent.ask", %{"agent" => "acme/front", "content" => "Plan the week"})
     until("wardrik.run.completed")
 
-    triggers = Wardrik.triggers(Wardrik.Instance.fetch!(scope.wardrik))
+    triggers =
+      scope.wardrik
+      |> Wardrik.Instance.fetch!()
+      |> Wardrik.triggers()
 
     assert [{%Wardrik.Triggers.Trigger{name: "schedule-" <> _made_up, overlap: :queue}, ^at}] =
              Wardrik.Triggers.list(triggers, "acme/front")
@@ -283,7 +288,10 @@ defmodule Wardrik.AgentToolsTest do
     answer =
       scope
       |> history("acme/front")
-      |> Enum.find(&String.starts_with?(to_string(&1.metadata[:id]), "answer_"))
+      |> Enum.find(fn message ->
+        id = to_string(message.metadata[:id])
+        String.starts_with?(id, "answer_")
+      end)
 
     assert %{metadata: %{labels: ["outside"]}} = answer
   end
@@ -305,16 +313,14 @@ defmodule Wardrik.AgentToolsTest do
     wardrik = Wardrik.Instance.fetch!(scope.wardrik)
     {:ok, _pid} = Wardrik.Operations.Running.awake(wardrik, {"acme/worker", "C1"})
 
-    tools =
-      Wardrik.AgentTools.tools(
-        WardrikCore.Context.new(
-          agent_id: "acme/front",
-          conversation: "C1",
-          principal: %WardrikCore.Principal{id: "acme/@ops"}
-        ),
-        wardrik: scope.wardrik,
-        reach: :agents
+    context =
+      WardrikCore.Context.new(
+        agent_id: "acme/front",
+        conversation: "C1",
+        principal: %WardrikCore.Principal{id: "acme/@ops"}
       )
+
+    tools = Wardrik.AgentTools.tools(context, wardrik: scope.wardrik, reach: :agents)
 
     tool = fn name -> Enum.find(tools, &(&1.name == name)) end
 
@@ -341,16 +347,15 @@ defmodule Wardrik.AgentToolsTest do
     assert {:error, message} = tool.("agent_read").run.(%{agent: "worker"}, nil)
     refute message =~ "acme/worker"
 
-    assert WardrikCore.Tool.annotation(tool.("agent_define"), :gated)
-    assert WardrikCore.Tool.annotation(tool.("agents_list"), :read_only)
+    agent_define = tool.("agent_define")
+    assert WardrikCore.Tool.annotation(agent_define, :gated)
+    agents_list = tool.("agents_list")
+    assert WardrikCore.Tool.annotation(agents_list, :read_only)
   end
 
   test "can't use its tools where it acts for no one" do
-    [tool | _rest] =
-      Wardrik.AgentTools.tools(WardrikCore.Context.new(agent_id: "acme/front"),
-        wardrik: :anywhere,
-        reach: :agents
-      )
+    context = WardrikCore.Context.new(agent_id: "acme/front")
+    [tool | _rest] = Wardrik.AgentTools.tools(context, wardrik: :anywhere, reach: :agents)
 
     assert tool.run.(%{}, nil) ==
              {:error, "acme/front acts for no one, so it can't reach other agents."}

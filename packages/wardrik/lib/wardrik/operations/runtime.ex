@@ -55,7 +55,9 @@ defmodule Wardrik.Operations.Runtime do
     key = Running.key(input)
 
     with {:ok, pid} <- Snapshot.running(wardrik, key) do
-      case :erpc.call(node(pid), __MODULE__, :processes, [[{key, pid}]], @timeout) do
+      node = node(pid)
+
+      case :erpc.call(node, __MODULE__, :processes, [[{key, pid}]], @timeout) do
         [measured] -> {:ok, measured}
         [] -> {:error, Wardrik.Error.new(:not_found, "#{Running.describe(key)} sleeps.")}
       end
@@ -174,9 +176,10 @@ defmodule Wardrik.Operations.Runtime do
     second = :erlang.statistics(:scheduler_wall_time)
     normal = :erlang.system_info(:schedulers)
 
+    sorted = Enum.sort(first)
+
     {active, total} =
-      for {{id, active1, total1}, {id, active2, total2}} <-
-            Enum.zip(Enum.sort(first), Enum.sort(second)),
+      for {{id, active1, total1}, {id, active2, total2}} <- Enum.zip(sorted, Enum.sort(second)),
           id <= normal,
           reduce: {0, 0} do
         {active, total} -> {active + active2 - active1, total + total2 - total1}

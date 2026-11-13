@@ -6,7 +6,8 @@ defmodule Wardrik.Instance do
   def fetch!(%Wardrik{} = wardrik), do: wardrik
 
   def fetch!(instance) when is_atom(instance) do
-    {:ok, wardrik} = Registry.meta(registry(instance), :wardrik)
+    registry = registry(instance)
+    {:ok, wardrik} = Registry.meta(registry, :wardrik)
     wardrik
   rescue
     ArgumentError ->
@@ -18,9 +19,8 @@ defmodule Wardrik.Instance do
   @doc "Returns `{:ok, wardrik}` while `instance` runs, else `:error`."
   @spec fetch(atom()) :: {:ok, Wardrik.t()} | :error
   def fetch(instance) when is_atom(instance) do
-    if Process.whereis(registry(instance)),
-      do: Registry.meta(registry(instance), :wardrik),
-      else: :error
+    registry = registry(instance)
+    if Process.whereis(registry), do: Registry.meta(registry, :wardrik), else: :error
   end
 
   @doc "Returns `instance`'s name."

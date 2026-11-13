@@ -249,7 +249,10 @@ defmodule Peer do
   end
 
   defp run([%{"write" => %{"path" => path, "text" => text}} | steps], state) do
-    File.write!(Path.join(state.cwd, path), text)
+    state.cwd
+    |> Path.join(path)
+    |> File.write!(text)
+
     run(steps, state)
   end
 

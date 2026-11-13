@@ -39,7 +39,9 @@ defmodule Wardrik.MCP.Connection do
 
   @spec tools(atom(), String.t()) :: [WardrikCore.Tool.t()]
   def tools(mcp, name) do
-    case Registry.lookup(registry(mcp), {:tools, name}) do
+    registry = registry(mcp)
+
+    case Registry.lookup(registry, {:tools, name}) do
       [{_pid, tools}] -> tools
       [] -> []
     end
@@ -64,9 +66,11 @@ defmodule Wardrik.MCP.Connection do
   def refuse(server, context) do
     :ok = WardrikCore.Credentials.refused(context, server.credential_name)
 
-    for {pid, _hash} <-
-          Registry.lookup(registry(server.mcp), {:connection, server.name, who(context)}) do
-      DynamicSupervisor.terminate_child(supervisor(server.mcp), pid)
+    registry = registry(server.mcp)
+    supervisor = supervisor(server.mcp)
+
+    for {pid, _hash} <- Registry.lookup(registry, {:connection, server.name, who(context)}) do
+      DynamicSupervisor.terminate_child(supervisor, pid)
     end
 
     :ok
@@ -114,9 +118,11 @@ defmodule Wardrik.MCP.Connection do
   @doc "Stops every connection to the server `name`."
   @spec close(atom(), String.t()) :: :ok
   def close(mcp, name) do
-    for pid <-
-          Registry.select(registry(mcp), [{{{:connection, name, :_}, :"$1", :_}, [], [:"$1"]}]) do
-      DynamicSupervisor.terminate_child(supervisor(mcp), pid)
+    registry = registry(mcp)
+    supervisor = supervisor(mcp)
+
+    for pid <- Registry.select(registry, [{{{:connection, name, :_}, :"$1", :_}, [], [:"$1"]}]) do
+      DynamicSupervisor.terminate_child(supervisor, pid)
     end
 
     :ok
@@ -185,7 +191,10 @@ defmodule Wardrik.MCP.Connection do
   def handle_info({:EXIT, _gone, _reason}, state), do: {:noreply, state}
 
   @impl GenServer
-  def terminate(_reason, state), do: :telemetry.detach(handler(state))
+  def terminate(_reason, state) do
+    handler = handler(state)
+    :telemetry.detach(handler)
+  end
 
   defp opened(server, who, token) do
     registry = registry(server.mcp)
@@ -202,12 +211,15 @@ defmodule Wardrik.MCP.Connection do
   end
 
   defp reopened(server, who, token, pid, false) do
-    DynamicSupervisor.terminate_child(supervisor(server.mcp), pid)
+    supervisor = supervisor(server.mcp)
+    DynamicSupervisor.terminate_child(supervisor, pid)
     started(server, who, token)
   end
 
   defp started(server, who, token) do
-    case DynamicSupervisor.start_child(supervisor(server.mcp), {__MODULE__, {server, who, token}}) do
+    supervisor = supervisor(server.mcp)
+
+    case DynamicSupervisor.start_child(supervisor, {__MODULE__, {server, who, token}}) do
       {:ok, pid} -> ready(server, who, pid)
       {:error, {:already_started, pid}} -> ready(server, who, pid)
       {:error, reason} -> {:error, reason}
@@ -224,10 +236,12 @@ defmodule Wardrik.MCP.Connection do
   end
 
   defp claimed(%{server: server} = state) do
-    if state.who == nil,
-      do: {:ok, _owner} = Registry.register(registry(server.mcp), {:tools, server.name}, [])
+    registry = registry(server.mcp)
 
-    %{state | slot: slot(registry(server.mcp), 0)}
+    if state.who == nil,
+      do: {:ok, _owner} = Registry.register(registry, {:tools, server.name}, [])
+
+    %{state | slot: slot(registry, 0)}
   end
 
   defp slot(registry, n) do
@@ -277,8 +291,10 @@ defmodule Wardrik.MCP.Connection do
   end
 
   defp listed(%{server: server, who: who}) do
-    with :ok <- Anubis.Client.await_ready(client(server, who), timeout: @ready) do
-      page(client(server, who), [], [])
+    client = client(server, who)
+
+    with :ok <- Anubis.Client.await_ready(client, timeout: @ready) do
+      page(client, [], [])
     end
   catch
     :exit, reason -> {:error, reason}
@@ -297,7 +313,8 @@ defmodule Wardrik.MCP.Connection do
 
   defp offer(%{server: server, who: nil} = state, definitions) do
     tools = Tool.offered(server, definitions)
-    Registry.update_value(registry(server.mcp), {:tools, server.name}, fn _offered -> tools end)
+    registry = registry(server.mcp)
+    Registry.update_value(registry, {:tools, server.name}, fn _offered -> tools end)
     told(server, length(tools))
     state
   end
@@ -348,8 +365,10 @@ defmodule Wardrik.MCP.Connection do
   defp shown(%Server{owner: owner} = server), do: "#{owner}'s MCP server #{Server.prefix(server)}"
 
   defp listen_for_changes(state) do
+    handler = handler(state)
+
     :telemetry.attach(
-      handler(state),
+      handler,
       [:anubis_mcp, :client, :notification],
       &__MODULE__.handle_event/4,
       {self(), client(state.server, state.who)}
@@ -369,8 +388,7 @@ defmodule Wardrik.MCP.Connection do
   defp hash(token), do: :erlang.phash2(token)
 
   defp version do
-    :wardrik
-    |> Application.spec(:vsn)
-    |> to_string()
+    vsn = Application.spec(:wardrik, :vsn)
+    to_string(vsn)
   end
 end

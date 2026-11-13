@@ -95,7 +95,9 @@ defmodule Wardrik.Triggers.Scheduler do
   end
 
   defp reconcile(%{settings: settings} = state) do
-    Enum.reduce(Records.all(settings.store), state, fn {agent_id, name} = key, state ->
+    settings.store
+    |> Records.all()
+    |> Enum.reduce(state, fn {agent_id, name} = key, state ->
       case Records.lookup(settings.store, agent_id: agent_id, name: name) do
         {record, _vsn} -> arm(state, key, Records.next_at(record))
         nil -> state

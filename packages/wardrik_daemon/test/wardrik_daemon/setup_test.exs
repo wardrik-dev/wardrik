@@ -28,19 +28,22 @@ defmodule WardrikDaemon.SetupTest do
 
   defp machine(context), do: Machine.new(context.env, Dirs.new(context.env))
   defp yes(_question), do: {:ok, true}
-  defp config(context, name), do: File.read!(Path.join(context.env["WARDRIK_CONFIG_DIR"], name))
+
+  defp config(context, name) do
+    path = Path.join(context.env["WARDRIK_CONFIG_DIR"], name)
+    File.read!(path)
+  end
 
   test "finds executables on the environment's PATH alone", context do
-    File.write!(Path.join(context.bin, "plain"), "")
+    plain = Path.join(context.bin, "plain")
+    File.write!(plain, "")
     installed = installed(context, "claude")
+    machine = machine(context)
+    pathless = machine(%{context | env: Map.delete(context.env, "PATH")})
 
-    assert Machine.executable(machine(context), "claude") == installed
-    assert Machine.executable(machine(context), "plain") == nil
-
-    assert Machine.executable(
-             machine(%{context | env: Map.delete(context.env, "PATH")}),
-             "claude"
-           ) == nil
+    assert Machine.executable(machine, "claude") == installed
+    assert Machine.executable(machine, "plain") == nil
+    assert Machine.executable(pathless, "claude") == nil
   end
 
   test "offers nothing without Claude Code, or with a claude harness already", context do
@@ -61,7 +64,12 @@ defmodule WardrikDaemon.SetupTest do
     entry = [{:entry, "config.yaml", "harnesses", "claude", "command: claude-agent-acp\n"}]
 
     assert {:ok, [{:wrote, _path}]} = Setup.apply(entry, Dirs.new(context.env))
-    {:ok, read} = YamlElixir.read_from_string(config(context, "config.yaml"))
+
+    {:ok, read} =
+      context
+      |> config("config.yaml")
+      |> YamlElixir.read_from_string()
+
     assert Map.keys(read["harnesses"]) == ["claude", "codex"]
     assert read["http"] == %{"port" => 1}
 
@@ -84,7 +92,11 @@ defmodule WardrikDaemon.SetupTest do
               {:command, "npm install -g @agentclientprotocol/claude-agent-acp", _why}
             ]} = Setup.apply(changes, Dirs.new(context.env))
 
-    {:ok, read} = YamlElixir.read_from_string(config(context, "config.yaml"))
+    {:ok, read} =
+      context
+      |> config("config.yaml")
+      |> YamlElixir.read_from_string()
+
     assert read["org"] == "acme"
 
     assert %{"command" => "claude-agent-acp", "env" => env, "options" => %{"mode" => "default"}} =
@@ -93,8 +105,8 @@ defmodule WardrikDaemon.SetupTest do
     assert env == %{"PATH" => context.env["PATH"]}
     assert {:ok, [{"claude", _harness}]} = WardrikDaemon.Config.Harnesses.read(read["harnesses"])
 
-    assert {:ok, %{"coding" => _policy}} =
-             WardrikDaemon.Policies.read(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies"))
+    policies = Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies")
+    assert {:ok, %{"coding" => _policy}} = WardrikDaemon.Policies.read(policies)
 
     assert {:ok, [{:kept, _config}, {:kept, _policy}, {:command, _command, _why}]} =
              Setup.apply(changes, Dirs.new(context.env))
@@ -112,8 +124,10 @@ defmodule WardrikDaemon.SetupTest do
     assert config(context, "config.yaml") =~ "command: #{adapter}\n"
     assert config(context, "config.yaml") =~ "ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}"
 
-    File.mkdir_p!(Path.join(context.root, ".claude"))
-    File.write!(Path.join(context.root, ".claude/.credentials.json"), "{}")
+    claude = Path.join(context.root, ".claude")
+    credentials = Path.join(claude, ".credentials.json")
+    File.mkdir_p!(claude)
+    File.write!(credentials, "{}")
     write(context, "config.yaml", "org: acme\n")
 
     {:ok, changes, _asked} = Setup.plan([ClaudeCode], machine(context), &yes/1)

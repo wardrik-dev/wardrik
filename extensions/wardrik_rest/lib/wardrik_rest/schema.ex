@@ -126,7 +126,9 @@ defmodule WardrikRest.Schema do
   defp object(%{} = node, types, seen) do
     choices = Enum.flat_map(@choices, &List.wrap(node[&1]))
 
-    case Enum.find(Enum.map(choices, &object(&1, types, seen)), &Map.has_key?(&1, "properties")) do
+    objects = Enum.map(choices, &object(&1, types, seen))
+
+    case Enum.find(objects, &Map.has_key?(&1, "properties")) do
       nil -> node
       object -> object
     end

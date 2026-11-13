@@ -256,7 +256,9 @@ defmodule WardrikCore.TurnTest do
 
   test "middleware sees each streamed chunk once per model call", %{context: context} do
     stub(ReqLLM.StreamResponse, :process_stream, fn response, opts ->
-      opts[:on_chunk].(ReqLLM.StreamChunk.text("hi"))
+      on_chunk = opts[:on_chunk]
+      chunk = ReqLLM.StreamChunk.text("hi")
+      on_chunk.(chunk)
       {:ok, response}
     end)
 

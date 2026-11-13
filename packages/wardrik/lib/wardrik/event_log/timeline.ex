@@ -320,7 +320,11 @@ defmodule Wardrik.EventLog.Timeline do
     end
   end
 
-  defp waiting_on?(item, id), do: Enum.any?(Map.get(item, :interrupts, []), &(&1["id"] == id))
+  defp waiting_on?(item, id) do
+    item
+    |> Map.get(:interrupts, [])
+    |> Enum.any?(&(&1["id"] == id))
+  end
 
   defp find_step(run, id), do: Enum.find(run.steps, &(&1.id == id))
 

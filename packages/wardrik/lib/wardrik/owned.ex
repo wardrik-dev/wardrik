@@ -32,20 +32,26 @@ defmodule Wardrik.Owned do
 
   @doc "Returns the record of `kind` at `reference`, or `nil`."
   @spec get(Wardrik.t(), String.t(), String.t()) :: map() | nil
-  def get(wardrik, kind, reference),
-    do: Wardrik.Store.get(store(wardrik), kind <> "/" <> reference)
+  def get(wardrik, kind, reference) do
+    wardrik
+    |> store()
+    |> Wardrik.Store.get(kind <> "/" <> reference)
+  end
 
   @doc "Keeps `record`, which has `:owner` and `:name`, in place of any with its reference."
   @spec put(Wardrik.t(), String.t(), map()) :: :ok | {:error, term()}
   def put(wardrik, kind, %{owner: owner, name: name} = record) do
-    with {:ok, _vsn} <- Wardrik.Store.put(store(wardrik), path(kind, owner, name), record),
-         do: :ok
+    store = store(wardrik)
+    with {:ok, _vsn} <- Wardrik.Store.put(store, path(kind, owner, name), record), do: :ok
   end
 
   @doc "Deletes `owner`'s `name` of `kind`."
   @spec delete(Wardrik.t(), String.t(), String.t(), String.t()) :: :ok | {:error, term()}
-  def delete(wardrik, kind, owner, name),
-    do: Wardrik.Store.delete(store(wardrik), path(kind, owner, name))
+  def delete(wardrik, kind, owner, name) do
+    wardrik
+    |> store()
+    |> Wardrik.Store.delete(path(kind, owner, name))
+  end
 
   @doc "Returns what `owner` holds of `kind`."
   @spec own(Wardrik.t(), String.t(), String.t()) :: [map()]
@@ -94,8 +100,10 @@ defmodule Wardrik.Owned do
     Authorizer.authorize(scope, action: action, resource: {resource, owner}) == :ok
   end
 
-  defp entries(wardrik, prefix),
-    do: for({_path, record, _vsn} <- Wardrik.Store.entries(store(wardrik), prefix), do: record)
+  defp entries(wardrik, prefix) do
+    store = store(wardrik)
+    for {_path, record, _vsn} <- Wardrik.Store.entries(store, prefix), do: record
+  end
 
   defp path(kind, owner, name), do: kind <> "/" <> reference(owner, name)
   defp store(wardrik), do: Wardrik.Store.scope(wardrik.store, @scope)

@@ -62,8 +62,10 @@ defmodule WardrikBrave.WebSearch do
   @spec run(atom() | map(), map(), WardrikCore.Context.t()) ::
           {:ok, map()} | {:error, String.t()}
   def run(brave, args, context) do
-    with {:ok, window} <- window(args),
-         do: Client.search(settings(brave, context), body(args, window))
+    with {:ok, window} <- window(args) do
+      settings = settings(brave, context)
+      Client.search(settings, body(args, window))
+    end
   end
 
   defp described(%{api_key: key} = settings) when key in [nil, ""],

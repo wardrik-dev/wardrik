@@ -339,7 +339,10 @@ defmodule Wardrik do
   """
   @callback init(config :: keyword()) :: {:ok, keyword()}
 
-  defmacro __using__(opts), do: Wardrik.Instance.using(Keyword.get(opts, :otp_app))
+  defmacro __using__(opts) do
+    otp_app = Keyword.get(opts, :otp_app)
+    Wardrik.Instance.using(otp_app)
+  end
 
   @doc """
   Starts Wardrik. Raises `NimbleOptions.ValidationError` on a bad option.
@@ -517,7 +520,8 @@ defmodule Wardrik do
              agent: Keyword.fetch!(opts, :agent_id)
            }) do
       held = Wardrik.Resolution.hold(opts, resolved)
-      WardrikCore.start_agent(agents(wardrik), Setup.agent(wardrik, held))
+      agents = agents(wardrik)
+      WardrikCore.start_agent(agents, Setup.agent(wardrik, held))
     end
   end
 

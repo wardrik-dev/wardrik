@@ -34,7 +34,11 @@ defmodule Wardrik.OAuth.Renewal do
   def expire(settings, name, principal) do
     locked(name, principal, fn ->
       with {:ok, token, vsn} <- current(settings, name, principal) do
-        value = Token.encode(Token.expire(token))
+        value =
+          token
+          |> Token.expire()
+          |> Token.encode()
+
         expired = %Secret{principal: principal, name: name, value: value}
         Wardrik.Vault.put(settings.vault, expired, kind: :grant, if_vsn: vsn)
       end

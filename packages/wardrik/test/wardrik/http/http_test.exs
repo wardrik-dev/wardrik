@@ -55,7 +55,11 @@ defmodule Wardrik.HTTPTest do
       conversation = agent <> "/conversations/" <> segment("C1/ 2%")
       answers([answer("Hello.")])
 
-      event_log = Wardrik.events(Wardrik.Instance.fetch!(context.wardrik))
+      event_log =
+        context.wardrik
+        |> Wardrik.Instance.fetch!()
+        |> Wardrik.events()
+
       :ok = Wardrik.EventLog.subscribe(event_log, :all)
 
       conn = request(context, "PUT", agent, %{"model" => "anthropic:claude-haiku-4-5"})
@@ -94,7 +98,10 @@ defmodule Wardrik.HTTPTest do
 
   describe "refusals" do
     test "asks for credentials where none are sent, or the authenticator refuses them", context do
-      conn = Wardrik.HTTP.call(conn("GET", "/v1/agents"), Wardrik.HTTP.init(http(context)))
+      conn =
+        "GET"
+        |> conn("/v1/agents")
+        |> Wardrik.HTTP.call(plug_opts(context))
 
       assert conn.status == 401
       assert get_resp_header(conn, "www-authenticate") == ["Bearer"]
@@ -154,7 +161,11 @@ defmodule Wardrik.HTTPTest do
          context do
       answers([answer("Triaged.")])
 
-      event_log = Wardrik.events(Wardrik.Instance.fetch!(context.wardrik))
+      event_log =
+        context.wardrik
+        |> Wardrik.Instance.fetch!()
+        |> Wardrik.events()
+
       :ok = Wardrik.EventLog.subscribe(event_log, :all)
 
       conn = hook(context, "/v1/hooks/acme%2Fhooks/issues", [{"authorization", "Bearer s3cret"}])
@@ -178,7 +189,7 @@ defmodule Wardrik.HTTPTest do
         |> conn("/v1/hooks/acme%2Fhooks/issues/nope", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
+        |> Wardrik.HTTP.call(plug_opts(context))
 
       assert conn.status == 404
     end
@@ -191,7 +202,7 @@ defmodule Wardrik.HTTPTest do
         |> conn("/v1/hooks/acme%2Fhooks/issues", ~s({"action":"opened"}))
         |> put_req_header("content-type", "application/json")
         |> Plug.Parsers.call(parsers)
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
+        |> Wardrik.HTTP.call(plug_opts(context))
 
       assert conn.status == 500
       assert body(conn)["error"]["message"] =~ "Wardrik.HTTP.BodyReader"
@@ -206,7 +217,7 @@ defmodule Wardrik.HTTPTest do
         |> put_req_header("content-type", "application/json")
         |> put_req_header("authorization", "Bearer " <> context.secret)
         |> Plug.Parsers.call(parsers)
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
+        |> Wardrik.HTTP.call(plug_opts(context))
 
       assert conn.status == 200
     end
@@ -220,16 +231,15 @@ defmodule Wardrik.HTTPTest do
         "POST"
         |> conn("/v1/channels/slack/events", ~s({"type":"url_verification"}))
         |> put_req_header("x-slack-signature", "v0=abc")
-        |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
+        |> Wardrik.HTTP.call(plug_opts(context))
 
       assert {conn.status, conn.resp_body} == {200, ~s(events {"type":"url_verification"} v0=abc)}
       assert get_resp_header(conn, "content-type") == ["text/plain"]
 
       conn =
-        Wardrik.HTTP.call(
-          conn("POST", "/v1/channels/teams/events", "{}"),
-          Wardrik.HTTP.init(http(context))
-        )
+        "POST"
+        |> conn("/v1/channels/teams/events", "{}")
+        |> Wardrik.HTTP.call(plug_opts(context))
 
       assert conn.status == 404
     end
@@ -238,10 +248,9 @@ defmodule Wardrik.HTTPTest do
   describe "documents and pages" do
     test "answers the OpenAPI document", context do
       conn =
-        Wardrik.HTTP.call(
-          conn("GET", "/v1/openapi.json"),
-          Wardrik.HTTP.init(http(context))
-        )
+        "GET"
+        |> conn("/v1/openapi.json")
+        |> Wardrik.HTTP.call(plug_opts(context))
 
       assert %{"openapi" => "3.1.0"} = body(conn)
     end
@@ -265,10 +274,16 @@ defmodule Wardrik.HTTPTest do
     end
   end
 
+  defp plug_opts(context) do
+    context
+    |> http()
+    |> Wardrik.HTTP.init()
+  end
+
   defp hook(context, path, headers) do
     "POST"
     |> conn(path, ~s({"action":"opened"}))
     |> merge_req_headers(headers)
-    |> Wardrik.HTTP.call(Wardrik.HTTP.init(http(context)))
+    |> Wardrik.HTTP.call(plug_opts(context))
   end
 end

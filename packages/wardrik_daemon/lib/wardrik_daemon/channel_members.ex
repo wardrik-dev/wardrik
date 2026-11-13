@@ -43,7 +43,9 @@ defmodule WardrikDaemon.ChannelMembers do
   defp by_email(nil, _domains), do: :error
 
   defp by_email(email, domains) do
-    with [name, domain] <- String.split(String.downcase(email), "@"),
+    address = String.downcase(email)
+
+    with [name, domain] <- String.split(address, "@"),
          {:ok, org} <- Map.fetch(domains, domain),
          user = Owners.person(org, name),
          true <- Owners.user?(user) do

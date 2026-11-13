@@ -43,7 +43,12 @@ defmodule Wardrik.EventLogTest do
     start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
     stopped(events, "agt_1")
 
-    assert List.last(sequences(events, ["agt_1"])) == "000000000003"
+    last =
+      events
+      |> sequences(["agt_1"])
+      |> List.last()
+
+    assert last == "000000000003"
   end
 
   test "rebuilds activity from the log after a restart", %{events: events, store: store} do
@@ -162,7 +167,8 @@ defmodule Wardrik.EventLogTest do
                       "data" => ^data
                     } = event}
 
-    refute Map.has_key?(valid!(event), "conversation")
+    valid = valid!(event)
+    refute Map.has_key?(valid, "conversation")
   end
 
   test "names the agent and conversation of a conversation's event", %{events: events} do
@@ -268,7 +274,8 @@ defmodule Wardrik.EventLogTest do
     end
 
     test "starts a reader at the end of each log an agent covers", %{events: events} do
-      assert {:ok, head} = Cursor.decode(Wardrik.EventLog.head(events, ["agt_1"]))
+      cursor = Wardrik.EventLog.head(events, ["agt_1"])
+      assert {:ok, head} = Cursor.decode(cursor)
       assert head == %{{"agt_1", nil} => 2, {"agt_1", "C1"} => 2}
 
       assert {:ok, %{events: []}} =
@@ -329,7 +336,8 @@ defmodule Wardrik.EventLogTest do
             ~s([["agt_1", 1]]),
             "[1]"
           ] do
-        assert {:error, :invalid_cursor} = Cursor.decode(Base.url_encode64(json, padding: false))
+        cursor = Base.url_encode64(json, padding: false)
+        assert {:error, :invalid_cursor} = Cursor.decode(cursor)
       end
     end
   end
@@ -353,12 +361,15 @@ defmodule Wardrik.EventLogTest do
 
       for log <- @odd do
         assert sequences(events, [log]) == ["000000000001"]
-        assert {:ok, %{^log => 1}} = Cursor.decode(Wardrik.EventLog.head(events, [log]))
+        cursor = Wardrik.EventLog.head(events, [log])
+        assert {:ok, %{^log => 1}} = Cursor.decode(cursor)
       end
 
-      assert {:ok, head} = Cursor.decode(Wardrik.EventLog.head(events, @odd))
+      cursor = Wardrik.EventLog.head(events, @odd)
+      assert {:ok, head} = Cursor.decode(cursor)
       assert head == Map.new(@odd, &{&1, 1})
-      assert {:ok, ^head} = Cursor.decode(Cursor.encode(head))
+      encoded = Cursor.encode(head)
+      assert {:ok, ^head} = Cursor.decode(encoded)
     end
 
     test "keep each agent's logs apart from an agent whose ID starts the same", %{
@@ -368,7 +379,12 @@ defmodule Wardrik.EventLogTest do
       for log <- @odd, do: stopped(events, log)
       logs = Wardrik.Store.scope(store, "wardrik_events")
 
-      assert Enum.sort(Log.logs(logs, "a/b")) == [{"a/b", nil}, {"a/b", "c/d"}]
+      sorted =
+        logs
+        |> Log.logs("a/b")
+        |> Enum.sort()
+
+      assert sorted == [{"a/b", nil}, {"a/b", "c/d"}]
       assert Log.logs(logs, "a") == [{"a", "b/c"}]
       assert [_, _] = sequences(events, ["a/b"])
       assert [_] = sequences(events, ["a"])

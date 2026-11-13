@@ -39,7 +39,11 @@ defmodule WardrikDaemon.DoctorTest do
     write(context, "config.yaml", "org: acme\n")
     dirs = WardrikDaemon.Dirs.new(context.env)
     token = WardrikDaemon.Dirs.data_home(dirs, "cli_token")
-    File.mkdir_p!(Path.dirname(token))
+
+    token
+    |> Path.dirname()
+    |> File.mkdir_p!()
+
     File.write!(token, JSON.encode!(%{id: "t1", secret: "s3cret", url: "http://daemon.test"}))
 
     why = "it names WardrikPolicy, which this release doesn't have"
@@ -329,7 +333,8 @@ defmodule WardrikDaemon.DoctorTest do
     write(context, "agents/assistant.md", "---\ntools: [#{tools}]\n---\nHi.\n")
     assert [{:ok, _found}] = found(run(context.env), "assistant")
 
-    File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md"))
+    file = Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md")
+    File.rm!(file)
     assert [] = found(run(context.env), "assistant")
   end
 end

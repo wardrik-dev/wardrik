@@ -3,7 +3,11 @@ defmodule WardrikDaemon.Console.AnsiTest do
 
   alias WardrikDaemon.Console.Ansi
 
-  defp text(data, colour?), do: IO.iodata_to_binary(Ansi.chardata(data, colour?))
+  defp text(data, colour?) do
+    data
+    |> Ansi.chardata(colour?)
+    |> IO.iodata_to_binary()
+  end
 
   test "plain text keeps the words and drops the styles" do
     data = ["a ", Owl.Data.tag(["b ", Owl.Data.tag("c", :red)], :bright)]

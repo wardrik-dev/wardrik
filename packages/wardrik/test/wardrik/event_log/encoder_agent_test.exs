@@ -53,7 +53,11 @@ defmodule Wardrik.EventLog.EncoderAgentTest do
     :ok = WardrikCore.ask(agent, "Say hi", %{principal: %WardrikCore.Principal{id: "user:jon"}})
 
     events = received()
-    envelope = JSV.build!(WardrikProtocol.schema("cloudevent"))
+
+    envelope =
+      "cloudevent"
+      |> WardrikProtocol.schema()
+      |> JSV.build!()
 
     types =
       for event <- events, cloud_event <- Wardrik.EventLog.Encoder.encode(event, "local") do

@@ -170,7 +170,9 @@ defmodule StubServer do
   defp reply(id, result), do: send_message(%{"jsonrpc" => "2.0", "id" => id, "result" => result})
 
   defp send_message(message) do
-    IO.puts(JSON.encode!(message))
+    message
+    |> JSON.encode!()
+    |> IO.puts()
   rescue
     ErlangError -> System.halt(0)
   end

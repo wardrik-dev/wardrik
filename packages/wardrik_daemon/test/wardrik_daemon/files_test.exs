@@ -75,7 +75,8 @@ defmodule WardrikDaemon.FilesTest do
       assert message =~ why
     end
 
-    assert {:error, message} = AgentFile.read(Path.join(context.root, "none.md"), @config)
+    none = Path.join(context.root, "none.md")
+    assert {:error, message} = AgentFile.read(none, @config)
     assert message =~ "no such file"
 
     path = write(context, "agents/a b.md", "Be brief.")
@@ -87,28 +88,25 @@ defmodule WardrikDaemon.FilesTest do
     write(context, "policies/careful.yaml", "ask: [echo]\n")
     write(context, "policies/open.yml", "default: allow\n")
 
+    policies = Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies")
+
     assert {:ok, %{"careful" => %Wardrik.Policy{}, "open" => %Wardrik.Policy{}}} =
-             Policies.read(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies"))
+             Policies.read(policies)
 
-    write(context, "policies/empty.yaml", "")
+    empty = write(context, "policies/empty.yaml", "")
 
-    assert {:error, message} =
-             Policies.read(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies"))
-
+    assert {:error, message} = Policies.read(policies)
     assert message =~ "empty.yaml: is empty"
 
-    File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies/empty.yaml"))
-    write(context, "policies/odd.yaml", "colour: red\n")
+    File.rm!(empty)
+    odd = write(context, "policies/odd.yaml", "colour: red\n")
 
-    assert {:error, _why} =
-             Policies.read(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies"))
+    assert {:error, _why} = Policies.read(policies)
 
-    File.rm!(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies/odd.yaml"))
+    File.rm!(odd)
     write(context, "policies/broken.yaml", "a: [\n")
 
-    assert {:error, message} =
-             Policies.read(Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies"))
-
+    assert {:error, message} = Policies.read(policies)
     assert message =~ "isn't YAML"
   end
 
@@ -129,6 +127,7 @@ defmodule WardrikDaemon.FilesTest do
              "HOME" => "/home/me"
            }
 
-    assert EnvFile.load(Path.join(context.root, "none"), %{"A" => "1"}) == %{"A" => "1"}
+    none = Path.join(context.root, "none")
+    assert EnvFile.load(none, %{"A" => "1"}) == %{"A" => "1"}
   end
 end

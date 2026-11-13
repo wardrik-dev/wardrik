@@ -34,6 +34,8 @@ defmodule Wardrik.Operations.Changes do
         {Keyword.fetch!(args, :type), Keyword.fetch!(args, :subject), Keyword.fetch!(args, :data)}
       )
 
-  defp recorded(%Scope{wardrik: wardrik, principal: principal}, change),
-    do: :ok = Wardrik.EventLog.record(Wardrik.events(wardrik), change, actor: principal)
+  defp recorded(%Scope{wardrik: wardrik, principal: principal}, change) do
+    events = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.record(events, change, actor: principal)
+  end
 end

@@ -44,7 +44,9 @@ defmodule Wardrik.Definition do
 
   alias Wardrik.Type
 
-  @schema JSV.build!(WardrikProtocol.schema("agent_definition"))
+  @schema "agent_definition"
+          |> WardrikProtocol.schema()
+          |> JSV.build!()
 
   @doc "Builds a definition from a keyword list or map. Raises `ArgumentError` if it's invalid."
   @spec new!(keyword() | map()) :: t()

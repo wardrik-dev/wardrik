@@ -39,10 +39,11 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     def init_backend(opts) do
       heartbeat = Keyword.get(opts, :heartbeat_interval_ms, 10_000)
+      store = Keyword.fetch!(opts, :store)
 
       {:ok,
        %{
-         state: Wardrik.Store.scope(Keyword.fetch!(opts, :store), "durable"),
+         state: Wardrik.Store.scope(store, "durable"),
          defaults: %{
            heartbeat_tracking_mode: :poll,
            discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 30_000),
@@ -166,10 +167,11 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     @spec noted(Wardrik.Store.t(), String.t()) :: {:ok, String.t()} | :error
     def noted(store, key) do
       durable = durable(store)
+      notes = notes(durable)
 
-      with {%{"reason" => reason, "vsn" => vsn}, _note_vsn} <-
-             Wardrik.Store.lookup(notes(durable), key),
-           {^key, ^vsn} <- List.keyfind(Wardrik.Store.versions(durable, key), key, 0) do
+      with {%{"reason" => reason, "vsn" => vsn}, _note_vsn} <- Wardrik.Store.lookup(notes, key),
+           versions = Wardrik.Store.versions(durable, key),
+           {^key, ^vsn} <- List.keyfind(versions, key, 0) do
         {:ok, reason}
       else
         _none -> :error
@@ -197,9 +199,10 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     @spec discard(Wardrik.Store.t(), String.t()) :: :ok | {:error, term()}
     def discard(store, key) do
       durable = durable(store)
+      notes = notes(durable)
 
       with :ok <- Wardrik.Store.delete(durable, key),
-           do: Wardrik.Store.delete(notes(durable), key)
+           do: Wardrik.Store.delete(notes, key)
     end
 
     defp note(store, key, reason, vsn) do

@@ -120,8 +120,10 @@ defmodule Wardrik.Children do
 
   @doc false
   @spec channel_spec(Wardrik.t(), String.t(), module(), keyword()) :: Supervisor.child_spec()
-  def channel_spec(wardrik, name, module, opts),
-    do: module.child_spec(Wardrik.Operations.Channels.options(wardrik, name, opts))
+  def channel_spec(wardrik, name, module, opts) do
+    options = Wardrik.Operations.Channels.options(wardrik, name, opts)
+    module.child_spec(options)
+  end
 
   defp listeners(wardrik), do: Enum.map(wardrik.listeners, &listener(&1, wardrik.name))
 

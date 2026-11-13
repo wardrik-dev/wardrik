@@ -94,7 +94,9 @@ defmodule WardrikDaemon.CLI.Admin do
     {:ok, checks} =
       Terminal.spinning(cx.terminal, "Checking", fn -> {:ok, Doctor.run(cx.env)} end)
 
-    Enum.each(Doctor.lines(checks), &Context.puts(cx, &1))
+    checks
+    |> Doctor.lines()
+    |> Enum.each(&Context.puts(cx, &1))
 
     case Doctor.failed(checks) do
       0 -> :ok
@@ -107,7 +109,10 @@ defmodule WardrikDaemon.CLI.Admin do
 
   defp web([], _flags, cx) do
     with {:ok, client} <- Context.client(cx),
-         {:ok, %{"url" => url} = answer} <- Context.called(Client.run(client, "tokens.web", %{})),
+         {:ok, %{"url" => url} = answer} <-
+           client
+           |> Client.run("tokens.web", %{})
+           |> Context.called(),
          do:
            Context.show(cx, answer, fn _answer ->
              Context.puts(cx, "Open this link within two minutes to sign in:")
@@ -118,7 +123,9 @@ defmodule WardrikDaemon.CLI.Admin do
   defp status([], _flags, cx) do
     with {:ok, client} <- Context.client(cx),
          {:ok, %{"nodes" => nodes, "asleep" => asleep} = answer} <-
-           Context.called(Client.run(client, "deployment.nodes", %{})),
+           client
+           |> Client.run("deployment.nodes", %{})
+           |> Context.called(),
          do: Context.show(cx, answer, fn _answer -> nodes(cx, client.url, nodes, asleep) end)
   end
 

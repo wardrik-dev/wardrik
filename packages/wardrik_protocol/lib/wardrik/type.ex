@@ -3,7 +3,11 @@ defmodule Wardrik.Type do
 
   defmacro __using__(opts) do
     schema = Keyword.fetch!(opts, :schema)
-    fields = Macro.prewalk(Keyword.fetch!(opts, :fields), &Macro.expand(&1, __CALLER__))
+
+    fields =
+      opts
+      |> Keyword.fetch!(:fields)
+      |> Macro.prewalk(&Macro.expand(&1, __CALLER__))
 
     quote do
       defstruct unquote(Keyword.keys(fields))

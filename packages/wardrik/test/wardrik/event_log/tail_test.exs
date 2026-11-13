@@ -17,7 +17,11 @@ defmodule Wardrik.EventLog.TailTest do
   end
 
   defp written(store, sequence) do
-    number = String.pad_leading(Integer.to_string(sequence), 12, "0")
+    number =
+      sequence
+      |> Integer.to_string()
+      |> String.pad_leading(12, "0")
+
     event = %{"type" => "wardrik.agent.stopped", "sequence" => number}
     {:ok, _vsn} = Wardrik.Store.put(store, "events/agt_1/" <> number, event)
     send(self(), {Wardrik.EventLog, {"agt_1", nil}, event})

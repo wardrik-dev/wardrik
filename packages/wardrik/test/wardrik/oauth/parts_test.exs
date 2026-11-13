@@ -127,8 +127,8 @@ defmodule Wardrik.OAuth.PartsTest do
 
   describe "a device flow" do
     test "needs a server that offers one" do
-      assert {:error, {:no_device_flow, @issuer}} =
-               Device.request(metadata(nil), provider(), @req)
+      metadata = metadata(nil)
+      assert {:error, {:no_device_flow, @issuer}} = Device.request(metadata, provider(), @req)
     end
 
     test "reads what the server refuses or garbles" do

@@ -48,36 +48,42 @@ defmodule WardrikCore.Agent.StateTest do
     test "a running turn comes back idle with its messages queued first", %{state: state} do
       state = %{state | in_flight: [:taken], pending_messages: [:queued]}
 
+      dumped = State.dump(state)
+
       assert %State{state: :idle, task: nil, in_flight: [], pending_messages: [:taken, :queued]} =
-               State.load(State.dump(state))
+               State.load(dumped)
     end
 
     test "a parked turn round trips", %{state: state} do
       parked = %{reason: {:tool_calls, []}, messages: [:asked]}
       state = %{state | state: :waiting, parked: parked, in_flight: [:taken]}
 
-      assert %State{state: :waiting, in_flight: [:taken], parked: ^parked} =
-               State.load(State.dump(state))
+      dumped = State.dump(state)
+
+      assert %State{state: :waiting, in_flight: [:taken], parked: ^parked} = State.load(dumped)
     end
 
     test "a resumed turn comes back waiting on the same calls", %{state: state} do
       parked = %{reason: {:tool_calls, []}, messages: [:asked]}
       state = %{state | parked: parked, in_flight: [:taken], pending_messages: [:queued]}
 
+      dumped = State.dump(state)
+
       assert %State{state: :waiting, in_flight: [:taken], pending_messages: [:queued]} =
-               State.load(State.dump(state))
+               State.load(dumped)
     end
 
     test "a turn that checkpointed a batch comes back due to recover it", %{state: state} do
       checkpoint = %{messages: [:asked], calls: [], rounds: 3}
       state = %{state | checkpoint: checkpoint, in_flight: [:taken], pending_messages: [:queued]}
+      dumped = State.dump(state)
 
       assert %State{
                state: :due,
                checkpoint: ^checkpoint,
                in_flight: [:taken],
                pending_messages: [:queued]
-             } = State.load(State.dump(state))
+             } = State.load(dumped)
     end
 
     test "loads a state saved with fields that have since been removed", %{state: state} do
@@ -94,7 +100,8 @@ defmodule WardrikCore.Agent.StateTest do
     end
 
     test "round trips the model and context", %{state: state} do
-      loaded = State.load(State.dump(state))
+      dumped = State.dump(state)
+      loaded = State.load(dumped)
 
       assert loaded.model == state.model
       assert loaded.context.agent_id == "agent_1"

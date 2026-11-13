@@ -28,7 +28,10 @@ defmodule WardrikDaemon.Config.Notify do
 
     with :ok <- untargeted(own),
          {:ok, own} <- Options.each(own, &keywords/2),
-         {:ok, own} <- Options.convert(Map.new(own), [], "notify"),
+         {:ok, own} <-
+           own
+           |> Map.new()
+           |> Options.convert([], "notify"),
          {:ok, targets} <- targets(targets, channels),
          notify = [targets: targets] ++ own,
          {:ok, _settings} <- Options.built(fn -> Wardrik.Notify.settings(notify) end, "notify") do

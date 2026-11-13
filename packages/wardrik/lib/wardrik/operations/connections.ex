@@ -55,7 +55,9 @@ defmodule Wardrik.Operations.Connections do
   @spec credential(Wardrik.t(), Principal.t(), String.t()) ::
           {:ok, String.t()} | {:error, Error.t()}
   def credential(wardrik, principal, provider) do
-    case List.keyfind(offered(wardrik, principal), provider, 0) do
+    offered = offered(wardrik, principal)
+
+    case List.keyfind(offered, provider, 0) do
       {^provider, credential} -> {:ok, credential}
       nil -> {:error, Error.new(:not_found, "There's no account #{provider} to connect.")}
     end
@@ -64,7 +66,9 @@ defmodule Wardrik.Operations.Connections do
   @doc "Returns the name `principal` knows the app a sign-in to `credential` uses by."
   @spec provider(Wardrik.t(), Principal.t(), String.t()) :: String.t()
   def provider(wardrik, principal, credential) do
-    case List.keyfind(offered(wardrik, principal), credential, 1) do
+    offered = offered(wardrik, principal)
+
+    case List.keyfind(offered, credential, 1) do
       {provider, ^credential} -> provider
       nil -> credential
     end
@@ -80,7 +84,12 @@ defmodule Wardrik.Operations.Connections do
   end
 
   defp held(%Wardrik{vault_keys: []}, _principal), do: []
-  defp held(wardrik, principal), do: Wardrik.Vault.names(Wardrik.vault(wardrik), principal)
+
+  defp held(wardrik, principal) do
+    wardrik
+    |> Wardrik.vault()
+    |> Wardrik.Vault.names(principal)
+  end
 
   defp authorizing(%Wardrik{oauth: nil}, _sign_in, provider),
     do: {:error, Error.new(:not_supported, "Connecting #{provider} needs Wardrik's :oauth.")}

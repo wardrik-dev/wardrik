@@ -94,8 +94,8 @@ defmodule WardrikDaemon.NotifyTargetsTest do
   defp seal(context, owner, name, value) do
     secret = %Secret{principal: %Principal{id: owner}, name: name, value: value}
 
-    {:ok, _vsn} =
-      Wardrik.Vault.put(Wardrik.vault(context.running), secret, kind: :signing_secret)
+    vault = Wardrik.vault(context.running)
+    {:ok, _vsn} = Wardrik.Vault.put(vault, secret, kind: :signing_secret)
   end
 
   defp notify(context, id) do
@@ -126,7 +126,8 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     assert {Wardrik.Notify.OwnedWebhook, opts} = notify(context, "payments/@bo/notes")["ops"]
     assert opts[:owner] == "payments"
     assert notify(context, "payments/triage")["audit"] == "audit"
-    refute Map.has_key?(notify(context, "growth/leads"), "audit")
+    leads = notify(context, "growth/leads")
+    refute Map.has_key?(leads, "audit")
 
     assert :ok = deliver(context, "payments/@bo/notes", "ops")
     assert_receive {:hooked, "/ops", _headers, body}
@@ -175,7 +176,8 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     refute JSON.encode!(added) =~ "shh"
     assert {:ok, answer} = list(admin, "growth")
     refute JSON.encode!(answer) =~ "shh"
-    refute :erlang.term_to_binary(Wardrik.Store.entries(context.daemon_store, "")) =~ "shh"
+    entries = Wardrik.Store.entries(context.daemon_store, "")
+    refute :erlang.term_to_binary(entries) =~ "shh"
 
     assert :ok = deliver(context, "growth/leads", "signed")
     assert_receive {:hooked, "/signed", headers, body}
@@ -186,12 +188,8 @@ defmodule WardrikDaemon.NotifyTargetsTest do
     assert_receive {:hooked, "/signed", headers, body}
     assert headers["x-wardrik-signature"] == Wardrik.Notify.Webhook.sign("rotated-shh", body)
 
-    :ok =
-      Wardrik.Vault.delete(
-        Wardrik.vault(context.running),
-        %Principal{id: "growth"},
-        "HOOK_SECRET"
-      )
+    vault = Wardrik.vault(context.running)
+    :ok = Wardrik.Vault.delete(vault, %Principal{id: "growth"}, "HOOK_SECRET")
 
     assert deliver(context, "growth/leads", "signed") ==
              {:skip, "but growth holds no secret HOOK_SECRET to sign it with"}
@@ -225,11 +223,13 @@ defmodule WardrikDaemon.NotifyTargetsTest do
   test "refuses a target that doesn't read, one it holds, and one config.yaml starts", context do
     admin = client(context, "user:admin")
 
+    target = target(context, "x")
+
     for input <- [
           target(context, "slack:#ops"),
-          Map.delete(target(context, "x"), "url"),
-          Map.put(target(context, "x"), "secret", "shh"),
-          Map.put(target(context, "x"), "module", "Wardrik.Notify.Room")
+          Map.delete(target, "url"),
+          Map.put(target, "secret", "shh"),
+          Map.put(target, "module", "Wardrik.Notify.Room")
         ] do
       assert {:error, "invalid_request", _message} = add(admin, "growth", input)
     end

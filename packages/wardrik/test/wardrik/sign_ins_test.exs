@@ -37,7 +37,8 @@ defmodule Wardrik.SignInsTest do
     start_supervised!({Wardrik, wardrik})
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 
@@ -144,14 +145,14 @@ defmodule Wardrik.SignInsTest do
     assert Wardrik.sign_in_pages(wardrik, nobody) ==
              {Wardrik.OAuth.Plug, %{oauth: Wardrik.oauth(wardrik), principal: nobody}}
 
-    assert Wardrik.sign_in_pages(
-             Wardrik.new(
-               authorizer: {Wardrik.Test.Allow, []},
-               resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
-               name: MyApp.AgentRuntime
-             ),
-             nobody
-           ) == nil
+    plain =
+      Wardrik.new(
+        authorizer: {Wardrik.Test.Allow, []},
+        resolver: {Wardrik.Test.Owned, MyApp.AgentRuntime},
+        name: MyApp.AgentRuntime
+      )
+
+    assert Wardrik.sign_in_pages(plain, nobody) == nil
   end
 
   test "finishes a sign-in for an app that serves the page itself", %{wardrik: wardrik} do

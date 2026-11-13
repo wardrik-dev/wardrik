@@ -19,7 +19,9 @@ defmodule WardrikDaemon.Setup.Question do
   def cast(%__MODULE__{}, given) when is_boolean(given), do: {:ok, given}
 
   def cast(%__MODULE__{key: key}, given) do
-    case String.downcase(to_string(given)) do
+    answer = to_string(given)
+
+    case String.downcase(answer) do
       yes when yes in ~w(true yes y) -> {:ok, true}
       no when no in ~w(false no n) -> {:ok, false}
       _other -> {:error, "#{key} is true or false, not #{inspect(given)}."}

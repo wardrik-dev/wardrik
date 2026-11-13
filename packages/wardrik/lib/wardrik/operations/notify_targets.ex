@@ -19,7 +19,8 @@ defmodule Wardrik.Operations.NotifyTargets do
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
     declared = if owner == Owned.deployment(), do: declared(wardrik), else: []
-    {:ok, %{"targets" => declared ++ Enum.map(Owned.own(wardrik, @kind, owner), &listed/1)}}
+    owned = Owned.own(wardrik, @kind, owner)
+    {:ok, %{"targets" => declared ++ Enum.map(owned, &listed/1)}}
   end
 
   @doc "Adds a webhook for the owner's agents' notices."
@@ -127,7 +128,9 @@ defmodule Wardrik.Operations.NotifyTargets do
   defp secret(_wardrik, _owner, nil), do: {:ok, nil}
 
   defp secret(wardrik, owner, %{"name" => name}) do
-    if {owner, name, :signing_secret} in Wardrik.Vault.list(Wardrik.vault(wardrik)),
+    vault = Wardrik.vault(wardrik)
+
+    if {owner, name, :signing_secret} in Wardrik.Vault.list(vault),
       do: {:ok, name},
       else:
         {:error,

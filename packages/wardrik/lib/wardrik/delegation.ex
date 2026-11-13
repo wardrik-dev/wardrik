@@ -46,7 +46,8 @@ defmodule Wardrik.Delegation do
     asker = %{"agent" => agent, "conversation" => conversation}
     wardrik = Wardrik.Instance.fetch!(instance)
     key = key("asked", log, Keyword.fetch!(args, :message))
-    {:ok, _vsn} = Wardrik.Store.put(store(wardrik), key, asker)
+    store = store(wardrik)
+    {:ok, _vsn} = Wardrik.Store.put(store, key, asker)
     :ok
   end
 
@@ -55,8 +56,13 @@ defmodule Wardrik.Delegation do
 
   @impl GenServer
   def handle_continue(:subscribe, wardrik) do
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
-    Enum.each(pending(wardrik), &caught_up(wardrik, &1))
+    events = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(events, :all)
+
+    wardrik
+    |> pending()
+    |> Enum.each(&caught_up(wardrik, &1))
+
     {:noreply, wardrik}
   end
 
@@ -66,8 +72,11 @@ defmodule Wardrik.Delegation do
     {:noreply, wardrik}
   end
 
-  defp seen(wardrik, log, %{"type" => "wardrik.run.started", "data" => %{"run" => run}}),
-    do: Enum.each(Map.get(run, "message_ids", []), &taken(wardrik, log, run["id"], &1))
+  defp seen(wardrik, log, %{"type" => "wardrik.run.started", "data" => %{"run" => run}}) do
+    run
+    |> Map.get("message_ids", [])
+    |> Enum.each(&taken(wardrik, log, run["id"], &1))
+  end
 
   defp seen(wardrik, log, %{"type" => "wardrik.run.completed", "data" => data}),
     do: answered(wardrik, log, data["run"]["id"], "#{Wardrik.Reply.text(data["messages"])}")
@@ -112,7 +121,9 @@ defmodule Wardrik.Delegation do
 
   defp caught_up(wardrik, log, cursor \\ nil) do
     {:ok, %{events: events, next: next}} =
-      Wardrik.EventLog.page(Wardrik.events(wardrik), [log], after: cursor, limit: 500)
+      wardrik
+      |> Wardrik.events()
+      |> Wardrik.EventLog.page([log], after: cursor, limit: 500)
 
     Enum.each(events, &seen(wardrik, log, &1))
     if events != [], do: caught_up(wardrik, log, next)

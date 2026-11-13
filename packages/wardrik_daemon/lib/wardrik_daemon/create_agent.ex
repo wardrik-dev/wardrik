@@ -102,7 +102,9 @@ defmodule WardrikDaemon.CreateAgent do
 
   # A worker is held to its maker's policy, as agent_define holds it.
   defp policy(wardrik, id) do
-    case Wardrik.run(Agents.scope(wardrik: wardrik), "agent.definition", %{"agent" => id}) do
+    scope = Agents.scope(wardrik: wardrik)
+
+    case Wardrik.run(scope, "agent.definition", %{"agent" => id}) do
       {:ok, %{"definition" => %{"policy" => policy}}} -> policy
       _unbounded -> nil
     end

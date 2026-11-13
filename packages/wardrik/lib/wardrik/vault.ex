@@ -202,7 +202,9 @@ defmodule Wardrik.Vault do
     keys = Keyword.fetch!(args, :keys)
     path = path(principal, name)
 
-    case Wardrik.Store.lookup(Wardrik.Store.scope(store, "wardrik_vault"), path) do
+    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+
+    case Wardrik.Store.lookup(scoped, path) do
       {%Sealed{} = sealed, _vsn} -> Sealed.unseal(sealed, Sealed.decode_keys(keys), path)
       nil -> {:error, :not_found}
     end
@@ -331,8 +333,10 @@ defmodule Wardrik.Vault do
     decoded = Sealed.decode_keys(keys)
     if length(decoded) < length(keys), do: Logger.warning("A vault key isn't 32 bytes of base64")
 
+    store = Keyword.fetch!(opts, :store)
+
     settings = %{
-      store: Wardrik.Store.scope(Keyword.fetch!(opts, :store), "wardrik_vault"),
+      store: Wardrik.Store.scope(store, "wardrik_vault"),
       keys: decoded,
       grants: Keyword.fetch!(opts, :grants)
     }
@@ -345,7 +349,8 @@ defmodule Wardrik.Vault do
   end
 
   defp settings(vault) do
-    [{:settings, settings}] = :ets.lookup(table(vault), :settings)
+    table = table(vault)
+    [{:settings, settings}] = :ets.lookup(table, :settings)
     settings
   rescue
     ArgumentError ->

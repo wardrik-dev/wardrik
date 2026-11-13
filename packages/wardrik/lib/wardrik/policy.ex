@@ -143,7 +143,10 @@ defmodule Wardrik.Policy do
 
     with :ok <- Read.known(fields, @keys, "a policy"),
          {:ok, rules} <- Rules.decode(fields),
-         {:ok, {default, by_annotation}} <- Default.decode(Map.get(fields, "default", :allow)),
+         {:ok, {default, by_annotation}} <-
+           fields
+           |> Map.get("default", :allow)
+           |> Default.decode(),
          {:ok, budget} <- decoded(Budget, fields["budget"]),
          {:ok, judge} <- decoded(Judge, fields["judge"]) do
       {:ok,

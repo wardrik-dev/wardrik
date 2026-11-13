@@ -26,7 +26,8 @@ defmodule Wardrik.ChannelsTest do
   import Wardrik.Test.Wardrik
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
     name = :"wardrik #{context.test}"
     channels = [slack: {Wardrik.Test.Echo, test: self()}]
 
@@ -90,7 +91,10 @@ defmodule Wardrik.ChannelsTest do
       "answers" => "mentions"
     }
 
-    events = Wardrik.events(Wardrik.Instance.fetch!(name))
+    events =
+      name
+      |> Wardrik.Instance.fetch!()
+      |> Wardrik.events()
 
     assert Wardrik.EventLog.record(events, {"room.bound", "channels/slack/C1", data},
              actor: scope.principal

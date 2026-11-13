@@ -44,14 +44,19 @@ defmodule WardrikDaemon.CLI.Terminal do
   @doc "Asks for a line with `prompt`. Returns `nil` for none."
   @spec ask(t(), String.t()) :: String.t() | nil
   def ask(terminal, prompt) do
-    IO.write(Ansi.chardata(prompt, terminal.colour?))
+    prompt
+    |> Ansi.chardata(terminal.colour?)
+    |> IO.write()
+
     typed(IO.gets(""))
   end
 
   @doc "Asks for a line with `prompt`, not showing what's typed where it can. Returns `nil` for none."
   @spec secret(t(), String.t()) :: String.t() | nil
   def secret(terminal, prompt) do
-    IO.write(Ansi.chardata(prompt, terminal.colour?))
+    prompt
+    |> Ansi.chardata(terminal.colour?)
+    |> IO.write()
 
     if Process.whereis(:user) == Process.group_leader() and
          :shell.start_interactive({:noshell, :raw}) == :ok do
@@ -65,7 +70,9 @@ defmodule WardrikDaemon.CLI.Terminal do
   end
 
   defp typed(line) when is_binary(line) or is_list(line) do
-    case String.trim(IO.chardata_to_string(line)) do
+    text = IO.chardata_to_string(line)
+
+    case String.trim(text) do
       "" -> nil
       line -> line
     end
@@ -95,7 +102,11 @@ defmodule WardrikDaemon.CLI.Terminal do
 
   @doc "Writes `data` and a newline, styled if the terminal takes colour."
   @spec puts(t(), Owl.Data.t()) :: :ok
-  def puts(%__MODULE__{colour?: colour?}, data), do: IO.puts(Ansi.chardata(data, colour?))
+  def puts(%__MODULE__{colour?: colour?}, data) do
+    data
+    |> Ansi.chardata(colour?)
+    |> IO.puts()
+  end
 
   @doc "Writes each of `lines`."
   @spec lines(t(), [Owl.Data.t()]) :: :ok

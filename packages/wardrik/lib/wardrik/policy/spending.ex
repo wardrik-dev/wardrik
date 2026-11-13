@@ -11,7 +11,9 @@ if Code.ensure_loaded?(WardrikCore.Context) do
       spent = spent(context)
 
       current =
-        Map.new(budgeted(policies), fn {key, policy} ->
+        policies
+        |> budgeted()
+        |> Map.new(fn {key, policy} ->
           {key, current(spent[key], period(policy.budget, context))}
         end)
 
@@ -124,7 +126,9 @@ if Code.ensure_loaded?(WardrikCore.Context) do
 
     defp update(context, policies, fun) do
       spent =
-        Enum.reduce(budgeted(policies), spent(context), fn {key, policy}, spent ->
+        policies
+        |> budgeted()
+        |> Enum.reduce(spent(context), fn {key, policy}, spent ->
           Map.update!(spent, key, &fun.(policy.budget, &1))
         end)
 

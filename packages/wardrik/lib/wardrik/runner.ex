@@ -43,7 +43,9 @@ defmodule Wardrik.Runner do
   end
 
   defp handler(catalog, kind, id) do
-    case Map.fetch(Map.fetch!(catalog, kind), id) do
+    handlers = Map.fetch!(catalog, kind)
+
+    case Map.fetch(handlers, id) do
       {:ok, handler} -> {:ok, handler}
       :error -> {:error, Error.new(:not_supported, "#{id} can't be streamed.")}
     end

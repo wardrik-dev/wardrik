@@ -12,7 +12,8 @@ defmodule Wardrik.FunctionsTest do
     setup %{wardrik: wardrik} do
       stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
       stub(ReqLLM, :stream_text, fn _model, _messages, _opts -> {:ok, answer("Nothing.")} end)
-      :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+      event_log = Wardrik.events(wardrik)
+      :ok = Wardrik.EventLog.subscribe(event_log, :all)
       start_agent(wardrik, "acme/triage")
       %{scope: owner(wardrik)}
     end

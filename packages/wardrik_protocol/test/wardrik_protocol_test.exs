@@ -80,12 +80,14 @@ defmodule WardrikProtocolTest do
 
   test "has its files where it says, and needs no recompiling while they stay" do
     refute WardrikProtocol.__mix_recompile__?()
-    assert File.exists?(Path.join(WardrikProtocol.dir(), "cloudevent.json"))
+    path = Path.join(WardrikProtocol.dir(), "cloudevent.json")
+    assert File.exists?(path)
   end
 
   test "checks each schema's examples against it" do
     for name <- names(),
-        example <- Map.get(WardrikProtocol.schema(name), "examples", []) do
+        schema = WardrikProtocol.schema(name),
+        example <- Map.get(schema, "examples", []) do
       assert valid?(name, example), "#{name}: #{inspect(example)}"
     end
   end
@@ -169,7 +171,8 @@ defmodule WardrikProtocolTest do
         assert %{"content" => %{"*/*" => %{}}} = paths[path]["post"]["requestBody"]
         input = JSV.build!(WardrikProtocol.operation(id).input)
         request = %{"body" => "{}", "headers" => %{"content-type" => "application/json"}}
-        assert {:ok, _input} = JSV.validate(Map.merge(request, path_input(id)), input)
+        request = Map.merge(request, path_input(id))
+        assert {:ok, _input} = JSV.validate(request, input)
       end
 
       assert %{"content" => %{"*/*" => %{}}} =

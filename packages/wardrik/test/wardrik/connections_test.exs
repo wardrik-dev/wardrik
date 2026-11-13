@@ -6,7 +6,8 @@ defmodule Wardrik.ConnectionsTest do
   alias WardrikCore.Principal
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
 
     # Ana may use acme's apps, and anyone the deployment's.
     decide = fn
@@ -39,8 +40,10 @@ defmodule Wardrik.ConnectionsTest do
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
+    admin = Wardrik.as(wardrik.name, "admin")
+
     {:ok, _app} =
-      Wardrik.run(Wardrik.as(wardrik.name, "admin"), "providers.add", %{
+      Wardrik.run(admin, "providers.add", %{
         "owner" => "acme",
         "name" => "linear",
         "authorization_endpoint" => "https://linear.test/authorize",
@@ -57,7 +60,8 @@ defmodule Wardrik.ConnectionsTest do
 
   defp grant(wardrik, id, credential) do
     secret = %Secret{principal: %Principal{id: id}, name: credential, value: "grant"}
-    {:ok, _vsn} = Wardrik.Vault.put(Wardrik.vault(wardrik), secret, kind: :grant)
+    vault = Wardrik.vault(wardrik)
+    {:ok, _vsn} = Wardrik.Vault.put(vault, secret, kind: :grant)
   end
 
   test "offers each app the caller may sign in with, and says which they hold", %{

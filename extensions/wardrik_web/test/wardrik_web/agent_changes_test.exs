@@ -30,8 +30,10 @@ defmodule WardrikWeb.AgentChangesTest do
     |> form("#definition-form")
     |> render_submit()
 
+    asked = asked("agent.define")
+
     assert %{"agent" => "triage", "model" => "zai:glm-5", "triggers" => [%{"name" => "sweep"}]} =
-             List.last(asked("agent.define"))
+             List.last(asked)
   end
 
   test "adds and removes triggers", %{conn: conn} do
@@ -48,14 +50,16 @@ defmodule WardrikWeb.AgentChangesTest do
     })
     |> render_submit()
 
-    assert %{"agent" => "triage", "trigger" => "daily", "every" => "0 9 * * *"} =
-             List.last(asked("agent.trigger_set"))
+    set = asked("agent.trigger_set")
+
+    assert %{"agent" => "triage", "trigger" => "daily", "every" => "0 9 * * *"} = List.last(set)
 
     view
     |> element("button", "Remove")
     |> render_click()
 
-    assert %{"agent" => "triage", "trigger" => "sweep"} = List.last(asked("agent.trigger_remove"))
+    removed = asked("agent.trigger_remove")
+    assert %{"agent" => "triage", "trigger" => "sweep"} = List.last(removed)
   end
 
   test "moves and forgets an agent", %{conn: conn} do
@@ -65,14 +69,16 @@ defmodule WardrikWeb.AgentChangesTest do
     |> form("#move-form", %{"node" => "b@host"})
     |> render_submit()
 
-    assert %{"agent" => "triage", "node" => "b@host"} = List.last(asked("agent.move"))
+    moved = asked("agent.move")
+    assert %{"agent" => "triage", "node" => "b@host"} = List.last(moved)
 
     assert {:error, {:live_redirect, %{to: "/ops"}}} =
              view
              |> element("button", "Delete")
              |> render_click()
 
-    assert %{"agent" => "triage"} = List.last(asked("agent.forget"))
+    forgotten = asked("agent.forget")
+    assert %{"agent" => "triage"} = List.last(forgotten)
   end
 
   test "defines a new agent", %{conn: conn} do
@@ -93,8 +99,10 @@ defmodule WardrikWeb.AgentChangesTest do
              })
              |> render_submit()
 
+    asked = asked("agent.define")
+
     assert %{"agent" => "scout", "model" => "zai:glm", "tools" => ["web_search", "files"]} =
-             List.last(asked("agent.define"))
+             List.last(asked)
   end
 
   test "edits a trigger, renames it and checks its name", %{conn: conn} do
@@ -127,8 +135,10 @@ defmodule WardrikWeb.AgentChangesTest do
     |> render_submit()
 
     assert render(view) =~ "Saved hourly."
-    assert %{"trigger" => "hourly"} = List.last(asked("agent.trigger_set"))
-    assert %{"trigger" => "sweep"} = List.last(asked("agent.trigger_remove"))
+    set = asked("agent.trigger_set")
+    assert %{"trigger" => "hourly"} = List.last(set)
+    removed = asked("agent.trigger_remove")
+    assert %{"trigger" => "sweep"} = List.last(removed)
   end
 
   test "asks, denies, and runs an agent's actions", %{conn: conn} do
@@ -138,7 +148,8 @@ defmodule WardrikWeb.AgentChangesTest do
     |> form(".composer", %{"content" => "Any news?"})
     |> render_submit()
 
-    assert %{"agent" => "triage"} = List.last(asked("agent.ask"))
+    asks = asked("agent.ask")
+    assert %{"agent" => "triage"} = List.last(asks)
 
     render_click(view, "deny", %{"interrupt" => "toolu_1"})
     assert [_ | _] = asked("agent.deny")
@@ -149,7 +160,8 @@ defmodule WardrikWeb.AgentChangesTest do
     end
 
     render_click(view, "kill", %{"call" => "toolu_1"})
-    assert %{"call" => "toolu_1"} = List.last(asked("agent.kill"))
+    killed = asked("agent.kill")
+    assert %{"call" => "toolu_1"} = List.last(killed)
     render_click(view, "move", %{"node" => ""})
   end
 end

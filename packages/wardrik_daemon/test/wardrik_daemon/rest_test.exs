@@ -30,7 +30,8 @@ defmodule WardrikDaemon.RestTest do
     wardrik = Module.concat(__MODULE__, "W#{System.unique_integer([:positive])}")
     dir = Path.join(System.tmp_dir!(), "rest_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
-    File.write!(Path.join(dir, "notes.json"), JSON.encode!(@document))
+    notes = Path.join(dir, "notes.json")
+    File.write!(notes, JSON.encode!(@document))
     on_exit(fn -> File.rm_rf!(dir) end)
     %{store: store, wardrik: wardrik, dir: dir}
   end
@@ -93,7 +94,9 @@ defmodule WardrikDaemon.RestTest do
   end
 
   test "reads an OpenAPI document in YAML, with a scheme it doesn't name", context do
-    File.write!(Path.join(context.dir, "notes.yaml"), """
+    notes = Path.join(context.dir, "notes.yaml")
+
+    File.write!(notes, """
     openapi: 3.1.0
     info: {title: Notes}
     paths:
@@ -147,7 +150,8 @@ defmodule WardrikDaemon.RestTest do
 
     assert offered(context, capabilities, "growth") == []
 
-    File.write!(Path.join(context.dir, "later.json"), JSON.encode!(@document))
+    later = Path.join(context.dir, "later.json")
+    File.write!(later, JSON.encode!(@document))
     send(WardrikDaemon.Rest.name(context.wardrik), :read)
 
     assert offered(context, capabilities, "growth") == ["notes__notes_list"]

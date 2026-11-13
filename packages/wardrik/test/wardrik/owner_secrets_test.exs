@@ -6,7 +6,8 @@ defmodule Wardrik.OwnerSecretsTest do
   alias Wardrik.Authorizer.Request
 
   setup context do
-    store = Wardrik.Test.Store.new(:"store #{context.test}")
+    store_name = :"store #{context.test}"
+    store = Wardrik.Test.Store.new(store_name)
     test = self()
 
     decide = fn
@@ -25,7 +26,8 @@ defmodule Wardrik.OwnerSecretsTest do
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    event_log = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{wardrik: wardrik, scope: owner(wardrik)}
   end
 

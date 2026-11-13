@@ -11,12 +11,15 @@ defmodule WardrikDaemon.ConfigTest do
 
   defp read(context, text, env \\ %{}) do
     write(context, "config.yaml", text)
-    Config.read(Dirs.new(context.env), Map.merge(context.env, env))
+    dirs = Dirs.new(context.env)
+    Config.read(dirs, Map.merge(context.env, env))
   end
 
   test "reads as the defaults where there's no config.yaml", %{env: env} do
+    dirs = Dirs.new(env)
+
     assert {:ok, %Config{org: "default", port: 4747, ip: {127, 0, 0, 1}, mcp: [], channels: []}} =
-             Config.read(Dirs.new(env), env)
+             Config.read(dirs, env)
   end
 
   test "reads what agents reach, with ${NAME} from the environment", context do
@@ -152,7 +155,8 @@ defmodule WardrikDaemon.ConfigTest do
 
     env = Map.merge(context.env, %{"S3_KEY" => "id", "S3_SECRET" => "secret"})
 
-    assert {:ok, %{storage: {:s3, s3}}} = Config.bootstrap(Dirs.new(env), env)
+    dirs = Dirs.new(env)
+    assert {:ok, %{storage: {:s3, s3}}} = Config.bootstrap(dirs, env)
 
     assert Enum.sort(s3) == [
              access_key_id: "id",
@@ -168,7 +172,8 @@ defmodule WardrikDaemon.ConfigTest do
     write(context, "config.yaml", "cluster: {nodes: [a, \"${OTHER}\", wardrik@box1.lan]}\n")
     env = Map.put(context.env, "OTHER", "b")
 
-    assert {:ok, %{cluster: cluster}} = Config.bootstrap(Dirs.new(env), env)
+    dirs = Dirs.new(env)
+    assert {:ok, %{cluster: cluster}} = Config.bootstrap(dirs, env)
 
     assert %Cluster{nodes: [:wardrik_a@localhost, :wardrik_b@localhost, :"wardrik@box1.lan"]} =
              cluster
@@ -683,8 +688,8 @@ defmodule WardrikDaemon.ConfigTest do
 
     assert {:ok, config} = read(context, yaml, env)
 
-    assert {:ok, %{keys: ["fake-wardrik_vault_key"]}} =
-             Config.bootstrap(Dirs.new(context.env), env)
+    dirs = Dirs.new(context.env)
+    assert {:ok, %{keys: ["fake-wardrik_vault_key"]}} = Config.bootstrap(dirs, env)
 
     providers = Map.new(config.oauth[:providers])
 
@@ -781,7 +786,8 @@ defmodule WardrikDaemon.ConfigTest do
              read(context, "oauth: {}\n")
 
     write(context, "config.yaml", "nope: 1\n")
-    assert {:error, why} = Config.bootstrap(Dirs.new(context.env), context.env)
+    dirs = Dirs.new(context.env)
+    assert {:error, why} = Config.bootstrap(dirs, context.env)
     assert why =~ "unknown options [:nope]"
   end
 end

@@ -19,8 +19,10 @@ defmodule Wardrik.Sleeper do
 
   @doc "Starts the idle timer for the newly defined agent `id`."
   @spec watch(Wardrik.t(), String.t()) :: :ok
-  def watch(wardrik, id),
-    do: GenServer.cast(Module.concat(wardrik.name, Sleeper), {:watch, {id, nil}})
+  def watch(wardrik, id) do
+    sleeper = Module.concat(wardrik.name, Sleeper)
+    GenServer.cast(sleeper, {:watch, {id, nil}})
+  end
 
   @impl GenServer
   def init(wardrik) do
@@ -30,7 +32,8 @@ defmodule Wardrik.Sleeper do
 
   @impl GenServer
   def handle_continue(:subscribe, %{wardrik: wardrik} = state) do
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    events = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(events, :all)
     {:noreply, state}
   end
 

@@ -68,8 +68,10 @@ defmodule Wardrik.Notify.Webhook do
       #=> "sha256=9f86d0..."
   """
   @spec sign(String.t(), iodata()) :: String.t()
-  def sign(secret, body),
-    do: "sha256=" <> Base.encode16(:crypto.mac(:hmac, :sha256, secret, body), case: :lower)
+  def sign(secret, body) do
+    mac = :crypto.mac(:hmac, :sha256, secret, body)
+    "sha256=" <> Base.encode16(mac, case: :lower)
+  end
 
   defp signature(_body, nil), do: []
   defp signature(body, secret), do: [{"x-wardrik-signature", sign(secret, body)}]

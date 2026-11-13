@@ -149,7 +149,9 @@ defmodule Wardrik.OAuth.Provider do
   def params(params) when is_map(params) or is_list(params) do
     params = Map.new(params, fn {key, value} -> {to_string(key), to_string(value)} end)
 
-    case Enum.filter(Map.keys(params), &(&1 in @own_params)) do
+    keys = Map.keys(params)
+
+    case Enum.filter(keys, &(&1 in @own_params)) do
       [] -> {:ok, params}
       own -> {:error, "authorization_params can't set #{Enum.join(own, ", ")}"}
     end

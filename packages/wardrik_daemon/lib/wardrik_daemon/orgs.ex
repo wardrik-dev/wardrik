@@ -55,7 +55,9 @@ defmodule WardrikDaemon.Orgs do
   end
 
   defp ceilings(org, split) do
-    Enum.reduce_while(Enum.reverse(split), {:ok, []}, fn
+    split
+    |> Enum.reverse()
+    |> Enum.reduce_while({:ok, []}, fn
       {_name, _policy, nil}, built ->
         {:cont, built}
 

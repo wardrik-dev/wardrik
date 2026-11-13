@@ -67,7 +67,9 @@ defmodule Wardrik.OAuth.Apps do
   @spec find(Wardrik.t(), String.t()) :: map() | nil
   def find(wardrik, reference) do
     Owned.get(wardrik, @kind, reference) ||
-      Enum.find(declared(wardrik), &(reference(&1) == reference))
+      wardrik
+      |> declared()
+      |> Enum.find(&(reference(&1) == reference))
   end
 
   @doc "Returns `app`'s reference, the name a sign-in to it goes by."
@@ -206,9 +208,9 @@ defmodule Wardrik.OAuth.Apps do
   defp read_secret(_wardrik, %{secret: nil}), do: {:ok, nil}
 
   defp read_secret(wardrik, %{owner: owner, name: name, secret: secret}) do
-    case Wardrik.Vault.fetch(Wardrik.vault(wardrik), %Principal{id: owner}, secret,
-           kind: :client_secret
-         ) do
+    vault = Wardrik.vault(wardrik)
+
+    case Wardrik.Vault.fetch(vault, %Principal{id: owner}, secret, kind: :client_secret) do
       {:ok, value} -> {:ok, value}
       {:error, _reason} -> {:error, "#{name}'s client secret #{secret} isn't sealed for #{owner}"}
     end
@@ -228,8 +230,12 @@ defmodule Wardrik.OAuth.Apps do
       else: {:error, Error.new(:not_found, "#{owner} has no OAuth app #{name}.")}
   end
 
-  defp declared?(wardrik, owner, name),
-    do: owner == Owned.deployment() and Enum.any?(declared(wardrik), &(&1.name == name))
+  defp declared?(wardrik, owner, name) do
+    owner == Owned.deployment() and
+      wardrik
+      |> declared()
+      |> Enum.any?(&(&1.name == name))
+  end
 
   defp reachable(wardrik, input) do
     Enum.find_value(@urls, :ok, fn field ->
@@ -245,7 +251,9 @@ defmodule Wardrik.OAuth.Apps do
   defp client_secret(_wardrik, _owner, nil), do: {:ok, nil}
 
   defp client_secret(wardrik, owner, %{"name" => name}) do
-    if {owner, name, :client_secret} in Wardrik.Vault.list(Wardrik.vault(wardrik)),
+    vault = Wardrik.vault(wardrik)
+
+    if {owner, name, :client_secret} in Wardrik.Vault.list(vault),
       do: {:ok, name},
       else:
         {:error,
@@ -274,21 +282,22 @@ defmodule Wardrik.OAuth.Apps do
   defp option(_other), do: []
 
   defp id do
-    8
-    |> :crypto.strong_rand_bytes()
-    |> Base.encode32(case: :lower, padding: false)
+    bytes = :crypto.strong_rand_bytes(8)
+    Base.encode32(bytes, case: :lower, padding: false)
   end
 
   defp listed(app) do
     opts = app.opts
+    flow = Keyword.get(opts, :flow, :browser)
+    client_auth = Keyword.get(opts, :client_auth, :post)
 
     %{
       "owner" => app.owner,
       "name" => app.name,
       "source" => if(Map.has_key?(app, :id), do: "runtime", else: "config"),
       "scopes" => Keyword.get(opts, :scopes, []),
-      "flow" => Atom.to_string(Keyword.get(opts, :flow, :browser)),
-      "client_auth" => Atom.to_string(Keyword.get(opts, :client_auth, :post))
+      "flow" => Atom.to_string(flow),
+      "client_auth" => Atom.to_string(client_auth)
     }
     |> put_urls(opts)
     |> put("client_id", opts[:client_id])

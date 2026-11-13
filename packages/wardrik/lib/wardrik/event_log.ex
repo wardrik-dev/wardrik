@@ -228,7 +228,8 @@ defmodule Wardrik.EventLog do
 
   defp backward(events, resources, before, limit) do
     with {:ok, cursor} <- before_cursor(before) do
-      {read, next} = Reader.page_back(settings(events), resources, before: cursor, limit: limit)
+      settings = settings(events)
+      {read, next} = Reader.page_back(settings, resources, before: cursor, limit: limit)
 
       {:ok,
        %{events: for({_log, _sequence, event} <- read, do: event), next: Cursor.encode(next)}}
@@ -240,7 +241,8 @@ defmodule Wardrik.EventLog do
 
   defp forward(events, resources, after_text, limit) do
     with {:ok, cursor} <- after_cursor(after_text) do
-      {read, next} = Reader.page(settings(events), resources, after: cursor, limit: limit)
+      settings = settings(events)
+      {read, next} = Reader.page(settings, resources, after: cursor, limit: limit)
 
       {:ok,
        %{events: for({_log, _sequence, event} <- read, do: event), next: Cursor.encode(next)}}
@@ -272,8 +274,10 @@ defmodule Wardrik.EventLog do
   def stream(events, resources, opts \\ []) do
     opts = Keyword.validate!(opts, [:after, types: :all])
 
-    with {:ok, cursor} <- stream_cursor(opts[:after]),
-         do: {:ok, Tail.stream(settings(events), resources, after: cursor, types: opts[:types])}
+    with {:ok, cursor} <- stream_cursor(opts[:after]) do
+      settings = settings(events)
+      {:ok, Tail.stream(settings, resources, after: cursor, types: opts[:types])}
+    end
   end
 
   @doc """
@@ -347,7 +351,8 @@ defmodule Wardrik.EventLog do
       |> Keyword.get(:limit, @default_limit)
       |> min(@max_limit)
 
-    {changes, next} = Audit.page(settings(events), Keyword.get(opts, :after, 0), limit)
+    settings = settings(events)
+    {changes, next} = Audit.page(settings, Keyword.get(opts, :after, 0), limit)
     %{events: changes, next: next}
   end
 
@@ -487,7 +492,8 @@ defmodule Wardrik.EventLog do
   end
 
   defp settings(events) do
-    Heads.settings(Module.concat(events, "Heads"))
+    heads = Module.concat(events, "Heads")
+    Heads.settings(heads)
   rescue
     ArgumentError ->
       reraise ArgumentError,

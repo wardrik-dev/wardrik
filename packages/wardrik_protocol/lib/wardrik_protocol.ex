@@ -82,15 +82,19 @@ defmodule WardrikProtocol do
 
   @doc "Returns `true` if events of the type are sent as they happen and never stored."
   @spec live?(String.t()) :: boolean()
-  def live?("wardrik." <> name) when name in @events,
-    do: Map.get(schema(name), "x-wardrik-live", false)
+  def live?("wardrik." <> name) when name in @events do
+    name
+    |> schema()
+    |> Map.get("x-wardrik-live", false)
+  end
 
   @doc """
   Returns the schema `name`, like `"run.started"` or `"cloudevent"`, with every `$ref` inlined.
   """
   @spec schema(String.t()) :: map()
   for name <- @names do
-    def schema(unquote(name)), do: unquote(Macro.escape(Inline.schema(@dir, name)))
+    schema = Inline.schema(@dir, name)
+    def schema(unquote(name)), do: unquote(Macro.escape(schema))
   end
 
   @doc "Returns the OpenAPI document, with `$ref`s to other files inlined."

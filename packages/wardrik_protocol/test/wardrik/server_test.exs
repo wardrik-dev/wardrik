@@ -22,14 +22,16 @@ defmodule Wardrik.ServerTest do
   test "runs every operation through the scope's server, and answers in structs", %{scope: scope} do
     for %{id: id} = operation <- WardrikProtocol.operations() do
       assert Wardrik.Test.Server.answers?(operation), "The test server can't answer #{id}."
-      module = Functions.module(Functions.prefix(operation))
+      prefix = Functions.prefix(operation)
+      module = Functions.module(prefix)
       args = [scope | arguments(operation, Map.get(@inputs, id, []))]
 
       answer = apply(module, Functions.name(operation), args)
 
       assert answered?(answer), id
       assert_received {:ran, ^id, input}
-      assert Enum.all?(Functions.path(operation), &(input[&1] == "x")), id
+      path = Functions.path(operation)
+      assert Enum.all?(path, &(input[&1] == "x")), id
     end
   end
 
@@ -67,7 +69,8 @@ defmodule Wardrik.ServerTest do
     assert {:error, %Wardrik.Error{type: :unavailable, message: "The run failed: It broke."}} =
              Wardrik.Agent.reply(scope, "acme/broken", "hi")
 
-    assert Enum.join(Wardrik.Agent.stream(scope, "acme/triage", "hi")) == "Re: hi"
+    stream = Wardrik.Agent.stream(scope, "acme/triage", "hi")
+    assert Enum.join(stream) == "Re: hi"
 
     assert {:ok, %Wardrik.Reply{text: "In C1: hi"}} =
              Wardrik.Agent.reply(scope, "acme/triage", "hi", conversation: "C1")

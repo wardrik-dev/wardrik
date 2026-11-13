@@ -19,7 +19,8 @@ defmodule WardrikRestTest do
 
   defp tools(opts) do
     {:ok, api} = load(opts)
-    Map.new(WardrikRest.tools(nil, apis: [api]), &{&1.name, &1})
+    listed = WardrikRest.tools(nil, apis: [api])
+    Map.new(listed, &{&1.name, &1})
   end
 
   defp context(opts \\ []) do

@@ -282,6 +282,11 @@ defmodule Wardrik.EventLog.EncoderTest do
       call = ReqLLM.ToolCall.new("c1", "github__list", ~s({"repo":"wardrik"}))
       answer = ReqLLM.Context.assistant("", tool_calls: [call])
 
+      measurements =
+        800
+        |> duration()
+        |> Map.merge(%{input_tokens: 120, output_tokens: 30, usd: 0.0015})
+
       assert %{
                "type" => "wardrik.message.completed",
                "data" => %{
@@ -309,7 +314,7 @@ defmodule Wardrik.EventLog.EncoderTest do
                      status: :ok,
                      response: response(answer, finish_reason: :tool_calls)
                    },
-                   Map.merge(duration(800), %{input_tokens: 120, output_tokens: 30, usd: 0.0015})
+                   measurements
                  )
                )
     end
@@ -324,8 +329,12 @@ defmodule Wardrik.EventLog.EncoderTest do
         response: response(ReqLLM.Context.assistant("hi"))
       }
 
-      assert %{"data" => %{"cost" => nil}} =
-               one(core([:step, :stop], answered, Map.put(duration(5), :unpriced_calls, 1)))
+      unpriced =
+        5
+        |> duration()
+        |> Map.put(:unpriced_calls, 1)
+
+      assert %{"data" => %{"cost" => nil}} = one(core([:step, :stop], answered, unpriced))
 
       failed =
         core(
@@ -422,6 +431,11 @@ defmodule Wardrik.EventLog.EncoderTest do
     test "start and complete, with what the tool cost", %{step: step} do
       call = %ToolCall{id: "c1", name: "github__list", arguments: %{"repo" => "wardrik"}}
 
+      measurements =
+        3
+        |> duration()
+        |> Map.put(:usd, 0.01)
+
       assert %{
                "type" => "wardrik.tool_call.started",
                "subject" => "tool_calls/c1",
@@ -445,7 +459,7 @@ defmodule Wardrik.EventLog.EncoderTest do
                      status: :ok,
                      response: {:ok, "3 commits"}
                    },
-                   Map.put(duration(3), :usd, 0.01)
+                   measurements
                  )
                )
 

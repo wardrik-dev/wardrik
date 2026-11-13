@@ -140,8 +140,11 @@ defmodule WardrikRest.Call do
   defp sent(%Operation{encoding: :form}, body), do: [form: form(body, nil)]
 
   # Nested as card[number]=4242 and items[0][price]=p_1, as form-encoded APIs such as Stripe's take.
-  defp form(%{} = map, prefix),
-    do: Enum.flat_map(Enum.sort(map), fn {key, value} -> form(value, nested(prefix, key)) end)
+  defp form(%{} = map, prefix) do
+    map
+    |> Enum.sort()
+    |> Enum.flat_map(fn {key, value} -> form(value, nested(prefix, key)) end)
+  end
 
   defp form(list, prefix) when is_list(list),
     do:
@@ -206,7 +209,12 @@ defmodule WardrikRest.Call do
   defp message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
   defp message(%{"message" => message}) when is_binary(message), do: message
   defp message(body) when is_binary(body), do: String.slice(body, 0, @message_limit)
-  defp message(body), do: String.slice(inspect(body), 0, @message_limit)
+
+  defp message(body) do
+    body
+    |> inspect()
+    |> String.slice(0, @message_limit)
+  end
 
   defp text(reason) when is_binary(reason), do: reason
   defp text(reason), do: inspect(reason)

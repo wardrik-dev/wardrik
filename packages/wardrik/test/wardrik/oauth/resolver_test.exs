@@ -88,18 +88,20 @@ defmodule Wardrik.OAuth.ResolverTest do
     vault: vault,
     apps: apps
   } do
+    github = credential("github", @jon)
+
     give(apps, @jon, "github", app("acme-github", "acme-client", "acme-secret"))
     sign_in(oauth, @jon)
 
     give(apps, @jon, "github", app("globex-github", "globex-client", "globex-secret"))
-    :ok = Wardrik.Vault.refused(credential("github", @jon), vault)
+    :ok = Wardrik.Vault.refused(github, vault)
 
-    assert {:authorize, url} = Wardrik.Vault.resolve(credential("github", @jon), vault)
+    assert {:authorize, url} = Wardrik.Vault.resolve(github, vault)
     assert client_id({:authorize, url}) == "globex-client"
     refute_received {:refreshed, _token}
 
     give(apps, @jon, "github", app("acme-github", "acme-client", "acme-secret-2"))
-    assert Wardrik.Vault.resolve(credential("github", @jon), vault) == {:ok, "fresh"}
+    assert Wardrik.Vault.resolve(github, vault) == {:ok, "fresh"}
     assert_received {:refreshed_as, "acme-client", "acme-secret-2"}
   end
 

@@ -123,7 +123,9 @@ defmodule Wardrik.Resolver do
   defp policies(wardrik, policies, unread) do
     named = Map.new(policies, fn {name, rules} -> {to_string(name), rules} end)
 
-    case Enum.find(Map.keys(named), &Map.has_key?(wardrik.policies, &1)) do
+    names = Map.keys(named)
+
+    case Enum.find(names, &Map.has_key?(wardrik.policies, &1)) do
       nil -> each(named, &policy("policy #{&1}", &2, unread))
       name -> {:error, unread.("its policy #{name} has the name of one of the deployment's")}
     end

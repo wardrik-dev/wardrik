@@ -142,7 +142,8 @@ defmodule Wardrik.TriggersTest do
     end
 
     test "says when the store fails partway, and finishes the change when put again", context do
-      store = FailingStore.new(:"failing #{context.test}")
+      store_name = :"failing #{context.test}"
+      store = FailingStore.new(store_name)
       triggers = :"failing triggers #{context.test}"
       start_supervised!({Wardrik.Store, store}, id: :failing_store)
 
@@ -260,7 +261,12 @@ defmodule Wardrik.TriggersTest do
     end
 
     test "moves its run when its time changes", %{triggers: triggers} do
-      fields = %{"name" => "launch", "at" => DateTime.to_iso8601(ahead(3600)), "prompt" => "Go."}
+      launch_at =
+        3600
+        |> ahead()
+        |> DateTime.to_iso8601()
+
+      fields = %{"name" => "launch", "at" => launch_at, "prompt" => "Go."}
       {:ok, _trigger} = Wardrik.Triggers.set(triggers, @agent, fields)
 
       later = ahead(7200)

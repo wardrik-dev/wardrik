@@ -57,7 +57,9 @@ defmodule WardrikDaemon.Listener do
   defp free(bandit) do
     opts = [ip: Keyword.get(bandit, :ip, {0, 0, 0, 0}), reuseaddr: true]
 
-    with {:ok, socket} <- :gen_tcp.listen(Keyword.get(bandit, :port, 4000), opts),
+    port = Keyword.get(bandit, :port, 4000)
+
+    with {:ok, socket} <- :gen_tcp.listen(port, opts),
          do: :gen_tcp.close(socket)
   end
 

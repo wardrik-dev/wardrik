@@ -87,7 +87,11 @@ defmodule WardrikDaemon.EgressTest do
     assert {:error, "invalid_request", "The server can't be reached: " <> _why} =
              server(context, "https://mcp.example.com/mcp", %{"oauth" => oauth})
 
-    servers = Wardrik.MCP.servers(Wardrik.mcp(context.wardrik))
+    servers =
+      context.wardrik
+      |> Wardrik.mcp()
+      |> Wardrik.MCP.servers()
+
     assert [] = Enum.filter(servers, &(&1 =~ "growth"))
 
     # config.yaml's own server is trusted where it is.

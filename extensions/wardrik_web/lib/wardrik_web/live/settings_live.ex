@@ -108,7 +108,11 @@ defmodule WardrikWeb.SettingsLive do
 
   defp removable?(item, owner), do: !item["fixed"] and (item["owner"] || owner) == owner
 
-  defp more?(schema, common), do: Enum.any?(Map.keys(schema["properties"]), &(&1 not in common))
+  defp more?(schema, common) do
+    schema["properties"]
+    |> Map.keys()
+    |> Enum.any?(&(&1 not in common))
+  end
 
   defp cell(value) when is_list(value), do: Enum.join(value, " ")
   defp cell(nil), do: "—"

@@ -93,7 +93,12 @@ defmodule WardrikRest.Discovery.Schema do
     end
   end
 
-  defp nested(%{} = node, names), do: Map.delete(json(node, names), "description")
+  defp nested(%{} = node, names) do
+    node
+    |> json(names)
+    |> Map.delete("description")
+  end
+
   defp nested(_none, _names), do: nil
 
   defp enum(%{"enum" => values} = schema) do

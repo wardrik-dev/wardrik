@@ -350,7 +350,10 @@ defmodule WardrikDaemon.Config do
     with {:ok, yaml} <- yaml(path, env),
          {:ok, early} <- interpolated(Map.take(yaml, @bootstrap), env, nil),
          {:ok, late} <- interpolated(Map.drop(yaml, @bootstrap ++ @later), env, vault),
-         {:ok, opts} <- Options.validate(Map.merge(early, late), @schema, nil),
+         {:ok, opts} <-
+           early
+           |> Map.merge(late)
+           |> Options.validate(@schema, nil),
          {:ok, config} <- sections(opts) do
       {:ok, %{config | warnings: later(yaml)}}
     else
@@ -423,7 +426,9 @@ defmodule WardrikDaemon.Config do
   @doc false
   @spec ip(term()) :: {:ok, :inet.ip_address()} | {:error, String.t()}
   def ip(text) when is_binary(text) do
-    case :inet.parse_address(to_charlist(text)) do
+    charlist = to_charlist(text)
+
+    case :inet.parse_address(charlist) do
       {:ok, ip} -> {:ok, ip}
       {:error, _reason} -> ip(nil)
     end
@@ -601,10 +606,18 @@ defmodule WardrikDaemon.Config do
   defp gateway(yaml) do
     schema = WardrikGateway.schema().schema
 
-    with {:ok, opts} <- Options.convert(Map.drop(yaml, ["limits", "breaker"]), schema, @gateway),
-         {:ok, limits} <- Options.each(Map.get(yaml, "limits", %{}), &limit/2),
+    with {:ok, opts} <-
+           yaml
+           |> Map.drop(["limits", "breaker"])
+           |> Options.convert(schema, @gateway),
+         {:ok, limits} <-
+           yaml
+           |> Map.get("limits", %{})
+           |> Options.each(&limit/2),
          {:ok, breaker} <-
-           Options.convert(Map.get(yaml, "breaker", %{}), @breaker, "#{@gateway}.breaker") do
+           yaml
+           |> Map.get("breaker", %{})
+           |> Options.convert(@breaker, "#{@gateway}.breaker") do
       opts =
         opts
         |> Keyword.update(:wait, nil, &milliseconds/1)
@@ -664,7 +677,11 @@ defmodule WardrikDaemon.Config do
     name
   end
 
-  defp mounting(rule, mode), do: Enum.map(Map.get(rule, mode, []), &name/1)
+  defp mounting(rule, mode) do
+    rule
+    |> Map.get(mode, [])
+    |> Enum.map(&name/1)
+  end
 
   defp validated(yaml, early) do
     settings =
