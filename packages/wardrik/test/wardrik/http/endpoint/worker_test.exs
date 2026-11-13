@@ -6,6 +6,9 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
 
   @lookup %{"name" => "lookup", "inputSchema" => %{"type" => "object"}}
 
+  # Each message crosses a real socket, which a busy runner can take longer than 100ms over.
+  @wait 1_000
+
   setup context do
     name = :"server #{context.test}"
     :ok = Wardrik.HTTP.Test.start(name, ["wrk_shop"])
@@ -33,13 +36,13 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
       {Wardrik.Workers, :call, {self(), ref}, "lookup", %{"order" => "A1"}, %{"run" => "r1"}}
     )
 
-    assert_receive {:worker, %{"method" => "tools/call", "id" => id, "params" => params}}
+    assert_receive {:worker, %{"method" => "tools/call", "id" => id, "params" => params}}, @wait
     assert %{"name" => "lookup", "arguments" => %{"order" => "A1"}} = params
 
     answer = %{"content" => [%{"type" => "text", "text" => "Shipped."}]}
     Worker.send_message(worker, %{"jsonrpc" => "2.0", "id" => id, "result" => answer})
 
-    assert_receive {^ref, %{"result" => ^answer}}
+    assert_receive {^ref, %{"result" => ^answer}}, @wait
   end
 
   test "tells the worker when a call it runs is stopped", context do
@@ -47,12 +50,13 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
     call = {self(), make_ref()}
 
     send(pid, {Wardrik.Workers, :call, call, "lookup", %{}, %{}})
-    assert_receive {:worker, %{"method" => "tools/call", "id" => id}}
+    assert_receive {:worker, %{"method" => "tools/call", "id" => id}}, @wait
 
     send(pid, {Wardrik.Workers, :cancel, call})
 
     assert_receive {:worker,
-                    %{"method" => "notifications/cancelled", "params" => %{"requestId" => ^id}}}
+                    %{"method" => "notifications/cancelled", "params" => %{"requestId" => ^id}}},
+                   @wait
   end
 
   test "lists the tools again when the worker says they changed", context do
@@ -63,7 +67,7 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
       "method" => "notifications/tools/list_changed"
     })
 
-    assert_receive {:worker, %{"method" => "tools/list"}}
+    assert_receive {:worker, %{"method" => "tools/list"}}, @wait
   end
 
   test "ignores what doesn't read as JSON-RPC, and goes on", context do
@@ -75,7 +79,7 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
     Worker.send_message(worker, %{"id" => 99, "result" => %{}})
     Worker.send_message(worker, %{"jsonrpc" => "2.0", "id" => "w3", "method" => "ping"})
 
-    assert_receive {:worker, %{"id" => "w3", "result" => %{}}}
+    assert_receive {:worker, %{"id" => "w3", "result" => %{}}}, @wait
   end
 
   test "answers what it doesn't handle as a method not found", context do
@@ -87,13 +91,15 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
       "method" => "sampling/createMessage"
     })
 
-    assert_receive {:worker, %{"id" => "w2", "error" => %{"code" => -32_601}}}
+    assert_receive {:worker, %{"id" => "w2", "error" => %{"code" => -32_601}}}, @wait
   end
 
   test "closes the socket once it no longer authenticates", context do
     connect(context)
     Wardrik.HTTP.Test.Authenticator.revoke(context.name, "wrk_shop")
-    assert_receive {:worker_closed, {:remote, 1008, "The request no longer authenticates."}}
+
+    assert_receive {:worker_closed, {:remote, 1008, "The request no longer authenticates."}},
+                   @wait
   end
 
   test "refuses a socket that doesn't authenticate, and asks one that does to upgrade", context do
@@ -107,7 +113,7 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
   defp connect(context) do
     {:ok, worker} = Worker.start(context.url, "wrk_shop", self())
 
-    assert_receive {:worker, %{"method" => "initialize", "id" => id}}, 1_000
+    assert_receive {:worker, %{"method" => "initialize", "id" => id}}, @wait
 
     Worker.send_message(worker, %{
       "jsonrpc" => "2.0",
@@ -115,8 +121,8 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
       "result" => %{"capabilities" => %{}}
     })
 
-    assert_receive {:worker, %{"method" => "notifications/initialized"}}
-    assert_receive {:worker, %{"method" => "tools/list", "id" => list}}
+    assert_receive {:worker, %{"method" => "notifications/initialized"}}, @wait
+    assert_receive {:worker, %{"method" => "tools/list", "id" => list}}, @wait
 
     Worker.send_message(worker, %{
       "jsonrpc" => "2.0",
@@ -124,7 +130,7 @@ defmodule Wardrik.HTTP.Endpoint.WorkerTest do
       "result" => %{"tools" => [@lookup]}
     })
 
-    assert_receive {:offered, pid, [@lookup]}
+    assert_receive {:offered, pid, [@lookup]}, @wait
     {worker, pid}
   end
 end
