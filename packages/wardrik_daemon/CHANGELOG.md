@@ -4,6 +4,8 @@
 
 - `config.yaml`'s `models.endpoints` names models called at their own `base_url`, each with
   `model`, `base_url` and optionally `key`. An agent's `model` may name one.
+- Calls to a model ReqLLM's catalog doesn't list, such as a local one, no longer log a warning
+  with a stack trace.
 
 ## 0.1.0-rc.13 (2026-11-13)
 
