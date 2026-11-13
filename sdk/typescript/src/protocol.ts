@@ -595,9 +595,13 @@ export interface AgentResolved {
      */
     name: string;
     /**
-     * The server's name in the app.
+     * The server's name: its owner's name for it, or the name the app starts it by.
      */
     server: string;
+    /**
+     * Who keeps the server: its owner, or `deployment` for one the app starts with. Absent when the app gives no owner.
+     */
+    owner?: string;
     /**
      * The names of the tools the server offers now. Empty when the server is down or hasn't listed its tools yet.
      */

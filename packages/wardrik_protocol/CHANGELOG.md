@@ -3,7 +3,7 @@
 ## Unreleased
 
 - `servers.list`, `servers.add` and `servers.remove`, with `Wardrik.Servers`,
-  `Wardrik.MCPServer` and `Wardrik.ServerAdded`.
+  `Wardrik.MCPServer` and `Wardrik.ServerAdded`. `agent_resolved` servers carry an `owner`.
 - `providers.list`, `providers.add` and `providers.remove`, with `Wardrik.Providers` and
   `Wardrik.OAuthApp`.
 - `secrets.list`, `secrets.put` and `secrets.delete`, with `Wardrik.Secrets` and

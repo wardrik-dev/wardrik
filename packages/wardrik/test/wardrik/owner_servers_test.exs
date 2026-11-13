@@ -109,6 +109,16 @@ defmodule Wardrik.OwnerServersTest do
            }
 
     assert Servers.reached(wardrik, %Principal{id: "bob"}) == %{"wiki" => "wiki"}
+
+    {:ok, _agent} =
+      Wardrik.Agent.define(scope, "acme/triage", model: "anthropic:claude-haiku-4-5")
+
+    assert %{"servers" => [crm, docs, wiki]} =
+             run!(scope, "agent.resolved", %{"agent" => "acme/triage"})
+
+    assert %{"name" => "crm", "server" => "crm", "owner" => "ana"} = crm
+    assert %{"name" => "docs", "server" => "docs", "owner" => "acme"} = docs
+    assert %{"name" => "wiki", "server" => "wiki", "owner" => "deployment"} = wiki
   end
 
   test "signs in with a sealed header, an OAuth app the owner may use, or the server's own app",
