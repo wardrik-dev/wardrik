@@ -36,8 +36,5 @@ defmodule WardrikDaemon.OwnersTest do
       assert Owners.owner(store, id) == :error, id
       assert Owners.org_of(store, {:agent, id}) == nil, id
     end
-
-    assert Owners.chain("acme/@jon") == ["acme/@jon", "acme", "deployment"]
-    assert Owners.chain("acme") == ["acme", "deployment"]
   end
 end

@@ -4,11 +4,9 @@ defmodule WardrikDaemon.Keys do
 
       echo "$KEY" | wardrik vault put ZAI_API_KEY --org acme --for api_key
 
-  It looks for a secret sealed for `api_key`, in this order:
-
-    1. The agent's owner.
-    2. The owner's org, for an agent a person owns.
-    3. The deployment, with `config.yaml`'s `deployment_keys: true` (the default).
+  It looks for a secret sealed for `api_key` by the key's name: the agent's owner's, else one
+  another owner lets it use, as `WardrikDaemon.Authorizer` allows `secret.use` (its org's), else
+  the deployment's, with `config.yaml`'s `deployment_keys: true` (the default).
 
   Where none holds it, the library reads the environment, as ReqLLM does.
 
@@ -20,40 +18,29 @@ defmodule WardrikDaemon.Keys do
 
   @behaviour WardrikCore.Keys
 
+  alias Wardrik.Owned
   alias WardrikCore.Principal
-  alias WardrikDaemon.Owners
 
   @impl WardrikCore.Keys
   def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, opts) do
-    vault = opts |> Keyword.fetch!(:wardrik) |> Wardrik.Instance.fetch!() |> Wardrik.vault()
-    owners = owners(principal, Keyword.get(opts, :deployment, false))
-    Enum.find_value(owners, {:error, :not_found}, &held(vault, &1, name))
-  end
+    wardrik = opts |> Keyword.fetch!(:wardrik) |> Wardrik.Instance.fetch!()
+    deployment? = Keyword.get(opts, :deployment, false)
+    vault = Wardrik.vault(wardrik)
 
-  @doc """
-  Returns the owners whose keys `principal`'s agents use, nearest first.
+    candidates =
+      for {owner, ^name, :api_key} <- Wardrik.Vault.list(vault),
+          deployment? or owner != Owned.deployment(),
+          do: %{owner: owner, name: name}
 
-      WardrikDaemon.Keys.owners(%WardrikCore.Principal{id: "acme/@jon"}, false)
-      #=> ["acme/@jon", "acme"]
-  """
-  @spec owners(Principal.t() | nil, boolean()) :: [String.t()]
-  def owners(nil, true), do: ["deployment"]
-  def owners(nil, false), do: []
-
-  def owners(%Principal{id: id}, true), do: chain(id)
-
-  def owners(%Principal{id: id}, false) do
-    [nearest | further] = chain(id)
-    [nearest | List.delete(further, "deployment")]
-  end
-
-  defp chain(id),
-    do: if(Owners.valid?(id), do: Enum.uniq(Owners.chain(id)), else: [id, "deployment"])
-
-  defp held(vault, owner, name) do
-    case Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :api_key) do
-      {:ok, key} -> {:ok, key}
-      _none -> nil
+    case chosen(wardrik, principal, candidates) do
+      %{owner: owner} -> Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :api_key)
+      _none -> {:error, :not_found}
     end
   end
+
+  defp chosen(_wardrik, nil, candidates),
+    do: Enum.find(candidates, &(&1.owner == Owned.deployment()))
+
+  defp chosen(wardrik, principal, candidates),
+    do: Owned.chosen(wardrik, principal, candidates, {"secret.use", :secret})
 end

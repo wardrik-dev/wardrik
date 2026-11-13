@@ -38,7 +38,7 @@ defmodule WardrikDaemon.Authorizer do
   @member ~w(ask read events)
   @deciding ~w(decide approve deny)
 
-  @uses ~w(provider.use mcp_server.use notify_target.use)
+  @uses ~w(secret.use provider.use mcp_server.use notify_target.use)
   @held [:secret, :mcp_server, :notify_target, :provider, :ceiling, :agents]
 
   @typedoc """

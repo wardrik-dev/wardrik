@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- No owner chain: `WardrikDaemon.Owners.chain/1` and `WardrikDaemon.Owned` are gone. An agent's
+  API key is its owner's of the name, else one another owner lets it use, as
+  `WardrikDaemon.Authorizer` allows `secret.use` (its org's), else the deployment's with
+  `deployment_keys: true`. The authorizer allows using what an owner holds to that owner's
+  people alone.
 - Notify targets are Wardrik's `notify_targets.*` operations, sent by
   `Wardrik.Notify.OwnedWebhook`. `notify_targets.list` lists the owner's own.
 - Connections are Wardrik's `connections.*` operations. The daemon keeps `connections.pair`,

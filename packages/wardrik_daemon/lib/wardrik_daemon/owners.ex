@@ -109,20 +109,6 @@ defmodule WardrikDaemon.Owners do
   @spec within?(String.t(), String.t()) :: boolean()
   def within?(owner, within), do: owner == within or org(owner) == within
 
-  @doc """
-  Returns the owners whose settings `owner`'s agents use, nearest first.
-
-      WardrikDaemon.Owners.chain("acme/@jon")
-      #=> ["acme/@jon", "acme", "deployment"]
-  """
-  @spec chain(String.t()) :: [String.t()]
-  def chain(owner) do
-    case org(owner) do
-      ^owner -> [owner, @deployment]
-      org -> [owner, org, @deployment]
-    end
-  end
-
   defp segment?(segment),
     do: segment != "" and not String.contains?(segment, ["@", ":", "*", "?"]) and segment != ".."
 end
