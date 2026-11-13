@@ -3,7 +3,8 @@
 ## 0.1.0-rc.1 (unreleased)
 
 - One tool per operation of an HTTP API, from its description.
-- Reads Google Discovery documents. `WardrikRest.Reader` reads other formats.
+- Reads Google Discovery documents, as `{WardrikRest.Discovery, url: url}` or
+  `document: map`. Other formats are a module with the `WardrikRest.Reader` behaviour.
 - Credentials from `WardrikCore.Credentials` (a person's sign-in) or `WardrikCore.Keys`, sent only
   to the configured base URL. A refused token is refreshed once; a missing sign-in waits for it.
 - `only`, `read_only` and `idempotent` by name or glob.

@@ -175,7 +175,7 @@ defmodule WardrikRest.API do
   def schema, do: @schema
 
   @doc """
-  Reads `source` with `WardrikRest.Reader` and keeps the operations `opts` offer.
+  Reads `source`, a `WardrikRest.Reader` and its options, and keeps the operations `opts` offer.
 
   Returns `{:error, reason}` if the description can't be read, `:base_url` fails `:egress`,
   `:auth` names a scheme the description doesn't, or `:only` names an operation it doesn't have,

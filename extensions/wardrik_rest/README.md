@@ -14,13 +14,10 @@ end
 ## Usage
 
 ```elixir
-{:ok, discovery} =
-  WardrikRest.Discovery.fetch(
-    "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta"
-  )
-
 {:ok, analytics} =
-  WardrikRest.API.load(discovery,
+  WardrikRest.API.load(
+    {WardrikRest.Discovery,
+     url: "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta"},
     name: "ga4",
     base_url: "https://analyticsdata.googleapis.com/",
     auth: %{"oauth2" => {:credential, "google"}},
@@ -56,8 +53,12 @@ to `base_url`, and never into arguments, answers or errors.
 
 ## Formats
 
-- Google Discovery documents: `WardrikRest.Discovery`.
-- Other formats: implement `WardrikRest.Reader` for a struct holding the description.
+A source is a reader and what it reads, as `{WardrikRest.Discovery, url: url}`.
+
+- Google Discovery documents: `WardrikRest.Discovery`, from a `url` or a decoded `document`.
+- Other formats: a module with the `WardrikRest.Reader` behaviour, whose `read/1` returns a
+  `WardrikRest.Spec`. Its schemas refer to the spec's `types` by name, and tools are fitted from
+  them.
 
 ## Related
 

@@ -6,7 +6,7 @@ defmodule WardrikRest.DiscoveryTest do
 
   @analytics "test/fixtures/analyticsdata-v1beta.json" |> File.read!() |> JSON.decode!()
 
-  defp read(document), do: WardrikRest.Reader.read(%Discovery{document: document})
+  defp read(document), do: WardrikRest.Reader.read({Discovery, document: document})
 
   defp operation(spec, name), do: Enum.find(spec.operations, &(&1.name == name))
 
@@ -140,12 +140,13 @@ defmodule WardrikRest.DiscoveryTest do
     assert {:error, "It isn't a Discovery document."} = read(%{"openapi" => "3.1.0"})
   end
 
-  describe "fetch/2" do
-    test "fetches a Discovery document" do
+  describe "reading a url" do
+    test "fetches the document" do
       Req.Test.stub(__MODULE__.Fetch, &Req.Test.json(&1, @analytics))
 
-      assert {:ok, %Discovery{document: %{"name" => "analyticsdata"}}} =
-               Discovery.fetch("https://discovery.test/rest",
+      assert {:ok, %WardrikRest.Spec{title: "Google Analytics Data API"}} =
+               Discovery.read(
+                 url: "https://discovery.test/rest",
                  req_options: [plug: {Req.Test, __MODULE__.Fetch}]
                )
     end
@@ -155,17 +156,60 @@ defmodule WardrikRest.DiscoveryTest do
       Req.Test.stub(__MODULE__.Missing, &Plug.Conn.send_resp(&1, 404, "no"))
       Req.Test.stub(__MODULE__.Down, &Req.Test.transport_error(&1, :econnrefused))
 
-      fetch = fn stub ->
-        Discovery.fetch("https://discovery.test/rest", req_options: [plug: {Req.Test, stub}])
+      read = fn stub ->
+        Discovery.read(url: "https://discovery.test/rest", req_options: [plug: {Req.Test, stub}])
       end
 
-      assert fetch.(__MODULE__.Other) ==
+      assert read.(__MODULE__.Other) ==
                {:error, "https://discovery.test/rest isn't a Discovery document."}
 
-      assert fetch.(__MODULE__.Missing) == {:error, "https://discovery.test/rest answered 404."}
+      assert read.(__MODULE__.Missing) == {:error, "https://discovery.test/rest answered 404."}
 
       assert {:error, "https://discovery.test/rest didn't answer: " <> _why} =
-               fetch.(__MODULE__.Down)
+               read.(__MODULE__.Down)
     end
+  end
+
+  test "reads with a reader of the host's own" do
+    defmodule Described do
+      @behaviour WardrikRest.Reader
+
+      @impl true
+      def read(opts) do
+        {:ok,
+         %WardrikRest.Spec{
+           title: "Notes",
+           schemes: %{"token" => {:header, "x-token"}},
+           types: %{
+             "Note" => %{"type" => "object", "properties" => %{"text" => %{"type" => "string"}}}
+           },
+           operations: [
+             %WardrikRest.Operation{
+               name: "notes_create",
+               method: :post,
+               path: Keyword.fetch!(opts, :path),
+               description: "Makes a note.",
+               parameters: [%Parameter{name: "note", in: :body, schema: %{"$ref" => "Note"}}],
+               security: [["token"]]
+             }
+           ]
+         }}
+      end
+    end
+
+    {:ok, api} =
+      WardrikRest.API.load({Described, path: "notes"},
+        name: "notes",
+        base_url: "https://notes.test",
+        auth: %{"token" => {:key, "NOTES"}}
+      )
+
+    assert [tool] = WardrikRest.tools(nil, apis: [api])
+    assert tool.name == "notes__notes_create"
+
+    assert tool.schema["properties"]["note"] == %{
+             "type" => "object",
+             "properties" => %{"text" => %{"type" => "string"}}
+           }
   end
 end
