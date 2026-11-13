@@ -127,7 +127,11 @@ defmodule Wardrik.MCP.Servers do
 
   def handle_call({:listed, name, definitions}, _from, %{settings: settings} = state) do
     if settings.store,
-      do: {:ok, _vsn} = Wardrik.Store.put(settings.store, "tools/" <> name, definitions)
+      do:
+        {:ok, _vsn} =
+          settings.store
+          |> tools()
+          |> Wardrik.Store.put(name, definitions)
 
     table = name(settings.mcp)
     true = :ets.insert(table, {{:listed, name}, definitions})
@@ -155,7 +159,7 @@ defmodule Wardrik.MCP.Servers do
   defp listed(mcp, name) do
     case {read(mcp, {:listed, name}), read(mcp, :store)} do
       {nil, nil} -> nil
-      {nil, store} -> Wardrik.Store.get(store, "tools/" <> name)
+      {nil, store} -> stored_tools(store, name)
       {definitions, _store} -> definitions
     end
   end
@@ -200,14 +204,16 @@ defmodule Wardrik.MCP.Servers do
   defp kept(%{store: nil}, _name, _opts), do: :ok
 
   defp kept(%{store: store}, name, opts) do
-    with {:ok, _vsn} <- Wardrik.Store.put(store, "servers/" <> name, opts), do: :ok
+    servers = servers(store)
+    with {:ok, _vsn} <- Wardrik.Store.put(servers, name, opts), do: :ok
   end
 
   defp forget(%{store: nil}, _name), do: :ok
 
   defp forget(%{store: store}, name) do
-    with :ok <- Wardrik.Store.delete(store, "servers/" <> name),
-         do: Wardrik.Store.delete(store, "tools/" <> name)
+    servers = servers(store)
+    tools = tools(store)
+    with :ok <- Wardrik.Store.delete(servers, name), do: Wardrik.Store.delete(tools, name)
   end
 
   defp started(%{settings: settings} = state, server) do
@@ -239,22 +245,24 @@ defmodule Wardrik.MCP.Servers do
   defp reconciled(%{settings: %{store: nil}} = state), do: state
 
   defp reconciled(%{settings: settings} = state) do
+    stored = servers(settings.store)
+
     kept =
-      settings.store
-      |> Wardrik.Store.keys("servers/")
-      |> Map.new(&{String.replace_prefix(&1, "servers/", ""), &1})
+      stored
+      |> Wardrik.Store.keys()
+      |> MapSet.new()
 
     state =
-      Enum.reduce(kept, state, fn {name, key}, state ->
+      Enum.reduce(kept, state, fn name, state ->
         if Map.has_key?(state.servers, name),
           do: state,
-          else: started(state, added(settings, name, Wardrik.Store.get(settings.store, key)))
+          else: started(state, added(settings, name, Wardrik.Store.get(stored, name)))
       end)
 
     gone =
       for {name, _server} <- state.servers,
           not MapSet.member?(state.static, name),
-          not Map.has_key?(kept, name),
+          not MapSet.member?(kept, name),
           do: name
 
     Enum.reduce(gone, state, &stopped(&2, &1))
@@ -264,4 +272,12 @@ defmodule Wardrik.MCP.Servers do
   defp tick(%{reconcile: ms}), do: Process.send_after(self(), :reconcile, ms)
 
   defp name(mcp), do: Module.concat(mcp, "Servers")
+
+  defp servers(store), do: Wardrik.Store.scope(store, "servers", format: Server)
+  defp tools(store), do: Wardrik.Store.scope(store, "tools")
+
+  defp stored_tools(store, name) do
+    tools = tools(store)
+    Wardrik.Store.get(tools, name)
+  end
 end

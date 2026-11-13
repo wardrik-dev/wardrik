@@ -111,7 +111,25 @@ defmodule Wardrik.MCP.Server do
   ## Options
 
   #{NimbleOptions.docs(@schema)}
+
+  A server added at runtime is stored with these options as JSON, its transport as
+  `{"type": "stdio", ...}` or `{"type": "streamable_http", ...}` and `{:secret, name}` as
+  `{"secret": name}`.
   """
+
+  @behaviour Wardrik.Store.Format
+
+  @options @schema.schema
+           |> Keyword.keys()
+           |> Map.new(&{Atom.to_string(&1), &1})
+  @transports %{"stdio" => :stdio, "streamable_http" => :streamable_http}
+  @transport_options %{
+    "url" => :url,
+    "headers" => :headers,
+    "command" => :command,
+    "args" => :args,
+    "env" => :env
+  }
 
   @enforce_keys [:name, :transport]
   defstruct [
@@ -157,6 +175,78 @@ defmodule Wardrik.MCP.Server do
           timeout: pos_integer(),
           max_result_bytes: pos_integer()
         }
+
+  @impl Wardrik.Store.Format
+  def version, do: 1
+
+  @doc "Returns the options a server was added with as JSON."
+  @impl Wardrik.Store.Format
+  def dump(opts),
+    do: Map.new(opts, fn {option, value} -> {Atom.to_string(option), dumped(option, value)} end)
+
+  @impl Wardrik.Store.Format
+  def load(1, json) do
+    Enum.reduce_while(json, {:ok, []}, fn {option, value}, {:ok, opts} ->
+      case loaded(@options[option], value) do
+        {:ok, value} -> {:cont, {:ok, [{@options[option], value} | opts]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp dumped(:transport, {type, opts}) do
+    opts
+    |> Map.new(fn {option, value} -> {Atom.to_string(option), dumped(option, value)} end)
+    |> Map.put("type", Atom.to_string(type))
+  end
+
+  defp dumped(:headers, headers),
+    do: Map.new(headers, fn {header, value} -> {header, sent(value)} end)
+
+  defp dumped(:cost, cost), do: Map.new(cost, fn {measure, n} -> {Atom.to_string(measure), n} end)
+  defp dumped(_option, value), do: value
+
+  defp sent({:secret, name}), do: %{"secret" => name}
+  defp sent(parts) when is_list(parts), do: Enum.map(parts, &sent/1)
+  defp sent(text), do: text
+
+  defp loaded(nil, _value), do: {:error, "it names an option this release doesn't have"}
+
+  defp loaded(:transport, %{"type" => type} = transport) when is_map_key(@transports, type) do
+    options = Map.delete(transport, "type")
+
+    if Enum.all?(options, fn {option, _value} -> is_map_key(@transport_options, option) end) do
+      opts =
+        for {option, value} <- options,
+            option = @transport_options[option],
+            do: {option, loaded_transport(option, value)}
+
+      {:ok, {@transports[type], opts}}
+    else
+      {:error, "its transport names an option this release doesn't have"}
+    end
+  end
+
+  defp loaded(:transport, _transport), do: {:error, "its transport isn't one this release has"}
+
+  defp loaded(:cost, cost), do: measures(cost)
+  defp loaded(_option, value), do: {:ok, value}
+
+  defp loaded_transport(:headers, headers),
+    do: Map.new(headers, fn {header, value} -> {header, read_sent(value)} end)
+
+  defp loaded_transport(_option, value), do: value
+
+  defp read_sent(%{"secret" => name}), do: {:secret, name}
+  defp read_sent(parts) when is_list(parts), do: Enum.map(parts, &read_sent/1)
+  defp read_sent(text), do: text
+
+  # A cost names measures the app counts, so their atoms exist once it runs.
+  defp measures(cost) do
+    {:ok, Enum.map(cost, fn {measure, n} -> {String.to_existing_atom(measure), n} end)}
+  rescue
+    ArgumentError -> {:error, "its cost names a measure this release doesn't count"}
+  end
 
   @doc "Builds a server named `name`. Raises `NimbleOptions.ValidationError` on invalid options."
   @spec new!(atom() | String.t(), keyword()) :: t()

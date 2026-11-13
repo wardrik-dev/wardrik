@@ -6,7 +6,11 @@ defmodule Wardrik.Workspace.File do
     * `:by` - the agent that last wrote it.
     * `:at` - when it was last written.
     * `:labels` - labels of what the writing run had read, such as `"outside"`.
+
+  The store keeps it with `:at` in ISO 8601.
   """
+
+  @behaviour Wardrik.Store.Format
 
   @enforce_keys [:content]
   defstruct [:content, :by, :at, labels: []]
@@ -17,6 +21,25 @@ defmodule Wardrik.Workspace.File do
           at: DateTime.t() | nil,
           labels: [String.t()]
         }
+
+  @impl Wardrik.Store.Format
+  def version, do: 1
+
+  @impl Wardrik.Store.Format
+  def dump(%__MODULE__{} = file) do
+    %{
+      "content" => file.content,
+      "by" => file.by,
+      "at" => file.at && DateTime.to_iso8601(file.at),
+      "labels" => labels(file)
+    }
+  end
+
+  @impl Wardrik.Store.Format
+  def load(1, %{"content" => content, "by" => by, "at" => at, "labels" => labels}) do
+    with {:ok, at} <- at(at),
+         do: {:ok, %__MODULE__{content: content, by: by, at: at, labels: labels}}
+  end
 
   @doc "Returns the file's labels, or `[]`."
   @spec labels(t()) :: [String.t()]
@@ -37,6 +60,15 @@ defmodule Wardrik.Workspace.File do
     case labels do
       [] -> {:ok, answer}
       labels -> {:ok, %ReqLLM.ToolResult{output: answer, metadata: %{labels: labels}}}
+    end
+  end
+
+  defp at(nil), do: {:ok, nil}
+
+  defp at(at) do
+    case DateTime.from_iso8601(at) do
+      {:ok, at, _offset} -> {:ok, at}
+      {:error, reason} -> {:error, "its time #{at} isn't ISO 8601: #{reason}"}
     end
   end
 end

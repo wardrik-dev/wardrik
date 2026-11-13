@@ -11,6 +11,10 @@
   that isn't JSON raises `ArgumentError`.
 - `Wardrik.Store.Adapter` callbacks take and return JSON text. `Wardrik.Store.Ecto.Migration`
   version 2 makes the value column `jsonb`. S3 objects are JSON.
+- Vault values, workspace files, the MCP servers added at runtime and what `Wardrik.Owned` holds
+  are stored in JSON formats of their own. `Wardrik.Owned` takes a kind as a module, which names
+  the kind and is its records' format. `Wardrik.Vault.Sealed` has no `:version`; the store keeps
+  it.
 
 ## 0.1.0-rc.12 (2026-11-13)
 

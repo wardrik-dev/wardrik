@@ -20,9 +20,13 @@ defmodule Wardrik.OAuth.Apps do
       removed.
     * An MCP server's own sign-in is an app named `server:` and the server's name. It's kept and
       forgotten with the server, and never listed.
+    * The store keeps an app as its owner, name, ID, client secret's name and the fields it was
+      added with.
   """
 
   @behaviour Wardrik.OAuth.Resolver
+  @behaviour Wardrik.Owned
+  @behaviour Wardrik.Store.Format
 
   alias Wardrik.Error
   alias Wardrik.OAuth.Provider
@@ -30,7 +34,6 @@ defmodule Wardrik.OAuth.Apps do
   alias Wardrik.Owned
   alias WardrikCore.Principal
 
-  @kind "providers"
   @use {"provider.use", :provider}
   @server "server:"
   @urls ~w(issuer resource authorization_endpoint token_endpoint)
@@ -47,6 +50,29 @@ defmodule Wardrik.OAuth.Apps do
     "client_auth" => {:client_auth, %{"post" => :post, "basic" => :basic}},
     "flow" => {:flow, %{"browser" => :browser, "device" => :device}}
   }
+
+  @impl Wardrik.Owned
+  def kind, do: "providers"
+
+  @impl Wardrik.Store.Format
+  def version, do: 1
+
+  @impl Wardrik.Store.Format
+  def dump(%{owner: owner, name: name, id: id, secret: secret, opts: opts}) do
+    %{
+      "owner" => owner,
+      "name" => name,
+      "id" => id,
+      "client_secret" => secret,
+      "fields" => Map.new(opts, fn {option, value} -> {Atom.to_string(option), field(value)} end)
+    }
+  end
+
+  @impl Wardrik.Store.Format
+  def load(1, %{"owner" => owner, "name" => name, "id" => id, "fields" => fields} = app) do
+    opts = Enum.flat_map(fields, &option/1)
+    {:ok, %{owner: owner, name: name, id: id, secret: app["client_secret"], opts: opts}}
+  end
 
   @impl Wardrik.OAuth.Resolver
   def provider(%Wardrik.OAuth.Resolver.Request{name: reference, principal: principal}, name) do
@@ -66,7 +92,7 @@ defmodule Wardrik.OAuth.Apps do
   @doc "Returns the app at `reference`, the deployment's or one an owner keeps, or `nil`."
   @spec find(Wardrik.t(), String.t()) :: map() | nil
   def find(wardrik, reference) do
-    Owned.get(wardrik, @kind, reference) ||
+    Owned.get(wardrik, __MODULE__, reference) ||
       wardrik
       |> declared()
       |> Enum.find(&(reference(&1) == reference))
@@ -83,7 +109,7 @@ defmodule Wardrik.OAuth.Apps do
   @spec chosen(Wardrik.t(), Principal.t(), String.t()) :: map() | nil | {:error, [String.t()]}
   def chosen(wardrik, principal, name) do
     candidates =
-      Enum.filter(Owned.all(wardrik, @kind) ++ declared(wardrik), &(&1.name == name))
+      Enum.filter(Owned.all(wardrik, __MODULE__) ++ declared(wardrik), &(&1.name == name))
 
     Owned.chosen(wardrik, principal, candidates, @use)
   end
@@ -101,7 +127,7 @@ defmodule Wardrik.OAuth.Apps do
 
   defp names(wardrik),
     do:
-      (Owned.all(wardrik, @kind) ++ declared(wardrik))
+      (Owned.all(wardrik, __MODULE__) ++ declared(wardrik))
       |> Enum.map(& &1.name)
       |> Enum.uniq()
       |> Enum.sort()
@@ -116,7 +142,7 @@ defmodule Wardrik.OAuth.Apps do
   def list(wardrik, owner) do
     declared = if owner == Owned.deployment(), do: declared(wardrik), else: []
 
-    for app <- declared ++ Owned.own(wardrik, @kind, owner),
+    for app <- declared ++ Owned.own(wardrik, __MODULE__, owner),
         not String.starts_with?(app.name, @server),
         do: listed(app)
   end
@@ -143,7 +169,7 @@ defmodule Wardrik.OAuth.Apps do
          {:ok, secret} <- client_secret(wardrik, owner, input["client_secret"]),
          {:ok, opts} <- options(app, input),
          app = Map.merge(app, %{opts: opts, secret: secret}),
-         :ok <- Owned.put(wardrik, @kind, app) do
+         :ok <- Owned.put(wardrik, __MODULE__, app) do
       {:ok, app}
     else
       {:error, %Error{} = error} ->
@@ -170,12 +196,12 @@ defmodule Wardrik.OAuth.Apps do
   @doc "Forgets `owner`'s app `name` and the client registered for it. `:error` if there's none."
   @spec forget(Wardrik.t(), String.t(), String.t()) :: {:ok, map()} | :error
   def forget(wardrik, owner, name) do
-    case Owned.get(wardrik, @kind, Owned.reference(owner, name)) do
+    case Owned.get(wardrik, __MODULE__, Owned.reference(owner, name)) do
       nil ->
         :error
 
       app ->
-        :ok = Owned.delete(wardrik, @kind, owner, name)
+        :ok = Owned.delete(wardrik, __MODULE__, owner, name)
         :ok = forget_client(wardrik, app)
         {:ok, app}
     end
@@ -217,7 +243,7 @@ defmodule Wardrik.OAuth.Apps do
   end
 
   defp unused(wardrik, owner, name) do
-    if Owned.get(wardrik, @kind, Owned.reference(owner, name)) == nil and
+    if Owned.get(wardrik, __MODULE__, Owned.reference(owner, name)) == nil and
          not declared?(wardrik, owner, name),
        do: :ok,
        else: {:error, Error.new(:conflict, "#{owner} has an OAuth app #{name} already.")}
@@ -280,6 +306,11 @@ defmodule Wardrik.OAuth.Apps do
   end
 
   defp option(_other), do: []
+
+  defp field(choice) when is_atom(choice) and not is_boolean(choice) and choice != nil,
+    do: Atom.to_string(choice)
+
+  defp field(value), do: value
 
   defp id do
     bytes = :crypto.strong_rand_bytes(8)
