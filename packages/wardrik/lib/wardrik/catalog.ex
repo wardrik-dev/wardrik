@@ -11,6 +11,7 @@ defmodule Wardrik.Catalog do
   alias Wardrik.Operations.Resolved
   alias Wardrik.Operations.Runtime
   alias Wardrik.Operations.Secrets
+  alias Wardrik.Operations.Servers
   alias Wardrik.Operations.Triggers
 
   @enforce_keys [:operations, :handlers, :streams]
@@ -69,6 +70,9 @@ defmodule Wardrik.Catalog do
         "providers.add" => &Providers.add/2,
         "providers.remove" => &Providers.remove/2,
         "secrets.list" => &Secrets.list/2,
+        "servers.list" => &Servers.list/2,
+        "servers.add" => &Servers.add/2,
+        "servers.remove" => &Servers.remove/2,
         "secrets.put" => &Secrets.put/2,
         "secrets.delete" => &Secrets.delete/2,
         "agent.file_put" => &Files.put/2,

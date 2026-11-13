@@ -927,6 +927,68 @@ Removes one of the owner's apps. Returns its last state.
 curl -X DELETE $WARDRIK_URL/v1/owners/acme/providers/x -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
+## MCP servers
+
+The MCP servers an owner keeps for agents. Each runs as `owner:name`, as `acme:crm`, on every
+node. Your resolver gives each agent its servers; an agent using another owner's is
+`mcp_server.use` on `{:mcp_server, owner}`, as your authorizer decides. The daemon gives an agent
+its owner's server of each name, else its org's, else the deployment's.
+
+### List servers
+
+`GET /v1/owners/{owner}/servers`
+
+Lists the MCP servers available to the owner's agents: the owner's, then the org's, then the deployment's.
+
+```sh
+curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"servers": [{"owner": "acme", "name": "crm", "source": "runtime", "url": "https://mcp.crm.example/mcp", "auth": "secret"},
+             {"owner": "deployment", "name": "github", "source": "config", "url": "https://api.githubcopilot.com/mcp/", "auth": "oauth"}]}
+```
+
+### Add a server
+
+`POST /v1/owners/{owner}/servers`
+
+Adds an MCP server for the owner's agents. Its tools are available from their next turn. Returns `201`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string, required | letters, digits, `-`, `_`, up to 32, never `__`; agents name its tools `name/*` |
+| `url` | string, required | an `https` Streamable HTTP URL |
+| `auth` | object, required | `{"none": {}}`, `{"secret": {"name": ..., "header": ..., "scheme": ...}}`, or `{"oauth": {...}}` |
+| `only` | array | tool names to include |
+| `except` | array | tool names to exclude |
+
+`oauth` takes `scopes`, and `provider` (an OAuth app's name) or `issuer`, `client_id` and `client_secret`.
+If empty, the daemon discovers the server's OAuth metadata.
+
+```sh
+curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKEN" \
+  --json '{"name": "crm", "url": "https://mcp.crm.example/mcp", "auth": {"oauth": {}}}'
+```
+
+```json
+{"server": "crm", "connected": false, "authorization": {"url": "https://auth.crm.example/authorize?client_id=…&state=…"}}
+```
+
+### Remove a server
+
+`DELETE /v1/owners/{owner}/servers/{name}`
+
+Removes one of the owner's servers, and deletes its sign-ins.
+
+```sh
+curl -X DELETE $WARDRIK_URL/v1/owners/acme/servers/crm -H "Authorization: Bearer $WARDRIK_TOKEN"
+```
+
+```json
+{"owner": "acme", "name": "crm", "source": "runtime", "url": "https://mcp.crm.example/mcp", "auth": "secret"}
+```
+
 ## Daemon: agents
 
 ### Make an agent
@@ -985,63 +1047,6 @@ curl $WARDRIK_URL/v1/owners/acme/ceilings -H "Authorization: Bearer $WARDRIK_TOK
 ```json
 {"ceilings": [{"ceiling": "plan", "per": "month", "on_exhausted": "ask", "limit": {"usd": 20.0},
                "spent": {"usd": 12.4, "tokens": 81200}, "granted": {}, "starts_over": "2026-11-01"}]}
-```
-
-## Daemon: MCP servers
-
-### List servers
-
-`GET /v1/owners/{owner}/servers`
-
-Lists the MCP servers available to the owner's agents: the owner's, then the org's, then the deployment's.
-
-```sh
-curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-```json
-{"servers": [{"owner": "acme", "name": "crm", "source": "runtime", "url": "https://mcp.crm.example/mcp", "auth": "secret"},
-             {"owner": "deployment", "name": "github", "source": "config", "url": "https://api.githubcopilot.com/mcp/", "auth": "oauth"}]}
-```
-
-### Add a server
-
-`POST /v1/owners/{owner}/servers`
-
-Adds an MCP server for the owner's agents. Its tools are available from their next turn. Returns `201`.
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `name` | string, required | letters, digits, `-`, `_`, up to 32, never `__`; agents name its tools `name/*` |
-| `url` | string, required | an `https` Streamable HTTP URL |
-| `auth` | object, required | `{"none": {}}`, `{"secret": {"name": ..., "header": ..., "scheme": ...}}`, or `{"oauth": {...}}` |
-| `only` | array | tool names to include |
-| `except` | array | tool names to exclude |
-
-`oauth` takes `scopes`, and `provider` (an OAuth app's name) or `issuer`, `client_id` and `client_secret`.
-If empty, the daemon discovers the server's OAuth metadata.
-
-```sh
-curl $WARDRIK_URL/v1/owners/acme/servers -H "Authorization: Bearer $WARDRIK_TOKEN" \
-  --json '{"name": "crm", "url": "https://mcp.crm.example/mcp", "auth": {"oauth": {}}}'
-```
-
-```json
-{"server": "crm", "connected": false, "authorization": {"url": "https://auth.crm.example/authorize?client_id=…&state=…"}}
-```
-
-### Remove a server
-
-`DELETE /v1/owners/{owner}/servers/{name}`
-
-Removes one of the owner's servers, and deletes its sign-ins.
-
-```sh
-curl -X DELETE $WARDRIK_URL/v1/owners/acme/servers/crm -H "Authorization: Bearer $WARDRIK_TOKEN"
-```
-
-```json
-{"owner": "acme", "name": "crm", "source": "runtime", "url": "https://mcp.crm.example/mcp", "auth": "secret"}
 ```
 
 ## Daemon: notify targets

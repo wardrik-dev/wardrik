@@ -332,7 +332,9 @@ defmodule Wardrik.MCPTest do
           :ok = Wardrik.MCP.remove(Wardrik.MCPTest.Secrets, "theirs")
         end)
 
-      assert log =~ "The MCP server theirs is down: \"the secret KEY can't be read: :not_found\""
+      assert log =~
+               "globex's MCP server theirs is down: \"the secret KEY can't be read: :not_found\""
+
       assert Wardrik.MCP.tools(context(), name: Wardrik.MCPTest.Secrets, servers: "theirs") == []
     end
   end

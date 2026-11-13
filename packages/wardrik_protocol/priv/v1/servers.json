@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:servers",
+  "title": "MCP servers",
+  "description": "What servers.list answers: the MCP servers an owner keeps.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "servers"
+  ],
+  "properties": {
+    "servers": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:server"
+      }
+    }
+  },
+  "examples": [
+    {
+      "servers": [
+        {
+          "owner": "acme",
+          "name": "crm",
+          "source": "runtime",
+          "url": "https://mcp.crm.example/mcp",
+          "auth": "secret"
+        },
+        {
+          "owner": "deployment",
+          "name": "github",
+          "source": "config",
+          "url": "https://api.githubcopilot.com/mcp/",
+          "auth": "oauth"
+        }
+      ]
+    }
+  ]
+}

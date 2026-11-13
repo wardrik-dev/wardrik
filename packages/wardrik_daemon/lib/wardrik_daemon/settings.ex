@@ -6,7 +6,7 @@ defmodule WardrikDaemon.Settings do
 
   | Kind | Store | Checked as |
   | --- | --- | --- |
-  | `servers` | `WardrikDaemon.Servers` | `mcp_server` |
+  | `servers` | Wardrik's `servers.*` | `mcp_server` |
   | `notify_targets` | `WardrikDaemon.NotifyTargets` | `notify_target` |
   | `oauth_apps` | Wardrik's `providers.*` | `provider` |
 
@@ -19,7 +19,7 @@ defmodule WardrikDaemon.Settings do
   alias WardrikDaemon.Owners
 
   @kinds %{
-    "servers" => %{store: WardrikDaemon.Servers, kind: :mcp_server, input: "server_input"},
+    "servers" => %{operation: "servers", kind: :mcp_server, input: "server_input"},
     "notify_targets" => %{
       store: WardrikDaemon.NotifyTargets,
       kind: :notify_target,
@@ -27,6 +27,14 @@ defmodule WardrikDaemon.Settings do
     },
     "oauth_apps" => %{operation: "providers", kind: :provider, input: "provider_input"}
   }
+
+  @typedoc "The Wardrik's `:wardrik` name, the daemon's `:store`, and `:config`."
+  @type daemon() :: %{
+          required(:wardrik) => atom(),
+          required(:store) => Wardrik.Store.t(),
+          required(:config) => WardrikDaemon.Config.t(),
+          optional(atom()) => term()
+        }
 
   @typedoc "One of `servers`, `notify_targets` or `oauth_apps`."
   @type kind() :: String.t()

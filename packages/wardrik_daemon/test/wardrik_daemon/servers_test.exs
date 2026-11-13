@@ -8,7 +8,6 @@ defmodule WardrikDaemon.ServersTest do
   alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
   alias WardrikDaemon.Client
-  alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
 
   setup :set_mimic_global
@@ -84,7 +83,7 @@ defmodule WardrikDaemon.ServersTest do
 
     assert {:ok, _added} = add(admin, "deployment", server("wiki"))
 
-    assert servers(context, "payments/@ana/notes")["crm"] == "payments/@ana:crm"
+    assert servers(context, "payments/@ana/notes")["crm"] == "payments%2F%40ana:crm"
     assert servers(context, "payments/@bo/notes")["crm"] == "payments:crm"
     assert servers(context, "payments/triage")["crm"] == "payments:crm"
     assert servers(context, "growth/@cy/leads")["crm"] == "growth:crm"
@@ -99,9 +98,7 @@ defmodule WardrikDaemon.ServersTest do
     assert {:ok, %{"servers" => listed}} = list(admin, "payments/@ana")
 
     assert for(server <- listed, do: {server["owner"], server["name"], server["source"]}) == [
-             {"payments/@ana", "crm", "runtime"},
-             {"deployment", "wiki", "runtime"},
-             {"deployment", "search", "config"}
+             {"payments/@ana", "crm", "runtime"}
            ]
   end
 
@@ -243,7 +240,7 @@ defmodule WardrikDaemon.ServersTest do
              add(admin, "growth/@cy", ads)
 
     assert %Wardrik.MCP.Server{credential_name: "growth:google"} =
-             Wardrik.MCP.Servers.all(mcp(context))["growth/@cy:ads"]
+             Wardrik.MCP.Servers.all(mcp(context))["growth%2F%40cy:ads"]
 
     assert {:error, "invalid_request", "payments has no OAuth app google."} =
              add(admin, "payments", ads)
@@ -254,7 +251,7 @@ defmodule WardrikDaemon.ServersTest do
              Client.run(admin, "providers.list", %{"owner" => "growth"})
   end
 
-  test "stops a server removed on every node, and starts every kept one as the daemon starts",
+  test "starts and stops a server on every node",
        context do
     admin = client(context, "user:admin")
     {:ok, _added} = add(admin, "growth", server("crm"))
@@ -279,38 +276,6 @@ defmodule WardrikDaemon.ServersTest do
 
     assert for(%{"subject" => "servers/crm"} = event <- events, do: event["type"]) ==
              ["wardrik.server.added", "wardrik.server.removed"]
-
-    # The daemon's own record is what starts: one Wardrik.MCP lost is started again, and one it
-    # kept that the daemon doesn't is stopped.
-    :ok = Wardrik.MCP.remove(mcp(context), "payments:docs")
-
-    :ok =
-      Wardrik.MCP.add(mcp(context), "growth:stray",
-        transport: {:streamable_http, url: "http://127.0.0.1:1/stray"}
-      )
-
-    ref = :telemetry_test.attach_event_handlers(self(), [[:wardrik_daemon, :started]])
-
-    ExUnit.CaptureLog.capture_log(fn ->
-      :ok = Supervisor.terminate_child(WardrikDaemon.Server, WardrikDaemon.Running)
-      {:ok, _pid} = Supervisor.restart_child(WardrikDaemon.Server, WardrikDaemon.Running)
-      assert_receive {[:wardrik_daemon, :started], ^ref, _measurements, _meta}, 5_000
-    end)
-
-    running = Wardrik.Instance.fetch!(context.wardrik)
-    assert "payments:docs" in Wardrik.MCP.servers(Wardrik.mcp(running))
-    refute "growth:stray" in Wardrik.MCP.servers(Wardrik.mcp(running))
-    refute "growth:crm" in Wardrik.MCP.servers(Wardrik.mcp(running))
-  end
-
-  test "starts what the store keeps and stops what it doesn't, each time it's asked", context do
-    admin = client(context, "user:admin")
-    {:ok, _added} = add(admin, "growth", server("crm"))
-    :ok = Wardrik.MCP.remove(mcp(context), "growth:crm")
-
-    assert :ok = Servers.start(context.wardrik, context.daemon_store)
-    assert "growth:crm" in Wardrik.MCP.servers(mcp(context))
-    assert "search" in Wardrik.MCP.servers(mcp(context))
   end
 
   # Removing is its own verb, as Kubernetes' delete: adding doesn't allow it.

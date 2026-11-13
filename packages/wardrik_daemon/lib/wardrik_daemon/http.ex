@@ -14,7 +14,6 @@ defmodule WardrikDaemon.HTTP do
   | --- | --- |
   | `GET`, `POST /v1/owners/{owner}/agents` | finds agents by `?name=`; makes one |
   | `GET /v1/owners/{owner}/ceilings` | an org's spend against each ceiling |
-  | `GET`, `POST /v1/owners/{owner}/servers`, `DELETE .../{name}` | MCP servers |
   | `GET`, `POST /v1/owners/{owner}/notify_targets`, `DELETE .../{name}` | webhooks |
   | `GET /v1/connections` | your accounts |
   | `POST`, `DELETE /v1/connections/{provider}` | starts a sign-in; forgets an account |
@@ -54,7 +53,6 @@ defmodule WardrikDaemon.HTTP do
   alias WardrikDaemon.CreateAgent
   alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.Owners
-  alias WardrikDaemon.Servers
   alias WardrikDaemon.Tokens
 
   @own [:wardrik, :authenticator, :store, :orgs, :config, :web]
@@ -63,7 +61,7 @@ defmodule WardrikDaemon.HTTP do
   @external_resource @openapi_path
   @openapi @openapi_path |> File.read!() |> JSON.decode!()
   @inputs Map.new(
-            ~w(server_input notify_target_input token_input pairing_input),
+            ~w(notify_target_input token_input pairing_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
           )
 
@@ -104,8 +102,8 @@ defmodule WardrikDaemon.HTTP do
   @doc """
   Returns the daemon's operation `id`, with its `:method`, `:path` and `:parameters`, or `nil`.
 
-      %{method: "post", path: "/v1/owners/{owner}/servers"} =
-        WardrikDaemon.HTTP.operation("servers.add")
+      %{method: "post", path: "/v1/owners/{owner}/notify_targets"} =
+        WardrikDaemon.HTTP.operation("notify_targets.add")
   """
   @spec operation(String.t()) :: map() | nil
   def operation(id), do: Map.get(@operations, id)
@@ -166,27 +164,6 @@ defmodule WardrikDaemon.HTTP do
     served(conn, owner, {"ceiling.read", :ceiling}, fn _scope ->
       with {:ok, ceilings} <- Ceiling.list(conn.assigns.daemon, owner),
            do: {:ok, 200, %{"ceilings" => ceilings}}
-    end)
-  end
-
-  get "/v1/owners/:owner/servers" do
-    served(conn, owner, {"mcp_server.read", :mcp_server}, fn _scope ->
-      {:ok, 200, %{"servers" => Servers.list(conn.assigns.daemon, owner)}}
-    end)
-  end
-
-  post "/v1/owners/:owner/servers" do
-    served(conn, owner, {"mcp_server.add", :mcp_server}, fn scope ->
-      with {:ok, input} <- input(conn, "server_input"),
-           {:ok, added} <- Servers.add(conn.assigns.daemon, {owner, input}, scope.principal),
-           do: {:ok, 201, added}
-    end)
-  end
-
-  delete "/v1/owners/:owner/servers/:name" do
-    served(conn, owner, {"mcp_server.delete", :mcp_server}, fn scope ->
-      with {:ok, removed} <- Servers.remove(conn.assigns.daemon, {owner, name}, scope.principal),
-           do: {:ok, 200, removed}
     end)
   end
 

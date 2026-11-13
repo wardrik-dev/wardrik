@@ -76,13 +76,13 @@ defmodule WardrikDaemon.ResolverTest do
 
   test "reaches what its owner, its org and the deployment added, and nothing another org did",
        context do
-    {WardrikDaemon.Resolver, daemon} = Wardrik.Instance.fetch!(context.wardrik).resolver
     server = %{"name" => "crm", "url" => "http://127.0.0.1:1/crm", "auth" => %{"none" => %{}}}
+    admin = Wardrik.as(context.wardrik, Wardrik.principal("admin"))
 
     for owner <- ["growth", "payments/@ana"],
-        do: {:ok, _added} = WardrikDaemon.Servers.add(daemon, {owner, server}, nil)
+        do: {:ok, _added} = Wardrik.run(admin, "servers.add", Map.put(server, "owner", owner))
 
-    assert {:ok, %Resolved{servers: %{"crm" => "payments/@ana:crm"}}} =
+    assert {:ok, %Resolved{servers: %{"crm" => "payments%2F%40ana:crm"}}} =
              resolve(context, "payments/@ana", "ana-refunds")
 
     assert {:ok, %Resolved{servers: servers}} = resolve(context, "payments/@bo", "bo-refunds")

@@ -41,7 +41,11 @@
           },
           "server": {
             "type": "string",
-            "description": "The server's name in the app."
+            "description": "The server's name: its owner's name for it, or the name the app starts it by."
+          },
+          "owner": {
+            "type": "string",
+            "description": "Who keeps the server: its owner, or `deployment` for one the app starts with. Absent when the app gives no owner."
           },
           "tools": {
             "type": "array",

@@ -56,7 +56,9 @@ defmodule Wardrik.ResolvedTest do
     assert run!(scope, "agent.resolved", %{"agent" => "acme/bot"}) == %{
              "agent" => "acme/bot",
              "principal" => %{"id" => "user_42"},
-             "servers" => [%{"name" => "github", "server" => "down", "tools" => []}],
+             "servers" => [
+               %{"name" => "github", "server" => "down", "owner" => "deployment", "tools" => []}
+             ],
              "policy" => [%{"deny" => ["shell/*"]}],
              "policies" => %{"careful" => %{"ask" => ["echo"]}},
              "defaults" => %{"model" => @model},

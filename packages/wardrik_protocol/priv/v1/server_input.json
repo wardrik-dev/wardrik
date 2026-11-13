@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:server_input",
+  "title": "A server to add",
+  "description": "The name, URL and authentication of an MCP server, and which of its tools agents can use.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "url",
+    "auth"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+      "description": "The server's name. To give an agent this server's tools, add name/* to the agent's tools. Each tool is named name__tool. Use up to 32 letters, digits, - and _. Don't use __."
+    },
+    "url": {
+      "type": "string",
+      "description": "The server's full HTTPS URL. The server must support Streamable HTTP."
+    },
+    "auth": {
+      "description": "How agents authenticate to the server.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "none"
+          ],
+          "properties": {
+            "none": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "No authentication."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "oauth"
+          ],
+          "properties": {
+            "oauth": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "The owner signs in with OAuth in a browser and Wardrik stores the token. With no fields set, Wardrik discovers the server's authorization server from its URL and registers itself as a client. If the service publishes no metadata or doesn't allow client registration, set provider to an existing OAuth app, or give the app's issuer or endpoints, client_id and client_secret.",
+              "properties": {
+                "scopes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The scopes to request. Defaults to the server's scopes."
+                },
+                "issuer": {
+                  "type": "string",
+                  "description": "The authorization server's issuer URL. Its metadata provides the endpoints."
+                },
+                "authorization_endpoint": {
+                  "type": "string",
+                  "description": "The authorization endpoint, for issuers that publish no metadata. Set together with token_endpoint."
+                },
+                "token_endpoint": {
+                  "type": "string",
+                  "description": "The token endpoint. Set together with authorization_endpoint."
+                },
+                "client_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The OAuth app's client ID."
+                },
+                "client_secret": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name"
+                  ],
+                  "description": "The OAuth app's client secret, stored in the owner's vault. Wardrik reads it each time it is used, so a new value applies immediately. It is only sent to the token endpoint.",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "The name of the secret in the owner's vault."
+                    }
+                  }
+                },
+                "client_auth": {
+                  "type": "string",
+                  "enum": [
+                    "post",
+                    "basic"
+                  ],
+                  "description": "How the client secret is sent: post (in the request body) or basic (HTTP Basic auth). Defaults to post."
+                },
+                "authorization_params": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "not": {
+                      "enum": [
+                        "response_type",
+                        "client_id",
+                        "redirect_uri",
+                        "scope",
+                        "state",
+                        "code_challenge",
+                        "code_challenge_method",
+                        "resource"
+                      ]
+                    }
+                  },
+                  "description": "Extra parameters for the browser sign-in, such as access_type: offline. Parameters Wardrik sets can't be overridden."
+                },
+                "provider": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+                  "description": "The name of an existing OAuth app: the owner's own, else one another owner lets it use, else the deployment's. If you set this, leave the other app fields empty."
+                }
+              },
+              "dependentRequired": {
+                "client_secret": [
+                  "client_id"
+                ],
+                "client_auth": [
+                  "client_secret"
+                ],
+                "authorization_endpoint": [
+                  "token_endpoint"
+                ],
+                "token_endpoint": [
+                  "authorization_endpoint"
+                ]
+              },
+              "dependentSchemas": {
+                "provider": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "scopes"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "issuer"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "authorization_endpoint"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "token_endpoint"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "client_id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "client_secret"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "client_auth"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "authorization_params"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "secret"
+          ],
+          "properties": {
+            "secret": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "description": "A secret from the owner's vault, sent in a header with every request.",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The name of the secret in the owner's vault."
+                },
+                "header": {
+                  "type": "string",
+                  "description": "The header name. Defaults to authorization."
+                },
+                "scheme": {
+                  "type": "string",
+                  "description": "The prefix before the secret in the header. Defaults to Bearer. Set it to an empty string to send only the secret."
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "only": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The tools to include, by the names the server uses. Defaults to all tools."
+    },
+    "except": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The tools to exclude, by the names the server uses."
+    }
+  },
+  "examples": [
+    {
+      "name": "social",
+      "url": "https://mcp.social.example/mcp",
+      "auth": {
+        "oauth": {
+          "scopes": [
+            "write"
+          ]
+        }
+      }
+    },
+    {
+      "name": "crm",
+      "url": "https://mcp.crm.example/mcp",
+      "auth": {
+        "secret": {
+          "name": "crm-key"
+        }
+      }
+    },
+    {
+      "name": "docs",
+      "url": "https://docs.example.com/mcp",
+      "auth": {
+        "none": {}
+      },
+      "only": [
+        "search"
+      ]
+    },
+    {
+      "name": "github",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "auth": {
+        "oauth": {
+          "issuer": "https://github.com/login/oauth",
+          "client_id": "Iv1.8a61f9b3a7aba766",
+          "client_secret": {
+            "name": "GITHUB_APP_SECRET"
+          },
+          "scopes": [
+            "repo"
+          ]
+        }
+      }
+    },
+    {
+      "name": "ads",
+      "url": "https://mcp.ads.example/mcp",
+      "auth": {
+        "oauth": {
+          "provider": "google"
+        }
+      }
+    }
+  ]
+}

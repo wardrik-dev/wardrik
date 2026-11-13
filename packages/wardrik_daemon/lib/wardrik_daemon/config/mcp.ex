@@ -16,7 +16,7 @@ defmodule WardrikDaemon.Config.MCP do
     * `url` is the full endpoint, used as given.
     * It takes `Wardrik.MCP.Server`'s options too, except `transport` and `owner`.
     * `credential` is `credential_name`. `timeout` is in seconds.
-    * Orgs and people add their own servers. See `WardrikDaemon.Servers`.
+    * Orgs and people add their own servers. See Wardrik's `servers.*` operations.
   """
 
   alias WardrikDaemon.Config.Options

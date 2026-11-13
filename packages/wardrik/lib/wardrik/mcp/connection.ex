@@ -320,13 +320,18 @@ defmodule Wardrik.MCP.Connection do
 
   defp retry_later(%{server: server, retry: retry} = state, reason) do
     Logger.warning(
-      "The MCP server #{server.name} is down: #{inspect(reason)}. " <>
+      "#{shown(server)} is down: #{inspect(reason)}. " <>
         "Trying again in #{div(retry, 1000)}s."
     )
 
     Process.send_after(self(), :connect, retry)
     %{state | retry: min(retry * 2, @last_retry)}
   end
+
+  defp shown(%Server{owner: owner} = server) when owner in [nil, "deployment"],
+    do: "The MCP server #{server.name}"
+
+  defp shown(%Server{owner: owner} = server), do: "#{owner}'s MCP server #{Server.prefix(server)}"
 
   defp listen_for_changes(state) do
     :telemetry.attach(

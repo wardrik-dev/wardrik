@@ -15,6 +15,14 @@ defmodule Wardrik.Instance do
               __STACKTRACE__
   end
 
+  @doc "Returns `{:ok, wardrik}` while `instance` runs, else `:error`."
+  @spec fetch(atom()) :: {:ok, Wardrik.t()} | :error
+  def fetch(instance) when is_atom(instance) do
+    if Process.whereis(registry(instance)),
+      do: Registry.meta(registry(instance), :wardrik),
+      else: :error
+  end
+
   @doc "Returns `instance`'s name."
   @spec name(atom() | Wardrik.t()) :: atom()
   def name(%Wardrik{name: name}), do: name

@@ -34,12 +34,19 @@ defmodule Wardrik.Operations.Resolved do
   end
 
   defp servers(mcp, servers) do
-    for {name, server} <- Enum.sort(servers) do
+    started = Wardrik.MCP.Servers.all(mcp)
+
+    for {name, key} <- Enum.sort(servers) do
       picked = Wardrik.MCP.Capability.picked(mcp, servers, names: [name])
       tools = Wardrik.MCP.tools(nil, name: mcp, servers: picked)
-      %{"name" => name, "server" => server, "tools" => Enum.map(tools, & &1.name)}
+      Map.merge(%{"name" => name, "tools" => Enum.map(tools, & &1.name)}, kept(started[key], key))
     end
   end
+
+  defp kept(%Wardrik.MCP.Server{owner: owner} = server, _key) when owner != nil,
+    do: %{"server" => Wardrik.MCP.Server.prefix(server), "owner" => owner}
+
+  defp kept(_server, key), do: %{"server" => key}
 
   defp target({name, key}) when is_binary(key), do: %{"name" => name, "target" => key}
   defp target({name, _given}), do: %{"name" => name}
