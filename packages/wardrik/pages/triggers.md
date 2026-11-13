@@ -2,8 +2,8 @@
 
 > See it in action: [Scheduled runs and webhooks](../notebooks/triggers-demo.livemd)
 
-A trigger asks an agent something on a clock, when a feed has new entries, or when a webhook
-arrives.
+A trigger asks an agent something on a clock, once at a set time, when a feed has new entries, or
+when a webhook arrives.
 
 ## Setup
 
@@ -51,6 +51,7 @@ Wardrik.Agent.define(scope, "agt_digest",
   model: "anthropic:claude-haiku-4-5",
   triggers: [
     %{name: "daily", every: "0 9 * * *", timezone: "America/Los_Angeles", prompt: "Write today's update."},
+    %{name: "launch", at: "2026-11-17T09:00", timezone: "America/Los_Angeles", prompt: "Publish it."},
     %{name: "rivals", every: "6h", feed: ["https://example.com/feed.xml"], prompt: "What changed?"},
     %{name: "issues", webhook: %{secret: "${HOOK}"}, prompt: "Triage it."}
   ]
@@ -66,6 +67,8 @@ See `Wardrik.Triggers.Trigger` for trigger fields, defaults, and accepted values
 - `settle` cancels a turn waiting on an answer nobody gave, then asks. It skips a turn still working.
   The audit gets `wardrik.agent.cancelled` with the trigger's name.
 - A late run, more than a minute, runs once however many were missed.
+- An `at` trigger runs once, queued behind a busy turn, then it's removed from the agent. Setting
+  one that has passed is refused. A definition that still holds one keeps it, and never runs it.
 - Set `triggers: [req_options: ...]` in Wardrik's options to change how feeds are read.
 
 ## Webhooks
@@ -104,7 +107,8 @@ Wardrik.Agent.trigger_remove(scope, agent: "agt_digest", trigger: "daily")
 ```
 
 - Defining the agent again replaces all its triggers.
-- A trigger whose `every` and `timezone` stay keeps its next run.
+- A trigger whose `every`, `at` and `timezone` stay keeps its next run.
+- It answers with `next_at`, the next run in the trigger's time zone.
 - In a cluster, each run is claimed in the store, so it runs once.
 
 ## Feeds
@@ -121,7 +125,8 @@ Wardrik.Agent.trigger_remove(scope, agent: "agt_digest", trigger: "daily")
 
 `Wardrik.Triggers` runs without Wardrik, for `WardrikCore` agents. Your app gives it a
 `Wardrik.Triggers.Target`, which asks the agent, decides what to do when it's busy, and finds
-webhook secrets.
+webhook secrets. Its `fired/2` is told `last: true` after an `at` runs, to remove it wherever
+your app keeps it.
 
 ```elixir
 children = [

@@ -11,7 +11,8 @@ defmodule Wardrik.AgentTools do
   | `agent_definition_read`, `self_definition_read` | Reads a definition. |
   | `agent_ask` | Sends an agent a message. The answer comes back later as a message. |
   | `agent_define` | Defines or redefines a worker. |
-  | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | Changes triggers. |
+  | `agent_schedule`, `self_schedule` | Asks an agent, or itself, something once at a time, or every so often. |
+  | `agent_trigger_set`, `agent_trigger_remove`, `self_trigger_set`, `self_trigger_remove` | Changes triggers: schedules, feeds and webhooks. |
 
     * Each acts for the agent's resolved principal, with actor `{:agent, id}`. Your authorizer decides.
     * An agent with no principal can use none of them.
@@ -89,10 +90,16 @@ defmodule Wardrik.AgentTools do
         &defined(me, &1.agent, &1.definition)
       ),
       change(
+        "agent_schedule",
+        "Schedule an agent a message: once at a time, or every so often. It answers with the schedule's name and its next run, as next_at. agent_trigger_remove removes it.",
+        schedule_schema(:agents),
+        &scheduled(me, &1["agent"], &1)
+      ),
+      change(
         "agent_trigger_set",
-        "Set one of an agent's triggers: every, with a prompt, or a feed or webhook.",
-        [agent: @agent, trigger: @trigger, fields: trigger_fields()],
-        &set(me, &1.agent, &1)
+        "Set one of an agent's triggers by name: a schedule, a feed or a webhook. It answers with the next run, if any, as next_at.",
+        trigger_schema(:agents),
+        &set(me, &1["agent"], &1)
       ),
       change(
         "agent_trigger_remove",
@@ -120,9 +127,15 @@ defmodule Wardrik.AgentTools do
         run(me, "agent.definition", %{"agent" => self})
       end),
       change(
+        "self_schedule",
+        "Schedule yourself a message, to follow up or do something later: once at a time, or every so often. It answers with the schedule's name and its next run, as next_at. self_trigger_remove removes it.",
+        schedule_schema(:self),
+        &scheduled(me, self, &1)
+      ),
+      change(
         "self_trigger_set",
-        "Set one of your own triggers.",
-        [trigger: @trigger, fields: trigger_fields()],
+        "Set one of your own triggers by name: a schedule, a feed or a webhook. It answers with the next run, if any, as next_at.",
+        trigger_schema(:self),
         &set(me, self, &1)
       ),
       change(
@@ -139,13 +152,46 @@ defmodule Wardrik.AgentTools do
   defp own(%{id: id, conversation: conversation}),
     do: %{"agent" => id, "conversation" => conversation}
 
-  defp trigger_fields,
-    do: [
-      type: :map,
-      required: true,
-      doc:
-        ~s(The trigger, as {"every": "0 9 * * *", "timezone": "America/Los_Angeles", "prompt": "..."})
-    ]
+  # Both come from the operation's own input, so they keep to the protocol.
+  defp trigger_schema(reach) do
+    %{"properties" => properties, "required" => required} = trigger_input()
+    properties = Map.drop(properties, ["name", "next_at"])
+    reached(%{"type" => "object", "properties" => properties, "required" => required}, reach)
+  end
+
+  defp schedule_schema(reach) do
+    %{"properties" => properties} = trigger_input()
+
+    name =
+      Map.put(
+        properties["trigger"],
+        "description",
+        "A name for the schedule, to change or remove it later. One is made up if left out."
+      )
+
+    schema = %{
+      "type" => "object",
+      "description" => "One of at or every.",
+      "properties" =>
+        properties
+        |> Map.take(["agent", "at", "every", "timezone", "prompt"])
+        |> Map.put("name", name),
+      "required" => ["agent", "prompt"]
+    }
+
+    reached(schema, reach)
+  end
+
+  defp trigger_input, do: WardrikProtocol.operation("agent.trigger_set").input
+
+  defp reached(schema, :agents),
+    do: put_in(schema, ["properties", "agent", "description"], @agent[:doc])
+
+  defp reached(schema, :self) do
+    schema
+    |> Map.update!("properties", &Map.delete(&1, "agent"))
+    |> Map.update!("required", &List.delete(&1, "agent"))
+  end
 
   defp read(name, description, schema, run),
     do: tool(name, description, schema, run, read_only: true, idempotent: true)
@@ -225,15 +271,15 @@ defmodule Wardrik.AgentTools do
     end
   end
 
-  defp set(me, agent, args),
-    do:
-      run(
-        me,
-        "agent.trigger_set",
-        args.fields
-        |> Wardrik.Type.json()
-        |> Map.merge(%{"agent" => agent, "trigger" => args.trigger})
-      )
+  defp set(me, agent, args), do: run(me, "agent.trigger_set", Map.put(args, "agent", agent))
+
+  defp scheduled(me, agent, args) do
+    {name, fields} = Map.pop_lazy(args, "name", &schedule_name/0)
+    set(me, agent, Map.put(fields, "trigger", name))
+  end
+
+  defp schedule_name,
+    do: "schedule-" <> Base.encode32(:crypto.strong_rand_bytes(4), case: :lower, padding: false)
 
   defp run(%{principal: nil, id: id}, _operation, _input),
     do: {:error, "#{id} acts for no one, so it can't reach other agents."}

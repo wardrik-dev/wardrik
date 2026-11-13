@@ -576,8 +576,9 @@ curl $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/runs -H "Authorization: Bearer $WARDR
 
 Sets or changes one trigger. Returns `404` if the agent has no definition.
 
-The body has the keys of a [trigger](/reference/agent-files/#triggers): `every`, `timezone`, `prompt`,
-`prompt_file`, `overlap`, `missed`, `jitter`, `feed`, `webhook`.
+The body has the keys of a [trigger](/reference/agent-files/#triggers): `every`, `at`, `timezone`,
+`prompt`, `prompt_file`, `overlap`, `missed`, `jitter`, `feed`, `webhook`. It returns the trigger,
+with `next_at`, its next run in its time zone, if it has one.
 
 ```sh
 curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/triggers/sweep -H "Authorization: Bearer $WARDRIK_TOKEN" \
@@ -585,10 +586,11 @@ curl -X PUT $WARDRIK_URL/v1/agents/agt_01JF8X5RQ2/triggers/sweep -H "Authorizati
 ```
 
 ```json
-{"every": "*/30 * * * *", "prompt": "Check the queue.", "overlap": "skip"}
+{"name": "sweep", "every": "*/30 * * * *", "prompt": "Check the queue.", "overlap": "skip", "missed": "run_once", "next_at": "2026-11-12T23:30:00Z"}
 ```
 
-If `every` and `timezone` are unchanged, the trigger keeps its next run time.
+- If `every`, `at` and `timezone` are unchanged, the trigger keeps its next run time.
+- An `at` that has passed returns `400`.
 
 ### Remove a trigger
 

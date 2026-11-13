@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `wardrik trigger set --at 2026-11-17T09:00` runs a trigger once, then removes it. `trigger set`
+  says when the trigger runs next, and `trigger ls` shows `once at`.
 - `wardrik doctor` fails for each agent whose saved state the running daemon can't read, and
   says why. `wardrik reload` starts such agents over and says so. `wardrik ls` shows them as
   `unreadable`, `attention` includes them, and `wardrik agent show` gives the reason.

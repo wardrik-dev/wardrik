@@ -60,6 +60,9 @@ defmodule Wardrik.OperationToolsTest do
     {response, List.keydelete(script, key, 0)}
   end
 
+  # The first part is what was said; a user message's last says when.
+  defp text(%{role: :user, content: [%{text: said} | _sent]}), do: said
+
   defp text(%{content: content}) when is_list(content),
     do: Enum.map_join(content, &(&1 |> Map.get(:text, "") |> to_string()))
 
