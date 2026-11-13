@@ -41,7 +41,8 @@ defmodule Wardrik.Setup do
       egress: opts[:egress],
       prices:
         Map.new(opts[:prices], fn {spec, price} -> {to_string(spec), price(spec, price)} end),
-      model_options: opts[:model_options]
+      model_options: opts[:model_options],
+      endpoints: Map.new(opts[:endpoints], fn {name, endpoint} -> {to_string(name), endpoint} end)
     }
   end
 
@@ -116,6 +117,7 @@ defmodule Wardrik.Setup do
     opts
     |> Keyword.put(:events, {Wardrik.EventLog, Wardrik.events(wardrik)})
     |> Keyword.put_new(:prices, wardrik.prices)
+    |> Keyword.put_new(:endpoints, wardrik.endpoints)
     |> model_options(wardrik)
     |> credentials(wardrik)
     |> wrapped([{Wardrik.Spending, wardrik.name} | wardrik.middleware])

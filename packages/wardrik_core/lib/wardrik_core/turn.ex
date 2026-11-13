@@ -276,13 +276,14 @@ defmodule WardrikCore.Turn do
     tools = Enum.map(context.tools, fn tool -> tool.req_llm end)
 
     opts = [tools: tools] ++ Context.model_options(context, context.model)
+    spec = Context.spec(context, context.model)
 
-    with {:ok, streamed} <- ReqLLM.stream_text(context.model, prompt(context), opts),
+    with {:ok, streamed} <- ReqLLM.stream_text(spec, prompt(context), opts),
          {:ok, response} <- ReqLLM.StreamResponse.process_stream(streamed, on_chunk: on_chunk) do
       context =
         Context.measure(
           %{context | response: response},
-          Usage.measurements(response, context.model, context.prices)
+          Usage.measurements(response, spec, context.prices)
         )
 
       {:ok, append_messages(context, [response.message])}

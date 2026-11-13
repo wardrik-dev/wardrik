@@ -21,6 +21,32 @@ defmodule WardrikCore.Agent.StateTest do
         State.new(opts)
       end
     end
+
+    test "takes the name of one of its context's endpoints as its model" do
+      endpoint = [model: "openai:gpt-4o-mini", base_url: "http://localhost:9931/v1"]
+      context = WardrikCore.Context.new(agent_id: "agent_1", endpoints: %{"local" => endpoint})
+
+      state = State.new(agent_id: "agent_1", model: "local", context: context)
+
+      assert state.model == "local"
+    end
+  end
+
+  describe "canonical_endpoints!/1" do
+    test "names each endpoint by string and checks its model and base_url" do
+      endpoints = %{local: [model: "openai:gpt-4o-mini", base_url: "http://localhost:9931/v1"]}
+
+      assert %{"local" => [model: "openai:gpt-4o-mini", base_url: "http://localhost:9931/v1"]} =
+               State.canonical_endpoints!(endpoints)
+
+      assert_raise NimbleOptions.ValidationError, fn ->
+        State.canonical_endpoints!(%{"local" => [model: "openai:gpt-4o-mini"]})
+      end
+
+      assert_raise ArgumentError, fn ->
+        State.canonical_endpoints!(%{"local" => [model: "unnamed", base_url: "http://x/v1"]})
+      end
+    end
   end
 
   describe "dump/1 and load/1" do

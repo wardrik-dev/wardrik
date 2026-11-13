@@ -19,6 +19,7 @@ models:
 ```
 
 - `fallbacks` is keyed by the model an agent is configured with. `limits` is keyed by provider.
+  An [endpoint](/reference/config/#models) is keyed by its name in both.
 - When a model’s circuit breaker is open, Wardrik skips it and tries the next configured fallback.
 - A call to a provider at its limit is delayed until the provider has capacity.
 - An HTTP 429 response pauses provider requests for `Retry-After`, or one second if the header is absent.

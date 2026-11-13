@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `:endpoints` names models called at their own `base_url`. A definition's `model` may name one.
+  See `WardrikCore.start_agent/2`.
+
 ## 0.1.0-rc.12 (2026-11-13)
 
 - **Upgrading:** defining an agent asks your authorizer `mcp_server.use` and `notify_target.use`

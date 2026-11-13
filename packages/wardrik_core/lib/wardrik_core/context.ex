@@ -39,6 +39,7 @@ defmodule WardrikCore.Context do
           attributes: map(),
           measurements: %{optional(term()) => number()},
           prices: %{optional(String.t()) => WardrikCore.price()},
+          endpoints: %{optional(String.t()) => WardrikCore.endpoint()},
           subagent: String.t() | nil
         }
 
@@ -71,6 +72,7 @@ defmodule WardrikCore.Context do
     attributes: %{},
     measurements: %{},
     prices: %{},
+    endpoints: %{},
     subagent: nil
   ]
 
@@ -81,18 +83,52 @@ defmodule WardrikCore.Context do
 
   @model_defaults [receive_timeout: 300_000, stream_idle_timeout: 300_000]
 
+  # ReqLLM would otherwise send the provider's key from its config or the environment.
+  @no_key "none"
+
+  @doc """
+  Returns the model spec a call to `model` goes to: an endpoint's model, or `model` itself.
+
+      WardrikCore.Context.spec(context, "local")
+      #=> "vllm:LFM3-1.7B"
+  """
+  @spec spec(t(), LLMDB.Model.t() | String.t()) :: LLMDB.Model.t() | String.t()
+  def spec(%__MODULE__{endpoints: endpoints}, model) when is_map_key(endpoints, model),
+    do: endpoints[model][:model]
+
+  def spec(%__MODULE__{}, model), do: model
+
   @doc """
   Returns what a call to `model` takes: the agent's `model_options` over the defaults, and the
-  model's API key.
+  model's API key. An endpoint's call also takes its `base_url`, and only its own key.
 
       WardrikCore.Context.model_options(context, "anthropic:claude-haiku-4-5")
       #=> [receive_timeout: 300_000, stream_idle_timeout: 300_000, api_key: "sk-..."]
   """
   @spec model_options(t(), LLMDB.Model.t() | String.t()) :: keyword()
+  def model_options(%__MODULE__{endpoints: endpoints} = context, model)
+      when is_map_key(endpoints, model) do
+    endpoint = endpoints[model]
+    key = endpoint_key(context, endpoint[:key])
+
+    context
+    |> options()
+    |> Keyword.merge(base_url: endpoint[:base_url], api_key: key)
+  end
+
   def model_options(%__MODULE__{} = context, model),
-    do:
-      Keyword.merge(@model_defaults, context.model_options) ++
-        WardrikCore.Keys.model_options(context, model)
+    do: options(context) ++ WardrikCore.Keys.model_options(context, model)
+
+  defp options(context), do: Keyword.merge(@model_defaults, context.model_options)
+
+  defp endpoint_key(_context, nil), do: @no_key
+
+  defp endpoint_key(context, name) do
+    case WardrikCore.Keys.fetch(context, name) do
+      {:ok, key} -> key
+      {:error, _none} -> @no_key
+    end
+  end
 
   @doc "Runs `fun` through the context's middleware. The first in the list runs outermost."
   @spec run(t(), WardrikCore.Middleware.next()) :: WardrikCore.Middleware.result()

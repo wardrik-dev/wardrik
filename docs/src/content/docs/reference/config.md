@@ -167,6 +167,9 @@ models:
     zai:glm-5.1: {input: 0.60, output: 2.20}
     zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
   options: {temperature: 0.2, receive_timeout: 600000}
+  endpoints:
+    local: {model: vllm:LFM3-1.7B, base_url: "http://localhost:9931/v1"}
+    proxy: {model: openai:gpt-5-mini, base_url: "https://llm-proxy.example.com/v1", key: PROXY_API_KEY}
   gateway:
     fallbacks: {anthropic:claude-sonnet-4-5: [openai:gpt-5]}
     limits: {anthropic: {requests_per_minute: 4000, tokens_per_minute: 400000}}
@@ -176,12 +179,19 @@ models:
 | --- | --- | --- |
 | `prices` | `{}` | prices for models not in the catalog, in dollars per million tokens |
 | `options` | `{}` | options passed to [ReqLLM](https://hexdocs.pm/req_llm) for every model call |
+| `endpoints` | `{}` | models by name, each called at its own `base_url` |
 | `gateway` | breakers only | fallbacks, limits and breakers every model call goes through; see [Model gateway](/run/model-gateway/) |
 
 - A price takes `input`, `output`, `cache_read`, `cache_write`, or `priced_as` another model; each
   with an optional `markup`.
 - `options` accepts settings supported by ReqLLM, such as `base_url`. Timeouts are in
   milliseconds. Agent-level [`model_options`](/reference/agent-files/#model_options) override these defaults.
+- An endpoint takes `model`, a model spec; `base_url`, an OpenAI-compatible or provider URL; and
+  optionally `key`, the name of a vault API key. An agent's `model` names an endpoint to use it.
+- An endpoint's calls send only the key named by `key`, never the provider's. Without `key`, they
+  send the placeholder `none`.
+- An endpoint's calls are priced as its `model`. Gateway `fallbacks` and `limits` are keyed by the
+  endpoint's name.
 - `wardrik reload` applies changes to all of them.
 
 ## mcp

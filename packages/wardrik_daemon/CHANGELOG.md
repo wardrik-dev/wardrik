@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `config.yaml`'s `models.endpoints` names models called at their own `base_url`, each with
+  `model`, `base_url` and optionally `key`. An agent's `model` may name one.
+
 ## 0.1.0-rc.13 (2026-11-13)
 
 - No owner chain: `WardrikDaemon.Owners.chain/1` and `WardrikDaemon.Owned` are gone. An agent's

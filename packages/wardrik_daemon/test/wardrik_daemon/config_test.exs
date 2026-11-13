@@ -50,6 +50,9 @@ defmodule WardrikDaemon.ConfigTest do
         zai_coding_plan:glm-5.1: {priced_as: zai:glm-5.1, markup: 0.1}
         openrouter:x: {input: 0.6, output: 2.2}
       options: {temperature: 0.2, reasoning_effort: low, base_url: "https://llm.acme.test"}
+      endpoints:
+        local: {model: zai:glm-5.1, base_url: "http://localhost:9931/v1"}
+        proxy: {model: zai:glm-5.1, base_url: "https://proxy.acme.test/v1", key: PROXY_KEY}
       gateway:
         fallbacks: {anthropic:claude-haiku-4-5: [zai:glm-5.1]}
         limits: {anthropic: {requests_per_minute: 4000}}
@@ -102,6 +105,15 @@ defmodule WardrikDaemon.ConfigTest do
     assert config.prices == %{
              "zai_coding_plan:glm-5.1" => [markup: 0.1, priced_as: "zai:glm-5.1"],
              "openrouter:x" => [input: 0.6, output: 2.2]
+           }
+
+    assert config.endpoints == %{
+             "local" => [base_url: "http://localhost:9931/v1", model: "zai:glm-5.1"],
+             "proxy" => [
+               base_url: "https://proxy.acme.test/v1",
+               key: "PROXY_KEY",
+               model: "zai:glm-5.1"
+             ]
            }
 
     assert Enum.sort(config.model_options) == [
@@ -530,7 +542,11 @@ defmodule WardrikDaemon.ConfigTest do
       {"defaults: 1", "invalid value for :defaults option: expected map"},
       {"brave: {key: x}", "brave: unknown options [:key], valid options are: [:api_key]"},
       {"models: {a:b: 1}",
-       "models: unknown options [:a:b], valid options are: [:prices, :options, :gateway]"},
+       "models: unknown options [:a:b], valid options are: [:prices, :options, :endpoints, :gateway]"},
+      {"models: {endpoints: {local: {model: zai:glm-5.1}}}",
+       "models.endpoints.local: required :base_url option not found"},
+      {"models: {endpoints: {local: {model: nope, base_url: x}}}",
+       "models.endpoints.local: nope isn't a model"},
       {"models: {prices: {a:b: 1}}", "models.prices.a:b: holds input and output"},
       {"models: {prices: {a:b: {zzz_per: day}}}", "models.prices.a:b.zzz_per: isn't an option"},
       {"models: {prices: {a:b: {input: 1}}}",

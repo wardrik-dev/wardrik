@@ -44,6 +44,9 @@ defmodule WardrikCore do
           cache_write: number()
         ]
 
+  @typedoc "Where a model's calls go: a model spec, its `base_url`, and the name of its API key."
+  @type endpoint() :: [model: String.t(), base_url: String.t(), key: String.t()]
+
   @doc """
   Runs agents under your supervision tree.
 
@@ -103,7 +106,8 @@ defmodule WardrikCore do
     :keys,
     :events,
     :metadata,
-    :prices
+    :prices,
+    :endpoints
   ]
 
   @doc """
@@ -120,7 +124,8 @@ defmodule WardrikCore do
   ## Options
 
     * `:agent_id` - required. Your ID for the agent.
-    * `:model` - required. A model spec, as `"anthropic:claude-haiku-4-5"`.
+    * `:model` - required. A model spec, as `"anthropic:claude-haiku-4-5"`, or the name of one of
+      `:endpoints`.
     * `:conversation` - your ID for one of the agent's conversations, with its own history.
       `nil`, the main history, by default.
     * `:instructions` - the system prompt. Never kept in the history.
@@ -143,6 +148,19 @@ defmodule WardrikCore do
       `%{}` by default.
 
           prices: %{"zai_coding_plan:glm-5.1" => [input: 1.54, output: 4.84]}
+
+    * `:endpoints` - models by name, each called at its own `:base_url`, such as a local
+      OpenAI-compatible server. `%{}` by default.
+
+          endpoints: %{
+            "local" => [model: "vllm:LFM3-1.7B", base_url: "http://localhost:9931/v1"],
+            "proxy" => [model: "openai:gpt-5-mini", base_url: "https://proxy/v1", key: "PROXY_KEY"]
+          }
+
+      A `:model` naming one calls its model at its `:base_url`, with the key `:keys` gives for
+      its `:key`, never its provider's own. Without a `:key`, or a key to give, it sends
+      `"none"`. Prices go by its model. Middleware, such as a gateway's fallbacks, sees the
+      name.
   """
   @spec start_agent(atom(), keyword()) :: {:ok, pid()} | {:error, term()}
   def start_agent(instance \\ __MODULE__, opts) do
@@ -150,6 +168,7 @@ defmodule WardrikCore do
       opts
       |> Keyword.validate!([:agent_id, :model, :conversation | @config])
       |> Keyword.replace_lazy(:prices, &State.canonical_prices!/1)
+      |> Keyword.replace_lazy(:endpoints, &State.canonical_endpoints!/1)
 
     ids = [agent_id: Keyword.fetch!(opts, :agent_id), conversation: opts[:conversation]]
     context = Context.new(ids ++ Keyword.take(opts, @config))
@@ -170,15 +189,19 @@ defmodule WardrikCore do
   @doc """
   Changes an agent's model or settings, from its next turn.
 
-  Takes `:model` and the options of `start_agent/2`, except `:agent_id` and `:conversation`.
+  Takes `:model` and the options of `start_agent/2`, except `:agent_id` and `:conversation`. A
+  `:model` naming an endpoint comes with `:endpoints`.
   """
   @spec configure(GenServer.server(), keyword()) :: :ok
   def configure(agent, opts) do
     opts =
       opts
       |> Keyword.validate!([:model | @config])
-      |> Keyword.replace_lazy(:model, &State.canonical_spec!/1)
       |> Keyword.replace_lazy(:prices, &State.canonical_prices!/1)
+      |> Keyword.replace_lazy(:endpoints, &State.canonical_endpoints!/1)
+
+    endpoints = Keyword.get(opts, :endpoints, %{})
+    opts = Keyword.replace_lazy(opts, :model, &State.canonical_spec!(&1, endpoints))
 
     GenServer.call(agent, {:configure, opts})
   end
@@ -378,15 +401,16 @@ defmodule WardrikCore do
         ) :: {:ok, map(), %{atom() => number()}} | {:error, term()}
   def evaluate(%Context{} = context, args) do
     model = Keyword.fetch!(args, :model)
+    spec = Context.spec(context, model)
 
     with {:ok, response} <-
            ReqLLM.evaluate(
-             model,
+             spec,
              Keyword.fetch!(args, :state),
              Keyword.fetch!(args, :questions),
              Context.model_options(context, model)
            ) do
-      {:ok, response.object, WardrikCore.Usage.measurements(response, model, context.prices)}
+      {:ok, response.object, WardrikCore.Usage.measurements(response, spec, context.prices)}
     end
   end
 

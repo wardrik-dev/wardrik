@@ -46,6 +46,7 @@ defmodule WardrikCore.Agent.State do
     :events,
     :metadata,
     :prices,
+    :endpoints,
     :private,
     :messages
   ]
@@ -66,10 +67,14 @@ defmodule WardrikCore.Agent.State do
 
   @spec new(keyword()) :: t()
   def new(opts) do
-    opts = Keyword.update!(opts, :model, &canonical_spec!/1)
+    endpoints = endpoints(opts[:context])
+    opts = Keyword.update!(opts, :model, &canonical_spec!(&1, endpoints))
 
     struct!(__MODULE__, opts)
   end
+
+  defp endpoints(%WardrikCore.Context{endpoints: endpoints}), do: endpoints
+  defp endpoints(nil), do: %{}
 
   @doc "Adds a message to the queue."
   @spec queue(t(), ReqLLM.Message.t()) :: t()
@@ -244,8 +249,30 @@ defmodule WardrikCore.Agent.State do
     do: Map.new(prices, fn {spec, price} -> {canonical_spec!(spec), price} end)
 
   @doc false
-  @spec canonical_spec!(ReqLLM.model_input()) :: String.t()
-  def canonical_spec!(spec) do
+  @spec canonical_endpoints!(%{optional(String.t() | atom()) => WardrikCore.endpoint()}) ::
+          %{optional(String.t()) => WardrikCore.endpoint()}
+  def canonical_endpoints!(endpoints),
+    do: Map.new(endpoints, fn {name, endpoint} -> {to_string(name), endpoint!(endpoint)} end)
+
+  @endpoint NimbleOptions.new!(
+              model: [type: :string, required: true],
+              base_url: [type: :string, required: true],
+              key: [type: :string]
+            )
+
+  defp endpoint!(endpoint) do
+    endpoint
+    |> NimbleOptions.validate!(@endpoint)
+    |> Keyword.update!(:model, &canonical_spec!/1)
+  end
+
+  @doc false
+  @spec canonical_spec!(ReqLLM.model_input(), map()) :: String.t()
+  def canonical_spec!(spec, endpoints \\ %{})
+
+  def canonical_spec!(name, endpoints) when is_map_key(endpoints, name), do: name
+
+  def canonical_spec!(spec, _endpoints) do
     case ReqLLM.model(spec) do
       {:ok, model} -> LLMDB.Model.spec(model)
       {:error, reason} -> raise ArgumentError, "Invalid model: #{inspect(reason)}"

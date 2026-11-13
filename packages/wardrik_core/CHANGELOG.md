@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `:endpoints` names models called at their own `base_url`, such as a local OpenAI-compatible
+  server. An agent's `:model` may name one. Its calls take only the key its `key` names, never
+  its provider's, and are priced as its model.
+
 ## 0.1.0-rc.7 (2026-11-13)
 
 - A tool's JSON Schema is given to the model without its `pattern`s, which some providers refuse,
