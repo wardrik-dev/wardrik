@@ -13,6 +13,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Event
   alias Wardrik.Forgotten
   alias Wardrik.Interrupt
+  alias Wardrik.MCPServer
   alias Wardrik.Message
   alias Wardrik.Nodes
   alias Wardrik.OAuthApp
@@ -20,6 +21,7 @@ defmodule Wardrik.Operations.Types do
   alias Wardrik.Runs
   alias Wardrik.Runtime
   alias Wardrik.SealedSecret
+  alias Wardrik.ServerAdded
   alias Wardrik.Timeline
   alias Wardrik.Trigger
   alias Wardrik.Type
@@ -43,7 +45,9 @@ defmodule Wardrik.Operations.Types do
     "agent.resolved" => AgentResolved,
     "agent.file_put" => AgentFile,
     "providers.add" => OAuthApp,
-    "providers.remove" => OAuthApp
+    "providers.remove" => OAuthApp,
+    "servers.add" => ServerAdded,
+    "servers.remove" => MCPServer
   }
 
   @lists %{
@@ -51,6 +55,7 @@ defmodule Wardrik.Operations.Types do
     "agent.files" => {"files", AgentFile, :from_json},
     "secrets.list" => {"secrets", SealedSecret, :from_json},
     "providers.list" => {"providers", OAuthApp, :from_json},
+    "servers.list" => {"servers", MCPServer, :from_json},
     "agents.list" => {"agents", Agent, :from_summary},
     "interrupts.list" => {"interrupts", Interrupt, :from_listed}
   }

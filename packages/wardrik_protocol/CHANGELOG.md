@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `servers.list`, `servers.add` and `servers.remove`, with `Wardrik.Servers`,
+  `Wardrik.MCPServer` and `Wardrik.ServerAdded`.
 - `providers.list`, `providers.add` and `providers.remove`, with `Wardrik.Providers` and
   `Wardrik.OAuthApp`.
 - `secrets.list`, `secrets.put` and `secrets.delete`, with `Wardrik.Secrets` and

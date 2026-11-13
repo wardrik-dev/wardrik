@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `servers.list`, `servers.add` and `servers.remove` keep an owner's MCP servers, at
+  `/v1/owners/{owner}/servers`, as `Wardrik.Servers`. Each runs as its reference, as
+  `acme:crm`. Defining an agent checks `mcp_server.use` for each server the resolver gives it
+  that another owner keeps, and refuses it where the authorizer does.
 - `providers.list`, `providers.add` and `providers.remove` keep an owner's OAuth apps, at
   `/v1/owners/{owner}/providers`, as `Wardrik.Providers`. `Wardrik.OAuth.Apps` is Wardrik's own
   `Wardrik.OAuth.Resolver`, used unless `:oauth` names another, and `:oauth`'s `:providers` are

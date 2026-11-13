@@ -4,8 +4,9 @@ defmodule WardrikDaemon.Resolver do
 
     * The agent acts for its owner, from its record. An agent with no record gets nothing.
     * It's held to `"*"`'s policy and its org's, and their shared budgets. See `WardrikDaemon.Orgs`.
-    * It reaches the nearest MCP server and notify target of each name. See
-      `WardrikDaemon.Servers` and `WardrikDaemon.NotifyTargets`.
+    * It reaches its owner's MCP server of each name, else the one its owner may use as
+      `WardrikDaemon.Authorizer` allows, else the deployment's that serves its org. It reaches
+      the nearest notify target of each name. See `WardrikDaemon.NotifyTargets`.
     * A channel posts its notices in the workspace its owner added it to, else its org's.
     * It mounts the workspaces `workspace.shared` gives it.
     * An agent of an undeclared org, or whose policy is missing, isn't started.
@@ -20,7 +21,6 @@ defmodule WardrikDaemon.Resolver do
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.NotifyTargets
   alias WardrikDaemon.Owners
-  alias WardrikDaemon.Servers
 
   @impl Wardrik.Resolver
   def resolve(%Request{agent: id}, opts) do
@@ -31,7 +31,7 @@ defmodule WardrikDaemon.Resolver do
          principal: %Principal{id: owner},
          policy: settings.policy,
          middleware: middleware(opts.store, org, settings.ceilings),
-         servers: nearest(Servers.reached(opts, owner)),
+         servers: servers(opts, owner, org),
          notify: nearest(NotifyTargets.reached(opts, owner)),
          channels: channels(opts, owner),
          workspaces: workspaces(opts.store, opts.config.workspace, record)
@@ -86,6 +86,20 @@ defmodule WardrikDaemon.Resolver do
       agent in read -> :read
       true -> nil
     end
+  end
+
+  # A server config.yaml starts reaches the orgs it serves alone. Where Wardrik isn't running, as
+  # for the doctor, only those are.
+  defp servers(%{wardrik: wardrik, config: config}, owner, org) do
+    reached =
+      case Wardrik.Instance.fetch(wardrik) do
+        {:ok, running} -> Wardrik.Operations.Servers.reached(running, %Principal{id: owner})
+        :error -> Map.new(config.mcp, fn {name, _opts} -> {to_string(name), to_string(name)} end)
+      end
+
+    Map.filter(reached, fn {name, key} ->
+      key != name or WardrikDaemon.Config.Orgs.serves?(config, kind: :mcp, name: name, org: org)
+    end)
   end
 
   # Nearest first: the first of each name wins.

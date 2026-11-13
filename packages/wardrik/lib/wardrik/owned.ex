@@ -90,7 +90,7 @@ defmodule Wardrik.Owned do
   def usable?(_wardrik, %Principal{id: id}, %{owner: id}, _use), do: true
 
   def usable?(wardrik, principal, %{owner: owner}, {action, resource}) do
-    scope = Wardrik.as(wardrik.name, principal)
+    scope = %{Wardrik.as(wardrik.name, principal) | wardrik: wardrik}
     Authorizer.authorize(scope, action: action, resource: {resource, owner}) == :ok
   end
 

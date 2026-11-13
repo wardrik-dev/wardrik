@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `servers.list()`, `servers.add()` and `servers.remove()`, now in Wardrik's protocol.
 - `providers.list()`, `providers.add()` and `providers.remove()`, now in Wardrik's protocol.
 - `secrets.list()`, `secrets.put()` and `secrets.delete()`, now in Wardrik's protocol.
 - `AgentSummary` and `AgentSnapshot` have `description` and `model`. Reading events takes

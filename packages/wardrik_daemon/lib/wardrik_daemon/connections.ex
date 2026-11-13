@@ -16,7 +16,6 @@ defmodule WardrikDaemon.Connections do
   alias Wardrik.OAuth.Apps
   alias WardrikCore.Principal
   alias WardrikDaemon.Pairings
-  alias WardrikDaemon.Servers
 
   @doc """
   Lists the accounts `principal` can connect.
@@ -24,7 +23,7 @@ defmodule WardrikDaemon.Connections do
   Each entry has `"provider"`, `"connected"` and `"signing_in"`, which is `true` while a
   sign-in is under way.
   """
-  @spec list(Servers.daemon(), Principal.t()) :: [map()]
+  @spec list(WardrikDaemon.Settings.daemon(), Principal.t()) :: [map()]
   def list(%{wardrik: wardrik} = daemon, %Principal{} = principal) do
     held = held(daemon, principal)
 
@@ -42,7 +41,8 @@ defmodule WardrikDaemon.Connections do
 
   Returns that it's connected already, or the URL to sign in at, with a code for a device sign-in.
   """
-  @spec connect(Servers.daemon(), Principal.t(), String.t()) :: {:ok, map()} | {:error, Error.t()}
+  @spec connect(WardrikDaemon.Settings.daemon(), Principal.t(), String.t()) ::
+          {:ok, map()} | {:error, Error.t()}
   def connect(daemon, %Principal{} = principal, provider) do
     with {:ok, credential} <- credential(daemon, principal, provider) do
       if credential in held(daemon, principal),
@@ -56,7 +56,8 @@ defmodule WardrikDaemon.Connections do
 
   Returns `:not_found` where they hold no such account.
   """
-  @spec disconnect(Servers.daemon(), Principal.t(), String.t()) :: :ok | {:error, Error.t()}
+  @spec disconnect(WardrikDaemon.Settings.daemon(), Principal.t(), String.t()) ::
+          :ok | {:error, Error.t()}
   def disconnect(%{wardrik: wardrik} = daemon, %Principal{id: id} = principal, provider) do
     with {:ok, credential} <- credential(daemon, principal, provider) do
       if credential in held(daemon, principal),
@@ -74,7 +75,7 @@ defmodule WardrikDaemon.Connections do
 
   Every wrong code fails the same way. After 5, the sign-in ends.
   """
-  @spec pair(Servers.daemon(), Principal.t(), {String.t(), String.t()}) ::
+  @spec pair(WardrikDaemon.Settings.daemon(), Principal.t(), {String.t(), String.t()}) ::
           {:ok, map()} | {:error, Error.t()}
   def pair(%{wardrik: wardrik} = daemon, %Principal{} = principal, {provider, code}) do
     with {:ok, credential} <- credential(daemon, principal, provider) do
@@ -89,7 +90,7 @@ defmodule WardrikDaemon.Connections do
   @doc """
   Takes a browser sign-in's callback `params`. Returns the code to show, or `{:error, reason}`.
   """
-  @spec called_back(Servers.daemon(), map()) ::
+  @spec called_back(WardrikDaemon.Settings.daemon(), map()) ::
           {:ok, %{provider: String.t(), code: String.t()}} | {:error, :declined | :unknown}
   def called_back(daemon, params), do: called_back(daemon, params, :adopt)
 

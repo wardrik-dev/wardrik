@@ -2836,6 +2836,149 @@
           }
         }
       }
+    },
+    "/v1/owners/{owner}/servers": {
+      "get": {
+        "operationId": "servers.list",
+        "summary": "List the MCP servers an owner's agents reach",
+        "description": "The MCP servers the owner keeps. The deployment's include those it starts with.",
+        "tags": [
+          "Servers"
+        ],
+        "x-wardrik-action": "mcp_server.read",
+        "x-wardrik-effect": "read",
+        "x-wardrik-subject": "mcp_server",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The owner's servers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:servers"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "servers.add",
+        "summary": "Add an MCP server for an owner's agents",
+        "description": "Adds an MCP server for the owner. It starts on every node, and its tools reach the agents your resolver gives it to from their next turn; an agent using another owner's is checked as mcp_server.use. The URL must pass the deployment's egress check.",
+        "tags": [
+          "Servers"
+        ],
+        "x-wardrik-action": "mcp_server.add",
+        "x-wardrik-effect": "change",
+        "x-wardrik-subject": "mcp_server",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "urn:wardrik:schema:v1:server_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "That its agents can call it now, or where someone signs in to it first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:server_added"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/owners/{owner}/servers/{name}": {
+      "delete": {
+        "operationId": "servers.remove",
+        "summary": "Remove an MCP server",
+        "description": "One of the owner's own. It stops on every node, its tools leave its agents from their next turn, and the sign-ins to it are forgotten.",
+        "tags": [
+          "Servers"
+        ],
+        "x-wardrik-action": "mcp_server.delete",
+        "x-wardrik-effect": "destructive",
+        "x-wardrik-subject": "mcp_server",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/server_name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The server, as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "urn:wardrik:schema:v1:server"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3054,6 +3197,16 @@
         "in": "path",
         "required": true,
         "description": "The OAuth app's name.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"
+        }
+      },
+      "server_name": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "description": "The server's name.",
         "schema": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"

@@ -1487,6 +1487,145 @@ export interface Secrets {
   }[];
 }
 /**
+ * An MCP server an owner keeps: who holds it, where it came from, its URL, and how its agents sign in to it. Never its headers.
+ */
+export interface Server {
+  owner: Owner;
+  /**
+   * What the owner's agents call it.
+   */
+  name: string;
+  source: Source;
+  /**
+   * The server's URL. Omitted for a command the deployment starts.
+   */
+  url?: string;
+  /**
+   * How its agents sign in to it.
+   */
+  auth: "oauth" | "secret" | "none";
+}
+/**
+ * What servers.add answers: that the owner's agents can call the server now, or where someone signs in to it first.
+ */
+export interface ServerAdded {
+  /**
+   * The server's name.
+   */
+  server: string;
+  /**
+   * Whether its agents can call it now.
+   */
+  connected: boolean;
+  authorization?: Authorization;
+}
+/**
+ * The name, URL and authentication of an MCP server, and which of its tools agents can use.
+ */
+export interface ServerInput {
+  /**
+   * The server's name. To give an agent this server's tools, add name/* to the agent's tools. Each tool is named name__tool. Use up to 32 letters, digits, - and _. Don't use __.
+   */
+  name: string;
+  /**
+   * The server's full HTTPS URL. The server must support Streamable HTTP.
+   */
+  url: string;
+  /**
+   * How agents authenticate to the server.
+   */
+  auth:
+    | {
+        /**
+         * No authentication.
+         */
+        none: {};
+      }
+    | {
+        /**
+         * The owner signs in with OAuth in a browser and Wardrik stores the token. With no fields set, Wardrik discovers the server's authorization server from its URL and registers itself as a client. If the service publishes no metadata or doesn't allow client registration, set provider to an existing OAuth app, or give the app's issuer or endpoints, client_id and client_secret.
+         */
+        oauth: {
+          /**
+           * The scopes to request. Defaults to the server's scopes.
+           */
+          scopes?: string[];
+          /**
+           * The authorization server's issuer URL. Its metadata provides the endpoints.
+           */
+          issuer?: string;
+          /**
+           * The authorization endpoint, for issuers that publish no metadata. Set together with token_endpoint.
+           */
+          authorization_endpoint?: string;
+          /**
+           * The token endpoint. Set together with authorization_endpoint.
+           */
+          token_endpoint?: string;
+          /**
+           * The OAuth app's client ID.
+           */
+          client_id?: string;
+          /**
+           * The OAuth app's client secret, stored in the owner's vault. Wardrik reads it each time it is used, so a new value applies immediately. It is only sent to the token endpoint.
+           */
+          client_secret?: {
+            /**
+             * The name of the secret in the owner's vault.
+             */
+            name: string;
+          };
+          /**
+           * How the client secret is sent: post (in the request body) or basic (HTTP Basic auth). Defaults to post.
+           */
+          client_auth?: "post" | "basic";
+          /**
+           * Extra parameters for the browser sign-in, such as access_type: offline. Parameters Wardrik sets can't be overridden.
+           */
+          authorization_params?: {
+            [k: string]: string;
+          };
+          /**
+           * The name of an existing OAuth app: the owner's own, else one another owner lets it use, else the deployment's. If you set this, leave the other app fields empty.
+           */
+          provider?: string;
+        };
+      }
+    | {
+        /**
+         * A secret from the owner's vault, sent in a header with every request.
+         */
+        secret: {
+          /**
+           * The name of the secret in the owner's vault.
+           */
+          name: string;
+          /**
+           * The header name. Defaults to authorization.
+           */
+          header?: string;
+          /**
+           * The prefix before the secret in the header. Defaults to Bearer. Set it to an empty string to send only the secret.
+           */
+          scheme?: string;
+        };
+      };
+  /**
+   * The tools to include, by the names the server uses. Defaults to all tools.
+   */
+  only?: string[];
+  /**
+   * The tools to exclude, by the names the server uses.
+   */
+  except?: string[];
+}
+/**
+ * What servers.list answers: the MCP servers an owner keeps.
+ */
+export interface Servers {
+  servers: Server[];
+}
+/**
  * What agent.timeline answers: the agent's conversation as a person reads it, oldest first.
  */
 export interface Timeline {

@@ -14,8 +14,33 @@ defmodule Wardrik.Resolution do
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
     with {:ok, resolved} <- Resolver.resolve(wardrik, %Request{agent: id, definition: definition}),
+         :ok <- used(wardrik, resolved),
          {:ok, opts} <- resolved(within(wardrik, resolved), id, definition, resolved),
          do: {:ok, hold(opts, resolved)}
+  end
+
+  # Each server another owner keeps is used only as the authorizer allows. An agent that acts for
+  # no one is given what the resolver gives it.
+  defp used(_wardrik, %Resolved{principal: nil}), do: :ok
+  defp used(_wardrik, %Resolved{servers: servers}) when map_size(servers) == 0, do: :ok
+
+  defp used(wardrik, %Resolved{principal: principal, servers: servers}) do
+    refused =
+      for {name, key} <- servers,
+          owner = Wardrik.Operations.Servers.owner(wardrik, key),
+          owner not in [nil, principal.id],
+          not Wardrik.Owned.usable?(
+            wardrik,
+            principal,
+            %{owner: owner},
+            {"mcp_server.use", :mcp_server}
+          ),
+          do: "#{principal.id} may not use #{owner}'s server #{name}."
+
+    case refused do
+      [] -> :ok
+      refused -> {:error, Error.new(:invalid_request, Enum.join(refused, " "))}
+    end
   end
 
   @doc "Returns `opts` held to the policy and middleware the agent resolved to."

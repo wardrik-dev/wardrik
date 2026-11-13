@@ -16,12 +16,11 @@ defmodule WardrikDaemon.NotifyTargets do
   alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Owned
   alias WardrikDaemon.Owners
-  alias WardrikDaemon.Servers
 
   @kind "notify_targets"
 
   @doc "Lists the targets `owner`'s agents route to, nearest first. Never a secret."
-  @spec list(Servers.daemon(), String.t()) :: [map()]
+  @spec list(WardrikDaemon.Settings.daemon(), String.t()) :: [map()]
   def list(%{store: store, config: config}, owner) do
     added = for target <- Owned.along(store, @kind, owner), do: listed(target)
     Owned.nearest(added ++ configured(config, Owners.org(owner)))
@@ -30,7 +29,9 @@ defmodule WardrikDaemon.NotifyTargets do
   @doc """
   Returns the targets `owner`'s agents route to by name, as `Wardrik.Resolved`'s `:notify` takes them.
   """
-  @spec reached(Servers.daemon(), String.t()) :: [{String.t(), Wardrik.Resolved.notify_target()}]
+  @spec reached(WardrikDaemon.Settings.daemon(), String.t()) :: [
+          {String.t(), Wardrik.Resolved.notify_target()}
+        ]
   def reached(%{store: store, config: config}, owner) do
     added =
       for target <- Owned.along(store, @kind, owner),
@@ -62,7 +63,7 @@ defmodule WardrikDaemon.NotifyTargets do
   @doc """
   Adds the webhook `input` describes for `owner`, as `actor`. `input` is the route's checked JSON.
   """
-  @spec add(Servers.daemon(), {String.t(), map()}, Principal.t() | nil) ::
+  @spec add(WardrikDaemon.Settings.daemon(), {String.t(), map()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}
   def add(%{wardrik: wardrik, store: store} = daemon, {owner, %{"name" => name} = input}, actor) do
     running = Wardrik.Instance.fetch!(wardrik)
@@ -78,7 +79,7 @@ defmodule WardrikDaemon.NotifyTargets do
   end
 
   @doc "Removes `owner`'s own target `name`, as `actor`. Returns it as it was."
-  @spec remove(Servers.daemon(), {String.t(), String.t()}, Principal.t() | nil) ::
+  @spec remove(WardrikDaemon.Settings.daemon(), {String.t(), String.t()}, Principal.t() | nil) ::
           {:ok, map()} | {:error, Error.t()}
   def remove(%{wardrik: wardrik, store: store} = daemon, {owner, name}, actor) do
     case Wardrik.Store.get(store, Owned.path(@kind, owner, name)) do

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- MCP servers are Wardrik's `servers.*` operations. `servers.list` lists the owner's own. An
+  agent reaches its owner's server of each name, else its org's, else the deployment's, as
+  `WardrikDaemon.Authorizer` allows `mcp_server.use`. A server runs as its reference, as
+  `acme%2F%40jon:crm` for a person's.
 - OAuth apps are Wardrik's `providers.*` operations. `providers.list` lists the owner's own.
   A person signs in with their own app of a name, else their org's, else the deployment's, as
   `WardrikDaemon.Authorizer` allows `provider.use`. Connected accounts are kept by the app's

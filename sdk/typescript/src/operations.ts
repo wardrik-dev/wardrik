@@ -39,6 +39,10 @@ import type {
   Runtime,
   SecretInput,
   Secrets,
+  Server,
+  ServerAdded,
+  ServerInput,
+  Servers,
   Timeline,
   TriggerDefinition,
 } from "./protocol.ts";
@@ -378,6 +382,28 @@ export const operations = {
     query: [],
     body: false,
   },
+  "servers.list": {
+    method: "GET",
+    path: "/v1/owners/{owner}/servers",
+    path_params: ["owner"],
+    query: [],
+    body: false,
+    unwrap: "servers",
+  },
+  "servers.add": {
+    method: "POST",
+    path: "/v1/owners/{owner}/servers",
+    path_params: ["owner"],
+    query: [],
+    body: true,
+  },
+  "servers.remove": {
+    method: "DELETE",
+    path: "/v1/owners/{owner}/servers/{name}",
+    path_params: ["owner", "name"],
+    query: [],
+    body: false,
+  },
 } as const;
 
 /** An operation's id, as `agent.ask`. */
@@ -634,6 +660,20 @@ export interface Inputs {
     /** The OAuth app's name. */
     name: string;
   };
+  "servers.list": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+  };
+  "servers.add": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+  } & ServerInput;
+  "servers.remove": {
+    /** The owner, as your app names it, URL-encoded: an org, a person, or deployment. Wardrik doesn't read it; your authorizer decides who may act for it. */
+    owner: string;
+    /** The server's name. */
+    name: string;
+  };
 }
 
 /** What each operation answers, an answer of one property being that property. */
@@ -681,6 +721,9 @@ export interface Outputs {
   "providers.list": Providers["providers"];
   "providers.add": Provider;
   "providers.remove": Provider;
+  "servers.list": Servers["servers"];
+  "servers.add": ServerAdded;
+  "servers.remove": Server;
 }
 
 /** The `agent.*` operations. */
@@ -1389,6 +1432,51 @@ export class ProvidersOperations {
   }
 }
 
+/** The `servers.*` operations. */
+export class ServersOperations {
+  readonly #runner: Runner;
+
+  /** @internal */
+  constructor(runner: Runner) {
+    this.#runner = runner;
+  }
+
+  /**
+   * List the MCP servers an owner's agents reach.
+   *
+   * The MCP servers the owner keeps. The deployment's include those it starts with.
+   */
+  list(owner: string, options: CallOptions = {}): Promise<Outputs["servers.list"]> {
+    return this.#runner.call("servers.list", { owner }, options);
+  }
+
+  /**
+   * Add an MCP server for an owner's agents.
+   *
+   * Adds an MCP server for the owner. It starts on every node, and its tools reach the agents your resolver gives it to from their next turn; an agent using another owner's is checked as mcp_server.use. The URL must pass the deployment's egress check.
+   */
+  add(
+    owner: string,
+    input: ServerInput,
+    options: CallOptions = {},
+  ): Promise<Outputs["servers.add"]> {
+    return this.#runner.call("servers.add", { ...input, owner }, options);
+  }
+
+  /**
+   * Remove an MCP server.
+   *
+   * One of the owner's own. It stops on every node, its tools leave its agents from their next turn, and the sign-ins to it are forgotten.
+   */
+  remove(
+    owner: string,
+    name: string,
+    options: CallOptions = {},
+  ): Promise<Outputs["servers.remove"]> {
+    return this.#runner.call("servers.remove", { owner, name }, options);
+  }
+}
+
 /** Every operation but an agent's, by its namespace. */
 export class Operations {
   /** The `agents.*` operations. */
@@ -1405,6 +1493,8 @@ export class Operations {
   readonly secrets: SecretsOperations;
   /** The `providers.*` operations. */
   readonly providers: ProvidersOperations;
+  /** The `servers.*` operations. */
+  readonly servers: ServersOperations;
 
   /** @internal */
   constructor(runner: Runner) {
@@ -1415,5 +1505,6 @@ export class Operations {
     this.deployment = new DeploymentOperations(runner);
     this.secrets = new SecretsOperations(runner);
     this.providers = new ProvidersOperations(runner);
+    this.servers = new ServersOperations(runner);
   }
 }
