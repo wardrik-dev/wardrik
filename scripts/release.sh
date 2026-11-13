@@ -140,9 +140,10 @@ publish_hex() {
     releasing "$pkg" && unpublished "$pkg" || continue
     say "  $pkg $(version_of "$pkg")"
     # In this repo siblings come by path, so a lockfile's Hex pins for them go stale. Unlock them,
-    # resolve against Hex, publish, then restore the lock.
+    # if it has any, resolve against Hex, publish, then restore the lock.
     (cd "$(dir_of "$pkg")" &&
-      WARDRIK_HEX=1 mix deps.unlock $(grep -oE '^  "wardrik[a-z_]*"' mix.lock | tr -d ' "') &&
+      siblings=$(grep -oE '^  "wardrik[a-z_]*"' mix.lock | tr -d ' "' || true) &&
+      { [[ -z $siblings ]] || WARDRIK_HEX=1 mix deps.unlock $siblings; } &&
       WARDRIK_HEX=1 mix deps.get >/dev/null &&
       WARDRIK_HEX=1 mix hex.publish --yes)
     git -C "$ROOT" checkout -q -- "$(dir_of "$pkg")/mix.lock"
