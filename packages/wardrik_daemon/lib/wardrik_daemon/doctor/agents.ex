@@ -41,7 +41,7 @@ defmodule WardrikDaemon.Doctor.Agents do
       |> WardrikProtocol.schema()
       |> JSV.build!()
 
-    records = Wardrik.Store.scope(store, "wardrik_daemon")
+    records = Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)
     read = for path <- files, do: {path, recorded(records, AgentFile.read(path, config))}
     failures = Enum.flat_map(read, &unread(&1, records, wardrik, schema))
     :ok = Supervisor.stop(running)
@@ -91,7 +91,7 @@ defmodule WardrikDaemon.Doctor.Agents do
       policies: policies,
       wardrik: WardrikDaemon.Doctor,
       config: %{config | channels: []},
-      store: Wardrik.Store.scope(store, "wardrik_daemon")
+      store: Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)
     }
   end
 
@@ -106,7 +106,7 @@ defmodule WardrikDaemon.Doctor.Agents do
   end
 
   defp wardrik(config, policies, store) do
-    daemon = Wardrik.Store.scope(store, "wardrik_daemon")
+    daemon = Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)
 
     Wardrik.new(
       name: WardrikDaemon.Doctor,

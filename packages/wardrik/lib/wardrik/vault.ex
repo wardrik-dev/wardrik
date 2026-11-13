@@ -202,7 +202,7 @@ defmodule Wardrik.Vault do
     keys = Keyword.fetch!(args, :keys)
     path = path(principal, name)
 
-    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+    scoped = Wardrik.Store.scope(store, "wardrik_vault", format: Wardrik.Store.Format.Term)
 
     case Wardrik.Store.lookup(scoped, path) do
       {%Sealed{} = sealed, _vsn} -> Sealed.unseal(sealed, Sealed.decode_keys(keys), path)
@@ -336,7 +336,7 @@ defmodule Wardrik.Vault do
     store = Keyword.fetch!(opts, :store)
 
     settings = %{
-      store: Wardrik.Store.scope(store, "wardrik_vault"),
+      store: Wardrik.Store.scope(store, "wardrik_vault", format: Wardrik.Store.Format.Term),
       keys: decoded,
       grants: Keyword.fetch!(opts, :grants)
     }

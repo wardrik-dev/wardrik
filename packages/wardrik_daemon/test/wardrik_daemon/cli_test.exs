@@ -669,7 +669,7 @@ defmodule WardrikDaemon.CLITest do
       triage = id(context, "acme", "triage")
       {:ok, _stopped} = Wardrik.run(context.admin, "agent.stop", %{"agent" => triage})
       wardrik = Wardrik.Instance.fetch!(context.wardrik)
-      durable = Wardrik.Store.scope(wardrik.store, "durable")
+      durable = Wardrik.Store.scope(wardrik.store, "durable", format: Wardrik.Store.Format.Term)
       agents = Wardrik.agents(wardrik)
       key = WardrikCore.saved_key(agents, {triage, nil})
       {value, vsn} = Wardrik.Store.lookup(durable, key)

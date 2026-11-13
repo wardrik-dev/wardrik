@@ -34,8 +34,8 @@ if Code.ensure_loaded?(Req) do
 
     ## Values and versions
 
-    A value is written with `:erlang.term_to_binary/1` beside 16 random bytes, and read back with
-    `:safe`. Its version is the object's ETag, so no two writes share one.
+    An object is JSON, `{"nonce": ..., "value": ...}`: the value beside 16 random bytes in hex.
+    Its version is the object's ETag, so no two writes share one.
 
     A write whose answer never arrives is read back before it's answered: it succeeded where the
     object holds its bytes, and conflicted where the object holds a version its condition ruled
@@ -47,6 +47,8 @@ if Code.ensure_loaded?(Req) do
     alias Wardrik.Store.S3.Error
 
     @required [:bucket, :endpoint, :access_key_id, :secret_access_key]
+    @nonce ~s({"nonce":")
+    @value ~s(","value":)
     @page_size 1000
     @concurrency 16
 
@@ -145,7 +147,7 @@ if Code.ensure_loaded?(Req) do
     @impl Wardrik.Store.Adapter
     def put(%__MODULE__{} = store, path, value, opts) do
       object = object(store, path)
-      nonce = :crypto.strong_rand_bytes(16)
+      nonce = nonce()
       condition = Keyword.fetch(opts, :if_vsn)
 
       store
@@ -233,7 +235,7 @@ if Code.ensure_loaded?(Req) do
           {:tombstone, etag(response)}
 
         {:ok, %{status: 200, body: body} = response} ->
-          {nonce, value} = :erlang.binary_to_term(body, [:safe])
+          {nonce, value} = decode(body)
           {:value, nonce, value, etag(response)}
 
         {:ok, %{status: 404}} ->
@@ -385,7 +387,7 @@ if Code.ensure_loaded?(Req) do
 
     defp probe(store) do
       object = object(store, "probe/#{node()}/#{System.unique_integer([:positive])}")
-      body = encode(:crypto.strong_rand_bytes(16), :probe)
+      body = encode(nonce(), ~s("probe"))
       stale = ~s("0000000000000000000000000000000f")
 
       with {:ok, etag} <- probed(store, object, body, [{"if-none-match", "*"}]),
@@ -479,7 +481,17 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    defp encode(nonce, value), do: :erlang.term_to_binary({nonce, value})
+    defp nonce do
+      16
+      |> :crypto.strong_rand_bytes()
+      |> Base.encode16(case: :lower)
+    end
+
+    # The value is spliced in as written, so it reads back byte for byte.
+    defp encode(nonce, value), do: @nonce <> nonce <> @value <> value <> "}"
+
+    defp decode(<<@nonce, nonce::binary-size(32), @value, rest::binary>>),
+      do: {nonce, binary_part(rest, 0, byte_size(rest) - 1)}
 
     defp object(store, path), do: store.prefix <> "/" <> escape(path)
 

@@ -6,6 +6,8 @@
   `model`, `base_url` and optionally `key`. An agent's `model` may name one.
 - Calls to a model ReqLLM's catalog doesn't list, such as a local one, no longer log a warning
   with a stack trace.
+- With `storage: postgres`, the daemon migrates `wardrik_store`'s value column to `jsonb` as it
+  starts. The migration fails where the table holds values an earlier release wrote.
 
 ## 0.1.0-rc.13 (2026-11-13)
 

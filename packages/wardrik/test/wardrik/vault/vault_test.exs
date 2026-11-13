@@ -35,7 +35,7 @@ defmodule Wardrik.VaultTest do
     assert Wardrik.Vault.fetch(vault, @jon, "github") == {:ok, "ghp_secret"}
     refute inspect(%Secret{principal: @jon, name: "github", value: "ghp_secret"}) =~ "ghp_secret"
 
-    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+    scoped = Wardrik.Store.scope(store, "wardrik_vault", format: Wardrik.Store.Format.Term)
     assert [path] = Wardrik.Store.keys(scoped)
     assert %Sealed{} = sealed = Wardrik.Store.get(scoped, path)
     refute inspect(sealed) =~ "ghp_secret"
@@ -137,7 +137,7 @@ defmodule Wardrik.VaultTest do
         kind: :client_secret
       )
 
-    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+    scoped = Wardrik.Store.scope(store, "wardrik_vault", format: Wardrik.Store.Format.Term)
     sealed = Wardrik.Store.get(scoped, "org%3Aacme/GOOGLE_SECRET")
 
     {:ok, _vsn} =
@@ -151,7 +151,7 @@ defmodule Wardrik.VaultTest do
     {:ok, _vsn} =
       Wardrik.Vault.put(vault, %Secret{principal: @acme, name: "github", value: "acme's"})
 
-    scoped = Wardrik.Store.scope(store, "wardrik_vault")
+    scoped = Wardrik.Store.scope(store, "wardrik_vault", format: Wardrik.Store.Format.Term)
 
     {:ok, _vsn} =
       Wardrik.Store.put(

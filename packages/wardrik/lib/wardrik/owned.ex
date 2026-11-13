@@ -106,5 +106,7 @@ defmodule Wardrik.Owned do
   end
 
   defp path(kind, owner, name), do: kind <> "/" <> reference(owner, name)
-  defp store(wardrik), do: Wardrik.Store.scope(wardrik.store, @scope)
+
+  defp store(wardrik),
+    do: Wardrik.Store.scope(wardrik.store, @scope, format: Wardrik.Store.Format.Term)
 end

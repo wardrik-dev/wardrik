@@ -28,7 +28,7 @@ defmodule Wardrik.UnreadableTest do
       |> Wardrik.agents()
       |> WardrikCore.saved_key({id, nil})
 
-    durable = Wardrik.Store.scope(store, "durable")
+    durable = Wardrik.Store.scope(store, "durable", format: Wardrik.Store.Format.Term)
     {value, vsn} = Wardrik.Store.lookup(durable, key)
     {:ok, _vsn} = Wardrik.Store.put(durable, key, %{value | "state" => @gone}, if_vsn: vsn)
     key
@@ -89,7 +89,7 @@ defmodule Wardrik.UnreadableTest do
     capture_log(fn -> Durable.check(context.store, key) end)
     assert {:ok, @why} = Durable.noted(context.store, key)
 
-    durable = Wardrik.Store.scope(context.store, "durable")
+    durable = Wardrik.Store.scope(context.store, "durable", format: Wardrik.Store.Format.Term)
     {value, vsn} = Wardrik.Store.lookup(durable, key)
     {:ok, _vsn} = Wardrik.Store.put(durable, key, value, if_vsn: vsn)
 

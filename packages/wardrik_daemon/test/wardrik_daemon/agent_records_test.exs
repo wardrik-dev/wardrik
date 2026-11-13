@@ -7,7 +7,7 @@ defmodule WardrikDaemon.AgentRecordsTest do
   setup context do
     store = Wardrik.Store.ETS.new(name: :"records #{context.test}")
     start_supervised!({Wardrik.Store, store})
-    %{store: store}
+    %{store: Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)}
   end
 
   test "mints ULIDs in the order they're made, as Crockford's base32" do

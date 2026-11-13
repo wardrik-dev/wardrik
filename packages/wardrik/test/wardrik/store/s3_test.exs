@@ -21,54 +21,54 @@ defmodule Wardrik.Store.S3Test do
   describe "a write whose answer is lost" do
     test "is answered as written where it landed", %{lost: store} do
       S3Bucket.drop(:after)
-      assert {:ok, vsn} = Wardrik.Store.put(store, "landed", :value, if_vsn: nil)
-      assert Wardrik.Store.lookup(store, "landed") == {:value, vsn}
+      assert {:ok, vsn} = Wardrik.Store.put(store, "landed", "value", if_vsn: nil)
+      assert Wardrik.Store.lookup(store, "landed") == {"value", vsn}
     end
 
     test "fails where it didn't land, and the condition still holds", %{lost: store} do
       S3Bucket.drop(:before)
 
       assert {:error, %Req.TransportError{reason: :timeout}} =
-               Wardrik.Store.put(store, "missed", :value, if_vsn: nil)
+               Wardrik.Store.put(store, "missed", "value", if_vsn: nil)
 
       assert Wardrik.Store.lookup(store, "missed") == nil
 
-      {:ok, vsn} = Wardrik.Store.put(store, "missed", :first)
+      {:ok, vsn} = Wardrik.Store.put(store, "missed", "first")
       S3Bucket.drop(:before)
 
       assert {:error, %Req.TransportError{}} =
-               Wardrik.Store.put(store, "missed", :second, if_vsn: vsn)
+               Wardrik.Store.put(store, "missed", "second", if_vsn: vsn)
 
       S3Bucket.drop(:before)
-      assert {:error, %Req.TransportError{}} = Wardrik.Store.put(store, "missed", :second)
+      assert {:error, %Req.TransportError{}} = Wardrik.Store.put(store, "missed", "second")
     end
 
     test "conflicts where the condition no longer holds", %{lost: store} do
-      {:ok, first} = Wardrik.Store.put(store, "moved", :first)
-      {:ok, _second} = Wardrik.Store.put(store, "moved", :second, if_vsn: first)
+      {:ok, first} = Wardrik.Store.put(store, "moved", "first")
+      {:ok, _second} = Wardrik.Store.put(store, "moved", "second", if_vsn: first)
 
       S3Bucket.drop(:before)
-      assert {:error, :conflict} = Wardrik.Store.put(store, "moved", :third, if_vsn: first)
+      assert {:error, :conflict} = Wardrik.Store.put(store, "moved", "third", if_vsn: first)
 
       S3Bucket.drop(:before)
-      assert {:error, :conflict} = Wardrik.Store.put(store, "moved", :third, if_vsn: nil)
+      assert {:error, :conflict} = Wardrik.Store.put(store, "moved", "third", if_vsn: nil)
     end
 
     test "conflicts where a version was named and nothing is written", %{lost: store} do
       S3Bucket.drop(:before)
-      assert {:error, :conflict} = Wardrik.Store.put(store, "never", :value, if_vsn: ~s("0"))
+      assert {:error, :conflict} = Wardrik.Store.put(store, "never", "value", if_vsn: ~s("0"))
     end
   end
 
   describe "a delete whose answer is lost" do
     test "is done where the key is gone", %{lost: store} do
-      {:ok, vsn} = Wardrik.Store.put(store, "delete-landed", :value)
+      {:ok, vsn} = Wardrik.Store.put(store, "delete-landed", "value")
       S3Bucket.drop(:after)
       assert :ok = Wardrik.Store.delete(store, "delete-landed", if_vsn: vsn)
     end
 
     test "fails where the version is still there, and conflicts where another is", %{lost: store} do
-      {:ok, first} = Wardrik.Store.put(store, "delete-missed", :first)
+      {:ok, first} = Wardrik.Store.put(store, "delete-missed", "first")
       S3Bucket.drop(:before)
 
       assert {:error, %Req.TransportError{}} =
@@ -77,7 +77,7 @@ defmodule Wardrik.Store.S3Test do
       S3Bucket.drop(:before)
       assert {:error, %Req.TransportError{}} = Wardrik.Store.delete(store, "delete-missed")
 
-      {:ok, _second} = Wardrik.Store.put(store, "delete-missed", :second, if_vsn: first)
+      {:ok, _second} = Wardrik.Store.put(store, "delete-missed", "second", if_vsn: first)
       S3Bucket.drop(:before)
       assert {:error, :conflict} = Wardrik.Store.delete(store, "delete-missed", if_vsn: first)
     end
@@ -155,19 +155,19 @@ defmodule Wardrik.Store.S3TombstoneTest do
     store: store
   } do
     store = Wardrik.Store.scope(store, "tombstones")
-    {:ok, vsn} = Wardrik.Store.put(store, "k", :value)
+    {:ok, vsn} = Wardrik.Store.put(store, "k", "value")
     :ok = Wardrik.Store.delete(store, "k", if_vsn: vsn)
 
     assert Wardrik.Store.lookup(store, "k") == nil
     assert Wardrik.Store.keys(store) == []
     assert :ok = Wardrik.Store.delete(store, "k", if_vsn: vsn)
-    assert {:ok, _vsn} = Wardrik.Store.put(store, "k", :again, if_vsn: nil)
-    assert Wardrik.Store.get(store, "k") == :again
+    assert {:ok, _vsn} = Wardrik.Store.put(store, "k", "again", if_vsn: nil)
+    assert Wardrik.Store.get(store, "k") == "again"
   end
 
   test "a lost tombstone is done where it landed", %{store: store} do
     store = Wardrik.Store.scope(store, "tombstones")
-    {:ok, vsn} = Wardrik.Store.put(store, "lost", :value)
+    {:ok, vsn} = Wardrik.Store.put(store, "lost", "value")
     S3Bucket.drop(:after)
     assert :ok = Wardrik.Store.delete(store, "lost", if_vsn: vsn)
   end
@@ -223,7 +223,7 @@ defmodule Wardrik.Store.S3StartTest do
       |> S3Bucket.store_opts(prefix: "unstarted")
       |> S3.new()
 
-    {:ok, vsn} = Wardrik.Store.put(store, "k", :value)
+    {:ok, vsn} = Wardrik.Store.put(store, "k", "value")
 
     assert :ok = Wardrik.Store.delete(store, "k", if_vsn: vsn)
     assert Wardrik.Store.lookup(store, "k") == nil
@@ -235,7 +235,7 @@ defmodule Wardrik.Store.S3StartTest do
       |> S3Bucket.store_opts(prefix: "unprobed")
       |> S3.new()
 
-    {:ok, vsn} = Wardrik.Store.put(store, "k", :value)
+    {:ok, vsn} = Wardrik.Store.put(store, "k", "value")
     S3Bucket.refuse(403)
 
     assert_raise S3.Error, fn -> Wardrik.Store.delete(store, "k", if_vsn: vsn) end

@@ -4,6 +4,13 @@
 
 - `:endpoints` names models called at their own `base_url`. A definition's `model` may name one.
   See `WardrikCore.start_agent/2`.
+- A store keeps every value as JSON, `{"version": n, "value": ...}`, in the `Wardrik.Store.Format`
+  its scope names with `Wardrik.Store.scope/3`'s `:format`, `Wardrik.Store.Format.JSON` unless
+  given. A format's `load/2` reads each version it wrote before, so a release reads what an
+  earlier one kept. A read the format refuses raises `Wardrik.Store.UnreadableError`, and a write
+  that isn't JSON raises `ArgumentError`.
+- `Wardrik.Store.Adapter` callbacks take and return JSON text. `Wardrik.Store.Ecto.Migration`
+  version 2 makes the value column `jsonb`. S3 objects are JSON.
 
 ## 0.1.0-rc.12 (2026-11-13)
 

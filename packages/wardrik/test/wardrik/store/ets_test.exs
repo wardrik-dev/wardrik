@@ -12,7 +12,7 @@ defmodule Wardrik.Store.ETSTest do
     other = Wardrik.Store.ETS.new(name: Wardrik.Store.ETSTest.Other)
     start_supervised!(Supervisor.child_spec({Wardrik.Store, other}, id: :other))
 
-    {:ok, _vsn} = Wardrik.Store.put(store, "shared", :here)
+    {:ok, _vsn} = Wardrik.Store.put(store, "shared", "here")
 
     assert Wardrik.Store.get(other, "shared") == nil
   end

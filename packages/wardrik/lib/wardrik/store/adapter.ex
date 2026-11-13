@@ -11,6 +11,8 @@ defmodule Wardrik.Store.Adapter do
       end
 
     * Each callback gets the config from `new/1`, and a full path with the store's scopes.
+    * Values are JSON text, which `Wardrik.Store` writes and reads. Return the JSON written, though
+      its spacing and key order may differ.
     * `c:lookup_many/2` and `c:entries/2` are optional. Implement them when batch reads are cheaper.
   """
 
@@ -21,11 +23,11 @@ defmodule Wardrik.Store.Adapter do
   @callback child_spec(config()) :: Supervisor.child_spec()
 
   @doc "Writes `value` under `path`. Takes `:if_vsn` as `Wardrik.Store.put/4` does."
-  @callback put(config(), path :: String.t(), value :: term(), keyword()) ::
+  @callback put(config(), path :: String.t(), value :: String.t(), keyword()) ::
               {:ok, Wardrik.Store.vsn() | nil} | {:error, :conflict | term()}
 
   @doc "Returns `{value, vsn}` for `path`, or `nil`."
-  @callback lookup(config(), path :: String.t()) :: {term(), Wardrik.Store.vsn()} | nil
+  @callback lookup(config(), path :: String.t()) :: {String.t(), Wardrik.Store.vsn()} | nil
 
   @doc "Removes `path`. Returns `:ok` if it isn't there. Takes `:if_vsn` as `Wardrik.Store.delete/3` does."
   @callback delete(config(), path :: String.t(), keyword()) :: :ok | {:error, :conflict | term()}
@@ -35,11 +37,13 @@ defmodule Wardrik.Store.Adapter do
 
   @doc "Returns `{path, value, vsn}` for each of `paths`. Paths that aren't there are left out."
   @callback lookup_many(config(), paths :: [String.t()]) :: [
-              {String.t(), term(), Wardrik.Store.vsn()}
+              {String.t(), String.t(), Wardrik.Store.vsn()}
             ]
 
   @doc "Returns `{path, value, vsn}` for every path that starts with `prefix`."
-  @callback entries(config(), prefix :: String.t()) :: [{String.t(), term(), Wardrik.Store.vsn()}]
+  @callback entries(config(), prefix :: String.t()) :: [
+              {String.t(), String.t(), Wardrik.Store.vsn()}
+            ]
 
   @doc "Returns `{path, vsn}` for every path that starts with `prefix`, without reading values."
   @callback versions(config(), prefix :: String.t()) :: [{String.t(), Wardrik.Store.vsn()}]

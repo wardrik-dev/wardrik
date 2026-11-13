@@ -40,7 +40,7 @@ defmodule WardrikDaemon.Running do
     {config, policies} = started = WardrikDaemon.ok!(read.())
     running = self()
     orgs = %{org: config.org, orgs: config.orgs, policies: policies}
-    daemon = Wardrik.Store.scope(store, "wardrik_daemon")
+    daemon = Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)
     gateway = gateway(name)
     web = if config.web, do: WardrikDaemon.Web.key(keys)
 
