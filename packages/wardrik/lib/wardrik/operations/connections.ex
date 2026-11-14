@@ -14,14 +14,23 @@ defmodule Wardrik.Operations.Connections do
   @doc "Lists the accounts the caller can connect, whether they hold each, and any sign-in under way."
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(%Scope{wardrik: wardrik, principal: principal}, _input) do
+    offered = offered(wardrik, principal)
+
+    # Sign-ins under way go first: a sign-in keeps its grant before it ends, so one that ends
+    # between the two reads shows as held.
+    signing_in =
+      for {_provider, credential} <- offered,
+          Wardrik.signing_in?(wardrik, credential, principal),
+          do: credential
+
     held = held(wardrik, principal)
 
     connections =
-      for {provider, credential} <- offered(wardrik, principal) do
+      for {provider, credential} <- offered do
         %{
           "provider" => provider,
           "connected" => credential in held,
-          "signing_in" => Wardrik.signing_in?(wardrik, credential, principal)
+          "signing_in" => credential in signing_in
         }
       end
 
