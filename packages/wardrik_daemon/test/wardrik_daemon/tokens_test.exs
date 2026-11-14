@@ -10,7 +10,7 @@ defmodule WardrikDaemon.TokensTest do
   setup context do
     store = Wardrik.Store.ETS.new(name: :"tokens #{context.test}")
     start_supervised!({Wardrik.Store, store})
-    %{store: Wardrik.Store.scope(store, "wardrik_daemon", format: Wardrik.Store.Format.Term)}
+    %{store: Wardrik.Store.scope(store, "wardrik_daemon")}
   end
 
   defp create(store, subject, opts \\ []) do
@@ -82,7 +82,9 @@ defmodule WardrikDaemon.TokensTest do
     {:ok, %{token: token, secret: secret}} = create(store, "user:payments/@ana")
     assert "wdk_" <> _rest = secret
 
-    kept = Wardrik.Store.entries(store, "")
+    tokens = Wardrik.Store.scope(store, "tokens")
+    kept = Wardrik.Store.entries(tokens)
+    assert [{_id, %{"hash" => _hash}, _vsn}] = kept
     refute inspect(kept, limit: :infinity, printable_limit: :infinity) =~ secret
     refute inspect(Tokens.list(store)) =~ secret
     assert [%Token{id: id, subject: "user:payments/@ana"}] = Tokens.list(store)

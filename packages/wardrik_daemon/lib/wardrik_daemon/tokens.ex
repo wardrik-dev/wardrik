@@ -37,11 +37,11 @@ defmodule WardrikDaemon.Tokens do
   #{NimbleOptions.docs(@schema)}
   """
 
+  @behaviour WardrikCore.Format
+
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Tokens.Token
-
-  @prefix "tokens/"
 
   @doc "Makes a token. Returns it with its secret, which isn't kept."
   @spec create(Wardrik.Store.t(), keyword()) ::
@@ -54,7 +54,8 @@ defmodule WardrikDaemon.Tokens do
       secret = "wdk_#{id}_#{Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)}"
       token = struct!(Token, [id: id] ++ opts)
 
-      {:ok, _vsn} = Wardrik.Store.put(store, @prefix <> id, %{token: token, hash: hash(secret)})
+      kept = tokens(store)
+      {:ok, _vsn} = Wardrik.Store.put(kept, id, %{token: token, hash: hash(secret)})
       {:ok, %{token: token, secret: secret}}
     end
   end
@@ -102,18 +103,25 @@ defmodule WardrikDaemon.Tokens do
 
   @doc "Returns the tokens in `store`, by ID, without their secrets."
   @spec list(Wardrik.Store.t()) :: [Token.t()]
-  def list(store),
-    do: for({_key, %{token: token}, _vsn} <- Wardrik.Store.entries(store, @prefix), do: token)
+  def list(store) do
+    kept = tokens(store)
+    for {_id, %{token: token}, _vsn} <- Wardrik.Store.entries(kept), do: token
+  end
 
   @doc "Stops the token `id` working. Returns `:ok`, also when there's none."
   @spec revoke(Wardrik.Store.t(), String.t()) :: :ok
-  def revoke(store, id), do: Wardrik.Store.delete(store, @prefix <> id)
+  def revoke(store, id) do
+    kept = tokens(store)
+    Wardrik.Store.delete(kept, id)
+  end
 
   @doc "Returns the token `secret` is, unless it's unknown, revoked or expired."
   @spec verify(Wardrik.Store.t(), String.t()) :: {:ok, Token.t()} | :error
   def verify(store, secret) do
+    kept = tokens(store)
+
     with ["wdk", id, _random] <- String.split(secret, "_", parts: 3),
-         %{token: token, hash: hash} <- Wardrik.Store.get(store, @prefix <> id),
+         %{token: token, hash: hash} <- Wardrik.Store.get(kept, id),
          true <-
            secret
            |> hash()
@@ -139,4 +147,39 @@ defmodule WardrikDaemon.Tokens do
     do: {:error, "expected a user, as user:acme/@ana, or agent:ID, got: #{inspect(subject)}"}
 
   defp hash(secret), do: :crypto.hash(:sha256, secret)
+
+  @impl WardrikCore.Format
+  def version, do: 1
+
+  @impl WardrikCore.Format
+  def dump(%{token: %Token{} = token, hash: hash}) do
+    %{
+      "id" => token.id,
+      "name" => token.name,
+      "subject" => token.subject,
+      "groups" => token.groups,
+      "expires" => DateTime.to_iso8601(token.expires),
+      "hash" => Base.encode64(hash)
+    }
+  end
+
+  @impl WardrikCore.Format
+  def load(1, %{"expires" => expires, "hash" => hash} = kept) do
+    with {:ok, expires, _offset} <- DateTime.from_iso8601(expires),
+         {:ok, hash} <- Base.decode64(hash) do
+      token = %Token{
+        id: kept["id"],
+        name: kept["name"],
+        subject: kept["subject"],
+        groups: kept["groups"],
+        expires: expires
+      }
+
+      {:ok, %{token: token, hash: hash}}
+    else
+      _unreadable -> {:error, "its expiry or hash isn't readable"}
+    end
+  end
+
+  defp tokens(store), do: Wardrik.Store.scope(store, "tokens", format: __MODULE__)
 end

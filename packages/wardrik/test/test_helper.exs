@@ -20,4 +20,4 @@ Mimic.copy(Anubis.Client)
   )
 
 Wardrik.Test.Store.start()
-ExUnit.start()
+ExUnit.start(exclude: [:corpus])

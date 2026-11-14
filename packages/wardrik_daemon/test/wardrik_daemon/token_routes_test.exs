@@ -129,8 +129,11 @@ defmodule WardrikDaemon.TokenRoutesTest do
     assert {:ok, answer} = Client.run(ops, "tokens.list", %{})
     refute JSON.encode!(answer) =~ secret
     refute JSON.encode!(answer) =~ "wdk_"
-    entries = Wardrik.Store.entries(context.daemon_store, "")
-    refute :erlang.term_to_binary(entries) =~ secret
+    tokens = Wardrik.Store.scope(context.daemon_store, "tokens")
+    entries = Wardrik.Store.entries(tokens)
+    assert entries != []
+    values = Enum.map(entries, &elem(&1, 1))
+    refute JSON.encode!(values) =~ secret
 
     bo = %Client{url: context.url, secret: secret}
 

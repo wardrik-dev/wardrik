@@ -2,6 +2,9 @@
 # Releases Wardrik: each package whose version isn't published yet is published and tagged, at its
 # own version. Packages are versioned independently: bump one by PR when it changes.
 #
+# A package that stores data keeps a corpus of it for each version, which later versions must
+# read. The version's bump PR writes it; see test/*/corpus_test.exs.
+#
 #   scripts/release.sh          # dry run: checks everything, changes nothing
 #   scripts/release.sh --go     # publishes to Hex and npm, then tags and pushes the tags
 #
@@ -103,6 +106,19 @@ check() {
     tag=$(tag_of "$repo")
     if tagged=$(git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag^{commit}"); then
       releasing "$repo" && [[ $tagged != "$main" ]] && problem "$tag is on another commit"
+    fi
+  done
+
+  say "-- stored formats"
+  local dir corpus_test
+  for repo in "${HEX[@]}"; do
+    dir=$(dir_of "$repo")
+    corpus_test=$(compgen -G "$dir/test/*/corpus_test.exs" | head -1) || continue
+    releasing "$repo" || continue
+    if [[ -f $dir/test/corpus/$(version_of "$repo").json ]]; then
+      say "  $repo $(version_of "$repo"): corpus kept"
+    else
+      problem "$repo $(version_of "$repo") has no corpus: (cd ${dir#"$ROOT"/} && mix test ${corpus_test#"$dir"/} --only corpus), then commit it"
     fi
   done
 

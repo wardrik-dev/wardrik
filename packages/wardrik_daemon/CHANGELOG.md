@@ -10,6 +10,9 @@
   starts. The migration fails where the table holds values an earlier release wrote.
 - An agent restarted on another node, or after a crash, takes its settings from its definition
   again rather than from what it saved.
+- Tokens, agent records and everything else the daemon stores are JSON, each in a versioned
+  format. From this release, an upgrade reads everything an earlier release stored. Upgrading to
+  it from an earlier release needs an empty store.
 
 ## 0.1.0-rc.13 (2026-11-13)
 

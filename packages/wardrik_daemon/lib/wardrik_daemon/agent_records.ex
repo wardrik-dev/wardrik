@@ -10,6 +10,8 @@ defmodule WardrikDaemon.AgentRecords do
       that name gets a new ID.
   """
 
+  @behaviour WardrikCore.Format
+
   alias WardrikDaemon.Owners
   alias WardrikDaemon.ULID
 
@@ -45,6 +47,8 @@ defmodule WardrikDaemon.AgentRecords do
   @doc "Returns the record of the agent `id`, or `:error` if the daemon made none."
   @spec fetch(Wardrik.Store.t(), String.t()) :: {:ok, t()} | :error
   def fetch(store, id) do
+    store = records(store)
+
     case Wardrik.Store.get(store, record_key(id)) do
       %{id: ^id} = record -> {:ok, record}
       nil -> :error
@@ -54,6 +58,8 @@ defmodule WardrikDaemon.AgentRecords do
   @doc "Returns the record of the agent called `name` in `org`, or `:error` if there's none."
   @spec named(Wardrik.Store.t(), String.t(), String.t()) :: {:ok, t()} | :error
   def named(store, org, name) do
+    store = records(store)
+
     case Wardrik.Store.get(store, name_key(org, name)) do
       %{} = record -> {:ok, record}
       nil -> :error
@@ -62,8 +68,10 @@ defmodule WardrikDaemon.AgentRecords do
 
   @doc "Returns the records of `org`'s agents, by name."
   @spec in_org(Wardrik.Store.t(), String.t()) :: [t()]
-  def in_org(store, org),
-    do: for({_key, record, _vsn} <- Wardrik.Store.entries(store, name_key(org, "")), do: record)
+  def in_org(store, org) do
+    store = records(store)
+    for {_key, record, _vsn} <- Wardrik.Store.entries(store, name_key(org, "")), do: record
+  end
 
   @doc """
   Mints an ID for agent `:name`, owned by `:owner`, from `:source`, and records it.
@@ -78,6 +86,7 @@ defmodule WardrikDaemon.AgentRecords do
           replaces: (t() -> boolean())
         ) :: {:ok, t()} | {:error, {:taken, t()}}
   def create(store, args) do
+    store = records(store)
     owner = Keyword.fetch!(args, :owner)
     name = Keyword.fetch!(args, :name)
     replaces = Keyword.get(args, :replaces, fn _record -> false end)
@@ -164,6 +173,7 @@ defmodule WardrikDaemon.AgentRecords do
   @doc "Removes `record`, freeing its name."
   @spec delete(Wardrik.Store.t(), t()) :: :ok
   def delete(store, %{id: id} = record) do
+    store = records(store)
     key = name_key(record.org, record.name)
 
     case Wardrik.Store.lookup(store, key) do
@@ -173,6 +183,29 @@ defmodule WardrikDaemon.AgentRecords do
 
     Wardrik.Store.delete(store, record_key(id))
   end
+
+  @impl WardrikCore.Format
+  def version, do: 1
+
+  @impl WardrikCore.Format
+  def dump(record) do
+    %{
+      "id" => record.id,
+      "org" => record.org,
+      "owner" => record.owner,
+      "name" => record.name,
+      "source" => Atom.to_string(record.source)
+    }
+  end
+
+  @impl WardrikCore.Format
+  def load(1, %{"id" => id, "org" => org, "owner" => owner, "name" => name, "source" => source})
+      when source in ["file", "api"],
+      do:
+        {:ok,
+         %{id: id, org: org, owner: owner, name: name, source: String.to_existing_atom(source)}}
+
+  defp records(store), do: Wardrik.Store.scope(store, "agent_records", format: __MODULE__)
 
   defp record_key(id), do: "agents/" <> URI.encode_www_form(id)
 
