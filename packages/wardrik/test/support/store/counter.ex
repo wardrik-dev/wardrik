@@ -2,8 +2,8 @@ defmodule Wardrik.Store.Counter do
   @moduledoc "A durable server the tests keep in a store."
   use DurableServer, vsn: 1
 
-  def dump_state(state), do: %{count: state.count}
-  def load_state(_old_vsn, %{count: count}), do: %{count: count}
+  def dump_state(state), do: %{"count" => state.count}
+  def load_state(_old_vsn, %{"count" => count}), do: %{count: count}
 
   def init(state), do: {:ok, state}
 

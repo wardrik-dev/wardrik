@@ -117,7 +117,7 @@ defmodule Wardrik.MCP.Server do
   `{"secret": name}`.
   """
 
-  @behaviour Wardrik.Store.Format
+  @behaviour WardrikCore.Format
 
   @options @schema.schema
            |> Keyword.keys()
@@ -176,15 +176,15 @@ defmodule Wardrik.MCP.Server do
           max_result_bytes: pos_integer()
         }
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def version, do: 1
 
   @doc "Returns the options a server was added with as JSON."
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def dump(opts),
     do: Map.new(opts, fn {option, value} -> {Atom.to_string(option), dumped(option, value)} end)
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def load(1, json) do
     Enum.reduce_while(json, {:ok, []}, fn {option, value}, {:ok, opts} ->
       case loaded(@options[option], value) do

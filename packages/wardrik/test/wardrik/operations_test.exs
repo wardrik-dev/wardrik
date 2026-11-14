@@ -175,6 +175,30 @@ defmodule Wardrik.OperationsTest do
              run!(scope, "agent.read", %{"agent" => "acme/triage"})
   end
 
+  test "a waiting call whose tool the agent no longer has is answered as an error",
+       %{wardrik: wardrik, scope: scope} do
+    test = self()
+
+    answers([calling([call("call_1", "echo", %{"text" => "hi"})])])
+    agent = start_agent(wardrik, "acme/triage")
+    run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo hi"})
+    until("wardrik.run.interrupted")
+
+    :ok = WardrikCore.configure(agent, capabilities: [])
+
+    stub(ReqLLM, :stream_text, fn _model, messages, _opts ->
+      send(test, {:sent, List.last(messages)})
+      {:ok, answer("It's gone.")}
+    end)
+
+    run!(scope, "agent.approve", %{"agent" => "acme/triage", "interrupt" => "call_1"})
+    until("wardrik.run.completed")
+
+    assert_received {:sent, %ReqLLM.Message{role: :tool, tool_call_id: "call_1"} = result}
+    assert [%{text: text}] = result.content
+    assert text =~ "Unknown tool: echo"
+  end
+
   describe "answering a call an agent waits on" do
     setup %{wardrik: wardrik, scope: scope} do
       answers([calling([call("call_1", "echo", %{"text" => "hi"})]), answer("Done.")])

@@ -44,6 +44,9 @@ if Code.ensure_loaded?(WardrikCore.Middleware) do
     alias WardrikCore.Tool
 
     @impl WardrikCore.Middleware
+    def formats, do: [Ask, Spending.Spent, Spending.Counted]
+
+    @impl WardrikCore.Middleware
     def call(%Context{step: {:tool_call, call}} = context, next, policies) do
       decision = Wardrik.Policy.explain(policies, call.name, decide_opts(context, call))
       emit(:decision, context, call, %{decision: decision})

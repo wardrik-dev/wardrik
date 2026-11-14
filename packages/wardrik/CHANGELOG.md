@@ -4,7 +4,7 @@
 
 - `:endpoints` names models called at their own `base_url`. A definition's `model` may name one.
   See `WardrikCore.start_agent/2`.
-- A store keeps every value as JSON, `{"version": n, "value": ...}`, in the `Wardrik.Store.Format`
+- A store keeps every value as JSON, `{"version": n, "value": ...}`, in the `WardrikCore.Format`
   its scope names with `Wardrik.Store.scope/3`'s `:format`, `Wardrik.Store.Format.JSON` unless
   given. A format's `load/2` reads each version it wrote before, so a release reads what an
   earlier one kept. A read the format refuses raises `Wardrik.Store.UnreadableError`, and a write
@@ -15,6 +15,9 @@
   are stored in JSON formats of their own. `Wardrik.Owned` takes a kind as a module, which names
   the kind and is its records' format. `Wardrik.Vault.Sealed` has no `:version`; the store keeps
   it.
+- `Wardrik.Store.Durable` keeps agents as JSON. A DurableServer kept beside them returns JSON from
+  its `dump_state/1`. An agent that loads by itself is configured from its definition.
+- `Wardrik.Policy.Ask` is kept as `policy_ask`. The format behaviour is `WardrikCore.Format`.
 
 ## 0.1.0-rc.12 (2026-11-13)
 

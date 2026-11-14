@@ -231,7 +231,8 @@ defmodule WardrikCore.TurnTest do
   test "parks when a tool call parks", %{context: context} do
     expect(ReqLLM, :stream_text, fn _, _, _ -> {:ok, calling([call("1", "echo")])} end)
 
-    assert {:park, {:tool_calls, [{%{id: "1"}, {:park, :needs_approval}}]}, %Context{}} =
+    assert {:park, {:tool_calls, [{%{id: "1"}, {:park, %WardrikCore.Test.NeedsApproval{}}}]},
+            %Context{}} =
              Turn.run(%{context | middleware: [ParkTools]})
   end
 
@@ -487,8 +488,11 @@ defmodule WardrikCore.TurnTest do
 
       assert {:ok, _context} = Turn.resume(context, resume)
 
-      assert_receive {:resumed, %Resume{reason: :needs_approval, metadata: %{by: "maria"}}}
-      assert_receive {:resumed, %Resume{reason: :needs_approval, metadata: %{by: "maria"}}}
+      assert_receive {:resumed,
+                      %Resume{reason: %WardrikCore.Test.NeedsApproval{}, metadata: %{by: "maria"}}}
+
+      assert_receive {:resumed,
+                      %Resume{reason: %WardrikCore.Test.NeedsApproval{}, metadata: %{by: "maria"}}}
     end
 
     test "input that names no call leaves the turn parked", %{context: context, parked: parked} do
@@ -500,14 +504,14 @@ defmodule WardrikCore.TurnTest do
   describe "resume/3 on a parked model call" do
     test "re-runs the model call, and the next one asks again", %{context: context} do
       context = %{context | middleware: [ParkGenerate]}
-      assert {:park, :spend?, context} = Turn.run(context)
+      assert {:park, %WardrikCore.Test.Spend{}, context} = Turn.run(context)
 
       expect(ReqLLM, :stream_text, fn _, _, _ ->
         {:ok, calling([call("1", "echo", %{text: "a"})])}
       end)
 
-      assert {:park, :spend?, %Context{messages: messages}} =
-               Turn.resume(context, %Resume{reason: :spend?, input: :ok})
+      assert {:park, %WardrikCore.Test.Spend{}, %Context{messages: messages}} =
+               Turn.resume(context, %Resume{reason: %WardrikCore.Test.Spend{}, input: :ok})
 
       assert [:user, :assistant, :tool] = Enum.map(messages, & &1.role)
     end

@@ -8,6 +8,8 @@
   with a stack trace.
 - With `storage: postgres`, the daemon migrates `wardrik_store`'s value column to `jsonb` as it
   starts. The migration fails where the table holds values an earlier release wrote.
+- An agent restarted on another node, or after a crash, takes its settings from its definition
+  again rather than from what it saved.
 
 ## 0.1.0-rc.13 (2026-11-13)
 

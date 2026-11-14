@@ -1,6 +1,10 @@
 defmodule WardrikCore.Agent.State do
   @moduledoc false
 
+  alias WardrikCore.Agent.Stored
+
+  require Logger
+
   @type t() :: %__MODULE__{}
   @type state :: :idle | :due | :running | :waiting
 
@@ -15,6 +19,9 @@ defmodule WardrikCore.Agent.State do
     :span,
     :parked,
     :checkpoint,
+    :deferred,
+    :unreadable,
+    :configure,
     state: :idle,
     messages: [],
     pending_messages: [],
@@ -22,33 +29,6 @@ defmodule WardrikCore.Agent.State do
     calls: %{},
     answered: [],
     answers: []
-  ]
-
-  @persisted [
-    :agent_id,
-    :conversation,
-    :model,
-    :messages,
-    :pending_messages,
-    :in_flight,
-    :checkpoint
-  ]
-  @persisted_context [
-    :instructions,
-    :capabilities,
-    :middleware,
-    :max_rounds,
-    :retries,
-    :timeout,
-    :principal,
-    :credentials,
-    :keys,
-    :events,
-    :metadata,
-    :prices,
-    :endpoints,
-    :private,
-    :messages
   ]
 
   @doc "Splits off the messages the next turn answers: those in a row from the same principal."
@@ -88,12 +68,35 @@ defmodule WardrikCore.Agent.State do
     {batch, %{state | in_flight: batch, pending_messages: rest}}
   end
 
-  @doc "Replaces the model or settings, from the next turn."
+  @doc """
+  Replaces the model or settings, from the next turn. An agent loaded without them is configured
+  by them, and reads what it kept in its middleware's formats.
+  """
   @spec configure(t(), keyword()) :: t()
+  def configure(%__MODULE__{unreadable: {_reason, _json}} = state, _opts), do: state
+
   def configure(%__MODULE__{} = state, opts) do
     {model, settings} = Keyword.pop(opts, :model, state.model)
-    %{state | model: model, context: struct!(state.context, settings)}
+    Stored.resolve(%{state | model: model, context: configured(state, settings)})
   end
+
+  defp configured(%__MODULE__{context: nil} = state, settings),
+    do:
+      WardrikCore.Context.new(
+        [agent_id: state.agent_id, conversation: state.conversation] ++ settings
+      )
+
+  defp configured(%__MODULE__{context: context}, settings), do: struct!(context, settings)
+
+  @doc "Returns why what the agent kept can't be read, or `nil`."
+  @spec unreadable(t()) :: String.t() | nil
+  def unreadable(%__MODULE__{unreadable: {reason, _json}}), do: reason
+  def unreadable(%__MODULE__{}), do: nil
+
+  @doc "Returns whether the agent can run turns: it's configured, and what it kept was read."
+  @spec ready?(t()) :: boolean()
+  def ready?(%__MODULE__{context: context, deferred: deferred, unreadable: unreadable}),
+    do: context != nil and deferred == nil and unreadable == nil
 
   @doc "Marks a turn running in `task`."
   @spec running(t(), Task.t(), atom(), WardrikCore.Span.t()) :: t()
@@ -148,8 +151,11 @@ defmodule WardrikCore.Agent.State do
 
   @doc "Keeps a running turn's checkpoint, and the private data it saved."
   @spec checkpointed(t(), map()) :: t()
-  def checkpointed(%__MODULE__{} = state, checkpoint),
-    do: %{keep_private(state, checkpoint.private) | checkpoint: checkpoint, parked: nil}
+  def checkpointed(%__MODULE__{} = state, checkpoint) do
+    state = keep_private(state, checkpoint.private)
+    checkpoint = %{checkpoint | private: state.context.private}
+    %{state | checkpoint: checkpoint, parked: nil}
+  end
 
   @doc "Takes what a turn ended with: answered, parked, or failed."
   @spec finished(t(), WardrikCore.Middleware.result()) :: t()
@@ -199,48 +205,26 @@ defmodule WardrikCore.Agent.State do
         answers: []
     }
 
-  defp keep_private(state, private), do: put_in(state.context.private, private)
+  # A value it couldn't save would stop every save after it, so it's dropped, and said so.
+  defp keep_private(state, private) do
+    {kept, dropped} = Stored.keepable(private)
 
-  @doc "A plain, serializable map of what survives a restart. See `load/1`."
+    for key <- dropped,
+        do:
+          Logger.warning(
+            "Agent #{state.agent_id} can't keep #{inspect(key)}'s private data: its key isn't a WardrikCore.Format"
+          )
+
+    put_in(state.context.private, kept)
+  end
+
+  @doc "What survives a restart, as JSON. See `WardrikCore.Agent.Stored`."
   @spec dump(t()) :: map()
-  def dump(%__MODULE__{} = state) do
-    state
-    |> Map.take(@persisted)
-    |> Map.merge(%{
-      context: dump_context(state.context),
-      parked: state.parked
-    })
-    |> Map.merge(requeued(state))
-  end
+  def dump(%__MODULE__{} = state), do: Stored.dump(state)
 
-  defp requeued(%__MODULE__{state: :running, checkpoint: %{}}), do: %{state: :due}
-  defp requeued(%__MODULE__{state: :running, parked: %{}}), do: %{state: :waiting}
-
-  defp requeued(%__MODULE__{state: :running} = state),
-    do: %{
-      state: :idle,
-      in_flight: [],
-      pending_messages: state.in_flight ++ state.pending_messages
-    }
-
-  defp requeued(%__MODULE__{} = state), do: %{state: state.state}
-
-  defp dump_context(nil), do: nil
-  defp dump_context(context), do: Map.take(context, @persisted_context)
-
-  @spec load(map()) :: t()
-  def load(%{} = dumped) do
-    __MODULE__
-    |> struct(dumped)
-    |> Map.put(:context, load_context(dumped.context, dumped))
-  end
-
-  defp load_context(nil, _dumped), do: nil
-
-  defp load_context(context, dumped) do
-    ids = %{agent_id: dumped.agent_id, conversation: Map.get(dumped, :conversation)}
-    struct(WardrikCore.Context, Map.merge(context, ids))
-  end
+  @doc "Reads a kept state. It's configured again before it runs. See `configure/2`."
+  @spec load(term()) :: t()
+  def load(json), do: Stored.load(json)
 
   @doc false
   @spec canonical_prices!(%{optional(ReqLLM.model_input()) => WardrikCore.price()}) ::

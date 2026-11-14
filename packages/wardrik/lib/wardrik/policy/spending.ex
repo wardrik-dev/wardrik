@@ -4,6 +4,8 @@ if Code.ensure_loaded?(WardrikCore.Context) do
 
     alias Wardrik.Policy.Budget
     alias Wardrik.Policy.Decision
+    alias Wardrik.Policy.Spending.Counted
+    alias Wardrik.Policy.Spending.Spent
     alias WardrikCore.Context
 
     @spec start(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
@@ -17,7 +19,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
           {key, current(spent[key], period(policy.budget, context))}
         end)
 
-      Context.put_private(context, Budget, current)
+      Context.put_private(context, Spent, current)
     end
 
     @spec explain(Context.t(), [Wardrik.Policy.t()]) :: Decision.t()
@@ -52,7 +54,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
     defp count(context, policies, spend) do
       context
       |> update(policies, spend)
-      |> Context.put_private(__MODULE__, %{trace: trace(context), counted: context.measurements})
+      |> Context.put_private(Counted, %{trace: trace(context), counted: context.measurements})
     end
 
     defp budgeted(policies) do
@@ -60,7 +62,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
           do: {policy.name || index, policy}
     end
 
-    defp spent(context), do: Context.get_private(context, Budget, %{})
+    defp spent(context), do: Context.get_private(context, Spent, %{})
 
     defp period(%Budget{per: :turn}, context), do: {:turn, asked(context.messages)}
     defp period(budget, _context), do: Budget.period(budget, DateTime.utc_now())
@@ -92,7 +94,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
       do: %Decision{effect: effect, message: message, policy: policy.name, cause: :budget}
 
     defp gained(context) do
-      counted = counted(Context.get_private(context, __MODULE__), trace(context))
+      counted = counted(Context.get_private(context, Counted), trace(context))
 
       context.measurements
       |> Map.new(fn {key, amount} -> {key, amount - Map.get(counted, key, 0)} end)
@@ -132,7 +134,7 @@ if Code.ensure_loaded?(WardrikCore.Context) do
           Map.update!(spent, key, &fun.(policy.budget, &1))
         end)
 
-      Context.put_private(context, Budget, spent)
+      Context.put_private(context, Spent, spent)
     end
   end
 end

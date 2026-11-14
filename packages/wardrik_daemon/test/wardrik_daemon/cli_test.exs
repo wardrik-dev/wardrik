@@ -669,17 +669,19 @@ defmodule WardrikDaemon.CLITest do
       triage = id(context, "acme", "triage")
       {:ok, _stopped} = Wardrik.run(context.admin, "agent.stop", %{"agent" => triage})
       wardrik = Wardrik.Instance.fetch!(context.wardrik)
-      durable = Wardrik.Store.scope(wardrik.store, "durable", format: Wardrik.Store.Format.Term)
+      durable = Wardrik.Store.scope(wardrik.store, "durable")
       agents = Wardrik.agents(wardrik)
       key = WardrikCore.saved_key(agents, {triage, nil})
       {value, vsn} = Wardrik.Store.lookup(durable, key)
-      gone = <<131, 119, 24, "Elixir.WardrikGoneModule">>
+      parked = %{"reason" => %{"type" => "gone_reason", "version" => 1, "value" => %{}}}
+      parked = Map.merge(parked, %{"messages" => [], "span" => nil, "measurements" => %{}})
+      gone = %{value["state"] | "state" => "waiting", "parked" => parked}
       {:ok, _vsn} = Wardrik.Store.put(durable, key, %{value | "state" => gone}, if_vsn: vsn)
 
       assert {0, reloaded} = wardrik(context, ["reload"])
 
       assert reloaded =~
-               "! Wardrik started triage over. #{context.env["WARDRIK_CONFIG_DIR"]}/agents/triage.md: #{triage} started over, as its saved state couldn't be read: it names WardrikGoneModule, which this release doesn't have."
+               "! Wardrik started triage over. #{context.env["WARDRIK_CONFIG_DIR"]}/agents/triage.md: #{triage} started over, as its saved state couldn't be read: it holds a gone_reason, which none of its middleware or capabilities reads."
 
       assert {0, status} = wardrik(context, ["status"])
       assert status =~ "Wardrik runs at http://127.0.0.1:"

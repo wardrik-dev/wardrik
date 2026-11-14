@@ -3,6 +3,7 @@ defmodule WardrikCore.Agent do
   use DurableServer, vsn: 1
 
   alias WardrikCore.Agent.State
+  alias WardrikCore.Agent.Stored
   alias WardrikCore.Event
   alias WardrikCore.Resume
   alias WardrikCore.Span
@@ -17,16 +18,19 @@ defmodule WardrikCore.Agent do
   def load_state(_vsn, state), do: State.load(state)
 
   @impl DurableServer
-  def init(%State{} = state) do
+  def init(%State{} = state, info) do
     Logger.info("Initializing agent #{state.agent_id}")
 
     Process.flag(:trap_exit, true)
+    state = %{state | configure: info[:configure]}
 
-    # DurableServer's init can't return a continue, so drain the queue by message.
+    # DurableServer's init can't return a continue, so configure and drain the queue by message.
+    # credo:disable-for-next-line WardrikCore.Credo.Check.NoSelfSend
+    if state.context == nil, do: send(self(), :configure)
     # credo:disable-for-next-line WardrikCore.Credo.Check.NoSelfSend
     send(self(), :maybe_run)
 
-    emit(state, [:agent, :start], %{system_time: System.system_time()}, %{state: state.state})
+    if state.context, do: started(state)
     {:ok, state, permanent: true}
   end
 
@@ -49,8 +53,15 @@ defmodule WardrikCore.Agent do
     {:reply, :ok, state, {:continue, :maybe_run}, sync: true}
   end
 
-  def handle_call({:configure, opts}, _from, state),
-    do: {:reply, :ok, State.configure(state, opts), sync: true}
+  # A saved state that can't be read is kept as it was, and the agent stops until it's fixed.
+  def handle_call({:configure, opts}, _from, state) do
+    state = configured(state, opts)
+
+    case State.unreadable(state) do
+      nil -> {:reply, :ok, state, {:continue, :maybe_run}, sync: true}
+      reason -> {:stop, :permanent, {:error, {:unreadable, reason}}, state}
+    end
+  end
 
   def handle_call(:history, _from, state), do: {:reply, state.messages, state}
 
@@ -105,22 +116,23 @@ defmodule WardrikCore.Agent do
   end
 
   @impl true
-  def handle_continue(:maybe_run, %State{state: :due, checkpoint: checkpoint} = state) do
+  def handle_continue(:maybe_run, state) do
+    if State.ready?(state), do: maybe_run(state), else: {:noreply, state}
+  end
+
+  defp maybe_run(%State{state: :due, checkpoint: checkpoint} = state) do
     context = turn_context(state, checkpoint.messages, checkpoint.span)
     {:noreply, start_turn(state, :recover, context, fn -> Turn.recover(context, checkpoint) end)}
   end
 
-  def handle_continue(:maybe_run, %State{state: :idle, pending_messages: [_ | _]} = state) do
+  defp maybe_run(%State{state: :idle, pending_messages: [_ | _]} = state) do
     {batch, state} = State.take_batch(state)
     context = turn_context(state, state.messages ++ batch, Span.root())
     started = %{message_ids: for(%{metadata: %{id: id}} <- batch, do: id)}
     {:noreply, start_turn(state, :run, context, started, fn -> Turn.run(context) end)}
   end
 
-  def handle_continue(
-        :maybe_run,
-        %State{state: :waiting, answers: [{input, metadata} | rest]} = state
-      ) do
+  defp maybe_run(%State{state: :waiting, answers: [{input, metadata} | rest]} = state) do
     state = %{state | answers: rest}
 
     if answerable?(state, input),
@@ -128,10 +140,24 @@ defmodule WardrikCore.Agent do
       else: {:noreply, state, {:continue, :maybe_run}}
   end
 
-  def handle_continue(:maybe_run, state), do: {:noreply, state}
+  defp maybe_run(state), do: {:noreply, state}
 
   @impl true
   def handle_info(:maybe_run, state), do: {:noreply, state, {:continue, :maybe_run}}
+
+  # A start or `configure/2` may have given it its settings first.
+  def handle_info(:configure, %State{configure: {module, opts}, context: nil} = state) do
+    # One that can't read its state waits; the next start or configure is told why.
+    case settings(state, module, opts) do
+      {:ok, settings} ->
+        {:noreply, configured(state, WardrikCore.settings!(settings)), {:continue, :maybe_run}}
+
+      :none ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(:configure, state), do: {:noreply, state}
 
   def handle_info({ref, result}, %State{task: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
@@ -166,6 +192,29 @@ defmodule WardrikCore.Agent do
     if state.task, do: Task.shutdown(state.task, :brutal_kill)
     emit(state, [:agent, :stop], %{}, %{reason: reason})
   end
+
+  # Your code gives the settings; if it fails, the agent waits for them rather than restarting
+  # over and over.
+  defp settings(state, module, opts) do
+    module.configure({state.agent_id, state.conversation}, opts)
+  catch
+    :error, reason ->
+      error = Exception.normalize(:error, reason, __STACKTRACE__)
+      Logger.error("Agent #{state.agent_id} got no settings: #{Exception.message(error)}")
+      :none
+  end
+
+  # A loaded agent starts once it's configured, as only then are its events known.
+  defp configured(%State{context: nil} = state, settings) do
+    state = State.configure(state, settings)
+    if State.ready?(state), do: started(state)
+    state
+  end
+
+  defp configured(state, settings), do: State.configure(state, settings)
+
+  defp started(state),
+    do: emit(state, [:agent, :start], %{system_time: System.system_time()}, %{state: state.state})
 
   defp resumed(state, input, metadata) do
     parked = state.parked
@@ -249,10 +298,21 @@ defmodule WardrikCore.Agent do
   end
 
   defp finish(state, result) do
+    result = keepable(state, result)
     stop_turn(state, ended(result))
     log_ended(state, result)
     State.finished(state, result)
   end
+
+  # A turn waiting on what the agent can't save fails, rather than every save after it.
+  defp keepable(state, {:park, reason, _context} = result) do
+    case Stored.unkept(reason, state.context) do
+      nil -> result
+      why -> {:error, "The turn can't wait: #{why}."}
+    end
+  end
+
+  defp keepable(_state, result), do: result
 
   defp ended({:park, reason, _context}), do: %{outcome: :park, reason: reason}
   defp ended({:ok, context}), do: %{outcome: :ok, messages: answer(context.messages)}

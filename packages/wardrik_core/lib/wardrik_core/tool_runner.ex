@@ -190,13 +190,16 @@ defmodule WardrikCore.ToolRunner do
 
   defp answer(:error, reason), do: %{error: message(reason)}
 
-  defp message(reason) when is_binary(reason), do: reason
-  defp message({:exit, :killed}), do: "The call was stopped before it finished."
+  @doc "Returns the error the model is shown for `reason`."
+  @spec message(term()) :: String.t()
 
-  defp message({:exit, :timeout}), do: "The call ran out of time, so it was stopped."
+  def message(reason) when is_binary(reason), do: reason
+  def message({:exit, :killed}), do: "The call was stopped before it finished."
 
-  defp message(%{__exception__: true} = error), do: Exception.message(error)
-  defp message(%{error: error}) when is_binary(error), do: error
+  def message({:exit, :timeout}), do: "The call ran out of time, so it was stopped."
 
-  defp message(reason), do: inspect(reason)
+  def message(%{__exception__: true} = error), do: Exception.message(error)
+  def message(%{error: error}) when is_binary(error), do: error
+
+  def message(reason), do: inspect(reason)
 end

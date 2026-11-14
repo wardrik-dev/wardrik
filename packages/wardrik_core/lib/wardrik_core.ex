@@ -56,15 +56,18 @@ defmodule WardrikCore do
 
     * `:backend` - required. The durable_server backend agents are saved in.
     * `:name` - the instance's name. `WardrikCore` by default.
+    * `:configure` - `{module, opts}`, a `WardrikCore.Configure` that gives an agent its settings
+      as it loads.
 
   Other options go to `DurableServer.Supervisor`.
   """
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     {name, opts} = Keyword.pop(opts, :name, __MODULE__)
+    {configure, opts} = Keyword.pop(opts, :configure)
 
     spec =
-      [prefix: "wardrik/"]
+      [prefix: "wardrik/", init_info: %{configure: configure}]
       |> Keyword.merge(opts)
       |> Keyword.merge(name: agents(name), backend: Keyword.fetch!(opts, :backend))
       |> DurableServer.Supervisor.child_spec()
@@ -112,6 +115,10 @@ defmodule WardrikCore do
 
   @doc """
   Starts an agent, or loads it if it was saved before.
+
+  A saved agent keeps its conversation and the turn it was in, not these options, so it's given
+  them again here. See `WardrikCore.Configure` for agents that load by themselves, as after a
+  crash. A saved state that can't be read returns `{:error, {:unreadable, reason}}`.
 
       {:ok, agent} =
         WardrikCore.start_agent(
@@ -180,10 +187,10 @@ defmodule WardrikCore do
 
     supervisor = agents(instance)
 
-    case DurableServer.Supervisor.start_child(supervisor, child) do
-      {:ok, {pid, _meta}} -> {:ok, pid}
-      {:error, reason} -> {:error, reason}
-    end
+    # A saved agent loads without its settings, so it's given them here.
+    with {:ok, {pid, _meta}} <- DurableServer.Supervisor.start_child(supervisor, child),
+         :ok <- configure(pid, Keyword.drop(opts, [:agent_id, :conversation])),
+         do: {:ok, pid}
   end
 
   @doc """
@@ -191,9 +198,16 @@ defmodule WardrikCore do
 
   Takes `:model` and the options of `start_agent/2`, except `:agent_id` and `:conversation`. A
   `:model` naming an endpoint comes with `:endpoints`.
+
+  An agent loaded from a saved state reads it with them. If it can't, it keeps the state as it
+  was, stops, and returns `{:error, {:unreadable, reason}}`.
   """
-  @spec configure(GenServer.server(), keyword()) :: :ok
-  def configure(agent, opts) do
+  @spec configure(GenServer.server(), keyword()) :: :ok | {:error, {:unreadable, String.t()}}
+  def configure(agent, opts), do: GenServer.call(agent, {:configure, settings!(opts)})
+
+  @doc false
+  @spec settings!(keyword()) :: keyword()
+  def settings!(opts) do
     opts =
       opts
       |> Keyword.validate!([:model | @config])
@@ -201,9 +215,7 @@ defmodule WardrikCore do
       |> Keyword.replace_lazy(:endpoints, &State.canonical_endpoints!/1)
 
     endpoints = Keyword.get(opts, :endpoints, %{})
-    opts = Keyword.replace_lazy(opts, :model, &State.canonical_spec!(&1, endpoints))
-
-    GenServer.call(agent, {:configure, opts})
+    Keyword.replace_lazy(opts, :model, &State.canonical_spec!(&1, endpoints))
   end
 
   @doc "Returns the key of every saved agent."

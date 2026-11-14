@@ -26,10 +26,26 @@ defmodule WardrikCore.AgentTest do
 
   defmodule Counter do
     @behaviour WardrikCore.Middleware
+    @behaviour WardrikCore.Format
 
     alias WardrikCore.Context
 
-    @impl true
+    @impl WardrikCore.Middleware
+    def formats, do: [__MODULE__]
+
+    @impl WardrikCore.Format
+    def type, do: "test_counter"
+
+    @impl WardrikCore.Format
+    def version, do: 1
+
+    @impl WardrikCore.Format
+    def dump(count), do: count
+
+    @impl WardrikCore.Format
+    def load(1, count), do: {:ok, count}
+
+    @impl WardrikCore.Middleware
     def call(%Context{step: :turn} = context, next, _opts) do
       context = Context.update_private(context, __MODULE__, 1, &(&1 + 1))
       send(WardrikCore.AgentTest, {:turns, Context.get_private(context, __MODULE__)})
@@ -37,6 +53,13 @@ defmodule WardrikCore.AgentTest do
     end
 
     def call(context, next, _opts), do: next.(context)
+  end
+
+  defmodule Settings do
+    @behaviour WardrikCore.Configure
+
+    @impl true
+    def configure(_key, settings), do: {:ok, settings}
   end
 
   defmodule Blocking do
@@ -140,6 +163,7 @@ defmodule WardrikCore.AgentTest do
        name: CrashTest,
        prefix: "crash/",
        backend: backend,
+       configure: {Settings, [model: "anthropic:claude-haiku-4-5", capabilities: [Blocking]]},
        discovery_interval_ms: 50,
        initial_discovery_delay_ms: 0}
     )
@@ -166,6 +190,54 @@ defmodule WardrikCore.AgentTest do
     assert_receive {:tool_running, "call-a", tool}
     send(tool, :release)
     assert_receive {[:turn, :stop], %{agent_id: ^id, kind: :recover, outcome: :ok}}
+  end
+
+  test "an agent restored after a crash sends the model the same request it would have" do
+    Process.register(self(), WardrikCore.AgentTest)
+    test = self()
+    backend = {WardrikCore.Backends.MemoryStore, name: :same_request}
+    start_supervised!({WardrikCore.Backends.MemoryStore, name: :same_request})
+
+    settings = [
+      model: "anthropic:claude-haiku-4-5",
+      instructions: "Be brief.",
+      capabilities: [Echo]
+    ]
+
+    start_supervised!(
+      {WardrikCore,
+       name: SameRequest,
+       prefix: "same/",
+       backend: backend,
+       configure: {Settings, settings},
+       discovery_interval_ms: 50,
+       initial_discovery_delay_ms: 0}
+    )
+
+    stub(ReqLLM, :stream_text, fn model, messages, opts ->
+      send(test, {:request, model, messages, opts[:tools]})
+      {:ok, answer("Hi.")}
+    end)
+
+    id = "agent-#{System.unique_integer([:positive])}"
+    {:ok, agent} = WardrikCore.start_agent(SameRequest, [agent_id: id] ++ settings)
+    assert_receive {[:agent, :start], %{agent_id: ^id}}
+
+    WardrikCore.ask(agent, "hi", %{id: "msg_1", sent_at: ~U[2026-11-13 12:00:00Z]})
+    assert_receive {:request, model, first, tools}
+    assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :ok}}
+    Process.exit(agent, :kill)
+
+    assert_receive {[:agent, :start], %{agent_id: ^id}}, 5_000
+    restored = WardrikCore.whereis(SameRequest, id)
+
+    WardrikCore.ask(restored, "again", %{id: "msg_2", sent_at: ~U[2026-11-13 12:01:00Z]})
+    assert_receive {:request, ^model, second, tools_again}, 1_000
+
+    assert Enum.take(second, length(first)) == first
+
+    assert Enum.map(tools_again, &ReqLLM.Tool.to_schema/1) ==
+             Enum.map(tools, &ReqLLM.Tool.to_schema/1)
   end
 
   test "an agent lost while its tools run recovers the batch without asking the model again" do
@@ -619,6 +691,35 @@ defmodule WardrikCore.AgentTest do
     assert_receive {:turns, 3}
   end
 
+  defmodule Careless do
+    @behaviour WardrikCore.Middleware
+
+    @impl true
+    def call(%WardrikCore.Context{step: :turn} = context, next, _opts) do
+      context = WardrikCore.Context.put_private(context, :scratch, self())
+      next.(context)
+    end
+
+    def call(%WardrikCore.Context{step: :generate} = context, _next, _opts),
+      do: {:park, :unkeepable, context}
+
+    def call(context, next, _opts), do: next.(context)
+  end
+
+  test "a turn that would keep what the agent can't save fails, and the agent carries on" do
+    Process.register(self(), WardrikCore.AgentTest)
+    {id, agent} = start_agent(middleware: [Careless])
+
+    :ok = WardrikCore.ask(agent, "hi")
+    assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :error, reason: reason}}
+    assert reason =~ ":unkeepable"
+
+    :ok = WardrikCore.ask(agent, "again")
+    assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :error}}
+    assert Process.alive?(agent)
+    assert WardrikCore.status(agent) == :idle
+  end
+
   test "context/1 gives the next turn's context, and a step run through it leaves history alone" do
     ReqLLM
     |> expect(:stream_text, fn _, _, _ -> {:ok, answer("hello")} end)
@@ -663,7 +764,9 @@ defmodule WardrikCore.AgentTest do
 
     WardrikCore.ask(agent, "hi")
     assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :park}}
-    assert {:tool_calls, [{%{id: "1"}, {:park, :needs_approval}}]} = WardrikCore.parked(agent)
+
+    assert {:tool_calls, [{%{id: "1"}, {:park, %WardrikCore.Test.NeedsApproval{}}}]} =
+             WardrikCore.parked(agent)
 
     assert :ok = WardrikCore.resume(agent, %{"nope" => :approve})
     assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :park}}
@@ -699,7 +802,9 @@ defmodule WardrikCore.AgentTest do
     assert :ok = WardrikCore.resume(agent, %{"1" => :approve})
     assert_receive {:tool_running, "1", tool}
 
-    assert {:tool_calls, [{%{id: "2"}, {:park, :needs_approval}}]} = WardrikCore.parked(agent)
+    assert {:tool_calls, [{%{id: "2"}, {:park, %WardrikCore.Test.NeedsApproval{}}}]} =
+             WardrikCore.parked(agent)
+
     assert :ok = WardrikCore.resume(agent, %{"2" => {:deny, "Not now."}}, %{by: "maria"})
     assert {:error, :not_parked} = WardrikCore.resume(agent, %{"1" => :approve})
     assert {:error, :not_parked} = WardrikCore.resume(agent, %{"2" => :approve})

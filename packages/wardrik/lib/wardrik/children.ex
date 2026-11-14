@@ -132,7 +132,11 @@ defmodule Wardrik.Children do
 
   defp agents(wardrik) do
     {WardrikCore,
-     [name: Wardrik.agents(wardrik), backend: wardrik.backend] ++ placement(wardrik.agents)}
+     [
+       name: Wardrik.agents(wardrik),
+       backend: wardrik.backend,
+       configure: {Wardrik.Operations.Running, wardrik.name}
+     ] ++ placement(wardrik.agents)}
   end
 
   defp placement(agents) do
