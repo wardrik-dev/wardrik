@@ -8,12 +8,12 @@ A capability is a module that returns an agent's tools:
 
 ```elixir
 defmodule MyApp.Orders do
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, orders) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "order_status",
         description: "Say where an order is.",
         schema: [order_id: [type: :string, required: true]],
@@ -40,7 +40,7 @@ end
 
 ```elixir
 tool =
-  WardrikCore.Tool.new!(
+  Wardrik.Tool.new!(
     name: "order_status",
     description: "Say where an order is.",
     schema: [order_id: [type: :string, required: true]],
@@ -48,25 +48,25 @@ tool =
     annotations: [read_only: true, idempotent: true]
   )
 
-WardrikCore.Tool.annotation(tool, :idempotent)
+Wardrik.Tool.annotation(tool, :idempotent)
 #=> true
 ```
 
 - A `read_only` or `idempotent` call is retried on failure, and repeated after a crash.
 - Other packages read them too, such as a policy that allows every `read_only` tool.
-- See `WardrikCore.Tool` for the full list.
+- See `Wardrik.Tool` for the full list.
 
 ## Reporting cost
 
 Return the context with a measurement added:
 
 ```elixir
-WardrikCore.Tool.new!(
+Wardrik.Tool.new!(
   name: "enrich",
   description: "Find a person's company from their email.",
   schema: [email: [type: :string, required: true]],
   run: fn %{email: email}, context ->
-    {:ok, %{email: email, company: "Acme"}, WardrikCore.Context.measure(context, :usd, 0.01)}
+    {:ok, %{email: email, company: "Acme"}, Wardrik.Context.measure(context, :usd, 0.01)}
   end
 )
 ```

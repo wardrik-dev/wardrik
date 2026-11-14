@@ -6,28 +6,28 @@ defmodule Wardrik.Operations.NotifyTargets do
   # targets it routes to; routing to another owner's is `notify_target.use`.
 
   @behaviour Wardrik.Owned
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   alias Wardrik.Error
   alias Wardrik.Notify.OwnedWebhook
   alias Wardrik.Operations.Changes
   alias Wardrik.Owned
+  alias Wardrik.Principal
   alias Wardrik.Scope
-  alias WardrikCore.Principal
 
   @use {"notify_target.use", :notify_target}
 
   @impl Wardrik.Owned
   def kind, do: "notify_targets"
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(%{owner: owner, name: name, url: url, secret: secret}),
     do: %{"owner" => owner, "name" => name, "url" => url, "secret" => secret}
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, %{"owner" => owner, "name" => name, "url" => url, "secret" => secret}),
     do: {:ok, %{owner: owner, name: name, url: url, secret: secret}}
 

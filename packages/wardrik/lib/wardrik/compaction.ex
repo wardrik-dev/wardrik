@@ -18,9 +18,9 @@ defmodule Wardrik.Compaction do
     * Emits `[:wardrik, :conversation, :compacted]`.
   """
 
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   @at 0.6
   @keep 0.25
@@ -32,7 +32,7 @@ defmodule Wardrik.Compaction do
   left to do. Write only the summary.\
   """
 
-  @impl WardrikCore.Middleware
+  @impl Wardrik.Middleware
   def call(%Context{step: :turn, resume: nil} = context, next, opts) do
     compacted = compacted(context, opts)
     next.(compacted)

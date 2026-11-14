@@ -1,7 +1,7 @@
 defmodule Wardrik.Vault.Lookup do
   @moduledoc false
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   require Logger
 

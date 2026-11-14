@@ -1,9 +1,9 @@
 defmodule WardrikCore.InDoubt do
   @moduledoc false
-  alias WardrikCore.Context
-  alias WardrikCore.Resume
-  alias WardrikCore.Tool
-  alias WardrikCore.ToolCall
+  alias Wardrik.Context
+  alias Wardrik.Resume
+  alias Wardrik.Tool
+  alias Wardrik.ToolCall
 
   @spec resumes([ToolCall.t()]) :: %{String.t() => Resume.t()}
   def resumes(calls), do: Map.new(calls, fn call -> {call.id, resume()} end)

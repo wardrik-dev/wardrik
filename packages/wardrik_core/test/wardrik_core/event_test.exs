@@ -4,7 +4,7 @@ defmodule WardrikCore.EventTest do
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Event
   alias WardrikCore.Turn
 
@@ -16,7 +16,7 @@ defmodule WardrikCore.EventTest do
   end
 
   defmodule Refuses do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: {:tool_call, call}} = context, _next, _opts) do

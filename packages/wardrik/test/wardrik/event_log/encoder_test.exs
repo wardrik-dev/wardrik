@@ -4,10 +4,10 @@ defmodule Wardrik.EventLog.EncoderTest do
   import Wardrik.EventLog.Test.Protocol
 
   alias Wardrik.EventLog.Encoder
+  alias Wardrik.Principal
+  alias Wardrik.ToolCall
   alias WardrikCore.Event
-  alias WardrikCore.Principal
   alias WardrikCore.Span
-  alias WardrikCore.ToolCall
 
   @agent "acme/triage"
 
@@ -157,7 +157,8 @@ defmodule Wardrik.EventLog.EncoderTest do
         {%ToolCall{id: "c1", name: "books__pay", arguments: %{"amount" => 1200}},
          {:park, %{interrupt: "tool_approval", message: "Pay $1,200?", labels: ["outside"]}}},
         {%ToolCall{id: "c2", name: "github__list"},
-         {:park, %WardrikCore.Authorization{url: "https://x.test/1", credential: "github"}}},
+         {:park,
+          %Wardrik.Credentials.Authorization{url: "https://x.test/1", credential: "github"}}},
         {%ToolCall{id: "c3", name: "mail__send"}, {:park, :in_doubt}},
         {%ToolCall{id: "c4", name: "echo"}, {:ok, "done"}},
         {%ToolCall{id: "c5", name: "claude", arguments: %{"task" => "Fix it."}},

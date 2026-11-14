@@ -18,17 +18,17 @@ defmodule Wardrik.Workspace.Context do
     * `:max_bytes` - how much of `:files` to read in total. `16_384` unless set.
   """
 
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
+  alias Wardrik.Context
   alias Wardrik.Workspace.Files
   alias Wardrik.Workspace.Spec
-  alias WardrikCore.Context
 
   @max_names 50
   @plain ~r{\A[A-Za-z0-9._-]+/?\z}
   @heading "# Your workspace\n\nRead as this turn began. read_file reads a file again, and write_file and edit_file change one over the version it shows."
 
-  @impl WardrikCore.Middleware
+  @impl Wardrik.Middleware
   def call(%Context{step: :turn, instructions: instructions} = context, next, opts) do
     spec = Spec.new(opts)
     files = Keyword.get(opts, :files, [])

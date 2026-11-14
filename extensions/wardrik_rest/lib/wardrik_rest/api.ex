@@ -118,8 +118,8 @@ defmodule WardrikRest.API do
   A source is one of:
 
     * `{:credential, name}` - the token of whoever the turn acts for, from the agent's
-      `WardrikCore.Credentials`. Until they sign in, the call waits for them.
-    * `{:key, name}` - a key from the agent's `WardrikCore.Keys`, such as the org's own.
+      `Wardrik.Credentials`. Until they sign in, the call waits for them.
+    * `{:key, name}` - a key from the agent's `Wardrik.Keys`, such as the org's own.
     * A string, for a header only, sent as it is.
 
   Secrets go only to `:base_url`, never into arguments, answers or errors.

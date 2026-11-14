@@ -37,13 +37,13 @@ defmodule Wardrik do
 
   alias Wardrik.Error
   alias Wardrik.Instance
+  alias Wardrik.Principal
   alias Wardrik.Runner
   alias Wardrik.Scope
   alias Wardrik.Setup
-  alias WardrikCore.Principal
 
   @typedoc "A person, or whom an agent works for. Build one with `principal/2`."
-  @type principal() :: WardrikCore.Principal.t()
+  @type principal() :: Wardrik.Principal.t()
 
   @entry {:or, [:atom, {:tuple, [:atom, :any]}]}
   @named {:or,
@@ -75,12 +75,11 @@ defmodule Wardrik do
             ],
             credentials: [
               type: @entry,
-              doc:
-                "Where tools get credentials, a `WardrikCore.Credentials`. The vault unless set."
+              doc: "Where tools get credentials, a `Wardrik.Credentials`. The vault unless set."
             ],
             key_source: [
               type: @entry,
-              doc: "Where code gets API keys, a `WardrikCore.Keys`. The environment unless set."
+              doc: "Where code gets API keys, a `Wardrik.Keys`. The environment unless set."
             ],
             grants: [
               type: {:tuple, [:atom, :any]},
@@ -314,8 +313,8 @@ defmodule Wardrik do
           name: atom(),
           store: Wardrik.Store.t(),
           vault_keys: [String.t()],
-          credentials: WardrikCore.Context.entry() | nil,
-          key_source: WardrikCore.Context.entry() | nil,
+          credentials: Wardrik.Context.entry() | nil,
+          key_source: Wardrik.Context.entry() | nil,
           grants: {module(), term()} | nil,
           oauth: keyword() | nil,
           mcp: [{atom() | String.t(), keyword()}],
@@ -332,9 +331,9 @@ defmodule Wardrik do
           retention: pos_integer() | :infinity,
           backend: {module(), keyword()},
           policy: Wardrik.Policy.t() | nil,
-          capabilities: %{String.t() => WardrikCore.Context.entry()},
+          capabilities: %{String.t() => Wardrik.Context.entry()},
           policies: %{String.t() => Wardrik.Policy.t()},
-          middleware: [WardrikCore.Context.entry()],
+          middleware: [Wardrik.Context.entry()],
           idle_timeout: number() | :infinity,
           trusted_workers: boolean(),
           egress: (String.t() -> :ok | {:error, String.t()}),
@@ -417,7 +416,7 @@ defmodule Wardrik do
       #=> "ZAI_API_KEY"
   """
   @spec key_name(String.t()) :: String.t() | nil
-  def key_name(model), do: WardrikCore.Keys.key_name(model)
+  def key_name(model), do: Wardrik.Keys.key_name(model)
 
   @doc """
   Returns a cursor from the last sequence read in each `{agent, conversation}` log.
@@ -578,7 +577,7 @@ defmodule Wardrik do
   it has ended, or without `:oauth`.
 
       Wardrik.started_sign_in(MyApp.AgentRuntime, "1lnrCkd...")
-      #=> {:ok, %{provider: "github", principal: %WardrikCore.Principal{id: "user_42"}}}
+      #=> {:ok, %{provider: "github", principal: %Wardrik.Principal{id: "user_42"}}}
   """
   @spec started_sign_in(atom() | t(), String.t()) ::
           {:ok, %{provider: String.t(), principal: Principal.t()}} | :error
@@ -650,7 +649,7 @@ defmodule Wardrik do
   Finishes a browser sign-in from its callback `params`.
 
       Wardrik.finish_sign_in(MyApp.AgentRuntime, params, as: current_principal)
-      #=> {:ok, %{provider: "github", principal: %WardrikCore.Principal{id: "user_7"}}}
+      #=> {:ok, %{provider: "github", principal: %Wardrik.Principal{id: "user_7"}}}
 
   For an app that serves the callback page itself. Only whoever started it can finish it.
   """

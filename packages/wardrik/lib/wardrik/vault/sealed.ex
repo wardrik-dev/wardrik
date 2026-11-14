@@ -5,7 +5,7 @@ defmodule Wardrik.Vault.Sealed do
   The store keeps it as its kind, and its nonce, ciphertext and tag in base64.
   """
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   @enforce_keys [:kind, :nonce, :ciphertext, :tag]
   defstruct [:kind, :nonce, :ciphertext, :tag]
@@ -21,10 +21,10 @@ defmodule Wardrik.Vault.Sealed do
   @key_bytes 32
   @nonce_bytes 12
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(%__MODULE__{} = sealed) do
     %{
       "kind" => Atom.to_string(sealed.kind),
@@ -34,7 +34,7 @@ defmodule Wardrik.Vault.Sealed do
     }
   end
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, %{"kind" => kind, "nonce" => nonce, "ciphertext" => ciphertext, "tag" => tag}) do
     kinds = Map.new(Wardrik.Vault.kinds(), &{Atom.to_string(&1), &1})
 

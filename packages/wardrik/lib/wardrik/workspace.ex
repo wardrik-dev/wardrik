@@ -21,9 +21,9 @@ defmodule Wardrik.Workspace do
     * `:shared` - `Wardrik.Workspace.Mount`s for trees shared with the agent. `[]` unless set.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, opts) do
     opts
     |> Wardrik.Workspace.Spec.new()

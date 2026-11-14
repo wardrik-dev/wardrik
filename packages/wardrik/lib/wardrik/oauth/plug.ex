@@ -16,7 +16,7 @@ defmodule Wardrik.OAuth.Plug do
 
     * `:oauth` - required. The `Wardrik.OAuth` name.
     * `:principal` - required. `{module, function, args}`, called with the conn, then `args`.
-      Returns the `WardrikCore.Principal` signed in at the browser, or `nil`. Only they can
+      Returns the `Wardrik.Principal` signed in at the browser, or `nil`. Only they can
       finish their own sign-in. See `Wardrik.OAuth.finish/3`.
   """
 

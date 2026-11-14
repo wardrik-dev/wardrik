@@ -12,7 +12,7 @@ defmodule WardrikDaemon.Rest do
   See `WardrikDaemon.Config.Rest` and `WardrikRest`.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   use GenServer
 
@@ -38,7 +38,7 @@ defmodule WardrikDaemon.Rest do
         do: {name, {__MODULE__, %{rest: name(wardrik), store: store, config: config, name: name}}}
   end
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(context, %{rest: rest, store: store, config: config, name: name}) do
     org = Owners.org_of(store, {:agent, context.agent_id})
 

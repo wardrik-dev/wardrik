@@ -14,9 +14,9 @@ defmodule Wardrik.Delegation do
 
   use GenServer
 
+  alias Wardrik.Context
   alias Wardrik.Operations.Running
-  alias WardrikCore.Context
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   require Logger
 

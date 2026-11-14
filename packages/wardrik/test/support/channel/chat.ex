@@ -37,7 +37,7 @@ defmodule Wardrik.Test.Channel.Members do
     members = Keyword.fetch!(opts, :members)
 
     case Map.fetch(members, member) do
-      {:ok, user} -> {:ok, %WardrikCore.Principal{id: user, attributes: %{name: name}}}
+      {:ok, user} -> {:ok, %Wardrik.Principal{id: user, attributes: %{name: name}}}
       :error -> {:error, "Nobody here knows you yet."}
     end
   end
@@ -45,12 +45,12 @@ end
 
 defmodule Wardrik.Test.Channel.Tools do
   @moduledoc "A capability with one tool, `echo`."
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "echo",
         description: "Echoes text",
         schema: [text: [type: :string]],

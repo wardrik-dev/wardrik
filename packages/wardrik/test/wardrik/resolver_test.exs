@@ -26,8 +26,8 @@ defmodule Wardrik.ResolverTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.Notice
+  alias Wardrik.Principal
   alias Wardrik.Resolved
-  alias WardrikCore.Principal
 
   @model "anthropic:claude-haiku-4-5"
   @scout "acme/@maria/scout"

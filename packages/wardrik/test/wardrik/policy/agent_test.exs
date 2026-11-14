@@ -5,12 +5,12 @@ defmodule Wardrik.Policy.AgentTest do
   alias Wardrik.Policy.Ask
 
   defmodule Books do
-    @behaviour WardrikCore.Capability
+    @behaviour Wardrik.Capability
 
     @impl true
     def tools(_context, test) do
       [
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: "books__create_bill",
           description: "Create a bill.",
           schema: [amount: [type: :integer, required: true]],

@@ -1,14 +1,14 @@
 defmodule WardrikCore.Subagent.Meter do
   @moduledoc false
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Subagent
 
   @enforce_keys [:table, :parent, :span, :name]
   defstruct @enforce_keys
 
-  @impl WardrikCore.Middleware
+  @impl Wardrik.Middleware
   def call(%Context{step: :generate} = context, next, %__MODULE__{table: meter}),
     do: metered(context, next, meter)
 

@@ -1,6 +1,6 @@
 # Credentials
 
-A tool that acts as a person needs their token. You write a `WardrikCore.Credentials` module that
+A tool that acts as a person needs their token. You write a `Wardrik.Credentials` module that
 finds it.
 
 Run the [setup](running-agents.md#setup) in IEx first. `MyApp.Tokens` stands in for your app's
@@ -23,7 +23,7 @@ end
 
 ```elixir
 defmodule MyApp.Vault do
-  @behaviour WardrikCore.Credentials
+  @behaviour Wardrik.Credentials
 
   @impl true
   def resolve(%{principal: nil}, _opts), do: {:error, "There's no one to act for."}
@@ -46,24 +46,24 @@ end
 - `{:authorize, url}`: the person must sign in first, at a page in your app.
 - `{:error, reason}`.
 
-`refused/2` is optional. A tool calls `WardrikCore.Credentials.refused/2` when a service rejects
+`refused/2` is optional. A tool calls `Wardrik.Credentials.refused/2` when a service rejects
 a token, such as with a 401.
 
 ## Use it from a tool
 
 ```elixir
 defmodule MyApp.Issues do
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "create_issue",
         description: "Open a GitHub issue.",
         schema: [title: [type: :string, required: true]],
         run: fn %{title: title}, context ->
-          with {:ok, _token} <- WardrikCore.Credentials.fetch(context, "github") do
+          with {:ok, _token} <- Wardrik.Credentials.fetch(context, "github") do
             # Call GitHub's API with the token here.
             {:ok, "Opened \"#{title}\"."}
           end
@@ -81,7 +81,7 @@ end
     credentials: {MyApp.Vault, base_url: "https://app.example.com"}
   )
 
-maria = %WardrikCore.Principal{id: "user:maria"}
+maria = %Wardrik.Principal{id: "user:maria"}
 :ok = WardrikCore.ask(agent, "Open an issue for the login bug.", %{principal: maria})
 ```
 
@@ -89,10 +89,10 @@ Tokens are never saved with the agent or sent in events.
 
 ## Signing in
 
-Maria has no token yet, so the call waits on a `WardrikCore.Authorization`:
+Maria has no token yet, so the call waits on a `Wardrik.Credentials.Authorization`:
 
 ```elixir
-{:tool_calls, [{_call, {:park, %WardrikCore.Authorization{url: url}}}]} =
+{:tool_calls, [{_call, {:park, %Wardrik.Credentials.Authorization{url: url}}}]} =
   WardrikCore.parked(agent)
 
 url
@@ -114,15 +114,15 @@ Show her the URL. When your OAuth callback has the token, store it and resume th
 
 ## Keys
 
-Keys are your app's own API keys, such as a model provider's. Give the agent a `WardrikCore.Keys`
+Keys are your app's own API keys, such as a model provider's. Give the agent a `Wardrik.Keys`
 module:
 
 ```elixir
 defmodule MyApp.Keys do
-  @behaviour WardrikCore.Keys
+  @behaviour Wardrik.Keys
 
   @impl true
-  def fetch(%WardrikCore.Keys.Request{name: name}, _opts) do
+  def fetch(%Wardrik.Keys.Request{name: name}, _opts) do
     case System.fetch_env(name) do
       {:ok, key} -> {:ok, key}
       :error -> {:error, :not_found}
@@ -134,5 +134,5 @@ end
 ```
 
 - Each model call fetches its provider's key, such as `ANTHROPIC_API_KEY`.
-- Your code fetches others with `WardrikCore.Keys.fetch(context, "BRAVE_API_KEY")`.
+- Your code fetches others with `Wardrik.Keys.fetch(context, "BRAVE_API_KEY")`.
 - With no key, ReqLLM falls back to its config and the environment.

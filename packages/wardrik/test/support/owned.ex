@@ -35,5 +35,5 @@ defmodule Wardrik.Test.Owned do
     ArgumentError -> {[], %{}}
   end
 
-  defp principal(id), do: %WardrikCore.Principal{id: Wardrik.Test.Directory.owner(id)}
+  defp principal(id), do: %Wardrik.Principal{id: Wardrik.Test.Directory.owner(id)}
 end

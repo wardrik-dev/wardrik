@@ -37,7 +37,7 @@ defmodule Wardrik.MCP.Connection do
   @spec supervisor(atom()) :: atom()
   def supervisor(mcp), do: Module.concat(mcp, "Connections")
 
-  @spec tools(atom(), String.t()) :: [WardrikCore.Tool.t()]
+  @spec tools(atom(), String.t()) :: [Wardrik.Tool.t()]
   def tools(mcp, name) do
     registry = registry(mcp)
 
@@ -57,14 +57,16 @@ defmodule Wardrik.MCP.Connection do
   Connects with their credential, and reconnects if it changed. If the server refuses the
   credential, it's reported refused and fetched once more.
   """
-  @spec open(Server.t(), WardrikCore.Context.t()) ::
-          {:ok, GenServer.name()} | {:park, WardrikCore.Authorization.t()} | {:error, term()}
+  @spec open(Server.t(), Wardrik.Context.t()) ::
+          {:ok, GenServer.name()}
+          | {:park, Wardrik.Credentials.Authorization.t()}
+          | {:error, term()}
   def open(server, context), do: open(server, context, :first)
 
   @doc "Reports the principal's credential refused and closes their connection."
-  @spec refuse(Server.t(), WardrikCore.Context.t()) :: :ok
+  @spec refuse(Server.t(), Wardrik.Context.t()) :: :ok
   def refuse(server, context) do
-    :ok = WardrikCore.Credentials.refused(context, server.credential_name)
+    :ok = Wardrik.Credentials.refused(context, server.credential_name)
 
     registry = registry(server.mcp)
     supervisor = supervisor(server.mcp)
@@ -90,7 +92,7 @@ defmodule Wardrik.MCP.Connection do
   defp authorization_required?(_reason), do: false
 
   defp open(server, context, attempt) do
-    case WardrikCore.Credentials.fetch(context, server.credential_name) do
+    case Wardrik.Credentials.fetch(context, server.credential_name) do
       {:ok, token} ->
         server
         |> opened(who(context), token)
@@ -378,8 +380,8 @@ defmodule Wardrik.MCP.Connection do
   defp handler(%{server: server, who: who}), do: {__MODULE__, server.mcp, server.name, who}
 
   defp who(context) do
-    case WardrikCore.Context.acting_for(context) do
-      %WardrikCore.Principal{id: id} -> id
+    case Wardrik.Context.acting_for(context) do
+      %Wardrik.Principal{id: id} -> id
       nil -> ""
     end
   end

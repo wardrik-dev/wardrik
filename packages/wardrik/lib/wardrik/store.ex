@@ -14,7 +14,7 @@ defmodule Wardrik.Store do
   The adapter decides where keys are kept. See `Wardrik.Store.ETS`, `Wardrik.Store.EKV` and
   `Wardrik.Store.Ecto`.
 
-  Values are kept as JSON, `{"version": n, "value": ...}`, in the `WardrikCore.Format` the
+  Values are kept as JSON, `{"version": n, "value": ...}`, in the `Wardrik.Format` the
   scope names.
   """
 
@@ -25,7 +25,7 @@ defmodule Wardrik.Store do
   @enforce_keys [:adapter, :config]
   defstruct [:adapter, :config, scope: "", format: Format.JSON]
 
-  @typedoc "A store, scoped or not, and the `WardrikCore.Format` of what it keeps."
+  @typedoc "A store, scoped or not, and the `Wardrik.Format` of what it keeps."
   @type t() :: %__MODULE__{
           adapter: module(),
           config: Adapter.config(),
@@ -77,7 +77,7 @@ defmodule Wardrik.Store do
 
   ## Options
 
-    * `:format` - the `WardrikCore.Format` values are written and read in.
+    * `:format` - the `Wardrik.Format` values are written and read in.
       `Wardrik.Store.Format.JSON` unless given, whatever the outer scope's.
   """
   @spec scope(t(), String.t(), format: module()) :: t()

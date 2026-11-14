@@ -22,9 +22,9 @@ defmodule Wardrik.OperationTools do
       `Wardrik.AgentTools`.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  alias WardrikCore.Tool
+  alias Wardrik.Tool
 
   # Operations agents/* gives, with its own rules.
   @agent_tools ~w(agents.list agent.read agent.definition agent.define agent.trigger_set
@@ -44,8 +44,8 @@ defmodule Wardrik.OperationTools do
     end
   end
 
-  @impl WardrikCore.Capability
-  def tools(%WardrikCore.Context{agent_id: id, principal: principal}, opts) do
+  @impl Wardrik.Capability
+  def tools(%Wardrik.Context{agent_id: id, principal: principal}, opts) do
     me = %{wardrik: Keyword.fetch!(opts, :wardrik), id: id, principal: principal}
 
     opts

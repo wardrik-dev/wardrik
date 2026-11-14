@@ -26,9 +26,9 @@ defmodule Wardrik.Resolver do
   """
 
   alias Wardrik.Error
+  alias Wardrik.Principal
   alias Wardrik.Resolved
   alias Wardrik.Resolver.Request
-  alias WardrikCore.Principal
 
   @doc "Returns what the request's agent gets. See `Wardrik.Resolver.Request`."
   @callback resolve(Request.t(), opts :: term()) :: {:ok, Resolved.t()} | {:error, term()}

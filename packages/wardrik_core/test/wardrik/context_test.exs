@@ -1,10 +1,10 @@
-defmodule WardrikCore.ContextTest do
+defmodule Wardrik.ContextTest do
   use ExUnit.Case, async: true
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   defmodule Tag do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(context, next, _opts) do
@@ -14,7 +14,7 @@ defmodule WardrikCore.ContextTest do
   end
 
   defmodule Label do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(context, next, label) do
@@ -24,7 +24,7 @@ defmodule WardrikCore.ContextTest do
   end
 
   defmodule Halt do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(context, _next, _opts), do: {:park, :needs_approval, context}
@@ -70,18 +70,18 @@ defmodule WardrikCore.ContextTest do
   end
 
   test "tool/2 finds the tool a call names" do
-    tool = WardrikCore.Tool.new!(name: "echo", description: "echo", run: fn _, _ -> {:ok, ""} end)
+    tool = Wardrik.Tool.new!(name: "echo", description: "echo", run: fn _, _ -> {:ok, ""} end)
     context = Context.new(tools: [tool])
 
-    assert ^tool = Context.tool(context, %WardrikCore.ToolCall{id: "1", name: "echo"})
-    assert nil == Context.tool(context, %WardrikCore.ToolCall{id: "2", name: "nope"})
+    assert ^tool = Context.tool(context, %Wardrik.ToolCall{id: "1", name: "echo"})
+    assert nil == Context.tool(context, %Wardrik.ToolCall{id: "2", name: "nope"})
   end
 
   describe "acting_for/1" do
     setup do
       %{
-        agent: %WardrikCore.Principal{id: "agent:triage"},
-        maria: %WardrikCore.Principal{id: "user:maria"}
+        agent: %Wardrik.Principal{id: "agent:triage"},
+        maria: %Wardrik.Principal{id: "user:maria"}
       }
     end
 

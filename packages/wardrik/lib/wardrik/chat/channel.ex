@@ -133,7 +133,7 @@ defmodule Wardrik.Chat.Channel do
 
   @doc "Returns who `member` of `workspace` is in your app, or what to tell them if unknown."
   @spec identify(t(), String.t(), Wardrik.Chat.Member.t()) ::
-          {:ok, WardrikCore.Principal.t()} | {:error, String.t()}
+          {:ok, Wardrik.Principal.t()} | {:error, String.t()}
   def identify(%__MODULE__{name: name, identities: {module, config}}, workspace, member) do
     request = %Identities.Request{
       channel: name,
@@ -144,7 +144,7 @@ defmodule Wardrik.Chat.Channel do
     }
 
     case module.identify(request, config) do
-      {:ok, %WardrikCore.Principal{} = principal} -> {:ok, principal}
+      {:ok, %Wardrik.Principal{} = principal} -> {:ok, principal}
       {:error, why} when is_binary(why) -> {:error, why}
       _unknown -> {:error, "You aren't known to #{name} here, so you can't act through it."}
     end

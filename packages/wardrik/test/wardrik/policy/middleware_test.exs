@@ -2,8 +2,8 @@ defmodule Wardrik.Policy.MiddlewareTest do
   use ExUnit.Case, async: true
   use Mimic
 
+  alias Wardrik.Context
   alias Wardrik.Policy.Ask
-  alias WardrikCore.Context
 
   setup do
     policy =
@@ -40,7 +40,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
     assert {:park, %Ask{message: "books/create_bill needs your approval.", call: call}, _context} =
              run(context, "books__create_bill", %{amount: 5})
 
-    assert %WardrikCore.ToolCall{name: "books__create_bill", arguments: %{"amount" => 5}} = call
+    assert %Wardrik.ToolCall{name: "books__create_bill", arguments: %{"amount" => 5}} = call
   end
 
   test "the default turns on the tool's annotations", %{context: context} do
@@ -145,7 +145,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
     end
 
     test "an answer is the protocol's interrupt.resolved", %{context: context} do
-      maria = %WardrikCore.Principal{id: "user:maria"}
+      maria = %Wardrik.Principal{id: "user:maria"}
       resume(context, "books__create_bill", %{"1" => {:approve, "Pay it Friday."}}, %{by: maria})
 
       assert_receive {:resolved,
@@ -206,12 +206,12 @@ defmodule Wardrik.Policy.MiddlewareTest do
 
     test "a call a person approved running again, as it may have run, runs without asking again",
          %{context: context} do
-      resume = %WardrikCore.Resume{reason: :in_doubt, input: %{"1" => :approve}}
+      resume = %Wardrik.Resume{reason: :in_doubt, input: %{"1" => :approve}}
 
       assert {:ok, %Context{response: {:ok, "ran"}}} =
                run(%{context | resume: resume}, "books__create_bill")
 
-      resume = %WardrikCore.Resume{reason: :in_doubt, input: %{"1" => {:deny, "Not again."}}}
+      resume = %Wardrik.Resume{reason: :in_doubt, input: %{"1" => {:deny, "Not again."}}}
 
       assert {:ok, %Context{response: {:error, "Not again."}}} =
                run(%{context | resume: resume}, "books__create_bill")
@@ -397,7 +397,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
   defp answered(context, decisions),
     do: %{
       context
-      | resume: %WardrikCore.Resume{
+      | resume: %Wardrik.Resume{
           reason: %Ask{interrupt: "tool_approval", message: "asked"},
           input: decisions
         }
@@ -405,12 +405,12 @@ defmodule Wardrik.Policy.MiddlewareTest do
 
   defp run(context, name, args \\ %{}) do
     arguments = Map.new(args, fn {key, value} -> {to_string(key), value} end)
-    call = %WardrikCore.ToolCall{id: "1", name: name, arguments: arguments}
+    call = %Wardrik.ToolCall{id: "1", name: name, arguments: arguments}
     Context.run(context, {:tool_call, call}, &{:ok, %{&1 | response: {:ok, "ran"}}})
   end
 
   defp resume(context, name, decisions, metadata \\ %{}) do
-    resume = %WardrikCore.Resume{
+    resume = %Wardrik.Resume{
       reason: %Ask{interrupt: "tool_approval", message: "asked"},
       input: decisions,
       metadata: metadata
@@ -420,7 +420,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
   end
 
   defp tool(name, annotations \\ []) do
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: name,
       description: name,
       run: fn _args, _context -> {:ok, "ran"} end,

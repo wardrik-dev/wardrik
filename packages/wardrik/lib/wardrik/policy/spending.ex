@@ -1,12 +1,12 @@
-if Code.ensure_loaded?(WardrikCore.Context) do
+if Code.ensure_loaded?(Wardrik.Context) do
   defmodule Wardrik.Policy.Spending do
     @moduledoc false
 
+    alias Wardrik.Context
     alias Wardrik.Policy.Budget
     alias Wardrik.Policy.Decision
     alias Wardrik.Policy.Spending.Counted
     alias Wardrik.Policy.Spending.Spent
-    alias WardrikCore.Context
 
     @spec start(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def start(context, policies) do

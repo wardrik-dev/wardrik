@@ -1,8 +1,8 @@
 defmodule Wardrik.WorkspaceTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.Tool
   alias Wardrik.Workspace.Mount
-  alias WardrikCore.Tool
 
   setup context do
     store = Wardrik.Store.ETS.new(name: :"store #{context.test}")
@@ -24,7 +24,7 @@ defmodule Wardrik.WorkspaceTest do
       store: store,
       opts: opts,
       tools: tools,
-      agent: WardrikCore.Context.new(agent_id: "acme/triage")
+      agent: Wardrik.Context.new(agent_id: "acme/triage")
     }
   end
 

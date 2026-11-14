@@ -6,12 +6,12 @@
 # Optional: WARDRIK_ORG (acme), WARDRIK_MODEL.
 
 defmodule Local.Clock do
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "clock",
         description: "Tells the time on the server, in UTC.",
         schema: [],

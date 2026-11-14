@@ -23,7 +23,7 @@ defmodule Wardrik.MCP do
     * The model sees each tool as `github__search_issues`.
     * Server options are in `Wardrik.MCP.Server`.
     * A server that's down offers no tools and is retried, up to a minute between tries.
-    * Tools carry the server's hints as `WardrikCore.Tool` annotations. A tool is `gated` unless
+    * Tools carry the server's hints as `Wardrik.Tool` annotations. A tool is `gated` unless
       it's read-only.
     * A transient failure raises `Wardrik.MCP.UnavailableError`, so the tool runner can retry.
     * An error the tool returns reaches the model as the call's error.
@@ -33,7 +33,7 @@ defmodule Wardrik.MCP do
     * `[:wardrik_mcp, :tools]` when a server's tools change. Measurements: `:count` (`0` while
       down). Metadata: `:mcp`, `:server`.
   """
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
   use Supervisor
 
   alias Wardrik.MCP.Connection
@@ -167,7 +167,7 @@ defmodule Wardrik.MCP do
     * `:servers` - required. A server name or a list of them, as `:github` or
       `["github", "linear"]`.
   """
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, opts) do
     mcp = Keyword.fetch!(opts, :name)
 

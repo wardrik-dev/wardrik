@@ -3,8 +3,8 @@ defmodule Wardrik.OAuth.ClientSecrets do
   Seals the secrets of clients Wardrik registers in the vault, under a principal no agent acts as.
   """
 
+  alias Wardrik.Principal
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
 
   @owner %Principal{id: "wardrik_oauth"}
 

@@ -16,7 +16,7 @@ defmodule Wardrik.Chat.Workspace do
   alias Wardrik.Chat.Channel
   alias Wardrik.Chat.Member
   alias Wardrik.Chat.Offer
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   @enforce_keys [:channel, :installation]
   defstruct @enforce_keys

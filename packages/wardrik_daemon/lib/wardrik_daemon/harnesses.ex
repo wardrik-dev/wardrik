@@ -9,7 +9,7 @@ defmodule WardrikDaemon.Harnesses do
       `WardrikACP`.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   alias WardrikDaemon.Config.Orgs
   alias WardrikDaemon.Owners
@@ -26,7 +26,7 @@ defmodule WardrikDaemon.Harnesses do
   @spec acp(atom()) :: atom()
   def acp(wardrik), do: Module.concat(wardrik, ACP)
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(context, %{acp: acp, store: store, config: config, name: name}) do
     org = Owners.org_of(store, {:agent, context.agent_id})
 

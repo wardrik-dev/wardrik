@@ -38,7 +38,7 @@ defmodule Wardrik.MCP.Servers do
   end
 
   @doc "Returns the tools of the server `name`."
-  @spec tools(atom(), String.t()) :: [WardrikCore.Tool.t()]
+  @spec tools(atom(), String.t()) :: [Wardrik.Tool.t()]
   def tools(mcp, name), do: offered(mcp, read(mcp, {:server, name}))
 
   @doc "Stores the tools listed by a server reached with a credential."

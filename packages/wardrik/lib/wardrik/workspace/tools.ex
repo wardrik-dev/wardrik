@@ -19,10 +19,10 @@ defmodule Wardrik.Workspace.Tools do
     * Each call's resource is its path or glob, for policies like `write_file(notes/*)`.
   """
 
+  alias Wardrik.Tool
   alias Wardrik.Workspace.Reads
   alias Wardrik.Workspace.Spec
   alias Wardrik.Workspace.Writes
-  alias WardrikCore.Tool
 
   @doc "Returns the file tools over `spec`."
   @spec build(Spec.t()) :: [Tool.t()]

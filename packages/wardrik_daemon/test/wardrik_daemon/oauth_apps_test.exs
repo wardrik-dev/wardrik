@@ -4,12 +4,12 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   import WardrikDaemon.Test
 
+  alias Wardrik.Credentials
   alias Wardrik.OAuth.Apps
   alias Wardrik.OAuth.Resolver.Request
   alias Wardrik.OAuth.Token
+  alias Wardrik.Principal
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Credentials
-  alias WardrikCore.Principal
   alias WardrikDaemon.Client
   alias WardrikDaemon.Tokens
 

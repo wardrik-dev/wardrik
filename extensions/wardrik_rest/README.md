@@ -44,9 +44,9 @@ The agent gets `ga4__properties_runReport` and `ga4__properties_getMetadata`.
 
 `auth` maps each scheme the description names to a source:
 
-- `{:credential, name}` - a person's token from `WardrikCore.Credentials`. Until they sign in, the
+- `{:credential, name}` - a person's token from `Wardrik.Credentials`. Until they sign in, the
   call waits for them. A refused token is refreshed once.
-- `{:key, name}` - a key from `WardrikCore.Keys`, such as one an org pasted.
+- `{:key, name}` - a key from `Wardrik.Keys`, such as one an org pasted.
 
 `headers` adds headers the description doesn't name, such as a developer token. `schemes` adds
 schemes it doesn't name, such as `%{"token" => :bearer}` for an API that documents its sign-in

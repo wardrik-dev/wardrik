@@ -147,12 +147,12 @@ end
 
 defmodule WardrikDaemon.Test.Tools do
   @moduledoc "A capability with one tool, `echo`."
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "echo",
         description: "Echoes text",
         schema: [text: [type: :string]],

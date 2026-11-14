@@ -37,7 +37,7 @@ defmodule WardrikDaemon.Tokens do
   #{NimbleOptions.docs(@schema)}
   """
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Owners
@@ -148,10 +148,10 @@ defmodule WardrikDaemon.Tokens do
 
   defp hash(secret), do: :crypto.hash(:sha256, secret)
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(%{token: %Token{} = token, hash: hash}) do
     %{
       "id" => token.id,
@@ -163,7 +163,7 @@ defmodule WardrikDaemon.Tokens do
     }
   end
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, %{"expires" => expires, "hash" => hash} = kept) do
     with {:ok, expires, _offset} <- DateTime.from_iso8601(expires),
          {:ok, hash} <- Base.decode64(hash) do

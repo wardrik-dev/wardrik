@@ -314,10 +314,10 @@ defmodule Wardrik.AgentToolsTest do
     {:ok, _pid} = Wardrik.Operations.Running.awake(wardrik, {"acme/worker", "C1"})
 
     context =
-      WardrikCore.Context.new(
+      Wardrik.Context.new(
         agent_id: "acme/front",
         conversation: "C1",
-        principal: %WardrikCore.Principal{id: "acme/@ops"}
+        principal: %Wardrik.Principal{id: "acme/@ops"}
       )
 
     tools = Wardrik.AgentTools.tools(context, wardrik: scope.wardrik, reach: :agents)
@@ -348,13 +348,13 @@ defmodule Wardrik.AgentToolsTest do
     refute message =~ "acme/worker"
 
     agent_define = tool.("agent_define")
-    assert WardrikCore.Tool.annotation(agent_define, :gated)
+    assert Wardrik.Tool.annotation(agent_define, :gated)
     agents_list = tool.("agents_list")
-    assert WardrikCore.Tool.annotation(agents_list, :read_only)
+    assert Wardrik.Tool.annotation(agents_list, :read_only)
   end
 
   test "can't use its tools where it acts for no one" do
-    context = WardrikCore.Context.new(agent_id: "acme/front")
+    context = Wardrik.Context.new(agent_id: "acme/front")
     [tool | _rest] = Wardrik.AgentTools.tools(context, wardrik: :anywhere, reach: :agents)
 
     assert tool.run.(%{}, nil) ==

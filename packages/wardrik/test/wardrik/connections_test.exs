@@ -3,8 +3,8 @@ defmodule Wardrik.ConnectionsTest do
   use Mimic
 
   alias Wardrik.Authorizer.Request
+  alias Wardrik.Principal
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
 
   setup {Req.Test, :set_req_test_to_shared}
 

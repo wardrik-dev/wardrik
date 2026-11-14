@@ -18,10 +18,10 @@ defmodule WardrikDaemon.SettingsTools do
     * Removing one is a person's job, in the dashboard or with the CLI.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   alias Wardrik.Error
-  alias WardrikCore.Tool
+  alias Wardrik.Tool
   alias WardrikDaemon.Allowed
   alias WardrikDaemon.Config
   alias WardrikDaemon.Owners
@@ -44,8 +44,8 @@ defmodule WardrikDaemon.SettingsTools do
       "Whose it is: an org, a person as ORG/@NAME, or deployment. Your own owner unless set."
   }
 
-  @impl WardrikCore.Capability
-  def tools(%WardrikCore.Context{agent_id: id, principal: principal}, opts) do
+  @impl Wardrik.Capability
+  def tools(%Wardrik.Context{agent_id: id, principal: principal}, opts) do
     me = %{daemon: Keyword.fetch!(opts, :daemon), id: id, principal: principal}
 
     [list(me), request(me)] ++ for {name, kind, about} <- @adds, do: add(me, name, kind, about)

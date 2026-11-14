@@ -35,7 +35,7 @@ defmodule Wardrik.Triggers.Agents do
 
   # The secret is the principal's the agent's resolver gives. An agent that acts for no one has none.
   def resolve_secret(%Secret{agent: agent_id, name: name}, wardrik) do
-    with {:ok, %Wardrik.Resolved{principal: %WardrikCore.Principal{} = principal}} <-
+    with {:ok, %Wardrik.Resolved{principal: %Wardrik.Principal{} = principal}} <-
            Wardrik.Resolver.defined(wardrik, agent_id),
          vault = Wardrik.vault(wardrik),
          {:ok, secret} <- Wardrik.Vault.fetch(vault, principal, name, kind: :signing_secret) do

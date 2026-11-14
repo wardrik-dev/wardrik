@@ -8,12 +8,12 @@ defmodule Wardrik.Policy.Ask do
     * `:call` - the tool call it decided, or `nil` for a model call. A call made inside another,
       such as a coding agent's request, is that call, not the one that parked.
 
-  An agent keeps it as `policy_ask`. See `WardrikCore.Format`.
+  An agent keeps it as `policy_ask`. See `Wardrik.Format`.
   """
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
-  alias WardrikCore.ToolCall
+  alias Wardrik.ToolCall
 
   @enforce_keys [:interrupt, :message]
   defstruct [:interrupt, :message, :call, labels: []]
@@ -21,17 +21,17 @@ defmodule Wardrik.Policy.Ask do
   @type t() :: %__MODULE__{
           interrupt: String.t(),
           message: String.t(),
-          call: WardrikCore.ToolCall.t() | nil,
+          call: Wardrik.ToolCall.t() | nil,
           labels: [String.t()]
         }
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def type, do: "policy_ask"
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(%__MODULE__{} = ask) do
     %{
       "interrupt" => ask.interrupt,
@@ -41,7 +41,7 @@ defmodule Wardrik.Policy.Ask do
     }
   end
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, %{
         "interrupt" => interrupt,
         "message" => message,

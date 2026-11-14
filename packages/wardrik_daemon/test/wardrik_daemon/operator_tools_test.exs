@@ -179,7 +179,7 @@ defmodule WardrikDaemon.OperatorToolsTest do
     end
 
     defp tools(docs) do
-      context = %WardrikCore.Context{agent_id: "x", principal: nil}
+      context = %Wardrik.Context{agent_id: "x", principal: nil}
 
       for tool <-
             HelpTools.tools(context,

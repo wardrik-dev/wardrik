@@ -24,14 +24,14 @@ defmodule Wardrik.Workers do
   `idempotencyKey`.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   alias Wardrik.Authorizer
+  alias Wardrik.Context
   alias Wardrik.Instance
   alias Wardrik.Scope
   alias Wardrik.Workers.LostError
   alias Wardrik.Workers.UnavailableError
-  alias WardrikCore.Context
 
   @group "workers"
   @prefix "workers__"
@@ -66,7 +66,7 @@ defmodule Wardrik.Workers do
     |> Module.concat(Workers)
   end
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(%Context{agent_id: id}, opts) do
     wardrik =
       opts
@@ -161,7 +161,7 @@ defmodule Wardrik.Workers do
     annotations = annotations(offers, wardrik.trusted_workers)
     repeatable = annotations[:idempotent]
 
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: @prefix <> name,
       description: first.tool["description"] <> "\n\nFrom a tool worker.",
       schema: first.tool["inputSchema"],

@@ -6,7 +6,7 @@ defmodule Wardrik.OwnerServersTest do
 
   alias Wardrik.Authorizer.Request
   alias Wardrik.Operations.Servers
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   # Gives each agent of Ana the servers `Servers.reached/2` picks for her, or what the test says.
   defmodule Reach do
