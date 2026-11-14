@@ -315,11 +315,11 @@ defmodule Wardrik.EventLog do
   Writes `{type, subject, data}` to the audit, the log of who changed what.
 
       change = {"agent.forgotten", "agents/agt_1", %{"agent" => %{"id" => "agt_1"}}}
-      :ok = Wardrik.EventLog.record(MyApp.Events, change, actor: %WardrikCore.Principal{id: "user_42"})
+      :ok = Wardrik.EventLog.record(MyApp.Events, change, actor: %Wardrik.Principal{id: "user_42"})
 
   ## Options
 
-    * `:actor` - the `WardrikCore.Principal` who made the change.
+    * `:actor` - the `Wardrik.Principal` who made the change.
     * `:assumed_by` - the principals who acted for them, first to last. `[]` unless set.
     * `:span` - the `WardrikCore.Span` the change happened in.
   """

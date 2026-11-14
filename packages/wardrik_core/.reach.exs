@@ -1,11 +1,27 @@
 # Architecture policy for `mix reach.check --arch`.
 #
-# WardrikCore is one layer. Its public surface is `WardrikCore`, the
-# behaviours it is extended through (`Capability`, `Middleware`), and the
-# `Context` they are handed; the modules below are its own.
+# WardrikCore is one layer. Its public surface is `WardrikCore` and the
+# modules under `Wardrik` that tools and extensions are written against,
+# such as `Wardrik.Tool`, `Wardrik.Capability` and `Wardrik.Context`; the
+# modules below are its own.
 [
   layers: [
-    core: ["WardrikCore", "WardrikCore.*"]
+    core: [
+      "WardrikCore",
+      "WardrikCore.*",
+      "Wardrik.Capability",
+      "Wardrik.Context",
+      "Wardrik.Credentials",
+      "Wardrik.Credentials.*",
+      "Wardrik.Format",
+      "Wardrik.Keys",
+      "Wardrik.Keys.*",
+      "Wardrik.Middleware",
+      "Wardrik.Principal",
+      "Wardrik.Resume",
+      "Wardrik.Tool",
+      "Wardrik.ToolCall"
+    ]
   ],
   boundaries: [
     internal: [

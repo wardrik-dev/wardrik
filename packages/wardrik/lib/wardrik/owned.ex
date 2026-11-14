@@ -9,13 +9,13 @@ defmodule Wardrik.Owned do
     * A record is reached by its reference, which `reference/2` makes from its owner and name.
       A reference is only looked up, never taken apart.
     * `"deployment"` holds what the deployment declares in its options. Those are read only.
-    * Each kind is a module, its records' `WardrikCore.Format`, that names it with `c:kind/0`.
+    * Each kind is a module, its records' `Wardrik.Format`, that names it with `c:kind/0`.
   """
 
   alias Wardrik.Authorizer
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
-  @typedoc "A kind of record: a module that names it and is its `WardrikCore.Format`."
+  @typedoc "A kind of record: a module that names it and is its `Wardrik.Format`."
   @type kind() :: module()
 
   @doc "Returns the kind's name, as `\"providers\"`."

@@ -6,7 +6,7 @@ defmodule WardrikDaemon.ChannelMembersTest do
   alias Wardrik.Chat.Identities.Request
   alias Wardrik.Chat.Member
   alias Wardrik.Chat.Workspace
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.ChannelMembers
 
   @ana %Member{id: "U1", name: "Ana"}

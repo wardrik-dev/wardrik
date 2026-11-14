@@ -4,7 +4,7 @@ defmodule Wardrik.Test.Wardrik do
   import ExUnit.Assertions
   import ExUnit.Callbacks, only: [start_supervised!: 1]
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   def start_wardrik(context) do
     store_name = :"store #{context.test}"

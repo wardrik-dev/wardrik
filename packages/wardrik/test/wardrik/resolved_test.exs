@@ -26,7 +26,7 @@ defmodule Wardrik.ResolvedTest do
     store = Wardrik.Test.Store.new(store_name)
 
     given = [
-      principal: %WardrikCore.Principal{id: "user_42"},
+      principal: %Wardrik.Principal{id: "user_42"},
       policy: [deny: ["shell/*"]],
       policies: %{"careful" => [ask: ["echo"]]},
       defaults: %{"model" => @model},

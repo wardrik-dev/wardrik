@@ -4,7 +4,7 @@ defmodule WardrikDaemon.KeysTest do
 
   import WardrikDaemon.Test
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   setup :set_mimic_global
 

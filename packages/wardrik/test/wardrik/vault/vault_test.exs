@@ -3,13 +3,13 @@ defmodule Wardrik.VaultTest do
 
   import ExUnit.CaptureLog
 
+  alias Wardrik.Principal
   alias Wardrik.Vault.Sealed
   alias Wardrik.Vault.Secret
   alias Wardrik.Vault.TestGrants
-  alias WardrikCore.Principal
 
   defp credential(name, principal),
-    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
+    do: %Wardrik.Credentials.Request{name: name, principal: principal}
 
   @jon %Principal{id: "user:jon"}
   @acme %Principal{id: "org:acme"}
@@ -93,7 +93,7 @@ defmodule Wardrik.VaultTest do
 
   test "says which vault isn't started" do
     assert_raise ArgumentError, ~r/^MyApp.Missing isn't started/, fn ->
-      Wardrik.Vault.fetch(MyApp.Missing, %WardrikCore.Principal{id: "user:jon"}, "github")
+      Wardrik.Vault.fetch(MyApp.Missing, %Wardrik.Principal{id: "user:jon"}, "github")
     end
   end
 
@@ -321,14 +321,14 @@ defmodule Wardrik.VaultTest do
 
     test "parks a tool's call on the sign-in its grants ask for", %{vault: vault} do
       context =
-        WardrikCore.Context.new(
+        Wardrik.Context.new(
           agent_id: "digest",
           principal: @jon,
           credentials: {Wardrik.Vault, vault}
         )
 
-      assert {:park, %WardrikCore.Authorization{credential: "github", principal: @jon}} =
-               WardrikCore.Credentials.fetch(context, "github")
+      assert {:park, %Wardrik.Credentials.Authorization{credential: "github", principal: @jon}} =
+               Wardrik.Credentials.fetch(context, "github")
     end
   end
 end

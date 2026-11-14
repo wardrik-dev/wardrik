@@ -22,9 +22,9 @@ defmodule WardrikBrave.WebSearch do
   Returns the tool. `brave` is a started name or inline settings. See `WardrikBrave.settings/1`.
   While neither `context`'s keys nor the settings hold a key, its description says so.
   """
-  @spec tool(atom() | map(), WardrikCore.Context.t() | nil) :: WardrikCore.Tool.t()
+  @spec tool(atom() | map(), Wardrik.Context.t() | nil) :: Wardrik.Tool.t()
   def tool(brave, context \\ nil) do
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: "web_search",
       description: described(settings(brave, context)),
       schema: [
@@ -59,7 +59,7 @@ defmodule WardrikBrave.WebSearch do
   Runs one search. Returns `{:error, message}` for both `:freshness` and `:published_between`, or
   a `:published_between` that isn't `"YYYY-MM-DDtoYYYY-MM-DD"`.
   """
-  @spec run(atom() | map(), map(), WardrikCore.Context.t()) ::
+  @spec run(atom() | map(), map(), Wardrik.Context.t()) ::
           {:ok, map()} | {:error, String.t()}
   def run(brave, args, context) do
     with {:ok, window} <- window(args) do
@@ -76,7 +76,7 @@ defmodule WardrikBrave.WebSearch do
   defp settings(brave, nil), do: WardrikBrave.settings(brave)
 
   defp settings(brave, context) do
-    case WardrikCore.Keys.fetch(context, "BRAVE_API_KEY") do
+    case Wardrik.Keys.fetch(context, "BRAVE_API_KEY") do
       {:ok, key} -> %{WardrikBrave.settings(brave) | api_key: key}
       {:error, _none} -> WardrikBrave.settings(brave)
     end

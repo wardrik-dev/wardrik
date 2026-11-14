@@ -3,9 +3,9 @@ defmodule WardrikDaemon.ResolverTest do
 
   import WardrikDaemon.Test
 
+  alias Wardrik.Principal
   alias Wardrik.Resolved
   alias Wardrik.Resolver.Request
-  alias WardrikCore.Principal
   alias WardrikDaemon.AgentRecords
 
   setup context do

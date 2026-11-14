@@ -45,7 +45,7 @@ defmodule WardrikTest do
       Wardrik.Instance.fetch!(Elsewhere.Wardrik)
     end
 
-    assert %Wardrik.Scope{principal: %WardrikCore.Principal{id: "acme/@jon"}} =
+    assert %Wardrik.Scope{principal: %Wardrik.Principal{id: "acme/@jon"}} =
              Wardrik.as(wardrik, "acme/@jon")
   end
 

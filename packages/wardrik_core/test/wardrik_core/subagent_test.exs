@@ -4,12 +4,12 @@ defmodule WardrikCore.SubagentTest do
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Test.Echo
   alias WardrikCore.Test.ParkTools
 
   defmodule Seen do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: :generate, metadata: %{test: pid}} = context, next, _opts) do

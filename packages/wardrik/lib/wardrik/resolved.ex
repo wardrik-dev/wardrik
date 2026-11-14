@@ -3,7 +3,7 @@ defmodule Wardrik.Resolved do
   What an agent gets, as `c:Wardrik.Resolver.resolve/2` returns it.
 
       %Wardrik.Resolved{
-        principal: %WardrikCore.Principal{id: "user_42"},
+        principal: %Wardrik.Principal{id: "user_42"},
         policy: [deny: ["shell/*"]],
         defaults: %{"model" => "anthropic:claude-haiku-4-5"},
         servers: %{"github" => "acme:github"},
@@ -41,11 +41,11 @@ defmodule Wardrik.Resolved do
             workspaces: %{}
 
   @type t() :: %__MODULE__{
-          principal: WardrikCore.Principal.t() | nil,
+          principal: Wardrik.Principal.t() | nil,
           policy: Wardrik.Policy.t() | keyword() | map() | [Wardrik.Policy.t() | map()] | nil,
           policies: %{optional(String.t()) => Wardrik.Policy.t() | keyword() | map()},
           defaults: map(),
-          middleware: [WardrikCore.Context.entry()],
+          middleware: [Wardrik.Context.entry()],
           servers: %{optional(String.t()) => String.t()},
           notify: notify(),
           channels: %{optional(String.t()) => String.t()},

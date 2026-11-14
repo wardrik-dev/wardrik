@@ -2,7 +2,7 @@ defmodule Wardrik.EventLog.Encoder.Value do
   @moduledoc false
 
   alias ReqLLM.Message.ContentPart
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   @limit 64 * 1024
 

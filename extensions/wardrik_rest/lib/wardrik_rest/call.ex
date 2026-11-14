@@ -4,16 +4,16 @@ defmodule WardrikRest.Call do
 
     * The credentials of the operation's first scheme alternative the API has sources for go in
       as its description says, with the API's `:headers` and the header arguments given.
-    * A `401` tells the agent's `WardrikCore.Credentials` the token was refused, then the call is
+    * A `401` tells the agent's `Wardrik.Credentials` the token was refused, then the call is
       made once more with a fresh one.
     * A `429`, a `5xx` or no answer raises `WardrikRest.Unavailable`, so the tool runner retries.
     * Any other status is an error naming it, with the API's message.
     * An answer longer than the API's `:max_result_bytes` is cut, as JSON text.
   """
 
-  alias WardrikCore.Context
-  alias WardrikCore.Credentials
-  alias WardrikCore.Keys
+  alias Wardrik.Context
+  alias Wardrik.Credentials
+  alias Wardrik.Keys
   alias WardrikRest.API
   alias WardrikRest.Operation
 
@@ -32,7 +32,7 @@ defmodule WardrikRest.Call do
 
   @doc "Calls `operation` of `api` with the tool's `args`, as whoever `context` acts for."
   @spec run(API.t(), Operation.t(), map(), Context.t()) ::
-          {:ok, term()} | {:error, String.t()} | {:park, WardrikCore.Authorization.t()}
+          {:ok, term()} | {:error, String.t()} | {:park, Wardrik.Credentials.Authorization.t()}
   def run(%API{} = api, %Operation{} = operation, args, %Context{} = context) do
     args = Map.new(args, fn {name, value} -> {to_string(name), value} end)
     attempt(%__MODULE__{api: api, operation: operation, args: args, context: context}, :first)

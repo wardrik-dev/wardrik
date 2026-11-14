@@ -1,11 +1,11 @@
 defmodule WardrikCore.ToolRunner do
   @moduledoc false
-  alias WardrikCore.Context
+  alias Wardrik.Context
+  alias Wardrik.Tool
+  alias Wardrik.ToolCall
   alias WardrikCore.Event
   alias WardrikCore.InDoubt
   alias WardrikCore.Retry
-  alias WardrikCore.Tool
-  alias WardrikCore.ToolCall
 
   @timeout :timer.minutes(3)
   @max_concurrency 8

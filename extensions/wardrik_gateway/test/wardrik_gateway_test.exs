@@ -1,7 +1,7 @@
 defmodule WardrikGatewayTest do
   use ExUnit.Case, async: true
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   @haiku "anthropic:claude-haiku-4-5-20251001"
   @mini "openai:gpt-4o-mini"

@@ -4,9 +4,9 @@ defmodule WardrikDaemon.ServersTest do
 
   import WardrikDaemon.Test
 
+  alias Wardrik.Principal
   alias Wardrik.Resolver.Request
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
   alias WardrikDaemon.Client
   alias WardrikDaemon.Tokens
 
@@ -199,7 +199,7 @@ defmodule WardrikDaemon.ServersTest do
   defp chosen(context, id, name) do
     context.daemon.wardrik
     |> Wardrik.Instance.fetch!()
-    |> Wardrik.OAuth.Apps.chosen(%WardrikCore.Principal{id: id}, name)
+    |> Wardrik.OAuth.Apps.chosen(%Wardrik.Principal{id: id}, name)
   end
 
   test "signs in with the server's own app, made for it, and forgets it as it's removed",

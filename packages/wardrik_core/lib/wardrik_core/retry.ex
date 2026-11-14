@@ -35,20 +35,20 @@ defmodule WardrikCore.Retry do
     Resume with `%{"model" => :approve}` to try again, or `%{"model" => {:deny, reason}}` to fail.
     """
 
-    @behaviour WardrikCore.Format
+    @behaviour Wardrik.Format
 
     @enforce_keys [:message]
     defstruct [:message, interrupt: "model_approval", labels: []]
 
     @type t() :: %__MODULE__{message: String.t(), interrupt: String.t(), labels: [String.t()]}
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def type, do: "retry_exhausted"
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def version, do: 1
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def dump(%__MODULE__{} = exhausted),
       do: %{
         "message" => exhausted.message,
@@ -56,7 +56,7 @@ defmodule WardrikCore.Retry do
         "labels" => exhausted.labels
       }
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def load(1, %{"message" => message, "interrupt" => interrupt, "labels" => labels}),
       do: {:ok, %__MODULE__{message: message, interrupt: interrupt, labels: labels}}
   end

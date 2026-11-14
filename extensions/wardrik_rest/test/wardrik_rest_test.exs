@@ -1,8 +1,8 @@
 defmodule WardrikRestTest do
   use ExUnit.Case, async: true
 
-  alias WardrikCore.Authorization
-  alias WardrikCore.Context
+  alias Wardrik.Context
+  alias Wardrik.Credentials.Authorization
   alias WardrikRest.API
   alias WardrikRest.Discovery
 
@@ -29,7 +29,7 @@ defmodule WardrikRestTest do
 
     Context.new(
       agent_id: "acme/marketing",
-      principal: %WardrikCore.Principal{id: "org:acme"},
+      principal: %Wardrik.Principal{id: "org:acme"},
       credentials: {WardrikRest.Test.Credentials, tokens},
       keys: {WardrikRest.Test.Keys, Keyword.get(opts, :keys, %{})}
     )
@@ -455,7 +455,7 @@ defmodule WardrikRestTest do
   end
 
   defmodule BrokenKeys do
-    @behaviour WardrikCore.Keys
+    @behaviour Wardrik.Keys
     @impl true
     def fetch(_request, _opts), do: {:error, :locked}
   end

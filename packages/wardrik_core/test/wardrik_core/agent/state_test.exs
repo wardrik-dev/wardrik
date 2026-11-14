@@ -24,7 +24,7 @@ defmodule WardrikCore.Agent.StateTest do
 
     test "takes the name of one of its context's endpoints as its model" do
       endpoint = [model: "openai:gpt-4o-mini", base_url: "http://localhost:9931/v1"]
-      context = WardrikCore.Context.new(agent_id: "agent_1", endpoints: %{"local" => endpoint})
+      context = Wardrik.Context.new(agent_id: "agent_1", endpoints: %{"local" => endpoint})
 
       state = State.new(agent_id: "agent_1", model: "local", context: context)
 
@@ -51,12 +51,12 @@ defmodule WardrikCore.Agent.StateTest do
 
   describe "dump/1 and load/1" do
     alias ReqLLM.Message.ContentPart
+    alias Wardrik.ToolCall
     alias WardrikCore.Test.NeedsApproval
     alias WardrikCore.Test.ParkTools
-    alias WardrikCore.ToolCall
 
     setup do
-      context = WardrikCore.Context.new(agent_id: "agent_1", middleware: [ParkTools])
+      context = Wardrik.Context.new(agent_id: "agent_1", middleware: [ParkTools])
 
       state =
         [agent_id: "agent_1", model: "moonshotai:kimi-k3", context: context]
@@ -238,7 +238,7 @@ defmodule WardrikCore.Agent.StateTest do
     end
 
     test "keeps messages as the model is sent them" do
-      principal = %WardrikCore.Principal{id: "user:maria", attributes: %{"team" => "ops"}}
+      principal = %Wardrik.Principal{id: "user:maria", attributes: %{"team" => "ops"}}
 
       messages = [
         ReqLLM.Context.user("hi", %{
@@ -291,5 +291,5 @@ defmodule WardrikCore.Agent.StateTest do
   defp message(text, nil), do: ReqLLM.Context.user(text, %{})
 
   defp message(text, id),
-    do: ReqLLM.Context.user(text, %{principal: %WardrikCore.Principal{id: id}})
+    do: ReqLLM.Context.user(text, %{principal: %Wardrik.Principal{id: id}})
 end

@@ -1,8 +1,8 @@
 defmodule Wardrik.SignIns do
   @moduledoc false
 
-  alias WardrikCore.Authorization
-  alias WardrikCore.Principal
+  alias Wardrik.Credentials.Authorization
+  alias Wardrik.Principal
 
   @doc "Resumes each agent that waits on `principal` signing in to `provider`."
   @spec granted(atom() | String.t(), Principal.t(), atom()) :: :ok

@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+- Tools, middleware and credentials are written with `Wardrik.Tool`, `Wardrik.Capability`,
+  `Wardrik.Context`, `Wardrik.Credentials` and the rest of `wardrik_core`'s modules now named
+  under `Wardrik`, in place of their `WardrikCore` names.
 - `:endpoints` names models called at their own `base_url`. A definition's `model` may name one.
   See `WardrikCore.start_agent/2`.
-- A store keeps every value as JSON, `{"version": n, "value": ...}`, in the `WardrikCore.Format`
+- A store keeps every value as JSON, `{"version": n, "value": ...}`, in the `Wardrik.Format`
   its scope names with `Wardrik.Store.scope/3`'s `:format`, `Wardrik.Store.Format.JSON` unless
   given. A format's `load/2` reads each version it wrote before, so a release reads what an
   earlier one kept. A read the format refuses raises `Wardrik.Store.UnreadableError`, and a write
@@ -17,7 +20,7 @@
   it.
 - `Wardrik.Store.Durable` keeps agents as JSON. A DurableServer kept beside them returns JSON from
   its `dump_state/1`. An agent that loads by itself is configured from its definition.
-- `Wardrik.Policy.Ask` is kept as `policy_ask`. The format behaviour is `WardrikCore.Format`.
+- `Wardrik.Policy.Ask` is kept as `policy_ask`. The format behaviour is `Wardrik.Format`.
 - From this release, a release reads everything an earlier one stored, and is tested against a
   corpus of what each stored.
 - A sign-in that finishes while connections are listed shows as connected, not ended.

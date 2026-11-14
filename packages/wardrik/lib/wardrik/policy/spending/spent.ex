@@ -4,17 +4,17 @@ defmodule Wardrik.Policy.Spending.Spent do
   # What an agent spent against each of its budgets, kept as its private data, by the budget's
   # policy name or place.
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   @pers %{"day" => :day, "week" => :week, "month" => :month}
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def type, do: "policy_spent"
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(spent) do
     for {policy, budget} <- spent do
       %{
@@ -29,7 +29,7 @@ defmodule Wardrik.Policy.Spending.Spent do
     end
   end
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, spent) do
     {:ok,
      Map.new(spent, fn budget ->

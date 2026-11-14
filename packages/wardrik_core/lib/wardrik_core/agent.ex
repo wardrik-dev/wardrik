@@ -2,10 +2,10 @@ defmodule WardrikCore.Agent do
   @moduledoc false
   use DurableServer, vsn: 1
 
+  alias Wardrik.Resume
   alias WardrikCore.Agent.State
   alias WardrikCore.Agent.Stored
   alias WardrikCore.Event
-  alias WardrikCore.Resume
   alias WardrikCore.Span
   alias WardrikCore.Turn
 

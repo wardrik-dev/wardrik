@@ -14,7 +14,7 @@ defmodule Wardrik.Scope do
 
     * `:server` - the `Wardrik.Server` that runs its operations.
     * `:wardrik` - which Wardrik, by name.
-    * `:principal` - the `WardrikCore.Principal` it runs for.
+    * `:principal` - the `Wardrik.Principal` it runs for.
     * `:actor` - `{:agent, id}` or `{:channel, name}` when one acts for the principal, or `nil`.
     * `:context` - facts for the authorizer, like a channel's `:asked_by`. `%{}` unless set.
     * `:policy` - in an agent's scope, the policy every agent it defines is held to.
@@ -22,7 +22,7 @@ defmodule Wardrik.Scope do
     * `:operation` - the operation running, while one runs.
   """
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   @enforce_keys [:server, :wardrik, :principal]
   defstruct [:server, :wardrik, :principal, :actor, :operation, :policy, context: %{}, labels: []]
@@ -51,7 +51,7 @@ defmodule Wardrik.Scope do
         context: %{asked_by: "user_7"}
       )
 
-  `:principal` is a `WardrikCore.Principal` or its ID.
+  `:principal` is a `Wardrik.Principal` or its ID.
   """
   @spec new(module(),
           wardrik: atom() | struct(),

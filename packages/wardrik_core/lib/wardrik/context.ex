@@ -1,4 +1,4 @@
-defmodule WardrikCore.Context do
+defmodule Wardrik.Context do
   @moduledoc """
   The state passed through a turn's middleware.
 
@@ -7,7 +7,7 @@ defmodule WardrikCore.Context do
   """
   use WardrikCore.Private
 
-  @type step :: :turn | :generate | {:tool_call, WardrikCore.ToolCall.t()} | {:step, String.t()}
+  @type step :: :turn | :generate | {:tool_call, Wardrik.ToolCall.t()} | {:step, String.t()}
   @type entry :: module() | {module(), term()}
 
   @type t() :: %__MODULE__{
@@ -22,14 +22,14 @@ defmodule WardrikCore.Context do
           credentials: entry() | nil,
           keys: entry() | nil,
           events: entry() | nil,
-          tools: [WardrikCore.Tool.t()],
+          tools: [Wardrik.Tool.t()],
           middleware: [entry()],
           max_rounds: pos_integer() | :infinity,
           retries: WardrikCore.Retry.t(),
           model_options: keyword(),
-          principal: WardrikCore.Principal.t() | nil,
+          principal: Wardrik.Principal.t() | nil,
           timeout: timeout(),
-          resume: WardrikCore.Resume.t() | nil,
+          resume: Wardrik.Resume.t() | nil,
           checkpoint: (map() -> :ok) | nil,
           call_started: (String.t() -> :ok) | nil,
           on_chunk: [(ReqLLM.StreamChunk.t() -> any())],
@@ -89,7 +89,7 @@ defmodule WardrikCore.Context do
   @doc """
   Returns the model spec a call to `model` goes to: an endpoint's model, or `model` itself.
 
-      WardrikCore.Context.spec(context, "local")
+      Wardrik.Context.spec(context, "local")
       #=> "vllm:LFM3-1.7B"
   """
   @spec spec(t(), LLMDB.Model.t() | String.t()) :: LLMDB.Model.t() | String.t()
@@ -102,7 +102,7 @@ defmodule WardrikCore.Context do
   Returns what a call to `model` takes: the agent's `model_options` over the defaults, and the
   model's API key. An endpoint's call also takes its `base_url`, and only its own key.
 
-      WardrikCore.Context.model_options(context, "anthropic:claude-haiku-4-5")
+      Wardrik.Context.model_options(context, "anthropic:claude-haiku-4-5")
       #=> [receive_timeout: 300_000, stream_idle_timeout: 300_000, api_key: "sk-..."]
   """
   @spec model_options(t(), LLMDB.Model.t() | String.t()) :: keyword()
@@ -117,21 +117,21 @@ defmodule WardrikCore.Context do
   end
 
   def model_options(%__MODULE__{} = context, model),
-    do: options(context) ++ WardrikCore.Keys.model_options(context, model)
+    do: options(context) ++ Wardrik.Keys.model_options(context, model)
 
   defp options(context), do: Keyword.merge(@model_defaults, context.model_options)
 
   defp endpoint_key(_context, nil), do: @no_key
 
   defp endpoint_key(context, name) do
-    case WardrikCore.Keys.fetch(context, name) do
+    case Wardrik.Keys.fetch(context, name) do
       {:ok, key} -> key
       {:error, _none} -> @no_key
     end
   end
 
   @doc "Runs `fun` through the context's middleware. The first in the list runs outermost."
-  @spec run(t(), WardrikCore.Middleware.next()) :: WardrikCore.Middleware.result()
+  @spec run(t(), Wardrik.Middleware.next()) :: Wardrik.Middleware.result()
   def run(%__MODULE__{middleware: middleware} = context, fun) do
     middleware
     |> Enum.reverse()
@@ -177,7 +177,7 @@ defmodule WardrikCore.Context do
   Returns who the turn acts for: the sender of the latest message, or else the agent's own
   `principal`, or `nil`.
   """
-  @spec acting_for(t()) :: WardrikCore.Principal.t() | nil
+  @spec acting_for(t()) :: Wardrik.Principal.t() | nil
   def acting_for(%__MODULE__{messages: messages, principal: principal}) do
     messages
     |> Enum.reverse()
@@ -185,7 +185,7 @@ defmodule WardrikCore.Context do
     |> asked_by(principal)
   end
 
-  defp asked_by(%{metadata: %{principal: %WardrikCore.Principal{} = asked}}, _agent), do: asked
+  defp asked_by(%{metadata: %{principal: %Wardrik.Principal{} = asked}}, _agent), do: asked
   defp asked_by(_message, agent), do: agent
 
   @doc """
@@ -208,8 +208,8 @@ defmodule WardrikCore.Context do
   defp message_labels(_message), do: []
 
   @doc "Returns the tool `call` names, or `nil`."
-  @spec tool(t(), WardrikCore.ToolCall.t()) :: WardrikCore.Tool.t() | nil
-  def tool(%__MODULE__{tools: tools}, %WardrikCore.ToolCall{name: name}),
+  @spec tool(t(), Wardrik.ToolCall.t()) :: Wardrik.Tool.t() | nil
+  def tool(%__MODULE__{tools: tools}, %Wardrik.ToolCall{name: name}),
     do: Enum.find(tools, &(&1.name == name))
 
   @doc "Returns a capability or middleware entry as `{module, opts}`. A bare module gets `[]`."
@@ -222,7 +222,7 @@ defmodule WardrikCore.Context do
 
       Context.run(context, {:step, "summarize"}, &summarize/1)
   """
-  @spec run(t(), step(), WardrikCore.Middleware.next()) :: WardrikCore.Middleware.result()
+  @spec run(t(), step(), Wardrik.Middleware.next()) :: Wardrik.Middleware.result()
   def run(%__MODULE__{} = context, step, fun) do
     outer = Map.take(context, [:step, :on_chunk, :span, :attributes])
 

@@ -1,7 +1,7 @@
 defmodule WardrikCore.Subagent do
   @moduledoc false
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Event
   alias WardrikCore.Span
   alias WardrikCore.Subagent.Except

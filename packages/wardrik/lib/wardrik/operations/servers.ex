@@ -12,14 +12,14 @@ defmodule Wardrik.Operations.Servers do
   #     was added with, and the credential it signs in with.
 
   @behaviour Wardrik.Owned
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   alias Wardrik.Error
   alias Wardrik.OAuth.Apps
   alias Wardrik.Operations.Changes
   alias Wardrik.Owned
+  alias Wardrik.Principal
   alias Wardrik.Scope
-  alias WardrikCore.Principal
 
   @use {"mcp_server.use", :mcp_server}
   @fields ~w(owner name url auth provider credential)a
@@ -27,13 +27,13 @@ defmodule Wardrik.Operations.Servers do
   @impl Wardrik.Owned
   def kind, do: "servers"
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(record), do: Map.new(@fields, &{Atom.to_string(&1), Map.fetch!(record, &1)})
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, record), do: {:ok, Map.new(@fields, &{&1, Map.fetch!(record, Atom.to_string(&1))})}
 
   @doc "Lists the owner's servers. The deployment's include those Wardrik starts with."

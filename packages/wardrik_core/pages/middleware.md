@@ -8,7 +8,7 @@ Run the [setup](running-agents.md#setup) and define `MyApp.Orders` from [Tools](
 
 ```elixir
 defmodule MyApp.NoShell do
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
   @impl true
   def call(%{step: {:tool_call, %{name: "shell"}}} = context, _next, _opts),
@@ -26,7 +26,7 @@ end
 
 ```elixir
 defmodule MyApp.Approve do
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
   @impl true
   def call(%{step: {:tool_call, call}} = context, next, _opts) do
@@ -62,6 +62,6 @@ end
 
 ## More
 
-- Keep state across restarts with `WardrikCore.Context.put_private/3`, keyed by your module.
+- Keep state across restarts with `Wardrik.Context.put_private/3`, keyed by your module.
 - Ask a model about a call with `WardrikCore.evaluate/2`.
 - Call the agent's own model with `WardrikCore.generate/1`.

@@ -191,7 +191,7 @@ defmodule WardrikSlack.Test.Members do
     members = Keyword.fetch!(opts, :members)
 
     case Map.fetch(members, member) do
-      {:ok, user} -> {:ok, %WardrikCore.Principal{id: user}}
+      {:ok, user} -> {:ok, %Wardrik.Principal{id: user}}
       :error -> {:error, "Nobody here knows you yet."}
     end
   end

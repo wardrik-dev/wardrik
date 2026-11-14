@@ -21,11 +21,11 @@ defmodule Wardrik.AgentTools do
     * A worker an agent defines is held to its definer's policy.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
+  alias Wardrik.Context
   alias Wardrik.Delegation
-  alias WardrikCore.Context
-  alias WardrikCore.Tool
+  alias Wardrik.Tool
 
   @agent [
     type: :string,
@@ -34,8 +34,8 @@ defmodule Wardrik.AgentTools do
   ]
   @trigger [type: :string, required: true, doc: "The trigger's name"]
 
-  @impl WardrikCore.Capability
-  def tools(%WardrikCore.Context{agent_id: id, principal: principal} = context, opts) do
+  @impl Wardrik.Capability
+  def tools(%Wardrik.Context{agent_id: id, principal: principal} = context, opts) do
     wardrik = Keyword.fetch!(opts, :wardrik)
 
     offered(Keyword.fetch!(opts, :reach), %{

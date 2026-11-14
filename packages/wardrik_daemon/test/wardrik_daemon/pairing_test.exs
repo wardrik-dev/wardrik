@@ -7,7 +7,7 @@ defmodule WardrikDaemon.PairingTest do
 
   alias Wardrik.OAuth.Device
   alias Wardrik.OAuth.Token
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.CLI
   alias WardrikDaemon.Client
   alias WardrikDaemon.Pairings

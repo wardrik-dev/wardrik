@@ -5,9 +5,9 @@ defmodule WardrikDaemon.NotifyTargetsTest do
   import WardrikDaemon.Test
 
   alias Wardrik.Notice
+  alias Wardrik.Principal
   alias Wardrik.Resolver.Request
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
   alias WardrikDaemon.Client
   alias WardrikDaemon.Tokens
 

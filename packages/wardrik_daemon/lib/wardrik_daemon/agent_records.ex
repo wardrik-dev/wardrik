@@ -10,7 +10,7 @@ defmodule WardrikDaemon.AgentRecords do
       that name gets a new ID.
   """
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   alias WardrikDaemon.Owners
   alias WardrikDaemon.ULID
@@ -184,10 +184,10 @@ defmodule WardrikDaemon.AgentRecords do
     Wardrik.Store.delete(store, record_key(id))
   end
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(record) do
     %{
       "id" => record.id,
@@ -198,7 +198,7 @@ defmodule WardrikDaemon.AgentRecords do
     }
   end
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, %{"id" => id, "org" => org, "owner" => owner, "name" => name, "source" => source})
       when source in ["file", "api"],
       do:

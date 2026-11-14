@@ -6,9 +6,9 @@ defmodule WardrikCore.Configure do
   instructions, model, capabilities, middleware and the rest of `WardrikCore.start_agent/2`'s
   options. Those are your code's, so they're read again each time it loads.
 
-      {WardrikCore, backend: backend, configure: {MyApp.Agents, []}}
+      {WardrikCore, backend: backend, configure: {MyApp.AgentConfig, []}}
 
-      defmodule MyApp.Agents do
+      defmodule MyApp.AgentConfig do
         @behaviour WardrikCore.Configure
 
         @impl true

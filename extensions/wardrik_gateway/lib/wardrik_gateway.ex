@@ -36,11 +36,11 @@ defmodule WardrikGateway do
     * `[:wardrik_gateway, :breaker_opened]` and `[:wardrik_gateway, :breaker_closed]` - `model`.
   """
 
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
   use GenServer
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikGateway.Settings
   alias WardrikGateway.State
 
@@ -63,7 +63,7 @@ defmodule WardrikGateway do
   @spec configure(GenServer.server(), keyword()) :: :ok
   def configure(gateway, opts), do: GenServer.call(gateway, {:configure, Settings.new!(opts)})
 
-  @impl WardrikCore.Middleware
+  @impl Wardrik.Middleware
   def call(%Context{step: :generate} = context, next, gateway) do
     {models, wait} = GenServer.call(gateway, {:plan, context.model})
     tried(context, next, gateway, models, now() + wait, nil)

@@ -12,7 +12,7 @@ defmodule WardrikDaemon.Connections do
 
   alias Wardrik.Error
   alias Wardrik.Operations.Connections
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.Pairings
 
   @doc """

@@ -1,14 +1,14 @@
 defmodule WardrikCore.ToolRunnerTest do
   use ExUnit.Case, async: true
 
-  alias WardrikCore.Context
-  alias WardrikCore.ToolCall
+  alias Wardrik.Context
+  alias Wardrik.ToolCall
   alias WardrikCore.ToolRunner
 
   @moduletag :capture_log
 
   defmodule Deny do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: {:tool_call, call}} = context, next, _opts) do
@@ -17,14 +17,14 @@ defmodule WardrikCore.ToolRunnerTest do
   end
 
   defmodule Park do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(context, _next, _opts), do: {:park, :needs_approval, context}
   end
 
   defmodule Report do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: step, metadata: %{test: pid}} = context, next, _opts) do
@@ -147,7 +147,7 @@ defmodule WardrikCore.ToolRunnerTest do
     }
 
     fetch =
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "fetch",
         description: "fetch",
         schema: schema,
@@ -244,7 +244,7 @@ defmodule WardrikCore.ToolRunnerTest do
   end
 
   defmodule HandSecret do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(context, next, _opts) do
@@ -269,7 +269,7 @@ defmodule WardrikCore.ToolRunnerTest do
   end
 
   defp tool(name, run, opts \\ []) do
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: name,
       description: name,
       schema: [text: [type: :string]],

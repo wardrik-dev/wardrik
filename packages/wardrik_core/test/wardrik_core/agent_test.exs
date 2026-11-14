@@ -4,17 +4,17 @@ defmodule WardrikCore.AgentTest do
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikCore.Test.Echo
   alias WardrikCore.Test.ParkTools
 
   @moduletag :capture_log
 
   defmodule Trace do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
-    def call(%WardrikCore.Context{step: :turn} = context, next, _opts) do
+    def call(%Wardrik.Context{step: :turn} = context, next, _opts) do
       trace = Map.get_lazy(context.metadata, :trace, fn -> System.unique_integer() end)
       send(WardrikCore.AgentTest, {:trace, trace})
       context = put_in(context.metadata[:trace], trace)
@@ -25,27 +25,27 @@ defmodule WardrikCore.AgentTest do
   end
 
   defmodule Counter do
-    @behaviour WardrikCore.Middleware
-    @behaviour WardrikCore.Format
+    @behaviour Wardrik.Middleware
+    @behaviour Wardrik.Format
 
-    alias WardrikCore.Context
+    alias Wardrik.Context
 
-    @impl WardrikCore.Middleware
+    @impl Wardrik.Middleware
     def formats, do: [__MODULE__]
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def type, do: "test_counter"
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def version, do: 1
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def dump(count), do: count
 
-    @impl WardrikCore.Format
+    @impl Wardrik.Format
     def load(1, count), do: {:ok, count}
 
-    @impl WardrikCore.Middleware
+    @impl Wardrik.Middleware
     def call(%Context{step: :turn} = context, next, _opts) do
       context = Context.update_private(context, __MODULE__, 1, &(&1 + 1))
       send(WardrikCore.AgentTest, {:turns, Context.get_private(context, __MODULE__)})
@@ -63,12 +63,12 @@ defmodule WardrikCore.AgentTest do
   end
 
   defmodule Blocking do
-    @behaviour WardrikCore.Capability
+    @behaviour Wardrik.Capability
 
     @impl true
     def tools(_context, _opts) do
       [
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: "block",
           description: "Blocks until released",
           run: fn _args, %{step: {:tool_call, call}} ->
@@ -692,15 +692,15 @@ defmodule WardrikCore.AgentTest do
   end
 
   defmodule Careless do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
-    def call(%WardrikCore.Context{step: :turn} = context, next, _opts) do
-      context = WardrikCore.Context.put_private(context, :scratch, self())
+    def call(%Wardrik.Context{step: :turn} = context, next, _opts) do
+      context = Wardrik.Context.put_private(context, :scratch, self())
       next.(context)
     end
 
-    def call(%WardrikCore.Context{step: :generate} = context, _next, _opts),
+    def call(%Wardrik.Context{step: :generate} = context, _next, _opts),
       do: {:park, :unkeepable, context}
 
     def call(context, next, _opts), do: next.(context)
@@ -738,7 +738,7 @@ defmodule WardrikCore.AgentTest do
     summarizing = %{context | instructions: "Summarise.", tools: []}
 
     assert {:ok, summarized} =
-             WardrikCore.Context.run(summarizing, {:step, "summary"}, &WardrikCore.generate/1)
+             Wardrik.Context.run(summarizing, {:step, "summary"}, &WardrikCore.generate/1)
 
     assert ReqLLM.Response.text(summarized.response) == "A summary."
     history = WardrikCore.history(agent)

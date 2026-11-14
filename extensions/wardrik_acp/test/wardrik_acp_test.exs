@@ -1,11 +1,11 @@
 defmodule WardrikACPTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.Context
+  alias Wardrik.Resume
+  alias Wardrik.ToolCall
   alias WardrikACP.Connection
   alias WardrikACP.TestGate, as: Gate
-  alias WardrikCore.Context
-  alias WardrikCore.Resume
-  alias WardrikCore.ToolCall
 
   @peer Path.expand("support/peer.exs", __DIR__)
 

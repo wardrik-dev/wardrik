@@ -5,7 +5,7 @@ defmodule Wardrik.OAuth.AppsTest do
 
   alias Wardrik.Authorizer.Request
   alias Wardrik.OAuth.Apps
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   @app %{
     "authorization_endpoint" => "https://linear.test/authorize",

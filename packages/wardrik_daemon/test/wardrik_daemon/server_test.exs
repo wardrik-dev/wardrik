@@ -266,7 +266,7 @@ defmodule WardrikDaemon.ServerTest do
 
     {:ok, _vsn} =
       Wardrik.Vault.put(vault, %Wardrik.Vault.Secret{
-        principal: %WardrikCore.Principal{id: "deployment"},
+        principal: %Wardrik.Principal{id: "deployment"},
         name: "MODEL",
         value: "m"
       })

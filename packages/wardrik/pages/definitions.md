@@ -25,12 +25,12 @@ defmodule MyApp.Agents do
 end
 
 defmodule MyApp.Orders do
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, orders) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "order_status",
         description: "Says where an order is.",
         schema: [order_id: [type: :string, required: true]],
@@ -52,7 +52,7 @@ end
 scope = Wardrik.as(MyApp.AgentRuntime, "maria")
 ```
 
-- `:capabilities` - tools by name, each a `WardrikCore.Capability`.
+- `:capabilities` - tools by name, each a `Wardrik.Capability`.
 - `:policies` - policies by name.
 - `:mcp` - MCP servers. See [MCP servers](servers.md).
 - `:idle_timeout` - seconds an agent idles before it sleeps. `900` unless set.

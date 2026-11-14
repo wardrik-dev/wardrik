@@ -10,9 +10,9 @@ Middleware adds them to the step it runs in:
 
 ```elixir
 defmodule MyApp.Trace do
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   @impl true
   def call(%Context{step: :generate} = context, next, _opts) do

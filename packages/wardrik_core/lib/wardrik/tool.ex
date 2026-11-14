@@ -1,8 +1,8 @@
-defmodule WardrikCore.Tool do
+defmodule Wardrik.Tool do
   @moduledoc """
   A tool an agent may call.
 
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "order_status",
         description: "Say where an order is.",
         schema: [order_id: [type: :string, required: true]],
@@ -12,7 +12,7 @@ defmodule WardrikCore.Tool do
 
   ## Return values
 
-  `run` takes the checked arguments and the `WardrikCore.Context`. It returns:
+  `run` takes the checked arguments and the `Wardrik.Context`. It returns:
 
     * `{:ok, answer}` or `{:error, reason}`.
     * `{:ok, answer, context}` or `{:error, reason, context}`, such as with a cost measured.
@@ -36,8 +36,8 @@ defmodule WardrikCore.Tool do
   a crash parks as `:in_doubt`.
   """
   use WardrikCore.Private
-  alias WardrikCore.Context
-  alias WardrikCore.ToolCall
+  alias Wardrik.Context
+  alias Wardrik.ToolCall
 
   @type answer ::
           {:ok, term()}

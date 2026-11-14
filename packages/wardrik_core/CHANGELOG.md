@@ -2,13 +2,18 @@
 
 ## Unreleased
 
+- The modules tools, middleware and extensions are written with are named under `Wardrik`:
+  `Wardrik.Tool`, `Wardrik.ToolCall`, `Wardrik.Capability`, `Wardrik.Context`, `Wardrik.Resume`,
+  `Wardrik.Middleware`, `Wardrik.Principal`, `Wardrik.Credentials`, `Wardrik.Credentials.Request`,
+  `Wardrik.Keys`, `Wardrik.Keys.Request` and `Wardrik.Format`, each in place of its
+  `WardrikCore` name. `WardrikCore.Authorization` is `Wardrik.Credentials.Authorization`.
 - `:endpoints` names models called at their own `base_url`, such as a local OpenAI-compatible
   server. An agent's `:model` may name one. Its calls take only the key its `key` names, never
   its provider's, and are priced as its model.
 - An agent keeps its state as JSON, and keeps how it's configured nowhere. `start_agent/2` and
   `configure/2` give a saved agent its settings again as it loads; `:configure`, a
   `WardrikCore.Configure`, gives them to one that loads by itself, as after a crash.
-- A park reason or private value a middleware or capability keeps is a `WardrikCore.Format`
+- A park reason or private value a middleware or capability keeps is a `Wardrik.Format`
   with a `type/0`, listed by its `formats/0`. Parking on anything else raises `ArgumentError`.
 - A saved state its formats can't read is kept as it was. `start_agent/2` and `configure/2`
   return `{:error, {:unreadable, reason}}`.

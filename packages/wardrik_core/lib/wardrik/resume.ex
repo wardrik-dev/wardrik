@@ -1,4 +1,4 @@
-defmodule WardrikCore.Resume do
+defmodule Wardrik.Resume do
   @moduledoc """
   What a parked step sees when it runs again: why it parked, and the `input` and `metadata` given
   to `WardrikCore.resume/3`.
