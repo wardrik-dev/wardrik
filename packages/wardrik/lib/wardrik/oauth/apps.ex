@@ -26,7 +26,7 @@ defmodule Wardrik.OAuth.Apps do
 
   @behaviour Wardrik.OAuth.Resolver
   @behaviour Wardrik.Owned
-  @behaviour Wardrik.Store.Format
+  @behaviour WardrikCore.Format
 
   alias Wardrik.Error
   alias Wardrik.OAuth.Provider
@@ -54,10 +54,10 @@ defmodule Wardrik.OAuth.Apps do
   @impl Wardrik.Owned
   def kind, do: "providers"
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def version, do: 1
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def dump(%{owner: owner, name: name, id: id, secret: secret, opts: opts}) do
     %{
       "owner" => owner,
@@ -68,7 +68,7 @@ defmodule Wardrik.OAuth.Apps do
     }
   end
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def load(1, %{"owner" => owner, "name" => name, "id" => id, "fields" => fields} = app) do
     opts = Enum.flat_map(fields, &option/1)
     {:ok, %{owner: owner, name: name, id: id, secret: app["client_secret"], opts: opts}}

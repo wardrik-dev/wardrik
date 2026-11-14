@@ -1,8 +1,6 @@
 defmodule Wardrik.Chat.Replies.State do
   @moduledoc false
 
-  @kept [:workspace, :room, :conversations, :cursor, :senders, :runs]
-
   @enforce_keys [:workspace, :room]
   defstruct [
     :workspace,
@@ -50,13 +48,44 @@ defmodule Wardrik.Chat.Replies.State do
   @spec new(String.t(), String.t()) :: t()
   def new(workspace, room), do: %__MODULE__{workspace: workspace, room: room}
 
-  @doc "Returns the part of `state` saved between restarts."
+  @doc "Returns the part of `state` saved between restarts, as JSON."
   @spec dump(t()) :: map()
-  def dump(state), do: Map.take(state, @kept)
+  def dump(state) do
+    %{
+      "workspace" => state.workspace,
+      "room" => state.room,
+      "cursor" => state.cursor,
+      "conversations" => Enum.map(state.conversations, &Tuple.to_list/1),
+      "senders" => state.senders,
+      "runs" =>
+        for {{agent, conversation}, run} <- state.runs do
+          %{
+            "agent" => agent,
+            "conversation" => conversation,
+            "id" => run.id,
+            "answering" => run.answering,
+            "asked_by" => run.asked_by
+          }
+        end
+    }
+  end
 
   @doc "Restores the state from `dump/1`'s result."
   @spec load(map()) :: t()
-  def load(dumped), do: struct!(__MODULE__, dumped)
+  def load(dumped) do
+    %__MODULE__{
+      workspace: dumped["workspace"],
+      room: dumped["room"],
+      cursor: dumped["cursor"],
+      conversations: Enum.map(dumped["conversations"], &List.to_tuple/1),
+      senders: dumped["senders"],
+      runs:
+        Map.new(dumped["runs"], fn run ->
+          {{run["agent"], run["conversation"]},
+           %{id: run["id"], answering: run["answering"], asked_by: run["asked_by"]}}
+        end)
+    }
+  end
 
   @doc "Returns what `event` of `conversation` asks to post, and the updated state."
   @spec take(t(), conversation(), Wardrik.Event.t()) :: {post(), t()}

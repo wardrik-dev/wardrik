@@ -167,8 +167,7 @@ defmodule Wardrik.ChatTest do
       refute_received {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
     end
 
-    test "posts nothing a replaced follower hands it, and starts over from an rc.1 room",
-         context do
+    test "posts nothing a replaced follower hands it", context do
       Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
 
@@ -178,11 +177,6 @@ defmodule Wardrik.ChatTest do
 
       assert GenServer.call(pid, {:event, event, "c"}) == :ok
       refute_receive {:delivered, %Outbound{body: {:failed, "x"}}}, 50
-
-      saved = %{workspace: "T1", room: "C1", cursor: "old"}
-
-      assert Wardrik.Chat.Replies.Server.load_state(1, saved) ==
-               Wardrik.Chat.Replies.State.new("T1", "C1")
     end
 
     test "shows what the agent is doing while it works", context do

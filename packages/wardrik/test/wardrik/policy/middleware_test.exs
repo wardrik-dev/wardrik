@@ -281,7 +281,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
       {:ok, context} = generate(context, usd: 0.25, tokens: 100)
 
       assert %{0 => %{usd: 0.65, tokens: 400, period: {:day, _today}}} =
-               Context.get_private(context, Wardrik.Policy.Budget)
+               Context.get_private(context, Wardrik.Policy.Spending.Spent)
     end
 
     test "the call that crosses a limit runs, and the next one asks", %{context: context} do
@@ -332,7 +332,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
       assert {:ok, context} = generate(context, usd: 0.10)
 
       assert %{0 => %{usd: 0.2, unpriced: false}} =
-               Context.get_private(context, Wardrik.Policy.Budget)
+               Context.get_private(context, Wardrik.Policy.Spending.Spent)
     end
 
     test "a price stands in for a cost the model doesn't report" do
@@ -340,7 +340,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
       context = metered(policy)
       {:ok, context} = generate(context, usd: nil, tokens: 500_000)
 
-      assert %{0 => %{usd: 0.5}} = Context.get_private(context, Wardrik.Policy.Budget)
+      assert %{0 => %{usd: 0.5}} = Context.get_private(context, Wardrik.Policy.Spending.Spent)
     end
 
     test "a price given once a call went unpriced lets the next one run", %{context: context} do
@@ -354,10 +354,11 @@ defmodule Wardrik.Policy.MiddlewareTest do
     end
 
     test "a new period starts the count over", %{context: context} do
-      context = Context.put_private(context, Wardrik.Policy.Budget, %{0 => %{period: :yesterday}})
+      context =
+        Context.put_private(context, Wardrik.Policy.Spending.Spent, %{0 => %{period: :yesterday}})
 
       assert {:ok, context} = generate(context, usd: 0.10)
-      assert %{0 => %{usd: 0.10}} = Context.get_private(context, Wardrik.Policy.Budget)
+      assert %{0 => %{usd: 0.10}} = Context.get_private(context, Wardrik.Policy.Spending.Spent)
     end
 
     test "each policy's budget counts apart" do
@@ -367,7 +368,9 @@ defmodule Wardrik.Policy.MiddlewareTest do
       {:ok, context} = generate(context, usd: 2.00)
 
       assert {:error, "This agent has spent $2.00 of $1.00 today."} = generate(context)
-      assert %{"acme" => %{usd: 2.0}} = Context.get_private(context, Wardrik.Policy.Budget)
+
+      assert %{"acme" => %{usd: 2.0}} =
+               Context.get_private(context, Wardrik.Policy.Spending.Spent)
     end
   end
 

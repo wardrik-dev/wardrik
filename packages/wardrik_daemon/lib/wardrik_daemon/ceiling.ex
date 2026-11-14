@@ -118,6 +118,9 @@ defmodule WardrikDaemon.Ceiling do
     do: for({kind, value} <- amount, value != nil, into: %{}, do: {Atom.to_string(kind), value})
 
   @impl WardrikCore.Middleware
+  def formats, do: [WardrikDaemon.Ceiling.Reached]
+
+  @impl WardrikCore.Middleware
   def call(%Context{step: :generate} = context, next, held) do
     case stopped(held) do
       nil -> counted(context, next, held)

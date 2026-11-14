@@ -5,6 +5,13 @@
 - `:endpoints` names models called at their own `base_url`, such as a local OpenAI-compatible
   server. An agent's `:model` may name one. Its calls take only the key its `key` names, never
   its provider's, and are priced as its model.
+- An agent keeps its state as JSON, and keeps how it's configured nowhere. `start_agent/2` and
+  `configure/2` give a saved agent its settings again as it loads; `:configure`, a
+  `WardrikCore.Configure`, gives them to one that loads by itself, as after a crash.
+- A park reason or private value a middleware or capability keeps is a `WardrikCore.Format`
+  with a `type/0`, listed by its `formats/0`. Parking on anything else raises `ArgumentError`.
+- A saved state its formats can't read is kept as it was. `start_agent/2` and `configure/2`
+  return `{:error, {:unreadable, reason}}`.
 
 ## 0.1.0-rc.7 (2026-11-13)
 

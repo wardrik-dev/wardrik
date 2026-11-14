@@ -85,12 +85,12 @@ defmodule Wardrik.Store.DurableConformance do
 
         test "round-trips what it encodes", %{store: store} do
           {:ok, %{state: backend} = init} = Durable.init_backend(%{store: store})
-          stored = %StoredState{vsn: 1, state: %{count: 3}, meta: %Meta{}}
+          stored = %StoredState{vsn: 1, state: %{"count" => 3}, meta: %Meta{}}
 
           assert :ok = Durable.ensure_ready(backend)
           assert init.defaults.heartbeat_tracking_mode == :poll
           assert {:ok, encoded} = Durable.encode(backend, stored)
-          assert {:ok, %StoredState{state: %{count: 3}}} = Durable.decode(backend, encoded)
+          assert {:ok, %StoredState{state: %{"count" => 3}}} = Durable.decode(backend, encoded)
           assert {:error, :conflict} = Durable.put_object(backend, "a", 1, etag: nil)
         end
 
@@ -116,11 +116,11 @@ defmodule Wardrik.Store.DurableConformance do
 
         test "keeps a server's state and metadata", %{backend: backend} = context do
           key = unique_key(context)
-          stored = %StoredState{vsn: 1, state: %{count: 3}, meta: %Meta{}}
+          stored = %StoredState{vsn: 1, state: %{"count" => 3}, meta: %Meta{}}
 
           {:ok, _object} = Durable.put_object(backend, key, stored, [])
 
-          assert {:ok, %{body: %StoredState{vsn: 1, state: %{count: 3}}}} =
+          assert {:ok, %{body: %StoredState{vsn: 1, state: %{"count" => 3}}}} =
                    Durable.get_object(backend, key, [])
         end
 
@@ -131,9 +131,9 @@ defmodule Wardrik.Store.DurableConformance do
           key = unique_key(context)
           {:ok, %{state: backend}} = Durable.init_backend(store: store)
           stored = %StoredState{vsn: 1, state: %{}, meta: %Meta{}}
-          unreadable = %{"vsn" => 1, "state" => <<131, 100, 0, 3, "zzq">>, "meta" => "x"}
+          unreadable = %{"vsn" => 1, "state" => %{}, "meta" => "x"}
           why = "it isn't in a form this release can read"
-          durable = Wardrik.Store.scope(store, "durable", format: Wardrik.Store.Format.Term)
+          durable = Wardrik.Store.scope(store, "durable")
           {:ok, _vsn} = Wardrik.Store.put(durable, key, unreadable)
 
           log =

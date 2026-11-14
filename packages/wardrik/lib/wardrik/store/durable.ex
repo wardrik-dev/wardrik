@@ -5,12 +5,13 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
         {WardrikCore, backend: {Wardrik.Store.Durable, store: store}}
 
-    Agents are kept under the store's `durable` scope.
+    Agents are kept under the store's `durable` scope, as JSON. DurableServer's own data about
+    each, such as which node runs it, is kept beside it in DurableServer's form. Another
+    DurableServer kept here returns JSON from its `dump_state/1`.
 
-    A saved state this release can't read, such as one naming a module it no longer has, is
-    never replaced or skipped quietly:
+    A saved state this release can't read is never replaced or skipped quietly:
 
-      * It's noted with why, once for each version of it, with a warning. See `noted/2`.
+      * It's noted with why, once for each state, with a warning. See `noted/2`.
       * Discovery passes it over, and starting it again is refused with
         `{:unreadable, reason}`. Only `discard/2` removes it.
 
@@ -24,7 +25,6 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     @behaviour DurableServer.StorageBackend
 
     alias DurableServer.StoredState
-    alias Wardrik.Store.Durable.Unreadable
 
     require Logger
 
@@ -43,7 +43,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
       {:ok,
        %{
-         state: Wardrik.Store.scope(store, "durable", format: Wardrik.Store.Format.Term),
+         state: durable(store),
          defaults: %{
            heartbeat_tracking_mode: :poll,
            discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 30_000),
@@ -72,7 +72,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
           {:ok, %{body: body, etag: etag(vsn)}}
 
         {:error, reason} ->
-          note(store, key, reason, vsn)
+          note(store, key, reason, value)
           {:error, :not_found}
       end
     end
@@ -142,15 +142,15 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
           [%{key: key, etag: etag(vsn), body: body}]
 
         {:error, reason} ->
-          note(store, key, reason, vsn)
+          note(store, key, reason, value)
           []
       end
     end
 
     defp held(store, key) do
-      with {value, vsn} <- Wardrik.Store.lookup(store, key),
+      with {value, _vsn} <- Wardrik.Store.lookup(store, key),
            {:error, reason} <- body(value) do
-        note(store, key, reason, vsn)
+        note(store, key, reason, value)
         {:error, {:unreadable, reason}}
       else
         _held -> {:error, :already_claimed}
@@ -162,16 +162,17 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     written since. `store` is the one given as `:store`.
 
         Wardrik.Store.Durable.noted(store, "wardrik/agents/acme.drafts")
-        #=> {:ok, "it names WardrikPolicy, which this release doesn't have"}
+        #=> {:ok, "it holds a policy_ask, which none of its middleware or capabilities reads"}
     """
     @spec noted(Wardrik.Store.t(), String.t()) :: {:ok, String.t()} | :error
     def noted(store, key) do
       durable = durable(store)
       notes = notes(durable)
 
-      with {%{"reason" => reason, "vsn" => vsn}, _note_vsn} <- Wardrik.Store.lookup(notes, key),
-           versions = Wardrik.Store.versions(durable, key),
-           {^key, ^vsn} <- List.keyfind(versions, key, 0) do
+      with {%{"reason" => reason, "state" => state}, _note_vsn} <-
+             Wardrik.Store.lookup(notes, key),
+           {value, _vsn} <- Wardrik.Store.lookup(durable, key),
+           ^state <- fingerprint(value) do
         {:ok, reason}
       else
         _none -> :error
@@ -186,12 +187,30 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     def check(store, key) do
       durable = durable(store)
 
-      with {value, vsn} <- Wardrik.Store.lookup(durable, key),
+      with {value, _vsn} <- Wardrik.Store.lookup(durable, key),
            {:error, reason} <- body(value) do
-        note(durable, key, reason, vsn)
+        note(durable, key, reason, value)
         {:error, reason}
       else
-        _readable_or_none -> :ok
+        _readable_or_none ->
+          case noted(store, key) do
+            {:ok, reason} -> {:error, reason}
+            :error -> :ok
+          end
+      end
+    end
+
+    @doc """
+    Notes that the agent reading the saved state `key` found it unreadable, and why, as
+    `noted/2` returns it until the state is written again.
+    """
+    @spec note(Wardrik.Store.t(), String.t(), String.t()) :: :ok
+    def note(store, key, reason) do
+      durable = durable(store)
+
+      case Wardrik.Store.lookup(durable, key) do
+        {value, _vsn} -> note(durable, key, reason, value)
+        nil -> :ok
       end
     end
 
@@ -205,23 +224,40 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
            do: Wardrik.Store.delete(notes, key)
     end
 
-    defp note(store, key, reason, vsn) do
+    defp note(store, key, reason, value) do
       notes = notes(store)
+      state = fingerprint(value)
 
       case Wardrik.Store.lookup(notes, key) do
-        {%{"vsn" => ^vsn}, _note_vsn} ->
-          :ok
-
-        _new ->
-          {:ok, _note_vsn} = Wardrik.Store.put(notes, key, %{"reason" => reason, "vsn" => vsn})
-          Logger.warning("The saved state #{key} can't be read: #{reason}.")
+        {%{"state" => ^state}, _note_vsn} -> :ok
+        {_older, note_vsn} -> write_note(notes, key, reason, state, note_vsn)
+        nil -> write_note(notes, key, reason, state, nil)
       end
     end
 
-    defp durable(store),
-      do: Wardrik.Store.scope(store, "durable", format: Wardrik.Store.Format.Term)
+    # Each node that reads the state may find it unreadable at once; only one notes it, and says so.
+    defp write_note(notes, key, reason, state, note_vsn) do
+      note = %{"reason" => reason, "state" => state}
+
+      case Wardrik.Store.put(notes, key, note, if_vsn: note_vsn) do
+        {:ok, _vsn} -> Logger.warning("The saved state #{key} can't be read: #{reason}.")
+        {:error, :conflict} -> :ok
+      end
+    end
+
+    defp durable(store), do: Wardrik.Store.scope(store, "durable")
 
     defp notes(durable), do: Wardrik.Store.scope(durable, "unreadable")
+
+    # DurableServer writes its own data, such as which node runs the server, beside the state;
+    # a note lasts until the state itself changes.
+    defp fingerprint(value) do
+      kept = Map.get(value, "state", value)
+
+      :sha256
+      |> :crypto.hash(:erlang.term_to_binary(kept, [:deterministic]))
+      |> Base.encode16(case: :lower)
+    end
 
     defp update(_store, _key, _update, retries) when retries < 0,
       do: {:error, :max_retries_exceeded}
@@ -260,41 +296,17 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     defp deleted({:error, reason}, _store, _key), do: {:error, reason}
 
-    defp stored(%StoredState{} = stored_state) do
-      %{
-        StoredState.to_object_store_term(stored_state)
-        | "state" => :erlang.term_to_binary(stored_state.state)
-      }
-    end
+    defp stored(%StoredState{} = stored_state),
+      do: StoredState.to_object_store_term(stored_state)
 
     defp stored(data), do: data
 
     defp body(value) do
       case StoredState.from_object_store_term(value) do
-        {:ok, stored_state} -> with_state(stored_state, :first)
+        {:ok, stored_state} -> {:ok, stored_state}
         {:error, _reason} -> {:error, "it isn't in a form this release can read"}
         :not_stored_state -> {:ok, value}
       end
-    end
-
-    # A module not loaded yet, as in development, is loaded before the state is called unreadable.
-    defp with_state(%StoredState{state: state} = stored_state, attempt) do
-      case safe(state) do
-        {:ok, term} ->
-          {:ok, %{stored_state | state: term}}
-
-        :error ->
-          if attempt == :first and Unreadable.load_named(state),
-            do: with_state(stored_state, :again),
-            else: {:error, Unreadable.reason(state)}
-      end
-    end
-
-    # The safe decode raises for an atom this release doesn't have.
-    defp safe(binary) do
-      {:ok, :erlang.binary_to_term(binary, [:safe])}
-    rescue
-      ArgumentError -> :error
     end
 
     defp etag(vsn) do

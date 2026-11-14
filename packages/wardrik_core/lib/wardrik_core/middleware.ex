@@ -21,6 +21,12 @@ defmodule WardrikCore.Middleware do
     * `{:ok, context}` - answers the step with `context.response`.
     * `{:park, reason, context}` - waits for `WardrikCore.resume/3`.
     * `{:error, reason}` - ends the step.
+
+  ## Kept data
+
+  A park reason, or a value kept with `WardrikCore.Context.put_private/3`, survives a restart
+  as JSON. Each one's module must be a `WardrikCore.Format` with a `c:WardrikCore.Format.type/0`,
+  listed by `c:formats/0`. Use that module as the private key.
   """
   alias WardrikCore.Context
   @type context :: Context.t()
@@ -29,4 +35,9 @@ defmodule WardrikCore.Middleware do
 
   @doc "Handles one step. Call `next` to carry on, or return a result to stop."
   @callback call(context, next, opts :: term()) :: result()
+
+  @doc "The `WardrikCore.Format`s of what it parks on and keeps privately."
+  @callback formats() :: [module()]
+
+  @optional_callbacks formats: 0
 end

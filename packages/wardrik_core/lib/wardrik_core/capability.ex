@@ -19,9 +19,17 @@ defmodule WardrikCore.Capability do
       end
 
   Give it to an agent as `capabilities: [{MyApp.Orders, opts}]`. `opts` goes to `c:tools/2`.
+
+  A tool that parks on a reason of its own lists the reason's `WardrikCore.Format` in
+  `c:formats/0`. See `WardrikCore.Middleware`.
   """
   alias WardrikCore.Context
 
   @doc "Returns the tools for an agent, given its context and the options it was given."
   @callback tools(Context.t(), opts :: term()) :: [WardrikCore.Tool.t()]
+
+  @doc "The `WardrikCore.Format`s of what its tools park on."
+  @callback formats() :: [module()]
+
+  @optional_callbacks formats: 0
 end

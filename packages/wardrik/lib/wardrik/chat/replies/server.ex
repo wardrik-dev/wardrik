@@ -25,8 +25,6 @@ defmodule Wardrik.Chat.Replies.Server do
   def dump_state(state), do: State.dump(state)
 
   @impl DurableServer
-  # Before 2, the room followed every log by a pattern, with a cursor of its own shape.
-  def load_state(1, %{workspace: workspace, room: room}), do: State.new(workspace, room)
   def load_state(_vsn, dumped), do: State.load(dumped)
 
   @impl DurableServer

@@ -25,9 +25,13 @@ defmodule Wardrik.Test.Approval do
   @moduledoc "Middleware that parks each `echo` call until a person answers it, and `inbox` on a sign-in."
   @behaviour WardrikCore.Middleware
 
+  alias Wardrik.Policy.Ask
   alias WardrikCore.Authorization
   alias WardrikCore.Context
   alias WardrikCore.Resume
+
+  @impl true
+  def formats, do: [Ask]
 
   @impl true
   def call(%Context{step: {:tool_call, call}} = context, next, _opts) do
@@ -49,7 +53,7 @@ defmodule Wardrik.Test.Approval do
     do: {:park, %Authorization{url: "https://example.com/sign-in", credential: "mail"}, context}
 
   defp park(context, _call),
-    do: {:park, %{interrupt: "tool_approval", message: "Run echo?"}, context}
+    do: {:park, %Ask{interrupt: "tool_approval", message: "Run echo?"}, context}
 end
 
 defmodule Wardrik.Test.LLM do

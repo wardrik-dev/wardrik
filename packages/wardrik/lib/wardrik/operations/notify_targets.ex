@@ -6,7 +6,7 @@ defmodule Wardrik.Operations.NotifyTargets do
   # targets it routes to; routing to another owner's is `notify_target.use`.
 
   @behaviour Wardrik.Owned
-  @behaviour Wardrik.Store.Format
+  @behaviour WardrikCore.Format
 
   alias Wardrik.Error
   alias Wardrik.Notify.OwnedWebhook
@@ -20,14 +20,14 @@ defmodule Wardrik.Operations.NotifyTargets do
   @impl Wardrik.Owned
   def kind, do: "notify_targets"
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def version, do: 1
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def dump(%{owner: owner, name: name, url: url, secret: secret}),
     do: %{"owner" => owner, "name" => name, "url" => url, "secret" => secret}
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def load(1, %{"owner" => owner, "name" => name, "url" => url, "secret" => secret}),
     do: {:ok, %{owner: owner, name: name, url: url, secret: secret}}
 

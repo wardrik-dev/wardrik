@@ -10,7 +10,7 @@ defmodule Wardrik.Workspace.File do
   The store keeps it with `:at` in ISO 8601.
   """
 
-  @behaviour Wardrik.Store.Format
+  @behaviour WardrikCore.Format
 
   @enforce_keys [:content]
   defstruct [:content, :by, :at, labels: []]
@@ -22,10 +22,10 @@ defmodule Wardrik.Workspace.File do
           labels: [String.t()]
         }
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def version, do: 1
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def dump(%__MODULE__{} = file) do
     %{
       "content" => file.content,
@@ -35,7 +35,7 @@ defmodule Wardrik.Workspace.File do
     }
   end
 
-  @impl Wardrik.Store.Format
+  @impl WardrikCore.Format
   def load(1, %{"content" => content, "by" => by, "at" => at, "labels" => labels}) do
     with {:ok, at} <- at(at),
          do: {:ok, %__MODULE__{content: content, by: by, at: at, labels: labels}}

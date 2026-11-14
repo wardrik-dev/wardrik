@@ -28,12 +28,33 @@ defmodule Wardrik.Operations.Lifecycle do
          :ok <- written_after(wardrik, id, definition["policy"]),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          reset = Running.reset_unreadable(wardrik, id),
-         {:ok, _pid} <- Running.bring(wardrik, opts),
+         {:ok, reset} <- brought(wardrik, id, opts, reset),
          :ok <- saved(wardrik, id, definition),
          {:ok, snapshot} <- Agent.read(scope, %{"agent" => id}) do
       Sleeper.watch(wardrik, id)
       Changes.record(scope, type: "agent.defined", agent: id)
       {:ok, if(reset == [], do: snapshot, else: Map.put(snapshot, "reset", reset))}
+    end
+  end
+
+  # A saved state only the agent can tell it can't read is found as it starts; start it over too.
+  defp brought(wardrik, id, opts, reset) do
+    case Running.bring(wardrik, opts) do
+      {:ok, _pid} ->
+        {:ok, reset}
+
+      {:error, %Error{type: :conflict}} = error ->
+        started_over(wardrik, id, opts, reset, error)
+
+      error ->
+        error
+    end
+  end
+
+  defp started_over(wardrik, id, opts, reset, error) do
+    case Running.reset_unreadable(wardrik, id) do
+      [] -> error
+      again -> with {:ok, _pid} <- Running.bring(wardrik, opts), do: {:ok, reset ++ again}
     end
   end
 

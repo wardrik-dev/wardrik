@@ -1,6 +1,8 @@
 defmodule Wardrik.Operations.Running do
   @moduledoc "Finds the agents operations act on, waking them if needed."
 
+  @behaviour WardrikCore.Configure
+
   alias Wardrik.Definitions
   alias Wardrik.Error
   alias Wardrik.Setup
@@ -70,7 +72,7 @@ defmodule Wardrik.Operations.Running do
 
     case whereis(wardrik, key) do
       nil -> start(wardrik, key, opts)
-      pid -> configured(pid, opts)
+      pid -> configured(wardrik, key, pid, opts)
     end
   rescue
     error in ArgumentError -> {:error, Error.new(:invalid_request, Exception.message(error))}
@@ -80,6 +82,23 @@ defmodule Wardrik.Operations.Running do
   @spec held(keyword(), String.t() | nil) :: keyword()
   def held(opts, nil), do: opts
   def held(opts, conversation), do: Keyword.put(opts, :conversation, conversation)
+
+  @doc """
+  Gives an agent that loads by itself, as after a crash, its settings from its definition, as
+  waking it would. An agent started from code without one waits until it's started again.
+  """
+  @impl WardrikCore.Configure
+  def configure({agent, conversation}, name) do
+    wardrik = Wardrik.Instance.fetch!(name)
+
+    with {:ok, definition} <- definition(wardrik, agent),
+         {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, agent, definition) do
+      opts = Setup.agent(wardrik, held(opts, conversation))
+      {:ok, Keyword.drop(opts, [:agent_id, :conversation])}
+    else
+      {:error, _reason} -> :none
+    end
+  end
 
   defp wake(wardrik, {agent, conversation}) do
     with {:ok, definition} <- definition(wardrik, agent),
@@ -92,21 +111,17 @@ defmodule Wardrik.Operations.Running do
 
     case WardrikCore.start_agent(agents, opts) do
       {:ok, pid} ->
-        configured(pid, opts)
+        {:ok, pid}
 
       {:error, {:already_started, {pid, _meta}}} ->
-        configured(pid, opts)
+        configured(wardrik, key, pid, opts)
 
       # Another node started it first, and answered from there.
       {:error, {:already_started, pid}} when is_pid(pid) ->
-        configured(pid, opts)
+        configured(wardrik, key, pid, opts)
 
       {:error, {:unreadable, reason}} ->
-        {:error,
-         Error.new(
-           :conflict,
-           "#{describe(key)} can't start, as its saved state can't be read: #{reason}. Define it again to start it over; its definition, files and events stay."
-         )}
+        unreadable(wardrik, key, reason)
 
       {:error, reason} ->
         {:error, Error.new(:unavailable, "#{describe(key)} didn't start: #{inspect(reason)}")}
@@ -140,9 +155,22 @@ defmodule Wardrik.Operations.Running do
     |> WardrikCore.saved_key(key)
   end
 
-  defp configured(pid, opts) do
-    :ok = WardrikCore.configure(pid, Keyword.drop(opts, [:agent_id, :conversation]))
-    {:ok, pid}
+  defp configured(wardrik, key, pid, opts) do
+    case WardrikCore.configure(pid, Keyword.drop(opts, [:agent_id, :conversation])) do
+      :ok -> {:ok, pid}
+      {:error, {:unreadable, reason}} -> unreadable(wardrik, key, reason)
+    end
+  end
+
+  # Noted, so `unreadable/2` answers and defining the agent again starts it over.
+  defp unreadable(wardrik, key, reason) do
+    :ok = Durable.note(wardrik.store, saved_key(wardrik, key), reason)
+
+    {:error,
+     Error.new(
+       :conflict,
+       "#{describe(key)} can't start, as its saved state can't be read: #{reason}. Define it again to start it over; its definition, files and events stay."
+     )}
   end
 
   @doc "Describes the agent `key` for people: its ID, and its conversation's."
