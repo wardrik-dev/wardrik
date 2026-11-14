@@ -2,6 +2,7 @@
 _build/
 deps/
 cover/
+*.coverdata
 doc/
 tmp/
 **/priv/plts/

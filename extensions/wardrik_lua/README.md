@@ -6,7 +6,7 @@ the value: arithmetic, reshaping data, loops, or the current time.
 ```elixir
 def deps do
   [
-    {:wardrik_lua, "~> 0.1.0-rc.2"}
+    {:wardrik_lua, "~> 0.1.0-rc.3"}
   ]
 end
 ```
@@ -16,7 +16,7 @@ end
 Run the example in a fresh IEx session. Set `ANTHROPIC_API_KEY` before starting IEx.
 
 ```elixir
-Mix.install([{:wardrik_lua, "~> 0.1.0-rc.2"}])
+Mix.install([{:wardrik_lua, "~> 0.1.0-rc.3"}])
 
 children = [
   {WardrikCore.Backends.MemoryStore, name: :agents},

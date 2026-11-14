@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.8 (2026-11-14)
 
 - The modules tools, middleware and extensions are written with are named under `Wardrik`:
   `Wardrik.Tool`, `Wardrik.ToolCall`, `Wardrik.Capability`, `Wardrik.Context`, `Wardrik.Resume`,

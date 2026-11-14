@@ -10,7 +10,7 @@ sidebar:
 Install the release, restart the daemon, and check the running version:
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.13/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.14/install.sh | sh
 systemctl --user restart wardrik
 wardrik version
 ```
@@ -22,14 +22,32 @@ wardrik version
 In Docker, start a new container with the same volumes:
 
 ```sh
-docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.13
+docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.14
 docker rm -f wardrik
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.13
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.14
 ```
 
 A release reads everything an earlier one stored: each stored value carries its format's version,
-and a later release upgrades it as it reads it. Upgrading never needs the store emptied.
+and a later release upgrades it as it reads it. From 0.1.0-rc.14 on, upgrading never needs the
+store emptied.
+
+### From 0.1.0-rc.13 or earlier
+
+0.1.0-rc.14 can't read what an earlier release stored. Empty the store before starting it:
+
+```sh
+wardrik stop
+mv ~/.local/share/wardrik/store ~/.local/share/wardrik/store-rc13
+```
+
+- In Docker, remove `/data/store` from the `wardrik` volume:
+  `docker run --rm -v wardrik:/data alpine rm -rf /data/store`.
+- With Postgres, run `TRUNCATE wardrik_store;`. With S3, delete the objects under `prefix`.
+- Agents in `agents/` start again from their files, with empty conversations. Add again what
+  the store kept: secrets, including the model key `wardrik init` sealed, OAuth apps, servers,
+  notify targets, connections, tokens, and agents created through the API. Agents' files and
+  events start empty.
 
 Rolling back is safe until the new release writes. A value it wrote at a later version stays as it
 is, and the older release reports it as unreadable rather than reading it wrong.

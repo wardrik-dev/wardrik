@@ -40,7 +40,7 @@ hex_packages() {
 dir_of() {
   case $1 in
     "$SDK") echo "$ROOT/sdk/$SDK" ;;
-    *) for dir in "$ROOT"/packages/"$1" "$ROOT"/extensions/"$1"; do [[ -d $dir ]] && echo "$dir"; done ;;
+    *) for dir in "$ROOT"/packages/"$1" "$ROOT"/extensions/"$1"; do if [[ -d $dir ]]; then echo "$dir"; return; fi; done ;;
   esac
 }
 

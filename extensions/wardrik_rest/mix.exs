@@ -4,7 +4,7 @@ defmodule WardrikRest.MixProject do
   def project do
     [
       app: :wardrik_rest,
-      version: "0.1.0-rc.1",
+      version: "0.1.0-rc.2",
       elixir: "~> 1.20",
       description:
         "Tools for agents from an HTTP API's description, such as a Google Discovery document, with its sign-in and keys.",
@@ -61,7 +61,7 @@ defmodule WardrikRest.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.4"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.8"),
       {:req, "~> 0.7"},
       {:nimble_options, "~> 1.1"},
       {:yaml_elixir, "~> 2.12"},

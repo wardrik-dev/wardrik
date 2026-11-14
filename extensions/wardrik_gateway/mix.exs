@@ -4,7 +4,7 @@ defmodule WardrikGateway.MixProject do
   def project do
     [
       app: :wardrik_gateway,
-      version: "0.1.0-rc.1",
+      version: "0.1.0-rc.2",
       elixir: "~> 1.20",
       description:
         "Rate limits, circuit breakers and model failover for agents' model calls, as Wardrik middleware.",
@@ -61,7 +61,7 @@ defmodule WardrikGateway.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.3"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.8"),
       {:nimble_options, "~> 1.1"},
       {:req_llm, "~> 1.28"},
       {:telemetry, "~> 1.3"},

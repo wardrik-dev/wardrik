@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.0-rc.1 (unreleased)
+## 0.1.0-rc.2 (2026-11-14)
+
+- Requires `wardrik_core` 0.1.0-rc.8, whose modules tools and middleware are written with are
+  named under `Wardrik`.
+
+## 0.1.0-rc.1
 
 - `WardrikGateway`: middleware for agents' model calls, with limits per provider, a breaker per
   model, and fallbacks by model.

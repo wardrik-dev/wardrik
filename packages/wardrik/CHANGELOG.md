@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.13 (2026-11-14)
 
+- **Upgrading:** this release can't read a store an earlier one wrote. Empty it, then add a
+  migration running `Wardrik.Store.Ecto.Migration` version 2 if you use `Wardrik.Store.Ecto`.
+  From this release on, a release reads what earlier ones stored.
 - Tools, middleware and credentials are written with `Wardrik.Tool`, `Wardrik.Capability`,
   `Wardrik.Context`, `Wardrik.Credentials` and the rest of `wardrik_core`'s modules now named
   under `Wardrik`, in place of their `WardrikCore` names.

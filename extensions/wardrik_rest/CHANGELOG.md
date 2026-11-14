@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.2 (2026-11-14)
+
+- Requires `wardrik_core` 0.1.0-rc.8, whose modules tools and middleware are written with are
+  named under `Wardrik`.
+
 ## 0.1.0-rc.1 (2026-11-13)
 
 - One tool per operation of an HTTP API, from its description.
