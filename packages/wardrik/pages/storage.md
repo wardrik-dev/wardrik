@@ -49,6 +49,8 @@ Wardrik.Store.put(mine, "settings/theme", "blue", if_vsn: vsn)
 - With EKV, once you write a key with `:if_vsn`, always write it that way.
 - Values are JSON. To change their shape in a later release, name a `WardrikCore.Format` with
   `:format`, whose `load/2` reads each version written before.
+- A release reads everything an earlier one stored. Each keeps a corpus of what it stores, and
+  every later release is tested against all of them.
 
 ## Keep agents in it
 

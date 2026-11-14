@@ -9,4 +9,4 @@ Mimic.copy(Wardrik.OAuth.Browser)
 Mimic.copy(Wardrik.OAuth.Device)
 
 WardrikDaemon.Test.start_store()
-ExUnit.start()
+ExUnit.start(exclude: [:corpus])

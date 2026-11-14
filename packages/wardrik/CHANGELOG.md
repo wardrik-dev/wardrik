@@ -18,6 +18,8 @@
 - `Wardrik.Store.Durable` keeps agents as JSON. A DurableServer kept beside them returns JSON from
   its `dump_state/1`. An agent that loads by itself is configured from its definition.
 - `Wardrik.Policy.Ask` is kept as `policy_ask`. The format behaviour is `WardrikCore.Format`.
+- From this release, a release reads everything an earlier one stored, and is tested against a
+  corpus of what each stored.
 
 ## 0.1.0-rc.12 (2026-11-13)
 
