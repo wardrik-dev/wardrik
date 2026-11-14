@@ -8,12 +8,12 @@ end
 
 defmodule Wardrik.EventLog.Test.Echo do
   @moduledoc "A capability with one tool, `echo`."
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "echo",
         description: "Echoes text",
         schema: [text: [type: :string]],

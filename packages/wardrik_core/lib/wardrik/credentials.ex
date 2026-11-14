@@ -1,10 +1,10 @@
-defmodule WardrikCore.Credentials do
+defmodule Wardrik.Credentials do
   @moduledoc """
   Gives tools the tokens of the person a turn acts for. For your own API keys, see
-  `WardrikCore.Keys`.
+  `Wardrik.Keys`.
 
       defmodule MyApp.Vault do
-        @behaviour WardrikCore.Credentials
+        @behaviour Wardrik.Credentials
 
         @impl true
         def resolve(%{principal: nil}, _opts), do: {:error, "There's no one to act for."}
@@ -19,19 +19,19 @@ defmodule WardrikCore.Credentials do
 
   Give it to an agent as `credentials: {MyApp.Vault, opts}`. A tool fetches what it needs:
 
-      with {:ok, token} <- WardrikCore.Credentials.fetch(context, "github") do
+      with {:ok, token} <- Wardrik.Credentials.fetch(context, "github") do
         GitHub.create_issue(token, title)
       end
 
-    * `{:authorize, url}` parks the call on a `WardrikCore.Authorization`.
+    * `{:authorize, url}` parks the call on a `Wardrik.Credentials.Authorization`.
     * Call `refused/2` when a service rejects a token, then fetch again.
     * Tokens are never saved or emitted. Keep them out of private data and attributes.
 
   See the [Credentials](credentials.html) guide.
   """
-  alias WardrikCore.Authorization
-  alias WardrikCore.Context
-  alias WardrikCore.Credentials.Request
+  alias Wardrik.Context
+  alias Wardrik.Credentials.Authorization
+  alias Wardrik.Credentials.Request
 
   @doc """
   Returns the credential the request names: `{:ok, secret}`, `{:authorize, url}` for a sign-in

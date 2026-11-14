@@ -4,13 +4,13 @@ defmodule WardrikCore.SpanTest do
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Span
   alias WardrikCore.Test.Echo
   alias WardrikCore.Turn
 
   defmodule Charge do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: {:tool_call, call}} = context, next, _opts) do
@@ -115,7 +115,7 @@ defmodule WardrikCore.SpanTest do
 
     checkpoint = %{
       messages: context.messages ++ [assistant],
-      calls: Enum.map(assistant.tool_calls, &WardrikCore.ToolCall.from_req_llm/1),
+      calls: Enum.map(assistant.tool_calls, &Wardrik.ToolCall.from_req_llm/1),
       rounds: 3,
       metadata: %{},
       private: %{},

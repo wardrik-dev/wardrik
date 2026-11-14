@@ -18,7 +18,7 @@ defmodule WardrikLua do
     * `:limits` - bounds for each run. See `WardrikLua.Sandbox.Limits`.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   alias WardrikLua.Sandbox
   alias WardrikLua.Sandbox.Limits
@@ -37,7 +37,7 @@ defmodule WardrikLua do
 
   @returned_nothing "the chunk ran and returned nothing; end it with `return <value>` to get a value back"
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, opts) do
     limits =
       opts
@@ -45,7 +45,7 @@ defmodule WardrikLua do
       |> Limits.new()
 
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "run_lua",
         description: @description,
         schema: [

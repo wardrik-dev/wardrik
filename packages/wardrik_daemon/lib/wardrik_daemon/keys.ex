@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.Keys do
   @moduledoc """
-  Finds the API keys agents call models and tools with. It's the daemon's `WardrikCore.Keys`.
+  Finds the API keys agents call models and tools with. It's the daemon's `Wardrik.Keys`.
 
       echo "$KEY" | wardrik vault put ZAI_API_KEY --org acme --for api_key
 
@@ -16,13 +16,13 @@ defmodule WardrikDaemon.Keys do
     * `:deployment` - `true` to fall back to the deployment's keys. `false` unless set.
   """
 
-  @behaviour WardrikCore.Keys
+  @behaviour Wardrik.Keys
 
   alias Wardrik.Owned
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
-  @impl WardrikCore.Keys
-  def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, opts) do
+  @impl Wardrik.Keys
+  def fetch(%Wardrik.Keys.Request{name: name, principal: principal}, opts) do
     wardrik =
       opts
       |> Keyword.fetch!(:wardrik)

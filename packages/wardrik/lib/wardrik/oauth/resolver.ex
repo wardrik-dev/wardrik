@@ -8,7 +8,7 @@ defmodule Wardrik.OAuth.Resolver do
         @behaviour Wardrik.OAuth.Resolver
 
         @impl true
-        def provider(%{name: name, principal: %WardrikCore.Principal{id: id}}, _opts) do
+        def provider(%{name: name, principal: %Wardrik.Principal{id: id}}, _opts) do
           case MyApp.OAuthApps.for_user(id, name) do
             nil ->
               {:error, :not_found}

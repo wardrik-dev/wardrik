@@ -3,7 +3,7 @@ defmodule Wardrik.Vault.Secret do
   A value to seal, and who holds it under what name. See `Wardrik.Vault.put/3`.
 
       Wardrik.Vault.put(MyApp.Vault, %Wardrik.Vault.Secret{
-        principal: %WardrikCore.Principal{id: "user:jon"},
+        principal: %Wardrik.Principal{id: "user:jon"},
         name: "github",
         value: "ghp_..."
       })
@@ -16,7 +16,7 @@ defmodule Wardrik.Vault.Secret do
   defstruct [:principal, :name, :value]
 
   @type t() :: %__MODULE__{
-          principal: WardrikCore.Principal.t(),
+          principal: Wardrik.Principal.t(),
           name: String.t(),
           value: binary()
         }

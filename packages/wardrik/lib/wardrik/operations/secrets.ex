@@ -6,9 +6,9 @@ defmodule Wardrik.Operations.Secrets do
 
   alias Wardrik.Error
   alias Wardrik.Operations.Changes
+  alias Wardrik.Principal
   alias Wardrik.Scope
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
 
   @purposes %{
     "api_key" => :api_key,

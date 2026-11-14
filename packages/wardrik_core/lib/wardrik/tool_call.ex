@@ -1,7 +1,7 @@
-defmodule WardrikCore.ToolCall do
+defmodule Wardrik.ToolCall do
   @moduledoc "A tool call the model asked for, with the arguments the model wrote."
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   alias WardrikCore.Stored.Term
 
@@ -20,17 +20,17 @@ defmodule WardrikCore.ToolCall do
     }
   end
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def type, do: "tool_call"
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(%__MODULE__{} = call),
     do: %{"id" => call.id, "name" => call.name, "arguments" => Term.dump(call.arguments)}
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, %{"id" => id, "name" => name, "arguments" => arguments}) do
     with {:ok, arguments} <- Term.load(arguments),
          do: {:ok, %__MODULE__{id: id, name: name, arguments: arguments}}

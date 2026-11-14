@@ -1,17 +1,17 @@
 defmodule Wardrik.Test.Tools do
   @moduledoc "A capability with two tools: `echo`, and `inbox`, which needs a sign-in."
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "echo",
         description: "Echoes text",
         schema: [text: [type: :string]],
         run: fn args, _context -> {:ok, Map.get(args, :text, "")} end
       ),
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "inbox",
         description: "Reads the inbox",
         schema: [],
@@ -23,12 +23,12 @@ end
 
 defmodule Wardrik.Test.Approval do
   @moduledoc "Middleware that parks each `echo` call until a person answers it, and `inbox` on a sign-in."
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
+  alias Wardrik.Context
+  alias Wardrik.Credentials.Authorization
   alias Wardrik.Policy.Ask
-  alias WardrikCore.Authorization
-  alias WardrikCore.Context
-  alias WardrikCore.Resume
+  alias Wardrik.Resume
 
   @impl true
   def formats, do: [Ask]
@@ -69,17 +69,17 @@ end
 
 defmodule Wardrik.Test.Mail do
   @moduledoc "A capability with `mail`, a tool that reads the inbox with the principal's `mail` credential."
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "mail",
         description: "Reads the inbox",
         schema: [],
         run: fn _args, context ->
-          with {:ok, token} <- WardrikCore.Credentials.fetch(context, "mail"),
+          with {:ok, token} <- Wardrik.Credentials.fetch(context, "mail"),
                do: {:ok, "Read with #{token}."}
         end
       )
@@ -89,12 +89,12 @@ end
 
 defmodule Wardrik.Test.Blocking do
   @moduledoc "A capability with `block`, a tool that tells the test it runs, and waits to be released."
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, test) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "block",
         description: "Blocks until released",
         schema: [],
@@ -109,10 +109,10 @@ end
 
 defmodule Wardrik.Test.Tell do
   @moduledoc "Middleware that tells the test of each model call, for the deployment's middleware."
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
   @impl true
-  def call(%WardrikCore.Context{step: :generate, agent_id: id} = context, next, test) do
+  def call(%Wardrik.Context{step: :generate, agent_id: id} = context, next, test) do
     send(test, {:middleware, id})
     next.(context)
   end

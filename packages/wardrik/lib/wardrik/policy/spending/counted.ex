@@ -4,15 +4,15 @@ defmodule Wardrik.Policy.Spending.Counted do
   # What a turn's measurements were when spending last counted them, so a restart counts only
   # what came after.
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def type, do: "policy_counted"
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(%{trace: trace, counted: counted}) do
     %{
       "trace" => trace,
@@ -21,7 +21,7 @@ defmodule Wardrik.Policy.Spending.Counted do
   end
 
   # A measure is one the app counts, so its atom exists once it runs.
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, %{"trace" => trace, "counted" => counted}) do
     {:ok,
      %{

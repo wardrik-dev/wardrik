@@ -7,7 +7,7 @@ defmodule WardrikCore.Stored.Term do
   # `{"$datetime": iso8601}`, a map with atom keys as `{"$atom_keys": {...}}`, and any other map
   # as `{"$map": [[key, value], ...]}`.
 
-  @spec dump(term()) :: WardrikCore.Format.json()
+  @spec dump(term()) :: Wardrik.Format.json()
   def dump(value) when is_nil(value) or is_boolean(value) or is_number(value), do: value
   def dump(value) when is_atom(value), do: %{"$atom" => Atom.to_string(value)}
 
@@ -42,7 +42,7 @@ defmodule WardrikCore.Stored.Term do
 
   defp plain?(key), do: is_binary(key) and not String.starts_with?(key, "$")
 
-  @spec load(WardrikCore.Format.json()) :: {:ok, term()} | {:error, String.t()}
+  @spec load(Wardrik.Format.json()) :: {:ok, term()} | {:error, String.t()}
   def load(json) do
     {:ok, loaded(json)}
   catch
@@ -50,7 +50,7 @@ defmodule WardrikCore.Stored.Term do
   end
 
   @doc "As `load/1`, but throws `{:unreadable, reason}`, for codecs that read many values."
-  @spec loaded(WardrikCore.Format.json()) :: term()
+  @spec loaded(Wardrik.Format.json()) :: term()
   def loaded(%{"$atom" => name}), do: atom!(name)
   def loaded(%{"$bytes" => bytes}), do: Base.decode64!(bytes)
 

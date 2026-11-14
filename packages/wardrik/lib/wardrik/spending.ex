@@ -1,11 +1,11 @@
 defmodule Wardrik.Spending do
   @moduledoc false
 
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
-  @impl WardrikCore.Middleware
+  @impl Wardrik.Middleware
   def call(%Context{subagent: name} = context, next, _instance) when is_binary(name),
     do: next.(context)
 

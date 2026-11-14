@@ -6,7 +6,7 @@ defmodule WardrikResearch.Deep do
   Returns `%{"topic" => ..., "report" => ..., "gaps" => [%{"angle" => ..., "reason" => ...}]}`.
   """
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   @timeout :timer.minutes(8)
   @max_concurrency 5
@@ -41,7 +41,7 @@ defmodule WardrikResearch.Deep do
   """
 
   @doc "Returns the tool. Raises `ArgumentError` on a bad angle. See `WardrikResearch` for `opts`."
-  @spec tool(keyword()) :: WardrikCore.Tool.t()
+  @spec tool(keyword()) :: Wardrik.Tool.t()
   def tool(opts) do
     opts =
       opts
@@ -53,7 +53,7 @@ defmodule WardrikResearch.Deep do
       )
       |> Keyword.update!(:angles, &Enum.map(&1, fn angle -> brief!(angle) end))
 
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: "deep_research",
       description: @description,
       schema: [

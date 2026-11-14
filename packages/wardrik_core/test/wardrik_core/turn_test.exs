@@ -4,15 +4,15 @@ defmodule WardrikCore.TurnTest do
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Context
-  alias WardrikCore.Resume
+  alias Wardrik.Context
+  alias Wardrik.Resume
   alias WardrikCore.Test.Echo
   alias WardrikCore.Test.ParkGenerate
   alias WardrikCore.Test.ParkTools
   alias WardrikCore.Turn
 
   defmodule Witness do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(
@@ -28,12 +28,12 @@ defmodule WardrikCore.TurnTest do
   end
 
   defmodule Named do
-    @behaviour WardrikCore.Capability
+    @behaviour Wardrik.Capability
 
     @impl true
     def tools(_context, name) do
       [
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: name,
           description: name,
           run: fn _args, _context -> {:ok, name} end
@@ -43,12 +43,12 @@ defmodule WardrikCore.TurnTest do
   end
 
   defmodule Lookup do
-    @behaviour WardrikCore.Capability
+    @behaviour Wardrik.Capability
 
     @impl true
     def tools(_context, _opts) do
       [
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: "lookup",
           description: "Looks something up",
           annotations: [read_only: true],
@@ -59,7 +59,7 @@ defmodule WardrikCore.TurnTest do
   end
 
   defmodule Stream do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: :generate, metadata: %{test: pid}} = context, next, _opts) do
@@ -71,7 +71,7 @@ defmodule WardrikCore.TurnTest do
   end
 
   defmodule Report do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: step, metadata: %{test: pid}} = context, next, _opts) do
@@ -161,25 +161,25 @@ defmodule WardrikCore.TurnTest do
   end
 
   defmodule Labelled do
-    @behaviour WardrikCore.Capability
+    @behaviour Wardrik.Capability
 
     @impl true
     def tools(_context, _opts) do
       [
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: "search",
           description: "Searches the web",
           run: fn _args, _context -> {:ok, "a page"} end,
           annotations: [labels: ["outside"]]
         ),
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: "read",
           description: "Reads a file",
           run: fn _args, _context ->
             {:ok, %ReqLLM.ToolResult{output: "a note", metadata: %{labels: ["books"]}}}
           end
         ),
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: "fail",
           description: "Fails",
           run: fn _args, _context ->
@@ -361,7 +361,7 @@ defmodule WardrikCore.TurnTest do
 
       checkpoint = %{
         messages: context.messages ++ [assistant],
-        calls: Enum.map(assistant.tool_calls, &WardrikCore.ToolCall.from_req_llm/1),
+        calls: Enum.map(assistant.tool_calls, &Wardrik.ToolCall.from_req_llm/1),
         rounds: 3,
         metadata: %{trace: "t1"},
         private: %{},
@@ -522,7 +522,7 @@ defmodule WardrikCore.TurnTest do
 
     %{
       messages: context.messages ++ [assistant],
-      calls: Enum.map(assistant.tool_calls, &WardrikCore.ToolCall.from_req_llm/1),
+      calls: Enum.map(assistant.tool_calls, &Wardrik.ToolCall.from_req_llm/1),
       rounds: 3,
       metadata: %{},
       private: %{},

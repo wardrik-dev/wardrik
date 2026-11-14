@@ -15,9 +15,9 @@ defmodule WardrikDaemon.HelpTools do
   fetched on first use and kept for an hour. If fetching fails, the last copy is used.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  alias WardrikCore.Tool
+  alias Wardrik.Tool
   alias WardrikDaemon.Config
   alias WardrikDaemon.Dirs
 
@@ -26,7 +26,7 @@ defmodule WardrikDaemon.HelpTools do
   @found 5
   @longest 40_000
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, opts) do
     daemon = Keyword.fetch!(opts, :daemon)
     docs = %{url: Keyword.get(opts, :docs, @docs), req: Keyword.get(opts, :req_options, [])}

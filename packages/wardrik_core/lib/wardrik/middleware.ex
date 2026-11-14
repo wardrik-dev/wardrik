@@ -1,9 +1,9 @@
-defmodule WardrikCore.Middleware do
+defmodule Wardrik.Middleware do
   @moduledoc """
   Wraps every step of a turn: the turn, each model call and each tool call.
 
       defmodule MyApp.NoShell do
-        @behaviour WardrikCore.Middleware
+        @behaviour Wardrik.Middleware
 
         @impl true
         def call(%{step: {:tool_call, %{name: "shell"}}} = context, _next, _opts),
@@ -24,11 +24,11 @@ defmodule WardrikCore.Middleware do
 
   ## Kept data
 
-  A park reason, or a value kept with `WardrikCore.Context.put_private/3`, survives a restart
-  as JSON. Each one's module must be a `WardrikCore.Format` with a `c:WardrikCore.Format.type/0`,
+  A park reason, or a value kept with `Wardrik.Context.put_private/3`, survives a restart
+  as JSON. Each one's module must be a `Wardrik.Format` with a `c:Wardrik.Format.type/0`,
   listed by `c:formats/0`. Use that module as the private key.
   """
-  alias WardrikCore.Context
+  alias Wardrik.Context
   @type context :: Context.t()
   @type result :: {:ok, context()} | {:error, term()} | {:park, term(), context()}
   @type next :: (context() -> result())
@@ -36,7 +36,7 @@ defmodule WardrikCore.Middleware do
   @doc "Handles one step. Call `next` to carry on, or return a result to stop."
   @callback call(context, next, opts :: term()) :: result()
 
-  @doc "The `WardrikCore.Format`s of what it parks on and keeps privately."
+  @doc "The `Wardrik.Format`s of what it parks on and keeps privately."
   @callback formats() :: [module()]
 
   @optional_callbacks formats: 0

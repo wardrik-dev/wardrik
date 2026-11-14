@@ -7,15 +7,15 @@ defmodule WardrikCore.Agent.Stored do
   # Its private data, checkpoint and parked turn may hold values of its middleware's formats, so
   # they're read once its configuration names them. Until then they're kept as they were read.
 
+  alias Wardrik.Context
+  alias Wardrik.ToolCall
   alias WardrikCore.Agent.State
-  alias WardrikCore.Context
   alias WardrikCore.Span
   alias WardrikCore.Stored.Message
   alias WardrikCore.Stored.Term
-  alias WardrikCore.ToolCall
   alias WardrikCore.ToolRunner
 
-  @core [WardrikCore.Authorization, WardrikCore.Retry.Exhausted]
+  @core [Wardrik.Credentials.Authorization, WardrikCore.Retry.Exhausted]
   @deferred ["private", "checkpoint", "parked"]
   @states %{"idle" => :idle, "due" => :due, "waiting" => :waiting}
 
@@ -357,7 +357,7 @@ defmodule WardrikCore.Agent.Stored do
       else:
         raise(
           ArgumentError,
-          "#{inspect(format)} keeps a value without a type: see WardrikCore.Format"
+          "#{inspect(format)} keeps a value without a type: see Wardrik.Format"
         )
   end
 

@@ -40,7 +40,7 @@ defmodule WardrikDaemon.HarnessesTest do
       {:ok, record} =
         AgentRecords.create(context.store, owner: owner, name: "builder", source: :api)
 
-      agent = WardrikCore.Context.new(agent_id: record.id)
+      agent = Wardrik.Context.new(agent_id: record.id)
 
       for {_name, {module, opts}} <- capabilities,
           tool <- module.tools(agent, opts),

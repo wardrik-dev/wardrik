@@ -24,12 +24,12 @@ defmodule MyApp.Agents do
 end
 
 defmodule MyApp.Books do
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "pay_bill",
         description: "Pays a vendor's bill, in dollars.",
         schema: [vendor: [type: :string, required: true], amount: [type: :integer, required: true]],

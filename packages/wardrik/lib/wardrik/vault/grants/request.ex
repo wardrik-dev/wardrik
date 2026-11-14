@@ -5,14 +5,14 @@ defmodule Wardrik.Vault.Grants.Request do
       %Wardrik.Vault.Grants.Request{
         vault: MyApp.Vault,
         name: "github",
-        principal: %WardrikCore.Principal{id: "user_42"},
+        principal: %Wardrik.Principal{id: "user_42"},
         grant: %{value: json, vsn: vsn}
       }
 
   `grant` is what the principal holds, for `c:Wardrik.Vault.Grants.renew/2`. `nil` otherwise.
   """
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   @enforce_keys [:vault, :name, :principal]
   defstruct [:vault, :name, :principal, :grant]

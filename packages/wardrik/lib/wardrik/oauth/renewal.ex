@@ -7,8 +7,8 @@ defmodule Wardrik.OAuth.Renewal do
   alias Wardrik.OAuth.Provider
   alias Wardrik.OAuth.Request
   alias Wardrik.OAuth.Token
+  alias Wardrik.Principal
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
 
   @doc """
   Returns the access token of `:token`, refreshing it first with `:provider` if it has expired.

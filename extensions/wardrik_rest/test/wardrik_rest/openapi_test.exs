@@ -1,7 +1,7 @@
 defmodule WardrikRest.OpenAPITest do
   use ExUnit.Case, async: true
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikRest.API
   alias WardrikRest.OpenAPI
   alias WardrikRest.Parameter
@@ -134,7 +134,7 @@ defmodule WardrikRest.OpenAPITest do
       context =
         Context.new(
           agent_id: "acme/shop",
-          principal: %WardrikCore.Principal{id: "org:acme"},
+          principal: %Wardrik.Principal{id: "org:acme"},
           keys: {WardrikRest.Test.Keys, %{"SHOP" => "s3cret"}}
         )
 

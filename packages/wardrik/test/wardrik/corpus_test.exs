@@ -10,21 +10,21 @@ defmodule Wardrik.CorpusTest do
   alias DurableServer.StoredState
   alias ReqLLM.Message.ContentPart
   alias Wardrik.Chat.Replies
+  alias Wardrik.Credentials.Authorization
   alias Wardrik.MCP.Server
   alias Wardrik.OAuth.Apps
   alias Wardrik.Operations.NotifyTargets
   alias Wardrik.Operations.Servers
   alias Wardrik.Policy.Ask
   alias Wardrik.Policy.Spending
+  alias Wardrik.Principal
   alias Wardrik.Store.Durable
   alias Wardrik.Store.Format
+  alias Wardrik.ToolCall
   alias Wardrik.Vault.Sealed
   alias Wardrik.Workspace.File
   alias WardrikCore.Agent.State
-  alias WardrikCore.Authorization
-  alias WardrikCore.Principal
   alias WardrikCore.Span
-  alias WardrikCore.ToolCall
 
   @corpus Path.expand("../corpus", __DIR__)
   @middleware [{Wardrik.Policy.Middleware, []}]
@@ -194,7 +194,7 @@ defmodule Wardrik.CorpusTest do
 
   defp agents(store, maria) do
     {:ok, %{state: backend}} = Durable.init_backend(store: store)
-    context = WardrikCore.Context.new(agent_id: "acme/triage", middleware: @middleware)
+    context = Wardrik.Context.new(agent_id: "acme/triage", middleware: @middleware)
     span = Span.root()
 
     messages = [

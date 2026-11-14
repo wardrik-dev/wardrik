@@ -15,7 +15,7 @@ defmodule WardrikDaemon.Pairings do
 
   use GenServer
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   @alphabet "BCDFGHJKLMNPQRSTVWXZ"
   @length 8

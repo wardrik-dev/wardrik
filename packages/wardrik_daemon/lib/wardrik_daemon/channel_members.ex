@@ -20,7 +20,7 @@ defmodule WardrikDaemon.ChannelMembers do
   @behaviour Wardrik.Chat.Identities
 
   alias Wardrik.Chat.Identities.Request
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.Config.Access
   alias WardrikDaemon.Owners
 

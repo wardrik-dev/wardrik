@@ -1,7 +1,7 @@
-if Code.ensure_loaded?(WardrikCore.Middleware) do
+if Code.ensure_loaded?(Wardrik.Middleware) do
   defmodule Wardrik.Policy.Middleware do
     @moduledoc """
-    A `WardrikCore.Middleware` that holds an agent to one or more policies.
+    A `Wardrik.Middleware` that holds an agent to one or more policies.
 
         middleware: [{Wardrik.Policy.Middleware, Wardrik.Policy.new!(deny: ["shell/*"])}]
         middleware: [{Wardrik.Policy.Middleware, [app_policy, agent_policy]}]
@@ -34,19 +34,19 @@ if Code.ensure_loaded?(WardrikCore.Middleware) do
 
     The first two carry `agent_id`, `span`, `call` (`nil` for a model call) and `labels`.
     """
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
+    alias Wardrik.Context
     alias Wardrik.Policy.Ask
     alias Wardrik.Policy.Decision
     alias Wardrik.Policy.Spending
-    alias WardrikCore.Context
-    alias WardrikCore.Resume
-    alias WardrikCore.Tool
+    alias Wardrik.Resume
+    alias Wardrik.Tool
 
-    @impl WardrikCore.Middleware
+    @impl Wardrik.Middleware
     def formats, do: [Ask, Spending.Spent, Spending.Counted]
 
-    @impl WardrikCore.Middleware
+    @impl Wardrik.Middleware
     def call(%Context{step: {:tool_call, call}} = context, next, policies) do
       decision = Wardrik.Policy.explain(policies, call.name, decide_opts(context, call))
       emit(:decision, context, call, %{decision: decision})

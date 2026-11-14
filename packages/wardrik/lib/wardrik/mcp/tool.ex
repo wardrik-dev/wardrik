@@ -1,10 +1,10 @@
 defmodule Wardrik.MCP.Tool do
   @moduledoc false
 
+  alias Wardrik.Context
   alias Wardrik.MCP.Connection
   alias Wardrik.MCP.Result
   alias Wardrik.MCP.Server
-  alias WardrikCore.Context
 
   @hints [
     {"readOnlyHint", :read_only},
@@ -16,16 +16,16 @@ defmodule Wardrik.MCP.Tool do
   @margin :timer.seconds(1)
   @server_error -32_000
 
-  @spec offered(Server.t(), [map()]) :: [WardrikCore.Tool.t()]
+  @spec offered(Server.t(), [map()]) :: [Wardrik.Tool.t()]
   def offered(server, definitions) do
     definitions
     |> Enum.filter(fn definition -> Server.offers?(server, definition["name"]) end)
     |> Enum.map(&new(server, &1))
   end
 
-  @spec new(Server.t(), map()) :: WardrikCore.Tool.t()
+  @spec new(Server.t(), map()) :: Wardrik.Tool.t()
   def new(%Server{} = server, %{"name" => name} = definition) do
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: "#{Server.prefix(server)}__#{name}",
       description: Map.get(definition, "description", name),
       schema: Map.get(definition, "inputSchema", %{"type" => "object"}),
@@ -35,9 +35,9 @@ defmodule Wardrik.MCP.Tool do
   end
 
   @doc "Returns the `connect` tool a server offers before anyone has connected with a credential."
-  @spec connect(Server.t()) :: WardrikCore.Tool.t()
+  @spec connect(Server.t()) :: Wardrik.Tool.t()
   def connect(%Server{} = server) do
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: "#{Server.prefix(server)}__connect",
       description:
         "Connects to #{server.name} as whoever you act for, signing in first if they must. Its tools come with the next turn.",

@@ -1,15 +1,15 @@
-defmodule WardrikCore.KeysTest do
+defmodule Wardrik.KeysTest do
   use ExUnit.Case, async: true
   use Mimic
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Context
-  alias WardrikCore.Keys
-  alias WardrikCore.Principal
+  alias Wardrik.Context
+  alias Wardrik.Keys
+  alias Wardrik.Principal
 
   defmodule Held do
-    @behaviour WardrikCore.Keys
+    @behaviour Wardrik.Keys
 
     @impl true
     def fetch(%{name: name, principal: %Principal{id: owner}}, held) do

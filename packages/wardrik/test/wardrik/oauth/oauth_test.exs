@@ -3,11 +3,11 @@ defmodule Wardrik.OAuthTest do
 
   alias Wardrik.OAuth.GitHub
   alias Wardrik.OAuth.Token
+  alias Wardrik.Principal
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
 
   defp credential(name, principal),
-    do: %WardrikCore.Credentials.Request{name: name, principal: principal}
+    do: %Wardrik.Credentials.Request{name: name, principal: principal}
 
   @jon %Principal{id: "user:jon"}
   @acme_jon %Principal{id: "acme/@jon"}

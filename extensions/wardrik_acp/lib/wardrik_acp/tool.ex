@@ -1,20 +1,20 @@
 defmodule WardrikACP.Tool do
   @moduledoc false
 
+  alias Wardrik.Context
+  alias Wardrik.Resume
+  alias Wardrik.ToolCall
   alias WardrikACP.Connection
   alias WardrikACP.Harness
   alias WardrikACP.Worktree
-  alias WardrikCore.Context
-  alias WardrikCore.Resume
-  alias WardrikCore.ToolCall
 
   @margin :timer.seconds(5)
   @outside "outside"
   @read_only ~w(read search think fetch)
 
-  @spec new(map(), Harness.t(), [String.t()]) :: WardrikCore.Tool.t()
+  @spec new(map(), Harness.t(), [String.t()]) :: Wardrik.Tool.t()
   def new(settings, %Harness{} = harness, checkouts) do
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: harness.name,
       description: harness.description || description(harness),
       schema: schema(checkouts),
@@ -295,7 +295,7 @@ defmodule WardrikACP.Tool do
 
     read_only = kind in @read_only
 
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: name,
       description: tool_call["title"] || name,
       run: fn _args, _context -> {:error, "Run by the coding agent."} end,

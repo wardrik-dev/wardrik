@@ -16,7 +16,7 @@ defmodule WardrikDaemon.Authenticator do
 
   alias Wardrik.Error
   alias Wardrik.HTTP.Authenticator.Request
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.Owners
   alias WardrikDaemon.Tokens
   alias WardrikDaemon.Tokens.Token

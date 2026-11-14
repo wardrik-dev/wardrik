@@ -1,5 +1,5 @@
 defmodule Wardrik.Store.UnreadableError do
-  @moduledoc "Raised by a read where the scope's `WardrikCore.Format` can't read a value."
+  @moduledoc "Raised by a read where the scope's `Wardrik.Format` can't read a value."
 
   defexception [:scope, :key, :reason]
 

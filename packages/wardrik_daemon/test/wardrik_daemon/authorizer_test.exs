@@ -2,7 +2,7 @@ defmodule WardrikDaemon.AuthorizerTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Authorizer.Request
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Authorizer
   alias WardrikDaemon.Config.Access

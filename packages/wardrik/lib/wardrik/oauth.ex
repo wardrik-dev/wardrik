@@ -31,9 +31,9 @@ defmodule Wardrik.OAuth do
   alias Wardrik.OAuth.Renewal
   alias Wardrik.OAuth.Resolver
   alias Wardrik.OAuth.Token
+  alias Wardrik.Principal
   alias Wardrik.Vault.Grants
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
 
   @schema NimbleOptions.new!(
             name: [type: :atom, required: true, doc: "The name functions reach it by."],
@@ -195,7 +195,7 @@ defmodule Wardrik.OAuth do
   Finishes a browser sign-in from its callback's query params. `Wardrik.OAuth.Plug` calls it.
 
       Wardrik.OAuth.finish(MyApp.OAuth, params, as: current_principal)
-      #=> {:ok, %{provider: "github", principal: %WardrikCore.Principal{id: "user:jon"}}}
+      #=> {:ok, %{provider: "github", principal: %Wardrik.Principal{id: "user:jon"}}}
 
   `as:` is who is signed in to your app at the browser.
 

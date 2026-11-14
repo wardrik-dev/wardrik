@@ -1,18 +1,18 @@
-defmodule WardrikCore.CredentialsTest do
+defmodule Wardrik.CredentialsTest do
   use ExUnit.Case, async: true
   use Mimic
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Authorization
-  alias WardrikCore.Context
-  alias WardrikCore.Credentials
-  alias WardrikCore.Principal
-  alias WardrikCore.Resume
+  alias Wardrik.Context
+  alias Wardrik.Credentials
+  alias Wardrik.Credentials.Authorization
+  alias Wardrik.Principal
+  alias Wardrik.Resume
   alias WardrikCore.Turn
 
   defmodule Vault do
-    @behaviour WardrikCore.Credentials
+    @behaviour Wardrik.Credentials
 
     @impl true
     def resolve(%{name: "broken"}, _granted), do: {:error, "The vault is sealed."}
@@ -32,19 +32,19 @@ defmodule WardrikCore.CredentialsTest do
   end
 
   defmodule Forgetful do
-    @behaviour WardrikCore.Credentials
+    @behaviour Wardrik.Credentials
 
     @impl true
     def resolve(_request, _opts), do: {:ok, "the-only-token"}
   end
 
   defmodule Issues do
-    @behaviour WardrikCore.Capability
+    @behaviour Wardrik.Capability
 
     @impl true
     def tools(_context, _opts) do
       [
-        WardrikCore.Tool.new!(
+        Wardrik.Tool.new!(
           name: "create_issue",
           description: "Opens an issue.",
           run: fn _args, context ->

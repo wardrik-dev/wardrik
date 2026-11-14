@@ -66,7 +66,7 @@ See [benchmark results](https://github.com/wardrik-dev/wardrik/blob/main/extensi
 
 - [Running Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html): `:middleware`,
   `:model_options` and the connection `:pool`.
-- [`WardrikCore.Middleware`](https://hexdocs.pm/wardrik_core/WardrikCore.Middleware.html): the
+- [`Wardrik.Middleware`](https://hexdocs.pm/wardrik_core/Wardrik.Middleware.html): the
   behaviour this package implements.
 - [Model gateway](https://docs.wardrik.dev/run/model-gateway/): the same settings in the daemon's
   `config.yaml`.

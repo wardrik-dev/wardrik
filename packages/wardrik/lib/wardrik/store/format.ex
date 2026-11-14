@@ -1,7 +1,7 @@
 defmodule Wardrik.Store.Format do
   @moduledoc false
 
-  # Each value is kept as `{"version": n, "value": ...}`, in a `WardrikCore.Format`.
+  # Each value is kept as `{"version": n, "value": ...}`, in a `Wardrik.Format`.
 
   @doc false
   @spec encode(module(), term()) :: String.t()

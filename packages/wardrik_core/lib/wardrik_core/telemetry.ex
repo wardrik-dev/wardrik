@@ -29,13 +29,13 @@ defmodule WardrikCore.Telemetry do
       `tool_calls`, `measurements`.
   """
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Event
   alias WardrikCore.Span
 
   @doc false
-  @spec span(Context.t(), Context.step(), WardrikCore.Middleware.next()) ::
-          WardrikCore.Middleware.result()
+  @spec span(Context.t(), Context.step(), Wardrik.Middleware.next()) ::
+          Wardrik.Middleware.result()
   def span(%Context{} = context, step, fun) do
     inner = %{context | step: step, span: child(context, step), attributes: principals(context)}
     start = started(inner, step)

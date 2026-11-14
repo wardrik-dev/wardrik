@@ -61,7 +61,7 @@ defmodule Wardrik.Instance do
   defp scopes do
     quote do
       @doc "Returns the scope `principal` acts in. See `Wardrik.as/3`."
-      @spec as(WardrikCore.Principal.t() | String.t(), keyword()) :: Wardrik.Scope.t()
+      @spec as(Wardrik.Principal.t() | String.t(), keyword()) :: Wardrik.Scope.t()
       def as(principal, opts \\ []), do: Wardrik.as(__MODULE__, principal, opts)
     end
   end

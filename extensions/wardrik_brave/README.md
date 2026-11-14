@@ -58,7 +58,7 @@ See [Run Wardrik](https://hexdocs.pm/wardrik/running-wardrik.html) for runtime s
 
 ## Keys
 
-- Each search uses `BRAVE_API_KEY` from the agent's `WardrikCore.Keys` first, then `:api_key`.
+- Each search uses `BRAVE_API_KEY` from the agent's `Wardrik.Keys` first, then `:api_key`.
 - If the agent's key source always returns it, omit the process: `{WardrikBrave, []}`.
 - Keys are never saved with the agent's state.
 - With no key, the search returns an error saying so, and the tool's description says it too.

@@ -50,7 +50,7 @@ defmodule Wardrik.EventLog.EncoderAgentTest do
         events: {Wardrik.EventLog.Test.Sink, self()}
       )
 
-    :ok = WardrikCore.ask(agent, "Say hi", %{principal: %WardrikCore.Principal{id: "user:jon"}})
+    :ok = WardrikCore.ask(agent, "Say hi", %{principal: %Wardrik.Principal{id: "user:jon"}})
 
     events = received()
 

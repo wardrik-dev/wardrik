@@ -1,6 +1,7 @@
 defmodule Wardrik.Operations.Agent do
   @moduledoc false
 
+  alias Wardrik.Credentials.Authorization
   alias Wardrik.Error
   alias Wardrik.EventLog.Cursor
   alias Wardrik.EventLog.Runs
@@ -9,7 +10,6 @@ defmodule Wardrik.Operations.Agent do
   alias Wardrik.Operations.Changes
   alias Wardrik.Operations.Running
   alias Wardrik.Operations.Snapshot
-  alias WardrikCore.Authorization
 
   @doc "Returns what the agent is doing now."
   @spec read(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}

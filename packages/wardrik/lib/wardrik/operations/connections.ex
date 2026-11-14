@@ -8,8 +8,8 @@ defmodule Wardrik.Operations.Connections do
   alias Wardrik.Error
   alias Wardrik.OAuth.Apps
   alias Wardrik.Operations.Secrets
+  alias Wardrik.Principal
   alias Wardrik.Scope
-  alias WardrikCore.Principal
 
   @doc "Lists the accounts the caller can connect, whether they hold each, and any sign-in under way."
   @spec list(Scope.t(), map()) :: {:ok, map()}

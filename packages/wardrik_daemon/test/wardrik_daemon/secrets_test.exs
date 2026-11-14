@@ -4,7 +4,7 @@ defmodule WardrikDaemon.SecretsTest do
 
   import WardrikDaemon.Test
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.Client
   alias WardrikDaemon.Tokens
 
@@ -121,7 +121,7 @@ defmodule WardrikDaemon.SecretsTest do
 
     key = fn name ->
       WardrikDaemon.Keys.fetch(
-        %WardrikCore.Keys.Request{name: name, principal: %Principal{id: "growth/@cy"}},
+        %Wardrik.Keys.Request{name: name, principal: %Principal{id: "growth/@cy"}},
         wardrik: context.wardrik,
         deployment: true
       )

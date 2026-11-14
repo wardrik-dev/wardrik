@@ -20,7 +20,7 @@ defmodule Wardrik.Workspace.ContextTest do
     write = fn path, content ->
       tools["write_file"].run.(
         %{path: path, content: content},
-        WardrikCore.Context.new(agent_id: "a")
+        Wardrik.Context.new(agent_id: "a")
       )
     end
 
@@ -69,7 +69,7 @@ defmodule Wardrik.Workspace.ContextTest do
 
   test "labels the turn with what the files it reads hold", %{opts: opts} do
     reader = %{
-      WardrikCore.Context.new(agent_id: "a")
+      Wardrik.Context.new(agent_id: "a")
       | messages: [ReqLLM.Context.user("Hi.", %{labels: ["outside"]})]
     }
 
@@ -78,7 +78,7 @@ defmodule Wardrik.Workspace.ContextTest do
     tools["write_file"].run.(%{path: "MEMORY.md", content: "From a page."}, reader)
 
     turn = %{
-      WardrikCore.Context.new(agent_id: "a")
+      Wardrik.Context.new(agent_id: "a")
       | step: :turn,
         messages: [ReqLLM.Context.user("Go.")]
     }
@@ -91,7 +91,7 @@ defmodule Wardrik.Workspace.ContextTest do
   end
 
   test "adds itself to a turn's instructions, and leaves them as they were after", %{opts: opts} do
-    context = WardrikCore.Context.new(agent_id: "a")
+    context = Wardrik.Context.new(agent_id: "a")
     turn = %{context | step: :turn, instructions: "Be brief."}
 
     next = fn context ->

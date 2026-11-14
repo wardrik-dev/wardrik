@@ -13,7 +13,7 @@ defmodule Wardrik.Vault do
       WardrikCore.start_agent(
         agent_id: "digest",
         model: "anthropic:claude-haiku-4-5",
-        principal: %WardrikCore.Principal{id: "user:jon"},
+        principal: %Wardrik.Principal{id: "user:jon"},
         credentials: {Wardrik.Vault, MyApp.Vault}
       )
 
@@ -21,15 +21,15 @@ defmodule Wardrik.Vault do
     * Functions raise `ArgumentError` if the vault isn't started.
   """
 
-  @behaviour WardrikCore.Credentials
+  @behaviour Wardrik.Credentials
 
   use GenServer
 
+  alias Wardrik.Credentials
+  alias Wardrik.Principal
   alias Wardrik.Vault.Grants
   alias Wardrik.Vault.Sealed
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Credentials
-  alias WardrikCore.Principal
 
   require Logger
 
@@ -291,7 +291,7 @@ defmodule Wardrik.Vault do
   @spec generate_key() :: String.t()
   defdelegate generate_key, to: Sealed
 
-  @impl WardrikCore.Credentials
+  @impl Wardrik.Credentials
   def resolve(%Credentials.Request{principal: nil}, _vault), do: {:error, :no_principal}
 
   def resolve(%Credentials.Request{name: name, principal: principal}, vault) do
@@ -318,7 +318,7 @@ defmodule Wardrik.Vault do
     end
   end
 
-  @impl WardrikCore.Credentials
+  @impl Wardrik.Credentials
   def refused(%Credentials.Request{principal: nil}, _vault), do: :ok
 
   def refused(%Credentials.Request{name: name, principal: principal}, vault) do

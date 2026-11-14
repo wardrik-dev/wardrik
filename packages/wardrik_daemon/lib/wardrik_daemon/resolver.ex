@@ -15,9 +15,9 @@ defmodule WardrikDaemon.Resolver do
   @behaviour Wardrik.Resolver
 
   alias Wardrik.Error
+  alias Wardrik.Principal
   alias Wardrik.Resolved
   alias Wardrik.Resolver.Request
-  alias WardrikCore.Principal
   alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Owners
 

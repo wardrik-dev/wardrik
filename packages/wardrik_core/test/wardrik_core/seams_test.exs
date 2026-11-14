@@ -2,7 +2,7 @@ defmodule WardrikCore.SeamsTest do
   use ExUnit.Case, async: true
 
   # Middleware runs as a pipeline, as Plug does: `call(context, next, opts)`.
-  @pipelines [{WardrikCore.Middleware, :call, 3}]
+  @pipelines [{Wardrik.Middleware, :call, 3}]
 
   test "every behaviour's callbacks take one request, then their options" do
     {:ok, modules} = :application.get_key(:wardrik_core, :modules)

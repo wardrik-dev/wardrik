@@ -12,10 +12,10 @@ defmodule Wardrik.DigestTest do
 
   defmodule Outside do
     @moduledoc "Labels each message a person sends `outside`."
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
-    def call(%WardrikCore.Context{step: :turn, messages: messages} = context, next, _opts),
+    def call(%Wardrik.Context{step: :turn, messages: messages} = context, next, _opts),
       do: next.(%{context | messages: Enum.map(messages, &labelled/1)})
 
     def call(context, next, _opts), do: next.(context)

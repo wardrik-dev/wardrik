@@ -36,7 +36,7 @@ defmodule WardrikACP do
       `:harness`, `:update` (the ACP `SessionUpdate` map).
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
   use Supervisor
 
   alias WardrikACP.Checkout
@@ -144,7 +144,7 @@ defmodule WardrikACP do
     * `:harnesses` - required. A coding agent's name or a list of them, as `:claude`.
     * `:checkouts` - the checkouts the tools may work in. All of them by default.
   """
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, opts) do
     acp = Keyword.fetch!(opts, :name)
     registry = Connection.registry(acp)

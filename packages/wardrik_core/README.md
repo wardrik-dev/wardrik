@@ -45,6 +45,10 @@ Supervisor.start_link(children, strategy: :rest_for_one)
 
 Policy, MCP servers, secret storage, OAuth, event logs and HTTP live in other `wardrik_*` packages.
 
+The modules you write tools and middleware with are named under `Wardrik`, as every `wardrik_*`
+package uses them: `Wardrik.Tool`, `Wardrik.Capability`, `Wardrik.Context`, `Wardrik.Middleware`,
+`Wardrik.Credentials`, `Wardrik.Keys`, `Wardrik.Principal` and `Wardrik.Format`.
+
 ## License
 
 Apache-2.0

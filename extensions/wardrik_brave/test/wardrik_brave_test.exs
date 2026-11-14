@@ -13,7 +13,7 @@ defmodule WardrikBraveTest do
     %{name: name, tool: tool}
   end
 
-  defp search(tool, args), do: tool.run.(args, WardrikCore.Context.new(agent_id: "acme/triage"))
+  defp search(tool, args), do: tool.run.(args, Wardrik.Context.new(agent_id: "acme/triage"))
 
   test "answers the passages of each page found, with its date", %{name: name, tool: tool} do
     test = self()
@@ -100,10 +100,10 @@ defmodule WardrikBraveTest do
   end
 
   defmodule Held do
-    @behaviour WardrikCore.Keys
+    @behaviour Wardrik.Keys
 
     @impl true
-    def fetch(%{name: "BRAVE_API_KEY", principal: %WardrikCore.Principal{id: "acme"}}, _opts),
+    def fetch(%{name: "BRAVE_API_KEY", principal: %Wardrik.Principal{id: "acme"}}, _opts),
       do: {:ok, "acme-key"}
 
     def fetch(_request, _opts), do: {:error, :not_found}
@@ -118,9 +118,9 @@ defmodule WardrikBraveTest do
     end)
 
     context =
-      WardrikCore.Context.new(
+      Wardrik.Context.new(
         agent_id: "acme/triage",
-        principal: %WardrikCore.Principal{id: "acme"},
+        principal: %Wardrik.Principal{id: "acme"},
         keys: {Held, []}
       )
 
@@ -142,9 +142,9 @@ defmodule WardrikBraveTest do
     [tool] = WardrikBrave.tools(nil, req_options: [plug: {Req.Test, :inline}])
 
     context =
-      WardrikCore.Context.new(
+      Wardrik.Context.new(
         agent_id: "acme/triage",
-        principal: %WardrikCore.Principal{id: "acme"},
+        principal: %Wardrik.Principal{id: "acme"},
         keys: {Held, []}
       )
 
@@ -172,8 +172,8 @@ defmodule WardrikBraveTest do
   end
 
   test "marks the tool as reaching the open world", %{tool: tool} do
-    assert WardrikCore.Tool.annotation(tool, :open_world)
-    assert WardrikCore.Tool.annotation(tool, :labels) == ["outside"]
+    assert Wardrik.Tool.annotation(tool, :open_world)
+    assert Wardrik.Tool.annotation(tool, :labels) == ["outside"]
   end
 
   test "says which one isn't started" do

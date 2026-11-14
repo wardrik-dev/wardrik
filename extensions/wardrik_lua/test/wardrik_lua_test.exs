@@ -3,12 +3,12 @@ defmodule WardrikLuaTest do
 
   defp run_lua(code, opts \\ []) do
     [tool] = WardrikLua.tools(nil, opts)
-    tool.run.(%{code: code}, WardrikCore.Context.new(agent_id: "acme/triage"))
+    tool.run.(%{code: code}, Wardrik.Context.new(agent_id: "acme/triage"))
   end
 
   test "offers run_lua, which changes nothing" do
-    assert [%WardrikCore.Tool{name: "run_lua"} = tool] = WardrikLua.tools(nil, [])
-    assert WardrikCore.Tool.annotation(tool, :read_only)
+    assert [%Wardrik.Tool{name: "run_lua"} = tool] = WardrikLua.tools(nil, [])
+    assert Wardrik.Tool.annotation(tool, :read_only)
   end
 
   test "answers what the code returns" do

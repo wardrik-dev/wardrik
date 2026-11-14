@@ -1,9 +1,9 @@
-defmodule WardrikCore.Format do
+defmodule Wardrik.Format do
   @moduledoc """
   How a kind of value is kept as JSON, so a release reads what an earlier one wrote.
 
       defmodule MyApp.Theme do
-        @behaviour WardrikCore.Format
+        @behaviour Wardrik.Format
 
         @impl true
         def version, do: 2
@@ -22,7 +22,7 @@ defmodule WardrikCore.Format do
 
   `Wardrik.Store` keeps a scope's values in the format it names. An agent keeps its park reasons
   and private data in the formats its middleware and capabilities declare, each by its
-  `c:type/0`. See `WardrikCore.Middleware`.
+  `c:type/0`. See `Wardrik.Middleware`.
   """
 
   @typedoc "What JSON holds: maps with string keys, lists, strings, numbers, booleans and `nil`."

@@ -6,7 +6,7 @@ defmodule Wardrik.OwnerNotifyTargetsTest do
   alias Wardrik.Authorizer.Request
   alias Wardrik.Notify.OwnedWebhook
   alias Wardrik.Operations.NotifyTargets
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   # Gives each agent of Ana the targets the test names.
   defmodule Routes do

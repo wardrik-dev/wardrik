@@ -4,12 +4,12 @@ defmodule WardrikCoreTest do
 
   import WardrikCore.Test.LLM
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   doctest WardrikCore
 
   defmodule Watch do
-    @behaviour WardrikCore.Middleware
+    @behaviour Wardrik.Middleware
 
     @impl true
     def call(%Context{step: step, metadata: %{test: pid}} = context, next, _opts) do
@@ -102,7 +102,7 @@ defmodule WardrikCoreTest do
          }}
       end)
 
-      context = WardrikCore.Context.new([])
+      context = Wardrik.Context.new([])
 
       assert {:ok, %{"urgent" => %{"probability" => 0.9}},
               %{input_tokens: 12, output_tokens: 1, usd: 0.001}} =
@@ -116,7 +116,7 @@ defmodule WardrikCoreTest do
     test "passes on why the model couldn't answer" do
       expect(ReqLLM, :evaluate, fn _model, _state, _questions, _opts -> {:error, :timeout} end)
 
-      context = WardrikCore.Context.new([])
+      context = Wardrik.Context.new([])
 
       assert {:error, :timeout} =
                WardrikCore.evaluate(context,

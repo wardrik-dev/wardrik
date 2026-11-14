@@ -4,14 +4,14 @@ defmodule Wardrik.StoredProtocolTest do
   import Wardrik.EventLog.Test.Protocol
 
   alias ReqLLM.Message.ContentPart
+  alias Wardrik.Credentials.Authorization
   alias Wardrik.EventLog.Encoder
   alias Wardrik.Policy.Ask
+  alias Wardrik.Principal
+  alias Wardrik.ToolCall
   alias WardrikCore.Agent.State
-  alias WardrikCore.Authorization
   alias WardrikCore.Event
-  alias WardrikCore.Principal
   alias WardrikCore.Span
-  alias WardrikCore.ToolCall
 
   # What an agent keeps must show as the protocol shows it before it was kept, so a restart
   # never changes what people see.
@@ -29,7 +29,7 @@ defmodule Wardrik.StoredProtocolTest do
   end
 
   defp waiting(reason, messages \\ []) do
-    context = WardrikCore.Context.new(agent_id: "acme/triage", middleware: @middleware)
+    context = Wardrik.Context.new(agent_id: "acme/triage", middleware: @middleware)
 
     parked = %{
       reason: reason,

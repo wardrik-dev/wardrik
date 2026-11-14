@@ -1,6 +1,6 @@
 defmodule WardrikRest.Test.Credentials do
   @moduledoc "Hands out the tokens an `Agent` holds, one per refusal, and parks when there are none."
-  @behaviour WardrikCore.Credentials
+  @behaviour Wardrik.Credentials
 
   @impl true
   def resolve(_request, tokens) do
@@ -20,7 +20,7 @@ end
 
 defmodule WardrikRest.Test.Keys do
   @moduledoc "Hands out the keys in its options."
-  @behaviour WardrikCore.Keys
+  @behaviour Wardrik.Keys
 
   @impl true
   def fetch(%{name: name}, keys) do

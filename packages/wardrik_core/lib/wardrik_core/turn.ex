@@ -1,16 +1,16 @@
 defmodule WardrikCore.Turn do
   @moduledoc false
-  alias WardrikCore.Context
+  alias Wardrik.Context
+  alias Wardrik.Resume
   alias WardrikCore.Event
   alias WardrikCore.InDoubt
-  alias WardrikCore.Resume
   alias WardrikCore.Retry
   alias WardrikCore.ToolRunner
   alias WardrikCore.Usage
 
   @type checkpoint :: %{
           messages: [ReqLLM.Message.t()],
-          calls: [WardrikCore.ToolCall.t()],
+          calls: [Wardrik.ToolCall.t()],
           rounds: non_neg_integer() | :infinity,
           metadata: map(),
           private: map(),
@@ -18,7 +18,7 @@ defmodule WardrikCore.Turn do
           measurements: map()
         }
 
-  @spec run(Context.t()) :: WardrikCore.Middleware.result()
+  @spec run(Context.t()) :: Wardrik.Middleware.result()
   def run(%Context{} = context) do
     context
     |> with_tools()
@@ -28,7 +28,7 @@ defmodule WardrikCore.Turn do
   @doc """
   Re-enters a turn where it parked.
   """
-  @spec resume(Context.t(), Resume.t()) :: WardrikCore.Middleware.result()
+  @spec resume(Context.t(), Resume.t()) :: Wardrik.Middleware.result()
   def resume(%Context{} = context, %Resume{} = resume) do
     context = %{with_tools(context) | resume: resume}
     Context.run(context, :turn, fn context -> reenter(context, resume) end)
@@ -39,7 +39,7 @@ defmodule WardrikCore.Turn do
   have run. A call whose tool is safe to repeat, `read_only` or `idempotent`, is repeated. Any
   other parks as `:in_doubt`.
   """
-  @spec recover(Context.t(), checkpoint()) :: WardrikCore.Middleware.result()
+  @spec recover(Context.t(), checkpoint()) :: Wardrik.Middleware.result()
   def recover(
         %Context{} = context,
         %{messages: messages, calls: calls, rounds: rounds} = checkpoint
@@ -61,7 +61,7 @@ defmodule WardrikCore.Turn do
   end
 
   @doc "Calls the context's model once, as a `:generate` step, streaming nothing."
-  @spec call_model(Context.t()) :: WardrikCore.Middleware.result()
+  @spec call_model(Context.t()) :: Wardrik.Middleware.result()
   def call_model(%Context{} = context),
     do: Context.run(context, :generate, &called(&1, fn _chunk -> :ok end))
 
@@ -180,7 +180,7 @@ defmodule WardrikCore.Turn do
   defp tool_calls(response) do
     response
     |> ReqLLM.Response.tool_calls()
-    |> Enum.map(&WardrikCore.ToolCall.from_req_llm/1)
+    |> Enum.map(&Wardrik.ToolCall.from_req_llm/1)
   end
 
   defp run_tools(context, calls, rounds) do

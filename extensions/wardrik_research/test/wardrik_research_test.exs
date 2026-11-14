@@ -2,7 +2,7 @@ defmodule WardrikResearchTest do
   use ExUnit.Case, async: true
   use Mimic
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikResearch.Test.Echo
   alias WardrikResearch.Test.Seen
 

@@ -11,7 +11,7 @@ defmodule WardrikDaemon.CreateAgent do
     * It's checked as `create` on `agent` for `agent:NAME`.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   alias Wardrik.Error
   alias WardrikDaemon.AgentRecords
@@ -41,12 +41,12 @@ defmodule WardrikDaemon.CreateAgent do
          do: {:ok, record}
   end
 
-  @impl WardrikCore.Capability
-  def tools(%WardrikCore.Context{agent_id: id, principal: principal}, opts) do
+  @impl Wardrik.Capability
+  def tools(%Wardrik.Context{agent_id: id, principal: principal}, opts) do
     daemon = Map.new(opts)
 
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "agent_create",
         description:
           "Make a worker, an agent of your org with a name of its own, and define it: its description, instructions, tools and triggers, as a definition takes them. It's held to your policy. Answers its ID.",

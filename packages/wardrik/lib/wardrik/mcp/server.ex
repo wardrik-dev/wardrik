@@ -48,7 +48,7 @@ defmodule Wardrik.MCP.Server do
             ],
             credential_name: [
               type: :string,
-              doc: "The credential each person connects with. See `WardrikCore.Credentials`."
+              doc: "The credential each person connects with. See `Wardrik.Credentials`."
             ],
             credential_header: [
               type: :string,
@@ -117,7 +117,7 @@ defmodule Wardrik.MCP.Server do
   `{"secret": name}`.
   """
 
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   @options @schema.schema
            |> Keyword.keys()
@@ -176,15 +176,15 @@ defmodule Wardrik.MCP.Server do
           max_result_bytes: pos_integer()
         }
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def version, do: 1
 
   @doc "Returns the options a server was added with as JSON."
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def dump(opts),
     do: Map.new(opts, fn {option, value} -> {Atom.to_string(option), dumped(option, value)} end)
 
-  @impl WardrikCore.Format
+  @impl Wardrik.Format
   def load(1, json) do
     Enum.reduce_while(json, {:ok, []}, fn {option, value}, {:ok, opts} ->
       case loaded(@options[option], value) do

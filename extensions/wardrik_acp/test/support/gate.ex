@@ -3,10 +3,10 @@ defmodule WardrikACP.TestGate do
   Middleware for tests: refuses the tool calls named in `:deny`, parks those named in `:ask` until
   they're answered by call ID, and sends the test each call it decides with the turn's labels.
   """
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
-  alias WardrikCore.Context
-  alias WardrikCore.Resume
+  alias Wardrik.Context
+  alias Wardrik.Resume
 
   @impl true
   def call(%Context{step: {:tool_call, call}} = context, next, opts) do

@@ -355,14 +355,14 @@ defmodule Wardrik.ChatTest do
     @behaviour Wardrik.Chat.Identities
 
     @impl Wardrik.Chat.Identities
-    def identify(request, _opts), do: {:ok, %WardrikCore.Principal{id: request.email}}
+    def identify(request, _opts), do: {:ok, %Wardrik.Principal{id: request.email}}
   end
 
   test "your app's identities see the member's email address", context do
     channel = %{context.workspace.channel | identities: {ByEmail, []}}
     member = %Member{id: "U9", name: "maria", email: "maria@acme.com"}
 
-    assert {:ok, %WardrikCore.Principal{id: "maria@acme.com"}} =
+    assert {:ok, %Wardrik.Principal{id: "maria@acme.com"}} =
              Wardrik.Chat.Channel.identify(channel, "T1", member)
   end
 
@@ -549,7 +549,7 @@ defmodule Wardrik.ChatTest do
 
       assert Wardrik.Vault.fetch(
                context.vault,
-               %WardrikCore.Principal{id: "acme"},
+               %Wardrik.Principal{id: "acme"},
                "#{channel.name}:T1"
              ) ==
                {:ok, "xoxb-acme"}

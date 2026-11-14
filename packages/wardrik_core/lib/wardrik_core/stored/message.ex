@@ -9,7 +9,7 @@ defmodule WardrikCore.Stored.Message do
   alias ReqLLM.Message
   alias ReqLLM.Message.ContentPart
   alias ReqLLM.Message.ReasoningDetails
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikCore.Stored.Term
 
   @roles %{"user" => :user, "assistant" => :assistant, "system" => :system, "tool" => :tool}
@@ -25,22 +25,22 @@ defmodule WardrikCore.Stored.Message do
   }
   @part_types Map.new(@parts, fn {type, named} -> {named, type} end)
 
-  @spec dump([Message.t()]) :: [WardrikCore.Format.json()]
+  @spec dump([Message.t()]) :: [Wardrik.Format.json()]
   def dump(messages) when is_list(messages), do: Enum.map(messages, &message/1)
 
   @doc "Reads messages back. Throws `{:unreadable, reason}`, as `WardrikCore.Stored.Term` does."
-  @spec loaded([WardrikCore.Format.json()]) :: [Message.t()]
+  @spec loaded([Wardrik.Format.json()]) :: [Message.t()]
   def loaded(messages) when is_list(messages), do: Enum.map(messages, &read_message/1)
 
-  @spec principal(Principal.t()) :: WardrikCore.Format.json()
+  @spec principal(Principal.t()) :: Wardrik.Format.json()
   def principal(%Principal{id: id, attributes: attributes}),
     do: %{"id" => id, "attributes" => Term.dump(attributes)}
 
-  @spec read_principal(WardrikCore.Format.json()) :: Principal.t()
+  @spec read_principal(Wardrik.Format.json()) :: Principal.t()
   def read_principal(%{"id" => id, "attributes" => attributes}),
     do: %Principal{id: id, attributes: Term.loaded(attributes)}
 
-  @spec part(ContentPart.t()) :: WardrikCore.Format.json()
+  @spec part(ContentPart.t()) :: Wardrik.Format.json()
   def part(%ContentPart{} = part) do
     {type, modality} = Map.fetch!(@parts, part.type)
 
@@ -55,7 +55,7 @@ defmodule WardrikCore.Stored.Message do
     |> put_map("metadata", part.metadata)
   end
 
-  @spec read_part(WardrikCore.Format.json()) :: ContentPart.t()
+  @spec read_part(Wardrik.Format.json()) :: ContentPart.t()
   def read_part(%{"type" => type} = part) do
     metadata = Map.get(part, "metadata", %{})
 

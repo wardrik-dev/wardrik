@@ -1,9 +1,9 @@
 defmodule Wardrik.EventLog.Encoder do
   @moduledoc false
 
+  alias Wardrik.Credentials.Authorization
   alias Wardrik.EventLog.CloudEvent
   alias Wardrik.EventLog.Encoder.Value
-  alias WardrikCore.Authorization
   alias WardrikCore.Event
   alias WardrikCore.Span
 

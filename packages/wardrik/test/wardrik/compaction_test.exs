@@ -5,7 +5,7 @@ defmodule Wardrik.CompactionTest do
   import Wardrik.Test.LLM
 
   alias Wardrik.Compaction
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   @opts [window: 100]
 
@@ -101,7 +101,7 @@ defmodule Wardrik.CompactionTest do
     one_turn = [ReqLLM.Context.user(long)]
     assert {:ok, %{messages: ^one_turn}} = run(turn(one_turn))
 
-    resumed = turn(history(), resume: %WardrikCore.Resume{reason: :spend?, input: :approve})
+    resumed = turn(history(), resume: %Wardrik.Resume{reason: :spend?, input: :approve})
     assert {:ok, %{messages: messages}} = run(resumed)
     assert messages == history()
   end

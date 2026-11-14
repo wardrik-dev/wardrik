@@ -12,11 +12,11 @@ defmodule WardrikDaemon.Ceiling do
     * Emits the telemetry event `[:wardrik_daemon, :ceiling, :reached]` when the limit is reached.
   """
 
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
+  alias Wardrik.Context
   alias Wardrik.Policy.Budget
-  alias WardrikCore.Context
-  alias WardrikCore.Resume
+  alias Wardrik.Resume
   alias WardrikDaemon.Ceiling.Reached
 
   @enforce_keys [:name, :budget, :on_exhausted]
@@ -117,10 +117,10 @@ defmodule WardrikDaemon.Ceiling do
   defp amount(amount),
     do: for({kind, value} <- amount, value != nil, into: %{}, do: {Atom.to_string(kind), value})
 
-  @impl WardrikCore.Middleware
+  @impl Wardrik.Middleware
   def formats, do: [WardrikDaemon.Ceiling.Reached]
 
-  @impl WardrikCore.Middleware
+  @impl Wardrik.Middleware
   def call(%Context{step: :generate} = context, next, held) do
     case stopped(held) do
       nil -> counted(context, next, held)

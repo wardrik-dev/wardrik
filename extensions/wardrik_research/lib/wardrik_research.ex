@@ -27,8 +27,8 @@ defmodule WardrikResearch do
     * `:max_rounds` - model calls one researcher may make. `12` unless set.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, opts), do: [WardrikResearch.Deep.tool(opts)]
 end

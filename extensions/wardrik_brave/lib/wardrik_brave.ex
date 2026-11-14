@@ -13,7 +13,7 @@ defmodule WardrikBrave do
         capabilities: [{WardrikBrave, brave: MyApp.Brave}]
       )
 
-    * Each search uses `BRAVE_API_KEY` from the agent's `WardrikCore.Keys` first, then `:api_key`.
+    * Each search uses `BRAVE_API_KEY` from the agent's `Wardrik.Keys` first, then `:api_key`.
     * Without a process, give the options inline: `{WardrikBrave, []}`.
     * The tool is `open_world`: anyone could have written the pages it finds.
 
@@ -28,7 +28,7 @@ defmodule WardrikBrave do
       there's no key, the tool's description and its error say it.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   use GenServer
 
@@ -47,7 +47,7 @@ defmodule WardrikBrave do
     GenServer.start_link(__MODULE__, opts, name: Keyword.fetch!(opts, :name))
   end
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(context, opts) do
     source = source(opts)
     [WardrikBrave.WebSearch.tool(source, context)]

@@ -189,7 +189,7 @@ data = %{"trigger" => %{"name" => "daily"}, "status" => "asked"}
 :ok = Wardrik.EventLog.append(MyApp.Events, "agt_1", {"trigger.fired", "triggers/daily", data})
 
 change = {"agent.forgotten", "agents/agt_1", %{"agent" => %{"id" => "agt_1"}}}
-:ok = Wardrik.EventLog.record(MyApp.Events, change, actor: %WardrikCore.Principal{id: "user_42"})
+:ok = Wardrik.EventLog.record(MyApp.Events, change, actor: %Wardrik.Principal{id: "user_42"})
 ```
 
 - Events here are CloudEvent maps with string keys, as they're kept.

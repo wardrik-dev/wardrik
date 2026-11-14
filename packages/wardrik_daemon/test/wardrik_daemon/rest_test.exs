@@ -82,7 +82,7 @@ defmodule WardrikDaemon.RestTest do
         source: :api
       )
 
-    agent = WardrikCore.Context.new(agent_id: record.id)
+    agent = Wardrik.Context.new(agent_id: record.id)
     for {_name, {module, opts}} <- capabilities, tool <- module.tools(agent, opts), do: tool.name
   end
 

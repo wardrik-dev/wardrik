@@ -3,7 +3,7 @@ defmodule Wardrik.Authorizer.Request do
   What `c:Wardrik.Authorizer.authorize/2` decides.
 
       %Wardrik.Authorizer.Request{
-        principal: %WardrikCore.Principal{id: "user_42"},
+        principal: %Wardrik.Principal{id: "user_42"},
         actor: {:agent, "agt_01JF8"},
         action: "agent.ask",
         resource: {:agent, "agt_01JF9"},
@@ -25,8 +25,8 @@ defmodule Wardrik.Authorizer.Request do
       deciding. An operation on a conversation gives `:conversation`; its resource is the agent.
   """
 
+  alias Wardrik.Principal
   alias Wardrik.Scope
-  alias WardrikCore.Principal
 
   @enforce_keys [:principal, :action, :resource, :scope]
   defstruct [:principal, :actor, :action, :resource, :scope, context: %{}]

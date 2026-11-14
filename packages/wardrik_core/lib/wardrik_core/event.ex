@@ -7,7 +7,7 @@ defmodule WardrikCore.Event do
 
       WardrikCore.Event.emit(context, [:my_package, :refused], %{}, %{call: call})
   """
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
   @enforce_keys [:name, :time]
   defstruct [:name, :time, measurements: %{}, metadata: %{}]
@@ -22,7 +22,7 @@ defmodule WardrikCore.Event do
   @doc """
   Emits an event to telemetry, and to the events module of `source`.
 
-  `source` is a `WardrikCore.Context`, an events module as `module` or `{module, opts}`, or `nil`
+  `source` is a `Wardrik.Context`, an events module as `module` or `{module, opts}`, or `nil`
   for telemetry only.
   """
   @spec emit(Context.t() | Context.entry() | nil, [atom()], map(), map()) :: :ok

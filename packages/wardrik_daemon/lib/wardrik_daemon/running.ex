@@ -19,7 +19,7 @@ defmodule WardrikDaemon.Running do
 
   use Supervisor
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
   alias WardrikDaemon.Agents
   alias WardrikDaemon.CLIToken
   alias WardrikDaemon.Config

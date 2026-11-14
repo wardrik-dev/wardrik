@@ -12,8 +12,8 @@ defmodule Wardrik.Chat.Installations.Stored do
 
   alias Wardrik.Channel.Installation
   alias Wardrik.Channel.Installations.Request
+  alias Wardrik.Principal
   alias Wardrik.Vault.Secret
-  alias WardrikCore.Principal
 
   @impl Wardrik.Channel.Installations
   def fetch(%Request{channel: channel, workspace: workspace}, config) do

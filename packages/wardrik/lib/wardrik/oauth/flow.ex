@@ -11,7 +11,7 @@ defmodule Wardrik.OAuth.Flow do
   alias Wardrik.OAuth.Provider
   alias Wardrik.OAuth.Registration
   alias Wardrik.OAuth.Token
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   require Logger
 

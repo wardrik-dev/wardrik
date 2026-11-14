@@ -40,7 +40,7 @@ defmodule WardrikCore.Agent.State do
 
   defp principal_id(message), do: id(principal(message))
 
-  defp id(%WardrikCore.Principal{id: id}), do: id
+  defp id(%Wardrik.Principal{id: id}), do: id
   defp id(nil), do: nil
 
   defp principal(%ReqLLM.Message{metadata: metadata}), do: Map.get(metadata || %{}, :principal)
@@ -53,7 +53,7 @@ defmodule WardrikCore.Agent.State do
     struct!(__MODULE__, opts)
   end
 
-  defp endpoints(%WardrikCore.Context{endpoints: endpoints}), do: endpoints
+  defp endpoints(%Wardrik.Context{endpoints: endpoints}), do: endpoints
   defp endpoints(nil), do: %{}
 
   @doc "Adds a message to the queue."
@@ -82,7 +82,7 @@ defmodule WardrikCore.Agent.State do
 
   defp configured(%__MODULE__{context: nil} = state, settings),
     do:
-      WardrikCore.Context.new(
+      Wardrik.Context.new(
         [agent_id: state.agent_id, conversation: state.conversation] ++ settings
       )
 
@@ -158,7 +158,7 @@ defmodule WardrikCore.Agent.State do
   end
 
   @doc "Takes what a turn ended with: answered, parked, or failed."
-  @spec finished(t(), WardrikCore.Middleware.result()) :: t()
+  @spec finished(t(), Wardrik.Middleware.result()) :: t()
   def finished(%__MODULE__{} = state, {:ok, context}),
     do: %{
       keep_private(state, context.private)
@@ -212,7 +212,7 @@ defmodule WardrikCore.Agent.State do
     for key <- dropped,
         do:
           Logger.warning(
-            "Agent #{state.agent_id} can't keep #{inspect(key)}'s private data: its key isn't a WardrikCore.Format"
+            "Agent #{state.agent_id} can't keep #{inspect(key)}'s private data: its key isn't a Wardrik.Format"
           )
 
     put_in(state.context.private, kept)

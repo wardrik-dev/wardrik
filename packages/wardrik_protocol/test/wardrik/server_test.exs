@@ -82,7 +82,7 @@ defmodule Wardrik.ServerTest do
   test "makes a scope for a principal acting directly, or through an actor" do
     scope = Scope.new(Wardrik.Test.Server, wardrik: :here, principal: "acme/@jon")
 
-    assert %Scope{principal: %WardrikCore.Principal{id: "acme/@jon"}, actor: nil, context: %{}} =
+    assert %Scope{principal: %Wardrik.Principal{id: "acme/@jon"}, actor: nil, context: %{}} =
              scope
 
     assert %Scope{actor: {:agent, "acme/@jon/notes"}, context: %{asked_by: "acme/@jon"}} =

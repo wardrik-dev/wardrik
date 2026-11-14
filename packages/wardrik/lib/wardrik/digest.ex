@@ -17,10 +17,10 @@ defmodule Wardrik.Digest do
     * Recorded as `wardrik.file.written`, by the agent.
   """
 
+  alias Wardrik.Context
   alias Wardrik.Operations.Changes
   alias Wardrik.Workspace.File
   alias Wardrik.Workspace.Files
-  alias WardrikCore.Context
 
   @instructions """
   Write a digest of this conversation, for a later conversation of yours to read. Keep who asked \

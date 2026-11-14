@@ -25,7 +25,7 @@ defmodule Wardrik.HostTest do
   end
 
   test "names a principal, and the key a model's calls take" do
-    assert %WardrikCore.Principal{id: "acme/@maria", attributes: %{name: "Maria"}} =
+    assert %Wardrik.Principal{id: "acme/@maria", attributes: %{name: "Maria"}} =
              Wardrik.principal("acme/@maria", %{name: "Maria"})
 
     assert Wardrik.principal("acme").attributes == %{}

@@ -1,7 +1,7 @@
-defmodule WardrikCore.ToolTest do
+defmodule Wardrik.ToolTest do
   use ExUnit.Case, async: true
 
-  alias WardrikCore.Tool
+  alias Wardrik.Tool
 
   setup do
     %{
@@ -72,9 +72,9 @@ defmodule WardrikCore.ToolTest do
     assert names["items"] == %{"type" => "string"}
     assert tool.schema["properties"]["agent"] == agent
 
-    call = fn args -> %WardrikCore.ToolCall{id: "1", name: "find", arguments: args} end
-    assert {:ok, _args} = Tool.call([tool], call.(%{"agent" => "acme/a"}), %WardrikCore.Context{})
-    assert {:error, _why} = Tool.call([tool], call.(%{"agent" => "a\nb"}), %WardrikCore.Context{})
+    call = fn args -> %Wardrik.ToolCall{id: "1", name: "find", arguments: args} end
+    assert {:ok, _args} = Tool.call([tool], call.(%{"agent" => "acme/a"}), %Wardrik.Context{})
+    assert {:error, _why} = Tool.call([tool], call.(%{"agent" => "a\nb"}), %Wardrik.Context{})
   end
 
   test "rejects options it doesn't know" do

@@ -1,11 +1,11 @@
 defmodule WardrikCore.Test.Echo do
   @moduledoc false
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   @impl true
   def tools(_context, _opts) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: "echo",
         description: "Echoes text",
         schema: [text: [type: :string]],
@@ -18,7 +18,7 @@ end
 
 defmodule WardrikCore.Test.NeedsApproval do
   @moduledoc false
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   defstruct []
 
@@ -37,7 +37,7 @@ end
 
 defmodule WardrikCore.Test.Spend do
   @moduledoc false
-  @behaviour WardrikCore.Format
+  @behaviour Wardrik.Format
 
   defstruct []
 
@@ -56,11 +56,11 @@ end
 
 defmodule WardrikCore.Test.Twin do
   @moduledoc false
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
   defmodule Reason do
     @moduledoc false
-    @behaviour WardrikCore.Format
+    @behaviour Wardrik.Format
 
     @impl true
     def type, do: "test_needs_approval"
@@ -84,9 +84,9 @@ end
 
 defmodule WardrikCore.Test.ParkTools do
   @moduledoc false
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Test.NeedsApproval
 
   @impl true
@@ -96,7 +96,7 @@ defmodule WardrikCore.Test.ParkTools do
   def call(
         %Context{
           step: {:tool_call, call},
-          resume: %WardrikCore.Resume{reason: %NeedsApproval{}, input: input}
+          resume: %Wardrik.Resume{reason: %NeedsApproval{}, input: input}
         } = context,
         next,
         _opts
@@ -116,9 +116,9 @@ end
 
 defmodule WardrikCore.Test.ParkGenerate do
   @moduledoc false
-  @behaviour WardrikCore.Middleware
+  @behaviour Wardrik.Middleware
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
   alias WardrikCore.Test.Spend
 
   @impl true
@@ -126,7 +126,7 @@ defmodule WardrikCore.Test.ParkGenerate do
 
   @impl true
   def call(
-        %Context{step: :generate, resume: %WardrikCore.Resume{reason: %Spend{}, input: :ok}} =
+        %Context{step: :generate, resume: %Wardrik.Resume{reason: %Spend{}, input: :ok}} =
           context,
         next,
         _opts

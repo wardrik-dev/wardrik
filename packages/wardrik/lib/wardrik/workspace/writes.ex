@@ -1,13 +1,13 @@
 defmodule Wardrik.Workspace.Writes do
   @moduledoc false
 
+  alias Wardrik.Context
   alias Wardrik.Workspace.File
   alias Wardrik.Workspace.Files
   alias Wardrik.Workspace.Mount
   alias Wardrik.Workspace.Reads
   alias Wardrik.Workspace.Spec
   alias Wardrik.Workspace.Tools
-  alias WardrikCore.Context
 
   @max_file_bytes 4 * 1024 * 1024
   @tries 8

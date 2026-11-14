@@ -1,9 +1,9 @@
 defmodule Wardrik.MCPTest.Tokens do
   @moduledoc "Credentials the tests give principals: a token each, or a sign-in."
-  @behaviour WardrikCore.Credentials
+  @behaviour Wardrik.Credentials
 
   @impl true
-  def resolve(%{name: "stub", principal: %WardrikCore.Principal{id: id}}, tokens) do
+  def resolve(%{name: "stub", principal: %Wardrik.Principal{id: id}}, tokens) do
     case Map.fetch(tokens, id) do
       {:ok, token} -> {:ok, token}
       :error -> {:authorize, "https://sign.in/" <> id}
@@ -13,7 +13,7 @@ end
 
 defmodule Wardrik.MCPTest.Rotating do
   @moduledoc "Credentials that hand out the token an agent holds, and a new one once the old is refused."
-  @behaviour WardrikCore.Credentials
+  @behaviour Wardrik.Credentials
 
   @impl true
   def resolve(%{name: "stub"}, tokens), do: {:ok, Agent.get(tokens, & &1.token)}
@@ -31,10 +31,10 @@ defmodule Wardrik.MCPTest do
   use ExUnit.Case, async: true
   use Mimic
 
+  alias Wardrik.Context
   alias Wardrik.MCP.Server
-  alias WardrikCore.Context
-  alias WardrikCore.Tool
-  alias WardrikCore.ToolCall
+  alias Wardrik.Tool
+  alias Wardrik.ToolCall
 
   @mcp Wardrik.MCPTest.MCP
   @stub {:stdio,
@@ -451,7 +451,8 @@ defmodule Wardrik.MCPTest do
       offered = own(ada)
       assert ["own__connect"] = Enum.map(offered, & &1.name)
 
-      assert {:park, %WardrikCore.Authorization{url: "https://sign.in/grace", credential: "stub"}} =
+      assert {:park,
+              %Wardrik.Credentials.Authorization{url: "https://sign.in/grace", credential: "stub"}} =
                ask(grace, "connect")
 
       assert {:ok, "Connected to own." <> _} = ask(ada, "connect")
@@ -466,7 +467,7 @@ defmodule Wardrik.MCPTest do
       renewed = context("ada", %{"ada" => "ada-renewed"})
       assert {:ok, "ada-renewed", _context} = ask(renewed, "whoami")
 
-      assert {:park, %WardrikCore.Authorization{}} = ask(grace, "whoami")
+      assert {:park, %Wardrik.Credentials.Authorization{}} = ask(grace, "whoami")
     end
 
     test "says when it can't be reached, or there's nothing to reach it with" do
@@ -482,7 +483,7 @@ defmodule Wardrik.MCPTest do
       broken = Wardrik.MCP.tools(ada, name: @mcp, servers: "broken")
       assert {:error, "broken didn't connect" <> _} = Tool.call(broken, call, ada)
 
-      bare = Context.new(agent_id: "mcp-test", principal: %WardrikCore.Principal{id: "ada"})
+      bare = Context.new(agent_id: "mcp-test", principal: %Wardrik.Principal{id: "ada"})
       assert {:error, "own didn't connect" <> _} = ask(bare, "connect")
 
       :ok = Wardrik.MCP.remove(@mcp, "broken")
@@ -495,7 +496,7 @@ defmodule Wardrik.MCPTest do
       ada =
         Context.new(
           agent_id: "mcp-test",
-          principal: %WardrikCore.Principal{id: "ada"},
+          principal: %Wardrik.Principal{id: "ada"},
           credentials: {Wardrik.MCPTest.Rotating, tokens}
         )
 
@@ -589,7 +590,7 @@ defmodule Wardrik.MCPTest do
     do:
       Context.new(
         agent_id: "mcp-test",
-        principal: %WardrikCore.Principal{id: principal},
+        principal: %Wardrik.Principal{id: principal},
         credentials: {Wardrik.MCPTest.Tokens, tokens}
       )
 end

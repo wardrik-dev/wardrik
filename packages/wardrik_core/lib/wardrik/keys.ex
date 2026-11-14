@@ -1,12 +1,12 @@
-defmodule WardrikCore.Keys do
+defmodule Wardrik.Keys do
   @moduledoc """
   Gives your code its API keys, such as a model provider's.
 
       defmodule MyApp.Keys do
-        @behaviour WardrikCore.Keys
+        @behaviour Wardrik.Keys
 
         @impl true
-        def fetch(%WardrikCore.Keys.Request{name: name, principal: principal}, _opts) do
+        def fetch(%Wardrik.Keys.Request{name: name, principal: principal}, _opts) do
           case MyApp.Secrets.key(principal.id, name) do
             nil -> {:error, :not_found}
             key -> {:ok, key}
@@ -17,18 +17,18 @@ defmodule WardrikCore.Keys do
   Give it to an agent as `keys: {MyApp.Keys, opts}`, or to Wardrik as `key_source:`. Your code
   fetches what it needs:
 
-      with {:ok, key} <- WardrikCore.Keys.fetch(context, "BRAVE_API_KEY") do
+      with {:ok, key} <- Wardrik.Keys.fetch(context, "BRAVE_API_KEY") do
         Brave.search(key, query)
       end
 
     * Each model call fetches its provider's key, such as `ANTHROPIC_API_KEY`. With none, ReqLLM
       uses its config or the environment.
     * Keys are never saved or emitted.
-    * A person's own tokens belong in `WardrikCore.Credentials`.
+    * A person's own tokens belong in `Wardrik.Credentials`.
   """
 
-  alias WardrikCore.Context
-  alias WardrikCore.Keys.Request
+  alias Wardrik.Context
+  alias Wardrik.Keys.Request
 
   @doc "Returns the key the request names, `{:error, :not_found}`, or why it can't."
   @callback fetch(Request.t(), opts :: term()) ::
@@ -60,7 +60,7 @@ defmodule WardrikCore.Keys do
   @doc """
   Returns the name of the key `model`'s provider takes, or `nil`.
 
-      WardrikCore.Keys.key_name("zai:glm-5.1")
+      Wardrik.Keys.key_name("zai:glm-5.1")
       #=> "ZAI_API_KEY"
   """
   @spec key_name(LLMDB.Model.t() | String.t()) :: String.t() | nil

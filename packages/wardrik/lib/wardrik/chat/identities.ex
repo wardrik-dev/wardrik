@@ -23,5 +23,5 @@ defmodule Wardrik.Chat.Identities do
 
   @doc "Returns who the request's member is, or what to tell them if they may not act."
   @callback identify(Request.t(), opts :: term()) ::
-              {:ok, WardrikCore.Principal.t()} | {:error, String.t()}
+              {:ok, Wardrik.Principal.t()} | {:error, String.t()}
 end

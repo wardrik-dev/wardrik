@@ -79,11 +79,11 @@ Wardrik's vault is `MyApp.AgentRuntime.Vault`. Seal a secret for a person, for o
 
 - An agent's tools read only the secrets of the person it works for.
 - A secret is read only for its kind. See `t:Wardrik.Vault.kind/0`.
-- To keep secrets elsewhere, set `credentials: {MyApp.Tokens, opts}`, a `WardrikCore.Credentials`.
+- To keep secrets elsewhere, set `credentials: {MyApp.Tokens, opts}`, a `Wardrik.Credentials`.
 
 ## API keys
 
-Code asks the `:key_source`, a `WardrikCore.Keys`, for a key by name, such as `ZAI_API_KEY`:
+Code asks the `:key_source`, a `Wardrik.Keys`, for a key by name, such as `ZAI_API_KEY`:
 
 ```elixir
 Wardrik.key_name("zai_coding_plan:glm-5.1")
@@ -200,7 +200,7 @@ WardrikCore.start_agent(
   whose they are.
 - Without `:grants`, the vault holds secrets only. With `Wardrik.OAuth`, it refreshes tokens and
   starts sign-ins.
-- A missing credential parks the tool call with a `WardrikCore.Authorization` that holds the
+- A missing credential parks the tool call with a `Wardrik.Credentials.Authorization` that holds the
   sign-in link. Set `:on_granted` to carry on the calls waiting once someone signs in. Wardrik
   sets it for you.
 - A sign-in expires after 15 minutes. Asking again while one is open returns the same link.

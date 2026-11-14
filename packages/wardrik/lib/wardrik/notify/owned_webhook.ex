@@ -21,7 +21,7 @@ defmodule Wardrik.Notify.OwnedWebhook do
 
   @behaviour Wardrik.Notify
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   @impl Wardrik.Notify
   def schema, do: @options

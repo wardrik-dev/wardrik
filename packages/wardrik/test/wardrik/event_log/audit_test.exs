@@ -5,7 +5,7 @@ defmodule Wardrik.EventLog.AuditTest do
   import Wardrik.EventLog.Test.Events
   import Wardrik.EventLog.Test.Protocol
 
-  alias WardrikCore.Principal
+  alias Wardrik.Principal
 
   setup :start_events
 

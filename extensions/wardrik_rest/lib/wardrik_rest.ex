@@ -33,14 +33,14 @@ defmodule WardrikRest do
   `WardrikRest.API`.
   """
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
   alias WardrikRest.API
   alias WardrikRest.Call
 
   @margin 1_000
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(_context, opts) do
     opts
     |> Keyword.fetch!(:apis)
@@ -50,11 +50,11 @@ defmodule WardrikRest do
   end
 
   @doc "Returns the tool for `operation` of `api`."
-  @spec tool(API.t(), WardrikRest.Operation.t()) :: WardrikCore.Tool.t()
+  @spec tool(API.t(), WardrikRest.Operation.t()) :: Wardrik.Tool.t()
   def tool(%API{} = api, operation) do
     annotations = API.annotations(api, operation)
 
-    WardrikCore.Tool.new!(
+    Wardrik.Tool.new!(
       name: API.tool_name(api.name, operation),
       description: operation.description,
       schema: Map.fetch!(api.schemas, operation.name),
@@ -74,7 +74,7 @@ defmodule WardrikRest do
 
   defp describing(%API{described: [example | _more]} = api) do
     [
-      WardrikCore.Tool.new!(
+      Wardrik.Tool.new!(
         name: API.describe(api),
         description:
           "Gives the fields of an object #{api.name}'s tools name instead of listing, as #{example}.",

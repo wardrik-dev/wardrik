@@ -1,10 +1,10 @@
 defmodule WardrikCore.Subagent.Except do
   @moduledoc false
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  alias WardrikCore.Context
+  alias Wardrik.Context
 
-  @impl WardrikCore.Capability
+  @impl Wardrik.Capability
   def tools(context, {capabilities, names}) do
     for entry <- capabilities,
         {module, opts} = Context.entry(entry),

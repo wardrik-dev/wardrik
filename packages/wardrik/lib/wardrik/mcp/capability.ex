@@ -1,10 +1,10 @@
 defmodule Wardrik.MCP.Capability do
   @moduledoc false
 
-  @behaviour WardrikCore.Capability
+  @behaviour Wardrik.Capability
 
-  @impl WardrikCore.Capability
-  def tools(%WardrikCore.Context{agent_id: id} = context, opts) do
+  @impl Wardrik.Capability
+  def tools(%Wardrik.Context{agent_id: id} = context, opts) do
     mcp = Keyword.fetch!(opts, :mcp)
     Wardrik.MCP.tools(context, name: mcp, servers: picked(mcp, resolved(id, opts), opts))
   end
