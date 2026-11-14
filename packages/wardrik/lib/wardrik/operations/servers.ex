@@ -8,6 +8,11 @@ defmodule Wardrik.Operations.Servers do
   #     starts), an OAuth app the owner may use, or the server's own app, named `server:` and its
   #     name, kept and forgotten with it.
   #   * Your resolver gives each agent its servers. Using another owner's is `mcp_server.use`.
+  #   * `Wardrik.MCP` keeps what each node runs the server with. Its record here keeps what it
+  #     was added with, and the credential it signs in with.
+
+  @behaviour Wardrik.Owned
+  @behaviour Wardrik.Store.Format
 
   alias Wardrik.Error
   alias Wardrik.OAuth.Apps
@@ -16,14 +21,26 @@ defmodule Wardrik.Operations.Servers do
   alias Wardrik.Scope
   alias WardrikCore.Principal
 
-  @kind "servers"
   @use {"mcp_server.use", :mcp_server}
+  @fields ~w(owner name url auth provider credential)a
+
+  @impl Wardrik.Owned
+  def kind, do: "servers"
+
+  @impl Wardrik.Store.Format
+  def version, do: 1
+
+  @impl Wardrik.Store.Format
+  def dump(record), do: Map.new(@fields, &{Atom.to_string(&1), Map.fetch!(record, &1)})
+
+  @impl Wardrik.Store.Format
+  def load(1, record), do: {:ok, Map.new(@fields, &{&1, Map.fetch!(record, Atom.to_string(&1))})}
 
   @doc "Lists the owner's servers. The deployment's include those Wardrik starts with."
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
     declared = if owner == Owned.deployment(), do: declared(wardrik), else: []
-    kept = for record <- Owned.own(wardrik, @kind, owner), do: listed(record)
+    kept = for record <- Owned.own(wardrik, __MODULE__, owner), do: listed(record)
     {:ok, %{"servers" => declared ++ kept}}
   end
 
@@ -40,7 +57,7 @@ defmodule Wardrik.Operations.Servers do
          {:ok, reached, auth} <- signs_in(wardrik, owner, input),
          opts = options(owner, input, reached),
          :ok <- started(wardrik, key, opts),
-         :ok <- Owned.put(wardrik, @kind, record(owner, input, auth, opts)) do
+         :ok <- Owned.put(wardrik, __MODULE__, record(owner, input, auth, opts)) do
       :ok = :erpc.multicast(Node.list(), Wardrik.MCP, :add, [Wardrik.mcp(wardrik), key, opts])
       changed(scope, "server.added", {owner, name, %{"url" => input["url"]}})
       answered(wardrik, owner, opts[:credential_name], name)
@@ -52,7 +69,7 @@ defmodule Wardrik.Operations.Servers do
   def remove(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name}) do
     key = Owned.reference(owner, name)
 
-    case Owned.get(wardrik, @kind, key) do
+    case Owned.get(wardrik, __MODULE__, key) do
       nil ->
         not_removed(wardrik, owner, name)
 
@@ -61,7 +78,7 @@ defmodule Wardrik.Operations.Servers do
         _stopped = Wardrik.MCP.remove(mcp, key)
         :ok = :erpc.multicast(Node.list(), Wardrik.MCP, :remove, [mcp, key])
         forget_sign_ins(wardrik, record)
-        :ok = Owned.delete(wardrik, @kind, owner, name)
+        :ok = Owned.delete(wardrik, __MODULE__, owner, name)
         changed(scope, "server.removed", {owner, name, %{}})
         {:ok, listed(record)}
     end
@@ -72,7 +89,7 @@ defmodule Wardrik.Operations.Servers do
   def owner(wardrik, key) do
     cond do
       declared?(wardrik, key) -> Owned.deployment()
-      record = Owned.get(wardrik, @kind, key) -> record.owner
+      record = Owned.get(wardrik, __MODULE__, key) -> record.owner
       true -> nil
     end
   end
@@ -86,7 +103,7 @@ defmodule Wardrik.Operations.Servers do
   def reached(wardrik, principal) do
     candidates =
       for(
-        record <- Owned.all(wardrik, @kind),
+        record <- Owned.all(wardrik, __MODULE__),
         do: %{
           owner: record.owner,
           name: record.name,
@@ -134,7 +151,7 @@ defmodule Wardrik.Operations.Servers do
 
   defp unused(wardrik, owner, name) do
     cond do
-      Owned.get(wardrik, @kind, Owned.reference(owner, name)) != nil -> conflict(owner, name)
+      Owned.get(wardrik, __MODULE__, Owned.reference(owner, name)) != nil -> conflict(owner, name)
       owner == Owned.deployment() and declared?(wardrik, name) -> conflict(owner, name)
       true -> :ok
     end
@@ -232,7 +249,7 @@ defmodule Wardrik.Operations.Servers do
       url: input["url"],
       auth: auth,
       provider: get_in(input, ["auth", "oauth", "provider"]),
-      opts: opts
+      credential: opts[:credential_name]
     }
   end
 
@@ -272,9 +289,8 @@ defmodule Wardrik.Operations.Servers do
   end
 
   # A server that names an OAuth app leaves the app, and the accounts connected with it, alone.
-  defp forget_sign_ins(wardrik, %{auth: "oauth", provider: nil} = record) do
+  defp forget_sign_ins(wardrik, %{auth: "oauth", provider: nil, credential: credential} = record) do
     vault = Wardrik.vault(wardrik)
-    credential = Keyword.fetch!(record.opts, :credential_name)
 
     for {id, ^credential, _kind} <- Wardrik.Vault.list(vault),
         do: Wardrik.Vault.delete(vault, %Principal{id: id}, credential)

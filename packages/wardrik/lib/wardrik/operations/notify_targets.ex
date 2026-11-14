@@ -5,6 +5,9 @@ defmodule Wardrik.Operations.NotifyTargets do
   # The deployment's are those Wardrik's `:notify` names. Your resolver gives each agent the
   # targets it routes to; routing to another owner's is `notify_target.use`.
 
+  @behaviour Wardrik.Owned
+  @behaviour Wardrik.Store.Format
+
   alias Wardrik.Error
   alias Wardrik.Notify.OwnedWebhook
   alias Wardrik.Operations.Changes
@@ -12,14 +15,27 @@ defmodule Wardrik.Operations.NotifyTargets do
   alias Wardrik.Scope
   alias WardrikCore.Principal
 
-  @kind "notify_targets"
   @use {"notify_target.use", :notify_target}
+
+  @impl Wardrik.Owned
+  def kind, do: "notify_targets"
+
+  @impl Wardrik.Store.Format
+  def version, do: 1
+
+  @impl Wardrik.Store.Format
+  def dump(%{owner: owner, name: name, url: url, secret: secret}),
+    do: %{"owner" => owner, "name" => name, "url" => url, "secret" => secret}
+
+  @impl Wardrik.Store.Format
+  def load(1, %{"owner" => owner, "name" => name, "url" => url, "secret" => secret}),
+    do: {:ok, %{owner: owner, name: name, url: url, secret: secret}}
 
   @doc "Lists the owner's targets. The deployment's include those Wardrik's `:notify` names."
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
     declared = if owner == Owned.deployment(), do: declared(wardrik), else: []
-    owned = Owned.own(wardrik, @kind, owner)
+    owned = Owned.own(wardrik, __MODULE__, owner)
     {:ok, %{"targets" => declared ++ Enum.map(owned, &listed/1)}}
   end
 
@@ -30,7 +46,7 @@ defmodule Wardrik.Operations.NotifyTargets do
          :ok <- reachable(wardrik, input["url"]),
          {:ok, secret} <- secret(wardrik, owner, input["secret"]),
          target = %{owner: owner, name: name, url: input["url"], secret: secret},
-         :ok <- Owned.put(wardrik, @kind, target) do
+         :ok <- Owned.put(wardrik, __MODULE__, target) do
       changed(scope, "notify_target.added", {owner, name, %{"url" => input["url"]}})
       {:ok, listed(target)}
     end
@@ -39,12 +55,12 @@ defmodule Wardrik.Operations.NotifyTargets do
   @doc "Removes one of the owner's own targets. Returns it as it was."
   @spec remove(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def remove(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name}) do
-    case Owned.get(wardrik, @kind, Owned.reference(owner, name)) do
+    case Owned.get(wardrik, __MODULE__, Owned.reference(owner, name)) do
       nil ->
         not_removed(wardrik, owner, name)
 
       target ->
-        :ok = Owned.delete(wardrik, @kind, owner, name)
+        :ok = Owned.delete(wardrik, __MODULE__, owner, name)
         changed(scope, "notify_target.removed", {owner, name, %{}})
         {:ok, listed(target)}
     end
@@ -58,7 +74,7 @@ defmodule Wardrik.Operations.NotifyTargets do
   @spec reached(Wardrik.t(), Principal.t()) :: %{String.t() => Wardrik.Resolved.notify_target()}
   def reached(wardrik, principal) do
     candidates =
-      for(target <- Owned.all(wardrik, @kind), do: Map.put(target, :sent, webhook(target))) ++
+      for(target <- Owned.all(wardrik, __MODULE__), do: Map.put(target, :sent, webhook(target))) ++
         for {name, _target} <- wardrik.notify.targets,
             do: %{owner: Owned.deployment(), name: name, sent: name}
 
@@ -99,7 +115,7 @@ defmodule Wardrik.Operations.NotifyTargets do
   end
 
   defp unused(wardrik, owner, name) do
-    if Owned.get(wardrik, @kind, Owned.reference(owner, name)) == nil and
+    if Owned.get(wardrik, __MODULE__, Owned.reference(owner, name)) == nil and
          not declared?(wardrik, owner, name),
        do: :ok,
        else: {:error, Error.new(:conflict, "#{owner} has a notify target #{name} already.")}

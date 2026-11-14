@@ -1,12 +1,17 @@
 defmodule Wardrik.Vault.Sealed do
-  @moduledoc "A credential as the vault writes it. Only a key can unseal it."
+  @moduledoc """
+  A credential as the vault writes it. Only a key can unseal it.
+
+  The store keeps it as its kind, and its nonce, ciphertext and tag in base64.
+  """
+
+  @behaviour Wardrik.Store.Format
 
   @enforce_keys [:kind, :nonce, :ciphertext, :tag]
-  defstruct [:kind, :nonce, :ciphertext, :tag, version: 1]
+  defstruct [:kind, :nonce, :ciphertext, :tag]
 
   @typedoc "A sealed secret or grant."
   @type t() :: %__MODULE__{
-          version: pos_integer(),
           kind: Wardrik.Vault.kind(),
           nonce: binary(),
           ciphertext: binary(),
@@ -15,6 +20,33 @@ defmodule Wardrik.Vault.Sealed do
 
   @key_bytes 32
   @nonce_bytes 12
+
+  @impl Wardrik.Store.Format
+  def version, do: 1
+
+  @impl Wardrik.Store.Format
+  def dump(%__MODULE__{} = sealed) do
+    %{
+      "kind" => Atom.to_string(sealed.kind),
+      "nonce" => Base.encode64(sealed.nonce),
+      "ciphertext" => Base.encode64(sealed.ciphertext),
+      "tag" => Base.encode64(sealed.tag)
+    }
+  end
+
+  @impl Wardrik.Store.Format
+  def load(1, %{"kind" => kind, "nonce" => nonce, "ciphertext" => ciphertext, "tag" => tag}) do
+    kinds = Map.new(Wardrik.Vault.kinds(), &{Atom.to_string(&1), &1})
+
+    with {:ok, kind} <- Map.fetch(kinds, kind),
+         {:ok, nonce} <- Base.decode64(nonce),
+         {:ok, ciphertext} <- Base.decode64(ciphertext),
+         {:ok, tag} <- Base.decode64(tag) do
+      {:ok, %__MODULE__{kind: kind, nonce: nonce, ciphertext: ciphertext, tag: tag}}
+    else
+      :error -> {:error, "a sealed value of kind #{kind} isn't one this release reads"}
+    end
+  end
 
   @doc """
   Seals `value` with `:key`. Binds it to `:path` and `:kind`, so it can't be moved or relabelled.
@@ -37,20 +69,16 @@ defmodule Wardrik.Vault.Sealed do
   @doc """
   Unseals with the first of `keys` that opens it.
 
-  Returns `{:error, :undecipherable}` if none does, and `{:error, {:unknown_version, version}}`
-  for a version this release can't read.
+  Returns `{:error, :undecipherable}` if none does.
   """
-  @spec unseal(t(), [binary()], String.t()) :: {:ok, binary()} | {:error, term()}
-  def unseal(%__MODULE__{version: 1} = sealed, keys, path) do
+  @spec unseal(t(), [binary()], String.t()) :: {:ok, binary()} | {:error, :undecipherable}
+  def unseal(%__MODULE__{} = sealed, keys, path) do
     aad = aad(path, sealed.kind)
 
     keys
     |> Enum.find_value(fn key -> opened(key, sealed, aad) end)
     |> unsealed()
   end
-
-  def unseal(%__MODULE__{version: version}, _keys, _path),
-    do: {:error, {:unknown_version, version}}
 
   @doc "Decodes base64 keys. Drops any that don't hold #{@key_bytes} bytes."
   @spec decode_keys([String.t()]) :: [binary()]

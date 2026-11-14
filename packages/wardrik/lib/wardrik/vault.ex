@@ -54,6 +54,10 @@ defmodule Wardrik.Vault do
 
   @kinds [:secret, :grant, :api_key, :client_secret, :header, :signing_secret, :token]
 
+  @doc false
+  @spec kinds() :: [kind()]
+  def kinds, do: @kinds
+
   @typedoc "An option's secret: the value itself, or `{:secret, name}` for one of `deployment/0`'s."
   @type value() :: String.t() | {:secret, String.t()} | nil
 
@@ -202,7 +206,7 @@ defmodule Wardrik.Vault do
     keys = Keyword.fetch!(args, :keys)
     path = path(principal, name)
 
-    scoped = Wardrik.Store.scope(store, "wardrik_vault", format: Wardrik.Store.Format.Term)
+    scoped = scoped(store)
 
     case Wardrik.Store.lookup(scoped, path) do
       {%Sealed{} = sealed, _vsn} -> Sealed.unseal(sealed, Sealed.decode_keys(keys), path)
@@ -336,7 +340,7 @@ defmodule Wardrik.Vault do
     store = Keyword.fetch!(opts, :store)
 
     settings = %{
-      store: Wardrik.Store.scope(store, "wardrik_vault", format: Wardrik.Store.Format.Term),
+      store: scoped(store),
       keys: decoded,
       grants: Keyword.fetch!(opts, :grants)
     }
@@ -391,6 +395,8 @@ defmodule Wardrik.Vault do
       _other -> []
     end
   end
+
+  defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_vault", format: Sealed)
 
   defp path(%Principal{id: id}, name) when is_binary(name), do: encode(id) <> "/" <> encode(name)
 
