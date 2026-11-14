@@ -13,6 +13,8 @@
 - Tokens, agent records and everything else the daemon stores are JSON, each in a versioned
   format. From this release, an upgrade reads everything an earlier release stored. Upgrading to
   it from an earlier release needs an empty store.
+- `wardrik connection connect` no longer says a sign-in ended without connecting when it
+  finished just as the CLI checked.
 
 ## 0.1.0-rc.13 (2026-11-13)
 

@@ -20,6 +20,7 @@
 - `Wardrik.Policy.Ask` is kept as `policy_ask`. The format behaviour is `WardrikCore.Format`.
 - From this release, a release reads everything an earlier one stored, and is tested against a
   corpus of what each stored.
+- A sign-in that finishes while connections are listed shows as connected, not ended.
 
 ## 0.1.0-rc.12 (2026-11-13)
 

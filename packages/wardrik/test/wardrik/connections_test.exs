@@ -1,11 +1,18 @@
 defmodule Wardrik.ConnectionsTest do
   use ExUnit.Case, async: false
+  use Mimic
 
   alias Wardrik.Authorizer.Request
   alias Wardrik.Vault.Secret
   alias WardrikCore.Principal
 
+  setup {Req.Test, :set_req_test_to_shared}
+
   setup context do
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{"access_token" => "linear_token", "expires_in" => 3600})
+    end)
+
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
@@ -27,6 +34,7 @@ defmodule Wardrik.ConnectionsTest do
         egress: &Wardrik.Egress.any/1,
         oauth: [
           page: "https://agents.test/oauth",
+          req_options: [plug: {Req.Test, __MODULE__}],
           providers: [
             google: [
               authorization_endpoint: "https://google.test/authorize",
@@ -108,5 +116,34 @@ defmodule Wardrik.ConnectionsTest do
 
     assert {:error, %Wardrik.Error{type: :not_found}} =
              Wardrik.Connections.disconnect(ana, "linear")
+  end
+
+  test "lists a sign-in that ends while it reads as connected, not as ended", %{
+    wardrik: wardrik,
+    ana: ana
+  } do
+    {:ok, %Wardrik.Connecting{authorization: %{"url" => url}}} =
+      Wardrik.Connections.connect(ana, "linear")
+
+    %{"state" => state} =
+      url
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+
+    # The sign-in ends just after the first read of the store.
+    stub(Wardrik.Store, :keys, &call_original(Wardrik.Store, :keys, [&1]))
+
+    expect(Wardrik.Store, :keys, fn store ->
+      keys = call_original(Wardrik.Store, :keys, [store])
+      params = %{"state" => state, "code" => "c"}
+      {:ok, _signed_in} = Wardrik.finish_sign_in(wardrik, params, as: ana.principal)
+      keys
+    end)
+
+    assert {:ok, [_google, %Wardrik.Connection{provider: "linear"} = linear]} =
+             Wardrik.Connections.list(ana)
+
+    assert linear.connected or linear.signing_in
   end
 end
