@@ -7,7 +7,7 @@ defmodule WardrikDaemon.CLI.Servers do
   alias WardrikDaemon.CLI.Terminal
 
   @owner [org: :string, user: :string]
-  @poll :timer.seconds(1)
+  @poll 250
 
   @doc "Returns the commands on MCP servers, notify targets, OAuth apps and connections."
   @spec commands() :: [Command.t()]
