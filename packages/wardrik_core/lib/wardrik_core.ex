@@ -28,6 +28,7 @@ defmodule WardrikCore do
 
   alias Wardrik.Context
   alias WardrikCore.Agent.State
+  alias WardrikCore.Backends.Prefixed
   alias WardrikCore.Turn
 
   @typedoc "An agent's id and its conversation's, `nil` for the agent's own history."
@@ -58,6 +59,8 @@ defmodule WardrikCore do
     * `:name` - the instance's name. `WardrikCore` by default.
     * `:configure` - `{module, opts}`, a `WardrikCore.Configure` that gives an agent its settings
       as it loads.
+    * `:prefix` - where agents are kept in the backend. `"wardrik/"` unless set. Instances on one
+      node may share it, each with a backend of its own.
 
   Other options go to `DurableServer.Supervisor`.
   """
@@ -70,6 +73,7 @@ defmodule WardrikCore do
       [prefix: "wardrik/", init_info: %{configure: configure}]
       |> Keyword.merge(opts)
       |> Keyword.merge(name: agents(name), backend: Keyword.fetch!(opts, :backend))
+      |> Prefixed.options()
       |> DurableServer.Supervisor.child_spec()
 
     %{spec | id: name, start: {__MODULE__, :start_loaded, [spec.start]}}
@@ -512,12 +516,12 @@ defmodule WardrikCore do
   """
   @spec saved_key(atom(), String.t() | {String.t(), String.t() | nil}) :: String.t()
   def saved_key(instance \\ __MODULE__, agent) do
-    %{prefix: prefix} =
+    %{prefix: prefix, storage_backend: %{state: backend}} =
       instance
       |> agents()
       |> DurableServer.Supervisor.__get_config__()
 
-    prefix <> durable(agent)
+    Prefixed.stored(backend, prefix <> durable(agent))
   end
 
   # DurableServer keys are binaries: each id is encoded on its own, so no id is ever split.
