@@ -12,6 +12,8 @@ defmodule WardrikACP.MixProject do
       docs: [main: "readme", extras: ["README.md", "guides/getting-started.md", "CHANGELOG.md"]],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      # The peer runs in a VM of its own, which coverage doesn't see.
+      test_coverage: [ignore_modules: [WardrikACP.TestPeer]],
       aliases: aliases(),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
