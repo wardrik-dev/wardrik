@@ -1,22 +1,21 @@
 defmodule WardrikDaemon.AccessTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import WardrikDaemon.Test
 
   alias WardrikDaemon.Client
   alias WardrikDaemon.Tokens
 
-  setup :set_mimic_global
-
   setup context do
-    context = dirs(context)
+    context = fake_model(dirs(context))
     port = free_port()
 
     write(context, "config.yaml", """
     org: payments
     orgs: {growth: {}}
     http: {port: #{port}}
+    web: {enabled: false}
+    #{context.models}
     defaults: {model: #{model()}}
     roles:
       reader: {rules: [{verbs: [read, events], kinds: [agent]}]}
@@ -189,12 +188,7 @@ defmodule WardrikDaemon.AccessTest do
   end
 
   test "a conversation is reached through its agent alone", context do
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      message = ReqLLM.Context.assistant("Done.")
-      {:ok, %ReqLLM.Response{id: "resp", model: "test", context: nil, message: message}}
-    end)
-
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
+    Wardrik.Testing.Model.answer(context.fake, [Wardrik.Testing.Model.text("Done.")])
 
     {:ok, %Wardrik.Reply{}} =
       Wardrik.Agent.reply(context.admin, context.growth, "Hi", conversation: "C1")

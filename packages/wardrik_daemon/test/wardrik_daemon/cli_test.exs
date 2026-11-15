@@ -1,6 +1,5 @@
 defmodule WardrikDaemon.CLITest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureIO
   import WardrikDaemon.Test
@@ -10,8 +9,6 @@ defmodule WardrikDaemon.CLITest do
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Test.Screen
 
-  setup :set_mimic_global
-
   setup context do
     # Hours twelve hours off, in UTC and in Los Angeles, so a daily trigger at one is never due as
     # a test runs.
@@ -20,6 +17,7 @@ defmodule WardrikDaemon.CLITest do
     context =
       context
       |> dirs()
+      |> fake_model()
       |> Map.merge(%{
         later: rem(DateTime.utc_now().hour + 12, 24),
         later_la: rem(la.hour + 12, 24)
@@ -30,6 +28,8 @@ defmodule WardrikDaemon.CLITest do
     orgs: {"*": {}, growth: {}}
     allow_private_urls: true
     http: {port: #{free_port()}}
+    web: {enabled: false}
+    #{context.models}
     defaults: {model: #{model()}, retries: {attempts: 0, on_exhausted: fail}}
     """)
 
@@ -231,7 +231,13 @@ defmodule WardrikDaemon.CLITest do
     File.rm!(config)
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
     assert {0, _wrote} = wardrik(context, @init ++ ~w(--org acme))
-    File.write!(config, String.replace(File.read!(config), "4747", "#{free_port()}"))
+
+    written =
+      config
+      |> File.read!()
+      |> String.replace("4747", "#{free_port()}")
+
+    File.write!(config, [written, "web: {enabled: false}\n", context.models, "\n"])
     context = start_daemon(context)
 
     assert {:ok, %Wardrik.Definition{} = front, []} =
@@ -252,13 +258,16 @@ defmodule WardrikDaemon.CLITest do
     # It makes a worker in its org, once a person approves.
     door = id(context, "acme", "assistant")
     worker = %{"description" => "rivals-watch: watches rivals.", "instructions" => "Watch."}
-    answers([calling("call_1", "agent_create", %{name: "rivals-watch", definition: worker})])
+
+    answers(context, [
+      calling("call_1", "agent_create", %{name: "rivals-watch", definition: worker})
+    ])
 
     assert {:waiting, [%{name: "agent_create"}]} =
              Wardrik.Agent.reply(context.admin, door, "Watch our rivals.")
 
     # A message after the approval is answered once the approved run is done.
-    answers([answer("Made it."), answer("You're welcome.")])
+    answers(context, [answer("Made it."), answer("You're welcome.")])
     approve = %{"agent" => door, "interrupt" => "call_1"}
     assert {:ok, _approved} = Wardrik.run(context.admin, "agent.approve", approve)
     assert {:ok, _reply} = Wardrik.Agent.reply(context.admin, door, "Thanks.")
@@ -399,7 +408,10 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "asks an agent, and says what it waits on", context do
-      answers([%{answer("Two cases.") | usage: %{input_tokens: 1_200, output_tokens: 34}}])
+      answers(context, [
+        %{answer("Two cases.") | usage: %{input_tokens: 1_200, output_tokens: 34}}
+      ])
+
       assert {0, "Two cases.\n"} = wardrik(context, ["ask", "triage", "How", "many?"])
       assert {0, listed} = wardrik(context, ["ls"])
       assert listed =~ ~r/^triage\s+idle\s+in \S+( \S+)?\s+1\.2k tokens/m
@@ -407,7 +419,7 @@ defmodule WardrikDaemon.CLITest do
       assert history =~ "› How many?"
       assert history =~ "Two cases."
 
-      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
+      answers(context, [calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
       assert {0, waiting} = wardrik(context, ["ask", "triage", "Echo hi"])
       assert waiting =~ ~s(→ echo {"text":"hi"})
       assert waiting =~ "Waiting on a person for 1 call:"
@@ -439,7 +451,7 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "follows an agent, showing first what it waits on you for", context do
-      answers([calling("call_1", "echo", %{"text" => "hi"})])
+      answers(context, [calling("call_1", "echo", %{"text" => "hi"})])
       assert {0, _waiting} = wardrik(context, ["ask", "triage", "Echo hi"])
 
       {:ok, device, _written} = Screen.start_link(notify: self())
@@ -456,7 +468,7 @@ defmodule WardrikDaemon.CLITest do
       screen("triage waits on you:")
       screen("wardrik approval approve triage call_1")
 
-      answers([answer("Echoed.")])
+      answers(context, [answer("Echoed.")])
       approve = %{"agent" => id(context, "acme", "triage"), "interrupt" => "call_1"}
       assert {:ok, _approved} = Wardrik.run(context.admin, "agent.approve", approve)
       screen("✓\e[0m echo")
@@ -466,7 +478,7 @@ defmodule WardrikDaemon.CLITest do
       typing = put_in(context.env["WARDRIK_INPUT"], "1")
       assert {0, "Nothing waits on a person.\n"} = wardrik(typing, ["approval"])
 
-      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Echoed.")])
+      answers(context, [calling("call_1", "echo", %{"text" => "hi"}), answer("Echoed.")])
       assert {0, _waiting} = wardrik(context, ["ask", "triage", "Echo hi"])
 
       assert {0, listed} = wardrik(context, ["approval"])
@@ -482,7 +494,7 @@ defmodule WardrikDaemon.CLITest do
     test "asks about a call where the turn stops, and goes on once it's decided", context do
       context = put_in(context.env["WARDRIK_INPUT"], "1")
 
-      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Echoed.")])
+      answers(context, [calling("call_1", "echo", %{"text" => "hi"}), answer("Echoed.")])
       assert {0, approved} = wardrik(context, ["ask", "triage", "Echo hi"], "maybe\ny\n")
       assert approved =~ "╭─ echo ─"
       refute approved =~ "needs your approval"
@@ -493,13 +505,13 @@ defmodule WardrikDaemon.CLITest do
       assert approved =~ "Echoed."
       refute approved =~ "Decide with:"
 
-      answers([calling("call_2", "echo", %{"text" => "no"}), answer("Fine, I won't.")])
+      answers(context, [calling("call_2", "echo", %{"text" => "no"}), answer("Fine, I won't.")])
       assert {0, denied} = wardrik(context, ["ask", "triage", "Echo no"], "n\nNot now.\n")
       assert denied =~ "Why? The model reads it."
       assert denied =~ "echo was refused: Not now."
       assert denied =~ "Fine, I won't."
 
-      answers([calling("call_3", "echo", %{"text" => "later"})])
+      answers(context, [calling("call_3", "echo", %{"text" => "later"})])
       assert {0, left} = wardrik(context, ["ask", "triage", "Echo later"], "\n")
       assert left =~ "  wardrik approval approve triage call_3"
       assert {0, parked} = wardrik(context, ["approval", "ls"])
@@ -515,7 +527,7 @@ defmodule WardrikDaemon.CLITest do
       assert stderr =~ "triage answers nothing until those are decided, so it wasn't asked."
 
       # The message goes into the turn the approval resumes, or into one after it.
-      answers([answer("Echoed it."), answer("Echoed later.")])
+      answers(context, [answer("Echoed it."), answer("Echoed later.")])
       assert {0, later} = wardrik(context, ["ask", "triage", "Hi"], "y\n")
       assert later =~ "triage waits on you first:"
       assert later =~ ~r/Echoed (it|later)\./
@@ -527,7 +539,7 @@ defmodule WardrikDaemon.CLITest do
       start_supervised!({Owl.LiveScreen, name: screen, device: device})
       terminal = %Terminal{width: 80, input?: true, live: screen}
 
-      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Two cases.")])
+      answers(context, [calling("call_1", "echo", %{"text" => "hi"}), answer("Two cases.")])
       context = put_in(context.env["WARDRIK_INPUT"], "1")
 
       run = fn ->
@@ -549,7 +561,7 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "seals the key it's given, reads the assistant's file, and asks it", context do
-      answers([answer("I turn what you ask for into work that runs.")])
+      answers(context, [answer("I turn what you ask for into work that runs.")])
       context = put_in(context.env["MY_KEY"], "sk-given")
 
       assert {0, output} = wardrik(context, ~w(init --provider anthropic --key-from-env MY_KEY))
@@ -582,9 +594,7 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "says why an answer failed", context do
-      Mimic.stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-        {:error, %RuntimeError{message: "down"}}
-      end)
+      Wardrik.Testing.Model.answer(context.fake, [{:status, 500}])
 
       assert failing(context, ["ask", "triage", "Hi"]) =~ "The turn failed."
     end
@@ -599,7 +609,7 @@ defmodule WardrikDaemon.CLITest do
       File.chmod!(editor, 0o755)
       typing = put_in(context.env["WARDRIK_INPUT"], "1")
 
-      answers([answer("Two cases.")])
+      answers(context, [answer("Two cases.")])
 
       assert {0, "Two cases.\n"} =
                wardrik(put_in(typing.env["VISUAL"], editor), ["ask", "triage"])
@@ -968,10 +978,21 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "sends without following, and stops, clears and removes agents", context do
-      answers([answer("Later.")])
+      test = self()
+
+      # The turn is still in its model call as it's stopped. A turn stopped as its model call
+      # starts can leave the agent shown as running.
+      answers(context, [
+        fn _request ->
+          send(test, :asked)
+          receive do: (:never -> nil)
+        end
+      ])
 
       assert {0, "Sent it to triage.\n"} =
                wardrik(context, ["ask", "triage", "Hi", "--no-wait"])
+
+      assert_receive :asked, 5_000
 
       assert {0, "Stopped the turn of triage.\n"} =
                wardrik(context, ["agent", "cancel", "triage"])
@@ -989,6 +1010,7 @@ defmodule WardrikDaemon.CLITest do
       assert failing(context, ["agent", "cancel", "triage", "--all"]) =~ "--all alone"
       assert failing(context, ["agent", "cancel"]) =~ "--all alone"
 
+      idle(context, id(context, "acme", "triage"))
       assert {0, "Cleared triage.\n"} = wardrik(context, ["agent", "clear", "triage"])
       assert failing(context, ["agent", "kill", "triage", "nope"]) =~ "nope"
       assert failing(context, ["agent", "move", "triage", "wardrik@nowhere"]) =~ "wardrik@nowhere"
@@ -998,7 +1020,7 @@ defmodule WardrikDaemon.CLITest do
     end
 
     test "reaches an agent's conversation, as a chat thread is", context do
-      answers([answer("In the thread.")])
+      answers(context, [answer("In the thread.")])
       thread = ["--conversation", "C1"]
       assert {0, "In the thread.\n"} = wardrik(context, ["ask", "triage", "Hi" | thread])
       assert {0, history} = wardrik(context, ["agent", "history", "triage" | thread])
@@ -1040,14 +1062,25 @@ defmodule WardrikDaemon.CLITest do
     end
   end
 
-  defp answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-    Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
+  # An agent's activity is written from its events, a moment after its turn stops.
+  defp idle(context, agent) do
+    events =
+      context.wardrik
+      |> Wardrik.Instance.fetch!()
+      |> Wardrik.events()
 
-    Mimic.stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
+    :ok = Wardrik.EventLog.subscribe(events, :all)
+    idled(events, agent)
   end
+
+  defp idled(events, agent) do
+    unless Wardrik.EventLog.activity(events, agent)["doing"] == [] do
+      assert_receive {Wardrik.EventLog, _log, _event}, 5_000
+      idled(events, agent)
+    end
+  end
+
+  defp answers(context, responses), do: Wardrik.Testing.Model.answer(context.fake, responses)
 
   defp answer(text), do: response(ReqLLM.Context.assistant(text))
 

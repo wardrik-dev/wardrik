@@ -8,6 +8,21 @@ defmodule WardrikDaemon.Test do
 
   def model, do: @model
 
+  @doc """
+  Starts a `Wardrik.Testing.Model` with no answers yet, as `:fake`. `:models` is the `models:`
+  line of config.yaml that sends `model/0`'s calls to it.
+  """
+  def fake_model(context) do
+    fake = start_supervised!({Wardrik.Testing.Model, []})
+    endpoint = Wardrik.Testing.Model.endpoint(fake)
+
+    models =
+      ~s(models: {endpoints: {"#{@model}": ) <>
+        ~s({model: "#{endpoint[:model]}", base_url: "#{endpoint[:base_url]}"}}})
+
+    Map.merge(context, %{fake: fake, models: models})
+  end
+
   def dirs(context) do
     root = Path.join(System.tmp_dir!(), "wardrik_daemon #{System.unique_integer([:positive])}")
     File.rm_rf!(root)
@@ -134,7 +149,7 @@ defmodule WardrikDaemon.Test do
         # Daemons of other tests start too.
         assert_receive(
           {[:wardrik_daemon, :started], ^ref, _measurements, %{wardrik: ^name}},
-          5_000
+          20_000
         )
 
         pid

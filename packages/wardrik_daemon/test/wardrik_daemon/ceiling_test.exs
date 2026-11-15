@@ -1,16 +1,13 @@
 defmodule WardrikDaemon.CeilingTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import WardrikDaemon.Test
 
   alias WardrikDaemon.Client
   alias WardrikDaemon.Tokens
 
-  setup :set_mimic_global
-
   setup context do
-    context = dirs(context)
+    context = fake_model(dirs(context))
     port = free_port()
 
     write(context, "config.yaml", """
@@ -19,6 +16,8 @@ defmodule WardrikDaemon.CeilingTest do
       "*": {policy: cap}
       growth: {}
     http: {port: #{port}}
+    web: {enabled: false}
+    #{context.models}
     defaults: {model: #{model()}}
     roles:
       reader: {rules: [{verbs: [read], kinds: [ceiling]}]}
@@ -32,27 +31,19 @@ defmodule WardrikDaemon.CeilingTest do
       Map.get(context, :cap, "budget: {tokens: 100, per: month, on_exhausted: deny}\n")
     )
 
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     context = start_daemon(context)
     Map.put(context, :url, "http://127.0.0.1:#{port}")
   end
 
-  defp answers(tokens) do
-    {:ok, queue} = Agent.start_link(fn -> tokens end)
+  defp answers(context, tokens) do
+    answers =
+      for used <- tokens,
+          do: %{
+            Wardrik.Testing.Model.text("Done.")
+            | usage: %{input_tokens: used, output_tokens: 0}
+          }
 
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      used = Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)
-      message = ReqLLM.Context.assistant("Done.")
-
-      {:ok,
-       %ReqLLM.Response{
-         id: "resp",
-         model: "test",
-         context: nil,
-         message: message,
-         usage: %{input_tokens: used, output_tokens: 0}
-       }}
-    end)
+    Wardrik.Testing.Model.answer(context.fake, answers)
   end
 
   defp reply(context, owner, name) do
@@ -75,7 +66,7 @@ defmodule WardrikDaemon.CeilingTest do
   test "an org's agents stop at the ceiling they share, and another org's spend counts apart",
        context do
     ref = :telemetry_test.attach_event_handlers(self(), [[:wardrik_daemon, :ceiling, :reached]])
-    answers([120, 30])
+    answers(context, [120, 30])
 
     assert {:ok, %Wardrik.Reply{}} = reply(context, "payments", "first")
     assert {:ok, %Wardrik.Reply{}} = reply(context, "growth", "first")
@@ -114,7 +105,7 @@ defmodule WardrikDaemon.CeilingTest do
 
   @tag cap: "budget: {tokens: 100, per: total}\n"
   test "asks past it, and whoever may decide on the agent approves more for the org", context do
-    answers([120, 10])
+    answers(context, [120, 10])
     assert {:ok, %Wardrik.Reply{}} = reply(context, "payments", "first")
     second = agent(context, "payments", "second")
 
