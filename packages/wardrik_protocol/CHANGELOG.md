@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.11 (2026-11-15)
+
+- `wardrik.evaluation.completed`: a judge model's answers, usage and cost.
+- A tool call's `cost` is what the tool reported, without a judge's.
+
 ## 0.1.0-rc.10 (2026-11-14)
 
 - A definition's `notify` takes `judge`: `question`, `send` and `model`.

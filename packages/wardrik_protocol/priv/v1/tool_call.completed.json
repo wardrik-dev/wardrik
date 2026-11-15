@@ -25,7 +25,8 @@
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/served_by"
     },
     "cost": {
-      "$ref": "urn:wardrik:schema:v1:defs#/$defs/cost"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/cost",
+      "description": "What the tool reported it cost. A judge's call about it is its own wardrik.evaluation.completed."
     }
   },
   "additionalProperties": false,

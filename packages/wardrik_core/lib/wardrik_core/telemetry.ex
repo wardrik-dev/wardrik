@@ -19,7 +19,9 @@ defmodule WardrikCore.Telemetry do
     * `[:wardrik_core, :tool_call, :exit]` - `call`, `reason`.
     * `[:wardrik_core, :step, :start]` - `step`, `span`, and `model` for `:generate`.
     * `[:wardrik_core, :step, :stop]` - `step`, `span`, `status`, `attributes`, and `response` or
-      `reason`. Measures `duration` and what the step measured.
+      `reason`. Measures `duration` and what the step measured, less what its own steps' events
+      report (`Wardrik.Context.reported/2`). A `WardrikCore.evaluate/2` call is the step
+      `{:evaluate, model}`, with its answers as `response`.
     * `[:wardrik_core, :step, :exception]` - `step`, `span`, `kind`, `reason`, `stacktrace`.
     * `[:wardrik_core, :subagent, :started]` - `span`, `agent`, `prompt`.
     * `[:wardrik_core, :subagent, :progress]` - `span`, `agent`, `call`, `tool_calls`.
@@ -117,6 +119,7 @@ defmodule WardrikCore.Telemetry do
   defp gained(%Context{measurements: now}, %Context{measurements: before}) do
     now
     |> Map.new(fn {key, amount} -> {key, amount - Map.get(before, key, 0)} end)
+    |> Context.unreported()
     |> Map.reject(fn {_key, amount} -> amount == 0 end)
   end
 end

@@ -208,6 +208,37 @@ defmodule Wardrik.NotifyTest do
       assert Wardrik.Spending.today(wardrik, "acme/triage")["usd"] >= 0.01
     end
 
+    test "records each judge call in the agent's log, priced once", %{scope: scope} do
+      expect(ReqLLM, :evaluate, fn _model, _state, _questions, _opts ->
+        {:ok,
+         %ReqLLM.Response{
+           id: "eval",
+           model: "jev",
+           context: nil,
+           message: nil,
+           object: %{"send" => %{"probability" => 0.2}},
+           usage: %{input_tokens: 40, output_tokens: 1, total_cost: 0.002}
+         }}
+      end)
+
+      model({:ok, answer("Nothing new.")})
+      {:ok, _agent} = define(scope, @judged)
+      ask(scope)
+
+      evaluated = until("wardrik.evaluation.completed")
+
+      assert %{
+               "model" => "typesafe:jev-latest",
+               "status" => "ok",
+               "answers" => %{"send" => %{"probability" => 0.2}},
+               "usage" => %{"input_tokens" => 40, "output_tokens" => 1},
+               "cost" => %{"micro_usd" => 2000}
+             } = evaluated["data"]
+
+      notified = until("wardrik.step.completed")
+      refute Map.has_key?(notified["data"], "cost")
+    end
+
     test "sends an answer the judge favours", %{scope: scope} do
       judging(yes(0.9))
       model({:ok, answer("The site is down.")})

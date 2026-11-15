@@ -127,3 +127,4 @@ judge:
 - A judge's `allow` applies only to calls no rule matches, and never after reading untrusted content.
 - If the judge model fails, the call needs approval when the question has `ask` or `deny`.
 - Arguments can be crafted to fool a judge. Keep exact checks in rules.
+- Each judge call is recorded as [`wardrik.evaluation.completed`](/reference/events/), with its answers and cost.

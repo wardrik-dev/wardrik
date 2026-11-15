@@ -206,6 +206,7 @@ defmodule Wardrik.EventLog.ViewsTest do
               adoption
             ),
             event("tool_call.completed", Map.put(tool("c1"), "status", "ok")),
+            event("evaluation.completed", %{"cost" => %{"micro_usd" => 300}}),
             event("message.completed", %{
               "message" => %{
                 "id" => "m",
@@ -234,7 +235,7 @@ defmodule Wardrik.EventLog.ViewsTest do
                %{type: :text, text: "Found it."}
              ] = run.steps
 
-      assert run.cost_micro_usd == 1_700
+      assert run.cost_micro_usd == 2_000
     end
 
     test "reads a run's thinking, answer and tool calls in order" do
@@ -401,12 +402,16 @@ defmodule Wardrik.EventLog.ViewsTest do
               "cost" => %{"micro_usd" => 20}
             }),
             event("subagent.failed", %{"tool_calls" => 1, "cost" => nil}),
+            event("evaluation.completed", %{
+              "usage" => %{"input_tokens" => 5, "output_tokens" => 1},
+              "cost" => %{"micro_usd" => 2}
+            }),
             event("run.completed", %{})
           ],
           Runs
         )
 
-      assert [%{tool_calls: 3, input_tokens: 40, output_tokens: 8, cost_micro_usd: 23}] =
+      assert [%{tool_calls: 3, input_tokens: 45, output_tokens: 9, cost_micro_usd: 25}] =
                Runs.runs(runs)
     end
 

@@ -33,7 +33,7 @@ Start `iex`, then paste this with your key:
 ```elixir
 Mix.install([
   {:wardrik_acp, "~> 0.1.0-rc.3"},
-  {:wardrik, "~> 0.1.0-rc.14"}
+  {:wardrik, "~> 0.1.0-rc.15"}
 ])
 
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")

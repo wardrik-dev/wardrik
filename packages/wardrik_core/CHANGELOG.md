@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.10 (2026-11-15)
+
+- `WardrikCore.evaluate/2` runs as the step `{:evaluate, model}`, whose stop event carries its
+  answers and what it used.
+- `Wardrik.Context.reported/2` adds measurements an event of their own already reports. A step's
+  stop event leaves them out; budgets and spending still count them.
+
 ## 0.1.0-rc.9 (2026-11-14)
 
 - `WardrikCore.evaluate/2` passes `ReqLLM.evaluate/4` only the options it takes. Before, every

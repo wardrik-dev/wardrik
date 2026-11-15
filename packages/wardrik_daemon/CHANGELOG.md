@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.16 (2026-11-15)
+
+- Each judge call is recorded as `wardrik.evaluation.completed`, with its answers and cost, and
+  run totals include it. Requires `wardrik` 0.1.0-rc.15.
+
 ## 0.1.0-rc.15 (2026-11-14)
 
 - An agent file's `notify.judge` decides which finished turns are sent. See the notifications

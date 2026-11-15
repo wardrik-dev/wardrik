@@ -4,10 +4,16 @@ defmodule Wardrik.Context do
 
   `step` is `:turn`, `:generate` (a model call), `{:tool_call, call}`, or `{:step, name}` for your
   own. Middleware reads and changes the rest, such as `messages`, `response` and `attributes`.
+  `{:evaluate, model}` is a `WardrikCore.evaluate/2` call's span, which runs no middleware.
   """
   use WardrikCore.Private
 
-  @type step :: :turn | :generate | {:tool_call, Wardrik.ToolCall.t()} | {:step, String.t()}
+  @type step ::
+          :turn
+          | :generate
+          | {:tool_call, Wardrik.ToolCall.t()}
+          | {:step, String.t()}
+          | {:evaluate, String.t()}
   @type entry :: module() | {module(), term()}
 
   @type t() :: %__MODULE__{
@@ -165,11 +171,43 @@ defmodule Wardrik.Context do
   def measure(%__MODULE__{measurements: measurements} = context, key, amount),
     do: %{context | measurements: Map.update(measurements, key, amount, &(&1 + amount))}
 
-  @doc "Adds each of `measurements`, such as those `WardrikCore.evaluate/2` returns."
+  @doc "Adds each of `measurements`."
   @spec measure(t(), map()) :: t()
   def measure(%__MODULE__{} = context, measurements) do
     Enum.reduce(measurements, context, fn {key, amount}, context ->
       measure(context, key, amount)
+    end)
+  end
+
+  @reported %{
+    input_tokens: :reported_input_tokens,
+    output_tokens: :reported_output_tokens,
+    usd: :reported_usd
+  }
+
+  @doc """
+  Adds each of `measurements` that an event of their own already reports, such as those
+  `WardrikCore.evaluate/2` returns.
+
+      context = Wardrik.Context.reported(context, measurements)
+
+  Budgets and spending count them. The step's own event leaves them out, so nothing that sums
+  events counts them twice.
+  """
+  @spec reported(t(), map()) :: t()
+  def reported(%__MODULE__{} = context, measurements) do
+    already = for {key, as} <- @reported, amount = measurements[key], into: %{}, do: {as, amount}
+    measure(context, Map.merge(measurements, already))
+  end
+
+  @doc "Returns `measurements` less what an event of their own already reports. See `reported/2`."
+  @spec unreported(map()) :: map()
+  def unreported(measurements) do
+    Enum.reduce(@reported, measurements, fn {key, as}, left ->
+      case Map.pop(left, as) do
+        {nil, left} -> left
+        {amount, left} -> Map.update(left, key, -amount, &(&1 - amount))
+      end
     end)
   end
 

@@ -69,7 +69,7 @@ defmodule Wardrik.Notify.Judge do
   defp evaluated(context, model, state, questions) do
     with {:ok, answers, measurements} <-
            WardrikCore.evaluate(context, model: model, state: state, questions: questions),
-         do: {:ok, %{Context.measure(context, measurements) | response: {:ok, answers}}}
+         do: {:ok, %{Context.reported(context, measurements) | response: {:ok, answers}}}
   end
 
   defp probability({:ok, %{"send" => %{"probability" => probability}}})

@@ -39,7 +39,9 @@ defmodule Wardrik.Notify do
       turn's answer and the conversation's digest. The answer is sent if the probability of yes is
       at least `send` (default `0.5`). Otherwise it is held and `wardrik.notice.held` is recorded.
       Parked and failed notices are always sent. An answer the model can't judge is sent.
-    * The judge runs as the agent's step `notify`. Its cost counts toward the agent's spending.
+    * The judge runs as the agent's step `notify`. Each call is recorded as
+      `wardrik.evaluation.completed`, with its answers and cost, which counts toward the agent's
+      spending.
     * An agent reaches only the targets `Wardrik.Resolved`'s `:notify` gives it.
     * Your resolver can also give a target of its own, as `{module, opts}`, with secrets as values.
     * The node an agent runs on tells of it, retrying as `:retries` says. A notice whose node stops

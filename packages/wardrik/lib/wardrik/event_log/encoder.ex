@@ -208,6 +208,8 @@ defmodule Wardrik.EventLog.Encoder do
   defp step_started({:step, name}, %{span: span}),
     do: [{"step.started", "steps/" <> span.id, %{"step" => %{"name" => name}}}]
 
+  defp step_started({:evaluate, _model}, _metadata), do: []
+
   defp step_started(:turn, _metadata), do: []
 
   defp step_stopped(:generate, %{metadata: metadata, measurements: measurements}) do
@@ -239,6 +241,17 @@ defmodule Wardrik.EventLog.Encoder do
       {"step.completed", "steps/" <> metadata.span.id,
        status(%{"duration_ms" => milliseconds(measurements)}, metadata)}
     ]
+
+  defp step_stopped({:evaluate, model}, %{metadata: metadata, measurements: measurements}) do
+    data =
+      %{"model" => model, "duration_ms" => milliseconds(measurements)}
+      |> status(metadata)
+      |> Value.put("answers", answers(metadata[:response]))
+      |> Value.put("usage", Value.usage(measurements))
+      |> judged_cost(metadata, measurements)
+
+    [{"evaluation.completed", "evaluations/" <> metadata.span.id, data}]
+  end
 
   defp step_stopped(:turn, _event), do: []
 
@@ -316,6 +329,15 @@ defmodule Wardrik.EventLog.Encoder do
     do: Map.put(data, "cost", Value.cost(measurements, "catalog"))
 
   defp priced(data, _unanswered, _measurements), do: data
+
+  # Like a model call's: null on an answered call nobody prices, which isn't the same as free.
+  defp judged_cost(data, %{status: :ok}, measurements),
+    do: Map.put(data, "cost", Value.cost(measurements, "catalog"))
+
+  defp judged_cost(data, _failed, _measurements), do: data
+
+  defp answers({:ok, answers}) when is_map(answers), do: Value.json(answers)
+  defp answers(_none), do: nil
 
   defp result(tool_call, {:ok, %ReqLLM.ToolResult{output: output}}),
     do: Value.capped(tool_call, "result", output)

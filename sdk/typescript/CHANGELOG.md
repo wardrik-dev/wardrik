@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.9 (2026-11-15)
+
+- `EvaluationCompletedData` for `wardrik.evaluation.completed`.
+
 ## 0.1.0-rc.8 (2026-11-14)
 
 - `notify.judge` on agent definitions, and `NoticeHeldData` for `wardrik.notice.held`.

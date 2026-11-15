@@ -9,6 +9,8 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
       * Decides each tool call by the rules and judge before it runs. A refusal becomes the call's
         error.
       * Checks each model call against the budgets, and counts its cost. Spending survives restarts.
+      * Each judge call is recorded as `wardrik.evaluation.completed`, with its answers and cost.
+        Budgets count it; the tool call's own cost leaves it out.
 
     ## Answering an ask
 
@@ -54,7 +56,7 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
       context =
         context
         |> decided(decision)
-        |> Context.measure(decision.measurements)
+        |> Context.reported(decision.measurements)
 
       follow(decision, context, call, next, next)
     end

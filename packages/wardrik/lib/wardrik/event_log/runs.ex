@@ -10,7 +10,7 @@ defmodule Wardrik.EventLog.Runs do
       Wardrik.EventLog.Runs.totals(runs)
       #=> %{runs: 12, failed: 1, tool_calls: 40, input_tokens: 51_200, output_tokens: 8_300, cost_micro_usd: 91_000, last_at: "..."}
 
-  A run's tool calls, tokens and cost include its subagents'. See `t:run/0`.
+  A run's tool calls, tokens and cost include its subagents' and its judges'. See `t:run/0`.
 
   ## Options
 
@@ -177,7 +177,8 @@ defmodule Wardrik.EventLog.Runs do
   defp step(run, "wardrik.message.started", data, _event),
     do: %{run | model: get_in(data, ["request", "model"]) || run.model}
 
-  defp step(run, "wardrik.message.completed", data, _event) do
+  defp step(run, type, data, _event)
+       when type in ["wardrik.message.completed", "wardrik.evaluation.completed"] do
     %{
       run
       | input_tokens: run.input_tokens + (get_in(data, ["usage", "input_tokens"]) || 0),
