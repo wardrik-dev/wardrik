@@ -131,7 +131,12 @@ defmodule WardrikDaemon.Test do
              shutdown_timeout: 100}
           )
 
-        assert_receive({[:wardrik_daemon, :started], ^ref, _measurements, _meta}, 5_000)
+        # Daemons of other tests start too.
+        assert_receive(
+          {[:wardrik_daemon, :started], ^ref, _measurements, %{wardrik: ^name}},
+          5_000
+        )
+
         pid
       end)
 

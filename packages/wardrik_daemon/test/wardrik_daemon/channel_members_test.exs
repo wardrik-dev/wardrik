@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.ChannelMembersTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import WardrikDaemon.Test
 
@@ -19,6 +19,7 @@ defmodule WardrikDaemon.ChannelMembersTest do
     write(context, "config.yaml", """
     org: acme
     http: {port: #{free_port()}}
+    web: {enabled: false}
     defaults: {model: #{model()}}
     roles:
       reader: {rules: [{verbs: [read, events], kinds: [agent]}]}

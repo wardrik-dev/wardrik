@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.HTTPTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import WardrikDaemon.Test
 
@@ -12,6 +12,7 @@ defmodule WardrikDaemon.HTTPTest do
     write(context, "config.yaml", """
     org: payments
     http: {port: #{port}}
+    web: {enabled: false}
     defaults: {model: #{model()}}
     """)
 

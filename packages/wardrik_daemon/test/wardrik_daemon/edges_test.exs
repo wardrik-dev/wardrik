@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.EdgesTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureIO
   import WardrikDaemon.Test
@@ -76,7 +76,7 @@ defmodule WardrikDaemon.EdgesTest do
       write(
         context,
         "config.yaml",
-        "org: acme\nhttp: {port: #{free_port()}}\ndefaults: {model: #{model()}}\n"
+        "org: acme\nhttp: {port: #{free_port()}}\nweb: {enabled: false}\ndefaults: {model: #{model()}}\n"
       )
 
       start_daemon(context)

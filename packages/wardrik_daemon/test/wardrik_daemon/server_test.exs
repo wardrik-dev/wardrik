@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.ServerTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog, only: [capture_log: 1]
   import WardrikDaemon.Test
@@ -15,6 +15,7 @@ defmodule WardrikDaemon.ServerTest do
     write(context, "config.yaml", """
     org: acme
     http: {port: #{free_port()}}
+    web: {enabled: false}
     defaults: {model: #{model()}}
     ssh: {}
     """)
@@ -57,6 +58,7 @@ defmodule WardrikDaemon.ServerTest do
     write(context, "config.yaml", """
     org: acme
     http: {port: #{free_port()}}
+    web: {enabled: false}
     defaults: {model: #{model()}}
     notify:
       targets:
@@ -224,7 +226,8 @@ defmodule WardrikDaemon.ServerTest do
       end)
 
     assert log =~ "kept config.yaml and policies/ as they read at start"
-    refute_received {[:wardrik_daemon, :started], ^ref, _measurements, _meta}
+    wardrik = context.wardrik
+    refute_received {[:wardrik_daemon, :started], ^ref, _measurements, %{wardrik: ^wardrik}}
 
     write(
       context,
@@ -234,7 +237,9 @@ defmodule WardrikDaemon.ServerTest do
 
     capture_log(fn ->
       assert {:ok, %{"problems" => []}} = Context.call(cx, "deployment.reload", %{})
-      assert_receive {[:wardrik_daemon, :started], ^ref, _measurements, _meta}, 20_000
+
+      assert_receive {[:wardrik_daemon, :started], ^ref, _measurements, %{wardrik: ^wardrik}},
+                     20_000
     end)
 
     assert {:ok, %Wardrik.Definition{model: "anthropic:claude-sonnet-4-5"}, []} =
@@ -299,6 +304,7 @@ defmodule WardrikDaemon.ServerTest do
     write(context, "config.yaml", """
     org: acme
     http: {port: #{port}}
+    web: {enabled: false}
     defaults: {model: #{model()}}
     cluster: {dns: localhost, size: 1}
     """)
