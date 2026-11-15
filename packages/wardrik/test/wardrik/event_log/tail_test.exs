@@ -1,5 +1,5 @@
 defmodule Wardrik.EventLog.TailTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import Wardrik.EventLog.Test.Events
 

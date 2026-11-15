@@ -1,6 +1,6 @@
 if System.get_env("DATABASE_URL") do
   defmodule Wardrik.Store.EctoURLTest do
-    use ExUnit.Case, async: false
+    use ExUnit.Case, async: true
     use Wardrik.Store.Conformance
 
     alias Ecto.Adapters.Postgres

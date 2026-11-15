@@ -21,7 +21,7 @@ defmodule Wardrik.Test.Echo do
 end
 
 defmodule Wardrik.ChannelsTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.Wardrik
 
