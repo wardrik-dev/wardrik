@@ -48,6 +48,7 @@ jobs:
             ${{ matrix.package }}/priv/plts
           # mix.exs too: it says what the PLT holds.
           key: ${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('{0}/mix.lock', matrix.package), format('{0}/mix.exs', matrix.package)) }}
+          restore-keys: ${{ runner.os }}-${{ matrix.package }}-
 
       - run: mix deps.get
       - run: mix precommit
