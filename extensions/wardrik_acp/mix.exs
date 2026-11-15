@@ -18,7 +18,11 @@ defmodule WardrikACP.MixProject do
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
         plt_core_path: "priv/plts",
-        plt_local_path: "priv/plts"
+        plt_local_path: "priv/plts",
+        # Sibling packages are path deps, which mix.lock leaves out. They're analysed with this one
+        # instead of kept in the PLT, so the PLT is current whenever mix.lock is.
+        plt_ignore_apps: siblings(),
+        paths: Enum.map([:wardrik_acp | siblings()], &"_build/#{Mix.env()}/lib/#{&1}/ebin")
       ],
       deps: deps()
     ]
@@ -56,7 +60,7 @@ defmodule WardrikACP.MixProject do
         "test --warnings-as-errors --cover --export-coverage default",
         "test.coverage",
         "crap",
-        "dialyzer --force-check"
+        "dialyzer"
       ]
     ]
   end
@@ -74,6 +78,8 @@ defmodule WardrikACP.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
+
+  defp siblings, do: for({name, [_ | _] = opts} <- deps(), opts[:path], do: name)
 
   # Wardrik's own packages come from this repository, or from Hex with WARDRIK_HEX=1, as when
   # publishing.
