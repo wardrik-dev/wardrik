@@ -93,3 +93,6 @@ judge:
 - Set `TYPESAFE_API_KEY` for the default model.
 
 See all judge settings in [Policies › Judges](/reference/policies/#judges).
+
+A judge can also decide which finished turns reach people. See
+[Notifications › Judge finished turns](/build/notices/#judge-finished-turns).

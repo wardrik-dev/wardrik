@@ -20,13 +20,21 @@ defmodule Wardrik.Spending do
   defp counted(context, next, instance) do
     case next.(context) do
       {:ok, after_step} = done ->
-        spent(instance, context.agent_id, gained(context.measurements, after_step.measurements))
+        wardrik = Wardrik.Instance.fetch!(instance)
+        count(wardrik, context.agent_id, context.measurements, after_step.measurements)
         done
 
       other ->
         other
     end
   end
+
+  @doc """
+  Adds what the agent `id` spent from the measurements `before` to `measured`, for a step the
+  middleware doesn't count.
+  """
+  @spec count(Wardrik.t(), String.t(), map(), map()) :: :ok
+  def count(wardrik, id, before, measured), do: spent(wardrik, id, gained(before, measured))
 
   @doc """
   Returns what the agent `id` spent today.
@@ -62,10 +70,9 @@ defmodule Wardrik.Spending do
     end)
   end
 
-  defp spent(_instance, _id, %{input_tokens: 0, output_tokens: 0, usd: 0}), do: :ok
+  defp spent(_wardrik, _id, %{input_tokens: 0, output_tokens: 0, usd: 0}), do: :ok
 
-  defp spent(instance, id, gained) do
-    wardrik = Wardrik.Instance.fetch!(instance)
+  defp spent(wardrik, id, gained) do
     tokens = gained.input_tokens + gained.output_tokens
     add(store(wardrik), key(id), tokens, gained.usd)
   end

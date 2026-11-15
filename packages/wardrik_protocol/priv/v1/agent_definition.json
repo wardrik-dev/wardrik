@@ -375,11 +375,36 @@
                 ]
               },
               "description": "The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed."
+            },
+            "judge": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "question"
+              ],
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "A yes-or-no question about a finished turn's answer, such as whether the owner would want it now."
+                },
+                "send": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Send the answer when the probability of yes is at least this. Defaults to 0.5."
+                },
+                "model": {
+                  "type": "string",
+                  "description": "The model that answers. Defaults to typesafe:jev-latest."
+                }
+              },
+              "description": "Asks a model whether to send each finished turn's answer. Held answers are recorded as wardrik.notice.held. Parked and failed turns are always sent."
             }
           }
         }
       ],
-      "description": "Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to and on. Chat rooms are in the workspace that the resolver sets for the channel."
+      "description": "Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to, on and judge. Chat rooms are in the workspace that the resolver sets for the channel."
     },
     "channels": {
       "type": "array",

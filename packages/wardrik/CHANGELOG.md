@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-rc.14 (2026-11-14)
+
+- A definition's `notify.judge` asks a model whether to send each finished turn's answer. Held
+  answers are recorded as `wardrik.notice.held`. Parked and failed turns are always sent, and an
+  answer the model can't judge is sent. See `Wardrik.Notify`.
+- `Wardrik.Notify.route/1` returns a `Wardrik.Notify.Route`.
+- Requires `wardrik_core` 0.1.0-rc.9 and `wardrik_protocol` 0.1.0-rc.10.
+
 ## 0.1.0-rc.13 (2026-11-14)
 
 - **Upgrading:** this release can't read a store an earlier one wrote. Empty it, then add a

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.10 (2026-11-14)
+
+- A definition's `notify` takes `judge`: `question`, `send` and `model`.
+- `wardrik.notice.held`, for a finished turn's answer a judge held back.
+
 ## 0.1.0-rc.9 (2026-11-14)
 
 - Requires `wardrik_core` 0.1.0-rc.8. `Wardrik.Scope` names its principal as `Wardrik.Principal`.

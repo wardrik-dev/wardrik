@@ -236,3 +236,18 @@ notify: {to: [ops], on: [parked, failed, finished]}
 
 - A target is a name from `config.yaml`'s [`notify`](/reference/config/#notify), a webhook added for the owner, or a room as `channel:room`.
 - `on` defaults to `[parked, failed]`.
+
+```yaml
+notify:
+  to: [ops]
+  on: [parked, failed, finished]
+  judge: {question: "Would the owner want to hear this now?", send: 0.7}
+```
+
+| `judge` key | Default | Meaning |
+| --- | --- | --- |
+| `question` | | a yes-or-no question about a finished turn's answer |
+| `send` | `0.5` | send the answer at or above this probability of yes |
+| `model` | `typesafe:jev-latest` | the judge model |
+
+See [Notifications › Judge finished turns](/build/notices/#judge-finished-turns).

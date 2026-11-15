@@ -158,7 +158,7 @@ await wardrik.work();
 <li><a href="/run/orgs/">Organization access controls</a><p>Scope access to agents, tools, and credentials by organization.</p></li>
 <li><a href="/build/accounts/">Per-user accounts</a><p>Users sign in with OAuth, and their agents call tools with their credentials.</p></li>
 <li><a href="/build/delegation/">Delegation</a><p>An agent sends another agent a message and receives the reply.</p></li>
-<li><a href="/concepts/policy/#judges">Judges</a><p>Add model-based checks, such as whether an email promises a refund.</p></li>
+<li><a href="/concepts/policy/#judges">Judges</a><p>Add model-based checks, such as whether an email promises a refund, or whether an update is worth sending.</p></li>
 <li><a href="/build/assistant/">The assistant</a><p>Use the built-in assistant to create and manage agents, with approval for changes.</p></li>
 <li><a href="/concepts/agents/#sleeping">Idle agents</a><p>Create an agent per customer. Idle processes stop and reload their saved state on the next message.</p></li>
 <li><a href="/run/cluster/">Clusters</a><p>Distribute agents across nodes and recover them when a node fails.</p></li>
@@ -185,7 +185,7 @@ await wardrik.work();
 <div class="install-command">
 
 ```sh wrap
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.14/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.15/install.sh | sh
 wardrik init
 ```
 

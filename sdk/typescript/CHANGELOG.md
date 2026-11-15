@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.8 (2026-11-14)
+
+- `notify.judge` on agent definitions, and `NoticeHeldData` for `wardrik.notice.held`.
+
 ## 0.1.0-rc.7 (2026-11-13)
 
 - `notifyTargets.list()`, `notifyTargets.add()` and `notifyTargets.remove()`, now in Wardrik's
