@@ -19,7 +19,14 @@ defmodule WardrikCore.Backends.Prefixed do
   @spec options(keyword()) :: keyword()
   def options(opts) do
     stored = Keyword.fetch!(opts, :prefix)
-    prefix = stored <> URI.encode_www_form(inspect(Keyword.fetch!(opts, :name))) <> "/"
+
+    name =
+      opts
+      |> Keyword.fetch!(:name)
+      |> inspect()
+      |> URI.encode_www_form()
+
+    prefix = stored <> name <> "/"
     backend = %{backend: Keyword.fetch!(opts, :backend), from: prefix, to: stored}
     Keyword.merge(opts, prefix: prefix, backend: {__MODULE__, backend})
   end
@@ -28,7 +35,10 @@ defmodule WardrikCore.Backends.Prefixed do
   def init_backend(%{backend: backend, from: from, to: to}) do
     with {:ok, inner} <- inner(backend) do
       # Pushed updates would name stored keys, which this backend doesn't map back.
-      defaults = Map.put(StorageBackend.defaults(inner), :heartbeat_tracking_mode, :poll)
+      defaults =
+        inner
+        |> StorageBackend.defaults()
+        |> Map.put(:heartbeat_tracking_mode, :poll)
 
       {:ok,
        %{

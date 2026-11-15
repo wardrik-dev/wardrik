@@ -56,7 +56,8 @@ defmodule WardrikGateway.MixProject do
         "ex_dna --max-clones 0",
         "reach.check --arch --smells --strict",
         "test --warnings-as-errors --cover --export-coverage default",
-        "test.coverage",
+        # In a VM of its own: in the tests' VM, stopping their cover first takes half a minute in CI.
+        "cmd env MIX_ENV=test mix test.coverage",
         "crap",
         "dialyzer"
       ]
@@ -79,7 +80,17 @@ defmodule WardrikGateway.MixProject do
     ]
   end
 
-  defp siblings, do: for({name, [_ | _] = opts} <- deps(), opts[:path], do: name)
+  # The sibling packages it depends on, directly or through each other. Each mix.exs names its own.
+  defp siblings, do: if(System.get_env("WARDRIK_HEX"), do: [], else: reached(__DIR__, []))
+
+  defp reached(dir, seen) do
+    ~r/sibling\(:(\w+)/
+    |> Regex.scan(File.read!(Path.join(dir, "mix.exs")), capture: :all_but_first)
+    |> Enum.map(fn [name] -> String.to_atom(name) end)
+    |> Enum.reduce(seen, fn name, seen ->
+      if name in seen, do: seen, else: reached(sibling_path(name), [name | seen])
+    end)
+  end
 
   # Wardrik's own packages come from this repository, or from Hex with WARDRIK_HEX=1, as when
   # publishing.
