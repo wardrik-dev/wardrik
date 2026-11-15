@@ -133,11 +133,18 @@ defmodule Wardrik.NotifyTest do
 
   describe "routes" do
     test "reads a name, a list, and to and on" do
-      assert Wardrik.Notify.route(%{"notify" => "ops"}) == %{to: ["ops"], on: [:parked, :failed]}
+      assert Wardrik.Notify.route(%{"notify" => "ops"}) ==
+               %Wardrik.Notify.Route{to: ["ops"], on: [:parked, :failed]}
+
       assert Wardrik.Notify.route(%{"notify" => ["ops", "slack:#x"]}).to == ["ops", "slack:#x"]
 
       assert Wardrik.Notify.route(%{"notify" => %{"to" => "ops", "on" => ["finished"]}}) ==
-               %{to: ["ops"], on: [:finished]}
+               %Wardrik.Notify.Route{to: ["ops"], on: [:finished]}
+
+      judged = %{"to" => "ops", "judge" => %{"question" => "Worth it?"}}
+
+      assert Wardrik.Notify.route(%{"notify" => judged}).judge ==
+               %{question: "Worth it?", send: 0.5, model: "typesafe:jev-latest"}
 
       assert Wardrik.Notify.route(%{}) == nil
     end
@@ -154,6 +161,79 @@ defmodule Wardrik.NotifyTest do
       assert teams =~ "teams:#ops"
 
       assert {:ok, _agent} = define(scope, ["audit", "board:#updates"])
+    end
+  end
+
+  describe "judged notices" do
+    @judged %{
+      "to" => "audit",
+      "on" => ["parked", "failed", "finished"],
+      "judge" => %{"question" => "Would the owner want this now?", "send" => 0.7}
+    }
+
+    defp judging(answer) do
+      test = self()
+
+      stub(WardrikCore, :evaluate, fn context, args ->
+        send(test, {:judged, context.step, args})
+        answer
+      end)
+    end
+
+    defp yes(probability),
+      do: {:ok, %{"send" => %{"probability" => probability}}, %{input_tokens: 40, usd: 0.01}}
+
+    test "holds an answer the judge doubts, and records it", %{scope: scope, wardrik: wardrik} do
+      judging(yes(0.2))
+      model({:ok, answer("Nothing new.")})
+      {:ok, _agent} = define(scope, @judged)
+      ask(scope)
+
+      assert_receive {:judged, {:step, "notify"}, args}
+      assert args[:model] == "typesafe:jev-latest"
+      assert args[:questions]["send"].instructions == "Would the owner want this now?"
+      assert args[:state] =~ "Nothing new."
+
+      # The judge's step runs inside the notifier's cast, so the notifier is done once it answers.
+      until("wardrik.step.completed")
+      notifier = Wardrik.Notify.Server.name(wardrik.name)
+      :sys.get_state(notifier)
+      assert %{"events" => events} = run!(scope, "audit.list", %{})
+      held = Enum.find(events, &(&1["type"] == "wardrik.notice.held"))
+
+      assert %{"probability" => 0.2, "send" => 0.7, "agent" => %{"id" => "acme/triage"}} =
+               held["data"]
+
+      refute_received {:told, _target, _notice}
+      assert Wardrik.Spending.today(wardrik, "acme/triage")["usd"] >= 0.01
+    end
+
+    test "sends an answer the judge favours", %{scope: scope} do
+      judging(yes(0.9))
+      model({:ok, answer("The site is down.")})
+      {:ok, _agent} = define(scope, @judged)
+      ask(scope)
+
+      assert_receive {:told, "audit", %Notice{kind: :finished, text: "The site is down."}}
+    end
+
+    test "sends an answer the judge can't judge", %{scope: scope} do
+      judging({:error, :down})
+      model({:ok, answer("The site is down.")})
+      {:ok, _agent} = define(scope, @judged)
+      ask(scope)
+
+      assert_receive {:told, "audit", %Notice{kind: :finished}}
+    end
+
+    test "never judges a failed turn", %{scope: scope} do
+      judging(yes(0.0))
+      model({:error, :boom})
+      {:ok, _agent} = define(scope, @judged)
+      ask(scope)
+
+      assert_receive {:told, "audit", %Notice{kind: :failed}}
+      refute_received {:judged, _step, _args}
     end
   end
 

@@ -36,6 +36,32 @@ notify: {to: ["slack:#updates"], on: [finished]}    # a room, without a target
 - A target is available to the deployment's org. List it under `orgs.<org>.notify` for others.
 - Notices are never sent to another org's room.
 
+## Judge finished turns
+
+A judge decides whether each finished turn's answer is sent. Use it for agents that run on
+triggers, so people hear only what matters.
+
+```yaml
+# in an agent file
+notify:
+  to: [ops]
+  on: [parked, failed, finished]
+  judge:
+    question: Would the owner want to hear this now, rather than in the next digest?
+    send: 0.7
+```
+
+- The judge model reads the answer and the conversation's digest, and gives the probability of
+  yes.
+- The answer is sent at or above `send`. Otherwise it is held, and `wardrik.notice.held` is
+  written to the audit log with the probability.
+- Parked and failed turns are always sent.
+- If the judge can't answer, the answer is sent.
+- Start with a high `send` and lower it as the agent earns trust.
+- The judge's cost counts toward the agent's spending. Set `TYPESAFE_API_KEY` for the default
+  model.
+- Text in the answer can sway the judge. Use it to cut noise, not to keep secrets.
+
 ## Webhooks added at runtime
 
 An org or user can add a webhook for their own agents:

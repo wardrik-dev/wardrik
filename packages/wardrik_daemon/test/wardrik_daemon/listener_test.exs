@@ -31,5 +31,21 @@ defmodule WardrikDaemon.ListenerTest do
     assert {:ok, %{status: 200, body: "hello"}} = get(port)
   end
 
+  test "stops Bandit before it stops" do
+    port = free_port()
+    bandit = [plug: Hello, port: port, ip: {127, 0, 0, 1}]
+    listener = start_supervised!({WardrikDaemon.Listener, bandit: bandit, retry: 60_000})
+    assert {:ok, %{status: 200}} = get(port)
+
+    %{server: server} = :sys.get_state(listener)
+
+    ref = Process.monitor(server)
+    :ok = stop_supervised(WardrikDaemon.Listener)
+
+    # Bandit was down before the listener returned, not after.
+    assert_received {:DOWN, ^ref, :process, ^server, _reason}
+    assert {:error, _refused} = get(port)
+  end
+
   defp get(port), do: Req.get("http://127.0.0.1:#{port}/", retry: false)
 end

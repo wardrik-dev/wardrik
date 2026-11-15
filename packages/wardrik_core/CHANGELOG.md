@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.9 (2026-11-14)
+
+- `WardrikCore.evaluate/2` passes `ReqLLM.evaluate/4` only the options it takes. Before, every
+  call failed on `stream_idle_timeout`, so policy judges asked a person each time.
+
 ## 0.1.0-rc.8 (2026-11-14)
 
 - The modules tools, middleware and extensions are written with are named under `Wardrik`:

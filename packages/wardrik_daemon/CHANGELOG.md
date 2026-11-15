@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-rc.15 (2026-11-14)
+
+- An agent file's `notify.judge` decides which finished turns are sent. See the notifications
+  page.
+- Policy judges work again. Each judge call had failed, so every judged call asked a person.
+- Stopping the daemon closes HTTP connections before agents stop, so open event streams no
+  longer log errors.
+
 ## 0.1.0-rc.14 (2026-11-14)
 
 - **Upgrading:** this release can't read what an earlier one stored. Empty the store before

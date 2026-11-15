@@ -498,7 +498,7 @@ export interface AgentDefinition {
     [k: string]: unknown;
   }[];
   /**
-   * Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to and on. Chat rooms are in the workspace that the resolver sets for the channel.
+   * Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to, on and judge. Chat rooms are in the workspace that the resolver sets for the channel.
    */
   notify?:
     | string
@@ -512,6 +512,23 @@ export interface AgentDefinition {
          * The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed.
          */
         on?: ("parked" | "failed" | "finished")[];
+        /**
+         * Asks a model whether to send each finished turn's answer. Held answers are recorded as wardrik.notice.held. Parked and failed turns are always sent.
+         */
+        judge?: {
+          /**
+           * A yes-or-no question about a finished turn's answer, such as whether the owner would want it now.
+           */
+          question: string;
+          /**
+           * Send the answer when the probability of yes is at least this. Defaults to 0.5.
+           */
+          send?: number;
+          /**
+           * The model that answers. Defaults to typesafe:jev-latest.
+           */
+          model?: string;
+        };
       };
   /**
    * Names of the chat channels the agent can reply in.
@@ -2200,6 +2217,28 @@ export interface MessageStartedData {
   decided: Decided;
 }
 /**
+ * A judge held a finished turn's answer back from the agent's notify targets.
+ */
+export interface NoticeHeldData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  conversation?: ConversationId;
+  /**
+   * The judge's probability that the answer should be sent.
+   */
+  probability: number;
+  /**
+   * The probability the answer needed to be sent.
+   */
+  send: number;
+  actor?: Principal;
+  assumed_by?: AssumedBy;
+}
+/**
  * Someone added a notify target for an owner's agents.
  */
 export interface NotifyTargetAddedData {
@@ -2609,6 +2648,7 @@ export interface EventData {
   "wardrik.message.delta": MessageDeltaData;
   "wardrik.message.retrying": MessageRetryingData;
   "wardrik.message.started": MessageStartedData;
+  "wardrik.notice.held": NoticeHeldData;
   "wardrik.notify_target.added": NotifyTargetAddedData;
   "wardrik.notify_target.removed": NotifyTargetRemovedData;
   "wardrik.provider.added": ProviderAddedData;

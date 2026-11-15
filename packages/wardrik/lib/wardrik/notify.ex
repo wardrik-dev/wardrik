@@ -32,8 +32,14 @@ defmodule Wardrik.Notify do
       notify: "slack:#updates"
       notify: ["ops", "slack:#updates"]
       notify: %{to: ["ops"], on: ["finished"]}
+      notify: %{to: ["ops"], on: ["finished"], judge: %{question: "Would the owner want this now?"}}
 
     * `on` defaults to `["parked", "failed"]`.
+    * `judge` asks `model` (default `"typesafe:jev-latest"`) the `question` about each finished
+      turn's answer and the conversation's digest. The answer is sent if the probability of yes is
+      at least `send` (default `0.5`). Otherwise it is held and `wardrik.notice.held` is recorded.
+      Parked and failed notices are always sent. An answer the model can't judge is sent.
+    * The judge runs as the agent's step `notify`. Its cost counts toward the agent's spending.
     * An agent reaches only the targets `Wardrik.Resolved`'s `:notify` gives it.
     * Your resolver can also give a target of its own, as `{module, opts}`, with secrets as values.
     * The node an agent runs on tells of it, retrying as `:retries` says. A notice whose node stops
@@ -47,12 +53,11 @@ defmodule Wardrik.Notify do
 
   alias Wardrik.Error
   alias Wardrik.Notice
+  alias Wardrik.Notify.Judge
   alias Wardrik.Notify.Room
+  alias Wardrik.Notify.Route
 
   @passed [wardrik: [type: :atom], target: [type: :string]]
-
-  @typedoc "Where an agent's notices go (`:to`), and which kinds are sent (`:on`)."
-  @type route() :: %{to: [String.t()], on: [Notice.kind()]}
 
   @doc """
   Sends `notice`. Returns `{:skip, why}` not to send it, or `{:error, reason}` to retry.
@@ -136,16 +141,16 @@ defmodule Wardrik.Notify do
   Returns the route in `definition`'s `notify`, or `nil`.
 
       Wardrik.Notify.route(%{"notify" => "ops"})
-      #=> %{to: ["ops"], on: [:parked, :failed]}
+      #=> %Wardrik.Notify.Route{to: ["ops"], on: [:parked, :failed], judge: nil}
   """
-  @spec route(map()) :: route() | nil
+  @spec route(map()) :: Route.t() | nil
   def route(%{"notify" => %{"to" => to} = notify}) do
     kinds = Map.get(notify, "on", ~w(parked failed))
-    %{to: List.wrap(to), on: Enum.map(kinds, &kind/1)}
+    %Route{to: List.wrap(to), on: Enum.map(kinds, &kind/1), judge: Judge.read(notify["judge"])}
   end
 
   def route(%{"notify" => to}) when is_binary(to) or is_list(to),
-    do: %{to: List.wrap(to), on: [:parked, :failed]}
+    do: %Route{to: List.wrap(to), on: [:parked, :failed]}
 
   def route(_definition), do: nil
 

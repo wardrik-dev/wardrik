@@ -390,6 +390,11 @@ defmodule WardrikCore do
   def resume(agent, input, metadata \\ %{}) when is_map(metadata),
     do: GenServer.call(agent, {:resume, input, metadata})
 
+  # What `ReqLLM.evaluate/4` takes of a model call's options. It refuses others, such as
+  # `stream_idle_timeout`.
+  @evaluate_options ~w(api_key base_url receive_timeout total_timeout max_retries
+                       provider_options req_http_options)a
+
   @doc """
   Asks an evaluation `:model` the `:questions` about `:state`, from inside a turn.
 
@@ -414,13 +419,14 @@ defmodule WardrikCore do
   def evaluate(%Context{} = context, args) do
     model = Keyword.fetch!(args, :model)
     spec = Context.spec(context, model)
+    all = Context.model_options(context, model)
 
     with {:ok, response} <-
            ReqLLM.evaluate(
              spec,
              Keyword.fetch!(args, :state),
              Keyword.fetch!(args, :questions),
-             Context.model_options(context, model)
+             Keyword.take(all, @evaluate_options)
            ) do
       {:ok, response.object, WardrikCore.Usage.measurements(response, spec, context.prices)}
     end

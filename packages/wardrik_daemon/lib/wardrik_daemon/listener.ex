@@ -4,11 +4,16 @@ defmodule WardrikDaemon.Listener do
   rest try again every `:retry` milliseconds, so one takes the port over when that node stops.
 
       {WardrikDaemon.Listener, bandit: [plug: MyPlug, port: 4747], retry: 5_000}
+
+  It stops Bandit before it stops, giving open connections 2 seconds to finish, so what starts
+  before it outlives every request.
   """
 
   use GenServer
 
   require Logger
+
+  @drain 2_000
 
   @doc false
   @spec child_spec(keyword()) :: Supervisor.child_spec()
@@ -35,9 +40,13 @@ defmodule WardrikDaemon.Listener do
 
   def handle_info({:EXIT, _other, _reason}, state), do: {:noreply, state}
 
+  @impl GenServer
+  def terminate(_reason, %{server: nil}), do: :ok
+  def terminate(_reason, %{server: server}), do: Supervisor.stop(server, :shutdown, :infinity)
+
   defp listen(state, attempt) do
     with :ok <- free(state.bandit),
-         {:ok, server} <- Bandit.start_link([startup_log: false] ++ state.bandit) do
+         {:ok, server} <- Bandit.start_link([startup_log: false] ++ drained(state.bandit)) do
       Logger.info("The HTTP API listens on port #{state.bandit[:port]}")
       %{state | server: server}
     else
@@ -51,6 +60,15 @@ defmodule WardrikDaemon.Listener do
 
         retried(state)
     end
+  end
+
+  defp drained(bandit) do
+    Keyword.update(
+      bandit,
+      :thousand_island_options,
+      [shutdown_timeout: @drain],
+      &Keyword.put_new(&1, :shutdown_timeout, @drain)
+    )
   end
 
   # Bandit logs an error each time it can't listen, so the port is tried first.

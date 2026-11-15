@@ -90,7 +90,7 @@ defmodule WardrikCoreTest do
       expect(ReqLLM, :evaluate, fn "anthropic:claude-haiku-4-5",
                                    "The site is down.",
                                    ^questions,
-                                   [receive_timeout: _, stream_idle_timeout: _] ->
+                                   [receive_timeout: _] ->
         {:ok,
          %ReqLLM.Response{
            id: "eval",
@@ -102,7 +102,8 @@ defmodule WardrikCoreTest do
          }}
       end)
 
-      context = Wardrik.Context.new([])
+      # Only what ReqLLM.evaluate/4 takes: it refuses stream_idle_timeout and call options.
+      context = Wardrik.Context.new(model_options: [temperature: 0.2])
 
       assert {:ok, %{"urgent" => %{"probability" => 0.9}},
               %{input_tokens: 12, output_tokens: 1, usd: 0.001}} =
