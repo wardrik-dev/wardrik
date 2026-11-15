@@ -126,7 +126,7 @@ defmodule WardrikDaemon.Running do
              web: web,
              port: config.port,
              ip: config.ip
-           ] ++ shared(config.cluster)},
+           ] ++ shared(config.cluster) ++ drain(opts[:shutdown_timeout])},
           %{
             id: :started,
             start: {Task, :start_link, [fn -> started(agents, dirs, config) end]},
@@ -152,6 +152,9 @@ defmodule WardrikDaemon.Running do
         live_view: [signing_salt: "wardrik web live"]
       }
     ]
+
+  defp drain(nil), do: []
+  defp drain(timeout), do: [thousand_island_options: [shutdown_timeout: timeout]]
 
   # Nodes on one machine share the HTTP API's port.
   defp shared(nil), do: []

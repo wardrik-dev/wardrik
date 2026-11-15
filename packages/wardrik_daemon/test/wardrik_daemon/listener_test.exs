@@ -13,7 +13,13 @@ defmodule WardrikDaemon.ListenerTest do
   test "takes the port over once the node holding it lets it go" do
     port = free_port()
     {:ok, held} = :gen_tcp.listen(port, ip: {127, 0, 0, 1}, reuseaddr: true)
-    bandit = [plug: Hello, port: port, ip: {127, 0, 0, 1}]
+    # The Req connection stays open, and Bandit would wait 15 seconds for it as the test ends.
+    bandit = [
+      plug: Hello,
+      port: port,
+      ip: {127, 0, 0, 1},
+      thousand_island_options: [shutdown_timeout: 100]
+    ]
 
     # It tries once as it starts, then once a minute; the test asks for the next try itself.
     {listener, log} =
@@ -33,7 +39,14 @@ defmodule WardrikDaemon.ListenerTest do
 
   test "stops Bandit before it stops" do
     port = free_port()
-    bandit = [plug: Hello, port: port, ip: {127, 0, 0, 1}]
+    # The Req connection stays open, and Bandit would wait 15 seconds for it as the test ends.
+    bandit = [
+      plug: Hello,
+      port: port,
+      ip: {127, 0, 0, 1},
+      thousand_island_options: [shutdown_timeout: 100]
+    ]
+
     listener = start_supervised!({WardrikDaemon.Listener, bandit: bandit, retry: 60_000})
     assert {:ok, %{status: 200}} = get(port)
 
@@ -47,5 +60,6 @@ defmodule WardrikDaemon.ListenerTest do
     assert {:error, _refused} = get(port)
   end
 
-  defp get(port), do: Req.get("http://127.0.0.1:#{port}/", retry: false)
+  # The held socket takes connections and never answers, so a short wait stands for refused.
+  defp get(port), do: Req.get("http://127.0.0.1:#{port}/", retry: false, receive_timeout: 200)
 end

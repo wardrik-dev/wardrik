@@ -127,7 +127,8 @@ defmodule WardrikDaemon.Test do
              env: context.env,
              name: name,
              store: store,
-             capabilities: [echo: WardrikDaemon.Test.Tools]}
+             capabilities: [echo: WardrikDaemon.Test.Tools],
+             shutdown_timeout: 100}
           )
 
         assert_receive({[:wardrik_daemon, :started], ^ref, _measurements, _meta}, 5_000)
