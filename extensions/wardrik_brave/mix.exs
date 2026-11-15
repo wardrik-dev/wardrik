@@ -4,7 +4,7 @@ defmodule WardrikBrave.MixProject do
   def project do
     [
       app: :wardrik_brave,
-      version: "0.1.0-rc.3",
+      version: "0.1.0-rc.4",
       elixir: "~> 1.20",
       description:
         "Web search for agents, through Brave: the passages of each page that bear on the query, not a list of links.",
@@ -61,7 +61,7 @@ defmodule WardrikBrave.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.8"),
       {:req, "~> 0.7"},
       {:plug, "~> 1.16", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},

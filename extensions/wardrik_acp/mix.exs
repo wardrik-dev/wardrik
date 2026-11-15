@@ -4,7 +4,7 @@ defmodule WardrikACP.MixProject do
   def project do
     [
       app: :wardrik_acp,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "Coding agents such as Claude Code, as tools WardrikCore agents call, over ACP.",
@@ -61,7 +61,7 @@ defmodule WardrikACP.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.4"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.8"),
       {:nimble_options, "~> 1.1"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

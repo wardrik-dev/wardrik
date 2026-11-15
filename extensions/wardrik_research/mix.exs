@@ -4,7 +4,7 @@ defmodule WardrikResearch.MixProject do
   def project do
     [
       app: :wardrik_research,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "Deep research for agents: a topic split across angles, a subagent researching each at once, and one report from what they found.",
@@ -61,7 +61,7 @@ defmodule WardrikResearch.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.8"),
       {:mimic, "~> 2.4", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

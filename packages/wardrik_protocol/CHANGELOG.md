@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.9 (2026-11-14)
+
+- Requires `wardrik_core` 0.1.0-rc.8. `Wardrik.Scope` names its principal as `Wardrik.Principal`.
+
 ## 0.1.0-rc.8 (2026-11-13)
 
 - `notify_targets.list`, `notify_targets.add` and `notify_targets.remove`, with

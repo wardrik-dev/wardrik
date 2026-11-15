@@ -4,7 +4,7 @@ defmodule WardrikLua.MixProject do
   def project do
     [
       app: :wardrik_lua,
-      version: "0.1.0-rc.2",
+      version: "0.1.0-rc.3",
       elixir: "~> 1.20",
       description:
         "Lua 5.3 for agents: a sealed sandbox, and the run_lua tool that runs code an agent writes in it.",
@@ -61,7 +61,7 @@ defmodule WardrikLua.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.2"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.8"),
       {:lua, "~> 1.0"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

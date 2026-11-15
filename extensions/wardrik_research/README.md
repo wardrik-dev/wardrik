@@ -6,7 +6,7 @@ its own subagent at once, and combines the findings into one report.
 ```elixir
 def deps do
   [
-    {:wardrik_research, "~> 0.1.0-rc.2"}
+    {:wardrik_research, "~> 0.1.0-rc.3"}
   ]
 end
 ```
@@ -18,7 +18,7 @@ Set `BRAVE_API_KEY` and `ANTHROPIC_API_KEY` before starting a fresh IEx session.
 Give an agent `WardrikResearch` next to a search tool:
 
 ```elixir
-Mix.install([{:wardrik_research, "~> 0.1.0-rc.2"}, {:wardrik_brave, "~> 0.1.0-rc.2"}])
+Mix.install([{:wardrik_research, "~> 0.1.0-rc.3"}, {:wardrik_brave, "~> 0.1.0-rc.4"}])
 
 children = [
   {WardrikCore.Backends.MemoryStore, name: :agents},

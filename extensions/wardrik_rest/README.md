@@ -6,7 +6,7 @@ sign-in and keys. Use it for an API that has no MCP server, or one whose server 
 ```elixir
 def deps do
   [
-    {:wardrik_rest, "~> 0.1.0-rc.1"}
+    {:wardrik_rest, "~> 0.1.0-rc.2"}
   ]
 end
 ```

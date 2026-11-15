@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-rc.14 (2026-11-14)
 
+- **Upgrading:** this release can't read what an earlier one stored. Empty the store before
+  starting it, as the upgrade page shows, and add secrets, apps, servers, connections and tokens
+  again. From this release on, upgrades read what earlier releases stored.
 - `config.yaml`'s `models.endpoints` names models called at their own `base_url`, each with
   `model`, `base_url` and optionally `key`. An agent's `model` may name one.
 - Calls to a model ReqLLM's catalog doesn't list, such as a local one, no longer log a warning
