@@ -19,6 +19,8 @@ defmodule WardrikDaemon.Server do
     * `:capabilities` - more tools agents may name, as Wardrik's option takes them, beside
       `WardrikDaemon.Capabilities.all/1`'s.
     * `:store` - a store to use instead of the one on disk, for tests.
+    * `:shutdown_timeout` - milliseconds the HTTP API waits for open requests as it stops. 15
+      seconds unless set. A `follow` stream stays open until then.
   """
 
   use Supervisor
@@ -30,7 +32,7 @@ defmodule WardrikDaemon.Server do
 
   @doc "Starts the daemon. Fails, with the reason, if `config.yaml` or a policy doesn't read."
   @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts), do: Supervisor.start_link(__MODULE__, opts)
 
   @impl Supervisor
   def init(opts) do
@@ -38,7 +40,10 @@ defmodule WardrikDaemon.Server do
     given = Keyword.fetch!(opts, :env)
     dirs = Dirs.new(given)
     env = EnvFile.load(dirs.env_file, given)
-    System.put_env(env)
+    # What the env file sets reaches what reads the OS environment, such as MCP servers it starts.
+    env
+    |> Map.drop(Map.keys(given))
+    |> System.put_env()
 
     boot =
       dirs
@@ -56,7 +61,8 @@ defmodule WardrikDaemon.Server do
       env: env,
       store: store,
       keys: keys(boot.keys, dirs, env),
-      capabilities: opts[:capabilities]
+      capabilities: opts[:capabilities],
+      shutdown_timeout: opts[:shutdown_timeout]
     ]
 
     Supervisor.init(
