@@ -1,6 +1,5 @@
 defmodule Wardrik.FilesTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
@@ -8,14 +7,14 @@ defmodule Wardrik.FilesTest do
   @model "anthropic:claude-haiku-4-5"
   @agent "acme/triage"
 
-  setup :set_mimic_global
-
   setup context do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
+        endpoints: endpoints,
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, {:"wardrik #{context.test}", []}},
         name: :"wardrik #{context.test}",
@@ -24,7 +23,6 @@ defmodule Wardrik.FilesTest do
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     scope = owner(wardrik)
 
     {:ok, _agent} =
@@ -35,7 +33,7 @@ defmodule Wardrik.FilesTest do
         "context" => ["MEMORY.md"]
       })
 
-    %{scope: scope}
+    %{fake: fake, scope: scope}
   end
 
   defp put(scope, path, content, input \\ %{}),
@@ -46,7 +44,7 @@ defmodule Wardrik.FilesTest do
         Map.merge(%{"agent" => @agent, "path" => path, "content" => content}, input)
       )
 
-  test "writes a file the agent reads into its turn, as its own", %{scope: scope} do
+  test "writes a file the agent reads into its turn, as its own", %{fake: fake, scope: scope} do
     {:ok, written} = put(scope, "MEMORY.md", "Likes tea.")
 
     assert %{"path" => "MEMORY.md", "bytes" => 10, "by" => by, "labels" => []} = written
@@ -54,9 +52,10 @@ defmodule Wardrik.FilesTest do
 
     test = self()
 
-    stub(ReqLLM, :stream_text, fn _model, messages, _opts ->
+    Wardrik.Testing.Model.answer(fake, fn request ->
+      messages = Wardrik.Testing.Model.messages(request)
       send(test, {:prompted, messages})
-      {:ok, answer("Tea.")}
+      answer("Tea.")
     end)
 
     run!(scope, "agent.ask", %{"agent" => @agent, "content" => "What do I like?"})

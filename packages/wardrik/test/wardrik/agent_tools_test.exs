@@ -1,20 +1,19 @@
 defmodule Wardrik.AgentToolsTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
   @model "anthropic:claude-haiku-4-5"
 
-  setup :set_mimic_global
-
   setup context do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
+        endpoints: endpoints,
         name: :"wardrik #{context.test}",
         authorizer:
           {Wardrik.Test.Authorizer,
@@ -26,21 +25,21 @@ defmodule Wardrik.AgentToolsTest do
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     event_log = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
-    %{scope: owner(wardrik)}
+    %{fake: fake, scope: owner(wardrik)}
   end
 
   # Answers by what the last message says, since two agents' turns run at once.
-  defp model(script) do
+  defp model(fake, script) do
     {:ok, steps} = Agent.start_link(fn -> script end)
     test = self()
 
-    stub(ReqLLM, :stream_text, fn _model, messages, _opts ->
+    Wardrik.Testing.Model.answer(fake, fn request ->
+      messages = Wardrik.Testing.Model.messages(request)
       said = text(List.last(messages))
       send(test, {:prompted, said})
-      {:ok, Agent.get_and_update(steps, &step(&1, said))}
+      Agent.get_and_update(steps, &step(&1, said))
     end)
   end
 
@@ -57,8 +56,8 @@ defmodule Wardrik.AgentToolsTest do
   defp define(scope, id, definition),
     do: run!(scope, "agent.define", Map.put(definition, "agent", id))
 
-  test "defines a worker, asks it, and hears its answer back", %{scope: scope} do
-    model([
+  test "defines a worker, asks it, and hears its answer back", %{fake: fake, scope: scope} do
+    model(fake, [
       {"Watch the feed",
        calling([
          call("c1", "agent_define", %{
@@ -110,8 +109,11 @@ defmodule Wardrik.AgentToolsTest do
     assert %{"budget" => _budget} = Wardrik.Definitions.boundary(wardrik, "acme/watcher")
   end
 
-  test "reads agents freely, and changes their triggers only once allowed", %{scope: scope} do
-    model([
+  test "reads agents freely, and changes their triggers only once allowed", %{
+    fake: fake,
+    scope: scope
+  } do
+    model(fake, [
       {"Look around",
        calling([
          call("r1", "agents_list", %{}),
@@ -169,7 +171,10 @@ defmodule Wardrik.AgentToolsTest do
              run!(scope, "agent.definition", %{"agent" => "acme/worker"})
   end
 
-  test "schedules a message to itself or another agent, once or every so often", %{scope: scope} do
+  test "schedules a message to itself or another agent, once or every so often", %{
+    fake: fake,
+    scope: scope
+  } do
     at =
       DateTime.utc_now()
       |> DateTime.add(86_400)
@@ -180,7 +185,7 @@ defmodule Wardrik.AgentToolsTest do
       |> DateTime.shift_zone!("Europe/Berlin", Tz.TimeZoneDatabase)
       |> DateTime.to_naive()
 
-    model([
+    model(fake, [
       {"Plan the week",
        calling([
          call("s1", "self_schedule", %{
@@ -222,8 +227,8 @@ defmodule Wardrik.AgentToolsTest do
              run!(scope, "agent.definition", %{"agent" => "acme/worker"})
   end
 
-  test "brings back an answer that came while it wasn't running", %{scope: scope} do
-    model([
+  test "brings back an answer that came while it wasn't running", %{fake: fake, scope: scope} do
+    model(fake, [
       {"Ask the worker",
        calling([call("a1", "agent_ask", %{"agent" => "acme/worker", "content" => "Sum 2 and 2"})])},
       {"msg_", answer("Asked.")},
@@ -256,9 +261,10 @@ defmodule Wardrik.AgentToolsTest do
   end
 
   test "a message an agent sends carries what its run had read, and so does the answer", %{
+    fake: fake,
     scope: scope
   } do
-    model([
+    model(fake, [
       {"Ask the worker",
        calling([call("a1", "agent_ask", %{"agent" => "acme/worker", "content" => "Sum 2 and 2"})])},
       {"msg_", answer("Asked.")},
@@ -366,8 +372,8 @@ defmodule Wardrik.AgentToolsTest do
 
   @tag decide: &__MODULE__.no_agents/1
   test "acts for its resolved principal, as itself, so an authorizer can refuse an agent what its principal may do",
-       %{scope: scope} do
-    model([
+       %{fake: fake, scope: scope} do
+    model(fake, [
       {"Look", calling([call("r1", "agent_read", %{"agent" => "acme/worker"})])},
       {"may not", answer("Refused.")}
     ])

@@ -1,13 +1,11 @@
 defmodule Wardrik.HTTPTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Plug.Conn
   import Plug.Test
   import Wardrik.Test.HTTP
   import Wardrik.Test.Wardrik, only: [seal: 4]
 
-  setup :set_mimic_global
   setup :start_wardrik
 
   @notes "/v1/agents/acme%2F%40maria%2Fnotes"
@@ -53,7 +51,7 @@ defmodule Wardrik.HTTPTest do
       id = "acme/@maria/50% off notes"
       agent = "/v1/agents/" <> segment(id)
       conversation = agent <> "/conversations/" <> segment("C1/ 2%")
-      answers([answer("Hello.")])
+      answers(context, [answer("Hello.")])
 
       event_log =
         context.wardrik
@@ -159,7 +157,7 @@ defmodule Wardrik.HTTPTest do
 
     test "delivers a request that proves itself with the trigger's secret, unauthenticated",
          context do
-      answers([answer("Triaged.")])
+      answers(context, [answer("Triaged.")])
 
       event_log =
         context.wardrik

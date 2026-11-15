@@ -1,28 +1,16 @@
 defmodule Wardrik.AnswersTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
-  setup :set_mimic_global
+  alias Wardrik.Testing.Model
+
   setup :start_wardrik
 
-  setup %{wardrik: wardrik} do
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, opts ->
-      on_chunk = opts[:on_chunk]
-
-      for chunk <- ["Nothing's ", "on ", "fire."] do
-        chunk
-        |> ReqLLM.StreamChunk.text()
-        |> on_chunk.()
-      end
-
-      {:ok, response}
-    end)
-
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, answer("Nothing's on fire.")}
+  setup %{wardrik: wardrik, fake: fake} do
+    Model.answer(fake, fn _request ->
+      Model.text(["Nothing's ", "on ", "fire."])
     end)
 
     agent = start_agent(wardrik, "acme/triage")
@@ -49,10 +37,8 @@ defmodule Wardrik.AnswersTest do
     assert_receive {Wardrik, ^ref, {:done, %Wardrik.Reply{text: "Nothing's on fire."}}}
   end
 
-  test "says when the answer waits on a person", %{scope: scope} do
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, calling([call("call_1", "echo", %{})])}
-    end)
+  test "says when the answer waits on a person", %{fake: fake, scope: scope} do
+    Model.answer(fake, fn _request -> calling([call("call_1", "echo", %{})]) end)
 
     assert {:waiting, [%Wardrik.Interrupt{id: "call_1", reason: :tool_approval}]} =
              Wardrik.Agent.reply(scope, "acme/triage", "Echo")

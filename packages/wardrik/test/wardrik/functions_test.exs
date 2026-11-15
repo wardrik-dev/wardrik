@@ -1,17 +1,14 @@
 defmodule Wardrik.FunctionsTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
   describe "running" do
-    setup :set_mimic_global
     setup :start_wardrik
 
-    setup %{wardrik: wardrik} do
-      stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-      stub(ReqLLM, :stream_text, fn _model, _messages, _opts -> {:ok, answer("Nothing.")} end)
+    setup %{wardrik: wardrik, fake: fake} do
+      Wardrik.Testing.Model.answer(fake, fn _request -> answer("Nothing.") end)
       event_log = Wardrik.events(wardrik)
       :ok = Wardrik.EventLog.subscribe(event_log, :all)
       start_agent(wardrik, "acme/triage")

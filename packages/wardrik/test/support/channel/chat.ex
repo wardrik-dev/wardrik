@@ -92,6 +92,7 @@ defmodule Wardrik.Test.Channel do
     ]
 
     start_supervised!({Wardrik.Store, store})
+    {fake, endpoints} = Wardrik.Test.Model.start()
 
     start_supervised!(
       {Wardrik,
@@ -103,7 +104,8 @@ defmodule Wardrik.Test.Channel do
          channels: [chat: {Wardrik.Test.Channel.Chat, chat}],
          capabilities: [tools: Wardrik.Test.Channel.Tools],
          policies: [careful: [ask: ["echo"]]],
-         defaults: %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}}
+         defaults: %{"retries" => %{"attempts" => 0, "on_exhausted" => "fail"}},
+         endpoints: endpoints
        )}
     )
 
@@ -118,7 +120,8 @@ defmodule Wardrik.Test.Channel do
       channel: channel,
       workspace: workspace,
       owner: owner,
-      refusals: refusals
+      refusals: refusals,
+      fake: fake
     }
   end
 
@@ -127,15 +130,7 @@ defmodule Wardrik.Test.Channel do
     :ok
   end
 
-  def answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-
-    Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-
-    Mimic.stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
-  end
+  def answers(context, responses), do: Wardrik.Testing.Model.answer(context.fake, responses)
 
   def answer(text), do: response(ReqLLM.Context.assistant(text))
 

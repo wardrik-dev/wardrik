@@ -1,34 +1,24 @@
 defmodule Wardrik.OperationsTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
   alias Wardrik.EventLog.Cursor
   alias Wardrik.Operations.Visible
-
-  setup :set_mimic_global
   setup :start_wardrik
 
   setup %{wardrik: wardrik} do
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     event_log = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{scope: owner(wardrik)}
   end
 
-  defp answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
-  end
+  defp answers(fake, responses), do: Wardrik.Testing.Model.answer(fake, responses)
 
   describe "talking to an agent" do
-    test "asks, and reads back what it did", %{wardrik: wardrik, scope: scope} do
-      answers([answer("Nothing's on fire.")])
+    test "asks, and reads back what it did", %{fake: fake, wardrik: wardrik, scope: scope} do
+      answers(fake, [answer("Nothing's on fire.")])
       start_agent(wardrik, "acme/triage")
 
       %{"message" => %{"id" => "msg_1", "cursor" => cursor}} =
@@ -58,10 +48,11 @@ defmodule Wardrik.OperationsTest do
     end
 
     test "reads its newest events first, and pages back before a cursor", %{
+      fake: fake,
       wardrik: wardrik,
       scope: scope
     } do
-      answers([answer("One."), answer("Two.")])
+      answers(fake, [answer("One."), answer("Two.")])
       start_agent(wardrik, "acme/triage")
 
       for content <- ["Hi", "Again"] do
@@ -103,8 +94,8 @@ defmodule Wardrik.OperationsTest do
                :invalid_request
     end
 
-    test "takes a message as parts", %{wardrik: wardrik, scope: scope} do
-      answers([answer("Hello.")])
+    test "takes a message as parts", %{fake: fake, wardrik: wardrik, scope: scope} do
+      answers(fake, [answer("Hello.")])
       start_agent(wardrik, "acme/triage")
 
       parts = [%{"type" => "text", "content" => "Hi"}, %{"type" => "text", "content" => "there"}]
@@ -116,8 +107,8 @@ defmodule Wardrik.OperationsTest do
       assert [%{"content" => "Hi\n\nthere"}] = message["parts"]
     end
 
-    test "follows an agent's log from a cursor", %{wardrik: wardrik, scope: scope} do
-      answers([answer("Hello.")])
+    test "follows an agent's log from a cursor", %{fake: fake, wardrik: wardrik, scope: scope} do
+      answers(fake, [answer("Hello.")])
       start_agent(wardrik, "acme/triage")
 
       %{"message" => %{"cursor" => cursor}} =
@@ -136,8 +127,8 @@ defmodule Wardrik.OperationsTest do
                run!(scope, "agent.events", %{"agent" => "acme/triage", "after" => next})
     end
 
-    test "stops what it's doing", %{wardrik: wardrik, scope: scope} do
-      answers([calling([call("call_1", "echo", %{"text" => "hi"})])])
+    test "stops what it's doing", %{fake: fake, wardrik: wardrik, scope: scope} do
+      answers(fake, [calling([call("call_1", "echo", %{"text" => "hi"})])])
       start_agent(wardrik, "acme/triage")
       run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo hi"})
       until("wardrik.run.interrupted")
@@ -148,13 +139,17 @@ defmodule Wardrik.OperationsTest do
     end
   end
 
-  test "waits on each call until it's decided, in any order", %{wardrik: wardrik, scope: scope} do
+  test "waits on each call until it's decided, in any order", %{
+    fake: fake,
+    wardrik: wardrik,
+    scope: scope
+  } do
     calls = [
       call("call_1", "echo", %{"text" => "one"}),
       call("call_2", "echo", %{"text" => "two"})
     ]
 
-    answers([calling(calls), answer("Done.")])
+    answers(fake, [calling(calls), answer("Done.")])
     start_agent(wardrik, "acme/triage")
     run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo twice"})
     until("wardrik.run.interrupted")
@@ -176,32 +171,33 @@ defmodule Wardrik.OperationsTest do
   end
 
   test "a waiting call whose tool the agent no longer has is answered as an error",
-       %{wardrik: wardrik, scope: scope} do
+       %{fake: fake, wardrik: wardrik, scope: scope} do
     test = self()
 
-    answers([calling([call("call_1", "echo", %{"text" => "hi"})])])
+    answers(fake, [calling([call("call_1", "echo", %{"text" => "hi"})])])
     agent = start_agent(wardrik, "acme/triage")
     run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo hi"})
     until("wardrik.run.interrupted")
 
     :ok = WardrikCore.configure(agent, capabilities: [])
 
-    stub(ReqLLM, :stream_text, fn _model, messages, _opts ->
-      send(test, {:sent, List.last(messages)})
-      {:ok, answer("It's gone.")}
-    end)
+    Wardrik.Testing.Model.answer(fake, [
+      fn request ->
+        send(test, {:sent, List.last(request["messages"])})
+        answer("It's gone.")
+      end
+    ])
 
     run!(scope, "agent.approve", %{"agent" => "acme/triage", "interrupt" => "call_1"})
     until("wardrik.run.completed")
 
-    assert_received {:sent, %ReqLLM.Message{role: :tool, tool_call_id: "call_1"} = result}
-    assert [%{text: text}] = result.content
+    assert_received {:sent, %{"role" => "tool", "tool_call_id" => "call_1", "content" => text}}
     assert text =~ "Unknown tool: echo"
   end
 
   describe "answering a call an agent waits on" do
-    setup %{wardrik: wardrik, scope: scope} do
-      answers([calling([call("call_1", "echo", %{"text" => "hi"})]), answer("Done.")])
+    setup %{fake: fake, wardrik: wardrik, scope: scope} do
+      answers(fake, [calling([call("call_1", "echo", %{"text" => "hi"})]), answer("Done.")])
       start_agent(wardrik, "acme/triage")
       run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo hi"})
       until("wardrik.run.interrupted")
@@ -257,8 +253,8 @@ defmodule Wardrik.OperationsTest do
     end
   end
 
-  test "says where a person signs in for a call", %{wardrik: wardrik, scope: scope} do
-    answers([calling([call("call_1", "inbox", %{})])])
+  test "says where a person signs in for a call", %{fake: fake, wardrik: wardrik, scope: scope} do
+    answers(fake, [calling([call("call_1", "inbox", %{})])])
     agent = start_agent(wardrik, "acme/triage")
     run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Read my mail"})
     until("wardrik.run.interrupted")
@@ -286,8 +282,8 @@ defmodule Wardrik.OperationsTest do
   end
 
   describe "the agents a scope reaches" do
-    setup %{wardrik: wardrik, scope: scope} do
-      answers([answer("One."), answer("Two."), answer("Three.")])
+    setup %{fake: fake, wardrik: wardrik, scope: scope} do
+      answers(fake, [answer("One."), answer("Two."), answer("Three.")])
 
       for id <- ["acme/triage", "acme/@jon/books", "globex/triage"] do
         start_agent(wardrik, id)
@@ -358,7 +354,7 @@ defmodule Wardrik.OperationsTest do
       assert agents == ["acme/@jon/books", "acme/triage"]
     end
 
-    test "follows only their events", %{scope: scope, reader: reader} do
+    test "follows only their events", %{fake: fake, scope: scope, reader: reader} do
       both = ["acme/triage", "globex/triage"]
       %{"cursor" => head} = run!(scope, "events.head", %{"agents" => both})
 
@@ -369,7 +365,7 @@ defmodule Wardrik.OperationsTest do
           "types" => ["wardrik.message.created"]
         })
 
-      answers([answer("Four."), answer("Five.")])
+      answers(fake, [answer("Four."), answer("Five.")])
       run!(scope, "agent.ask", %{"agent" => "globex/triage", "content" => "Hi"})
       run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Hi"})
 
@@ -391,9 +387,9 @@ defmodule Wardrik.OperationsTest do
   end
 
   describe "a conversation" do
-    setup %{wardrik: wardrik, scope: scope} do
+    setup %{fake: fake, wardrik: wardrik, scope: scope} do
       echo = calling([call("call_1", "echo", %{"text" => "hi"})])
-      answers([echo, echo, answer("Done.")])
+      answers(fake, [echo, echo, answer("Done.")])
 
       for id <- ["acme/triage", "globex/triage"] do
         start_agent(wardrik, id, conversation: "C1")

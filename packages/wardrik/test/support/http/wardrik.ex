@@ -1,5 +1,5 @@
 defmodule Wardrik.Test.HTTP do
-  @moduledoc "Starts a Wardrik for a test, signs Maria in to it, and stubs the model's answers."
+  @moduledoc "Starts a Wardrik for a test, signs Maria in to it, and answers with a test model."
 
   import ExUnit.Callbacks, only: [start_supervised!: 1]
   import Plug.Conn
@@ -10,6 +10,7 @@ defmodule Wardrik.Test.HTTP do
     name = :"wardrik #{context.test}"
 
     start_supervised!({Wardrik.Store, store})
+    {fake, endpoints} = Wardrik.Test.Model.start()
 
     start_supervised!(
       {Wardrik,
@@ -21,28 +22,21 @@ defmodule Wardrik.Test.HTTP do
            store: store,
            deployment: "test",
            vault_keys: [Wardrik.Vault.generate_key()],
-           channels: Map.get(context, :channels, [])
+           channels: Map.get(context, :channels, []),
+           endpoints: endpoints
          ] ++ Keyword.take(Map.to_list(context), [:oauth])
        )}
     )
 
     secret = Wardrik.Test.HTTP.Authenticator.start(name, "acme/@maria")
-    %{wardrik: name, owner: Wardrik.as(name, "acme/@maria"), secret: secret}
+    %{wardrik: name, owner: Wardrik.as(name, "acme/@maria"), secret: secret, fake: fake}
   end
 
   @doc "Returns `Wardrik.HTTP`'s options for the test's Wardrik, with `opts`."
   def http(context, opts \\ []),
     do: [wardrik: context.wardrik, authenticator: {Wardrik.Test.HTTP.Authenticator, []}] ++ opts
 
-  def answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-
-    Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-
-    Mimic.stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
-  end
+  def answers(context, responses), do: Wardrik.Testing.Model.answer(context.fake, responses)
 
   def answer(text),
     do: %ReqLLM.Response{

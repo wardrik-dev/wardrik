@@ -28,7 +28,8 @@ defmodule WardrikDaemon.ListenerTest do
       end)
 
     assert log =~ "Another node holds port #{port}"
-    assert {:error, _refused} = get(port)
+    # The held socket takes connections and never answers, so a short wait stands for refused.
+    assert {:error, _refused} = get(port, receive_timeout: 200)
 
     :ok = :gen_tcp.close(held)
     send(listener, :listen)
@@ -60,6 +61,5 @@ defmodule WardrikDaemon.ListenerTest do
     assert {:error, _refused} = get(port)
   end
 
-  # The held socket takes connections and never answers, so a short wait stands for refused.
-  defp get(port), do: Req.get("http://127.0.0.1:#{port}/", retry: false, receive_timeout: 200)
+  defp get(port, opts \\ []), do: Req.get("http://127.0.0.1:#{port}/", [retry: false] ++ opts)
 end

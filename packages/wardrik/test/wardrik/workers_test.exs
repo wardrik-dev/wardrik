@@ -1,17 +1,13 @@
 defmodule Wardrik.WorkersTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
   alias Wardrik.Context
-
-  setup :set_mimic_global
   setup :start_wardrik
 
   setup %{wardrik: wardrik} do
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     event_log = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
     %{scope: owner(wardrik)}
@@ -24,13 +20,7 @@ defmodule Wardrik.WorkersTest do
     "annotations" => %{"readOnlyHint" => true}
   }
 
-  defp answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
-  end
+  defp answers(fake, responses), do: Wardrik.Testing.Model.answer(fake, responses)
 
   defp worker(wardrik, id, owners, tools, answer \\ fn _call -> nil end) do
     test = self()
@@ -159,6 +149,7 @@ defmodule Wardrik.WorkersTest do
   end
 
   test "runs a call on a worker, and tells the model what it answered", %{
+    fake: fake,
     wardrik: wardrik,
     scope: scope
   } do
@@ -171,7 +162,7 @@ defmodule Wardrik.WorkersTest do
       }
     end)
 
-    answers([
+    answers(fake, [
       calling([call("call_1", "workers__lookup", %{"order" => "A1"})]),
       answer("It shipped.")
     ])
@@ -229,12 +220,13 @@ defmodule Wardrik.WorkersTest do
   end
 
   test "runs a call again where its worker went away, where every worker may run it twice", %{
+    fake: fake,
     wardrik: wardrik,
     scope: scope
   } do
     first = worker(wardrik, "acme/@shop", ["acme"], [@lookup], fn _call -> :gone end)
 
-    answers([
+    answers(fake, [
       calling([call("call_1", "workers__lookup", %{"order" => "A1"})]),
       answer("Shipped.")
     ])
@@ -255,11 +247,11 @@ defmodule Wardrik.WorkersTest do
   end
 
   test "waits on a person where a call that may not run twice was lost, and runs it again once approved",
-       %{wardrik: wardrik, scope: scope} do
+       %{fake: fake, wardrik: wardrik, scope: scope} do
     changing = %{@lookup | "annotations" => %{}}
     first = worker(wardrik, "acme/@shop", ["acme"], [changing], fn _call -> :gone end)
 
-    answers([
+    answers(fake, [
       calling([call("call_1", "workers__lookup", %{"order" => "A1"})]),
       answer("Shipped.")
     ])

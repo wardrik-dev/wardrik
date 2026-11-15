@@ -10,18 +10,21 @@ defmodule Wardrik.Testing.Model do
         defaults: [model: "test"]
       )
 
-  An answer is a `ReqLLM.Response`, `{:status, code}` to fail the call with that HTTP status, or
-  a function. A function takes the call's request, decoded from JSON, and returns an answer.
+  An answer is a `ReqLLM.Response`, `{:status, code}` or `{:status, code, message}` to fail the
+  call with that HTTP status, or a function. A function takes the call's request, decoded from JSON, and returns an answer.
   Answers given as a function answer every call.
   """
 
   # A restart would answer from the start again.
   use GenServer, restart: :temporary
 
+  alias ReqLLM.Message.ContentPart
+
   @type answer() ::
           ReqLLM.Response.t()
           | {:status, pos_integer()}
-          | (map() -> ReqLLM.Response.t() | {:status, pos_integer()})
+          | {:status, pos_integer(), String.t()}
+          | (map() -> answer())
 
   @doc "Starts it with `answers`: a list taken in order, or a function."
   @spec start_link([answer()] | (map() -> answer())) :: GenServer.on_start()
@@ -34,12 +37,17 @@ defmodule Wardrik.Testing.Model do
     [model: "vllm:test", base_url: "http://127.0.0.1:#{port}/v1"]
   end
 
-  @doc "Adds `answers` after those left."
-  @spec answer(pid(), [answer()]) :: :ok
+  @doc "Adds `answers` after those left. A function answers every call from then on."
+  @spec answer(pid(), [answer()] | (map() -> answer())) :: :ok
   def answer(model, answers), do: GenServer.call(model, {:add, answers})
 
-  @doc "Returns an answer that says `text`."
-  @spec text(String.t()) :: ReqLLM.Response.t()
+  @doc "Returns an answer that says `text`, streamed a piece at a time where it's a list."
+  @spec text(String.t() | [String.t()]) :: ReqLLM.Response.t()
+  def text(pieces) when is_list(pieces) do
+    content = Enum.map(pieces, &ContentPart.text/1)
+    response(%ReqLLM.Message{role: :assistant, content: content})
+  end
+
   def text(text), do: response(ReqLLM.Context.assistant(text))
 
   @doc "Returns an answer that calls tools, each `{id, name, args}`."
@@ -50,6 +58,38 @@ defmodule Wardrik.Testing.Model do
 
     response(ReqLLM.Context.assistant("", tool_calls: tool_calls))
   end
+
+  @doc """
+  Returns the messages a call sent, as `ReqLLM.Message`s: each part of their text, and each tool
+  call and tool result.
+  """
+  @spec messages(map()) :: [ReqLLM.Message.t()]
+  def messages(%{"messages" => messages}), do: Enum.map(messages, &message/1)
+
+  defp message(message) do
+    %ReqLLM.Message{
+      role: String.to_existing_atom(message["role"]),
+      content: content(message["content"]),
+      tool_call_id: message["tool_call_id"],
+      tool_calls: tool_calls(message["tool_calls"])
+    }
+  end
+
+  defp content(nil), do: []
+  defp content(""), do: []
+  defp content(text) when is_binary(text), do: [ContentPart.text(text)]
+
+  defp content(parts) when is_list(parts),
+    do: for(%{"type" => "text", "text" => text} <- parts, do: ContentPart.text(text))
+
+  defp tool_calls(nil), do: nil
+
+  defp tool_calls(calls),
+    do:
+      for(
+        %{"id" => id, "function" => %{"name" => name, "arguments" => arguments}} <- calls,
+        do: ReqLLM.ToolCall.new(id, name, arguments)
+      )
 
   defp response(message),
     do: %ReqLLM.Response{id: "resp", model: "test", context: nil, message: message}
@@ -74,6 +114,9 @@ defmodule Wardrik.Testing.Model do
     {:ok, {_ip, port}} = ThousandIsland.listener_info(state.server)
     {:reply, port, state}
   end
+
+  def handle_call({:add, answer}, _from, state) when is_function(answer, 1),
+    do: {:reply, :ok, %{state | answers: answer}}
 
   def handle_call({:add, more}, _from, %{answers: answers} = state) when is_list(answers),
     do: {:reply, :ok, %{state | answers: answers ++ more}}
@@ -108,8 +151,13 @@ defmodule Wardrik.Testing.Model do
       sent(conn, GenServer.call(model, {:next, JSON.decode!(body)}))
     end
 
-    defp sent(conn, {:status, status}),
-      do: send_resp(conn, status, ~s({"error":{"message":"#{status}"}}))
+    defp sent(conn, {:status, status}), do: sent(conn, {:status, status, "Failed."})
+
+    defp sent(conn, {:status, status, message}) do
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(status, JSON.encode!(%{error: %{message: message}}))
+    end
 
     defp sent(conn, %ReqLLM.Response{} = response) do
       conn =
@@ -130,33 +178,31 @@ defmodule Wardrik.Testing.Model do
       calls = ReqLLM.Response.tool_calls(response)
       usage = response.usage || %{}
 
-      [
-        %{
-          choices: [
-            %{
-              index: 0,
-              delta: %{role: "assistant", content: ReqLLM.Response.text(response) || ""}
+      texts(response) ++
+        [
+          %{choices: [%{index: 0, delta: %{tool_calls: Enum.with_index(calls, &tool_call/2)}}]},
+          %{
+            choices: [
+              %{
+                index: 0,
+                delta: %{},
+                finish_reason: if(calls == [], do: "stop", else: "tool_calls")
+              }
+            ]
+          },
+          %{
+            choices: [],
+            usage: %{
+              prompt_tokens: Map.get(usage, :input_tokens, 0),
+              completion_tokens: Map.get(usage, :output_tokens, 0)
             }
-          ]
-        },
-        %{choices: [%{index: 0, delta: %{tool_calls: Enum.with_index(calls, &tool_call/2)}}]},
-        %{
-          choices: [
-            %{
-              index: 0,
-              delta: %{},
-              finish_reason: if(calls == [], do: "stop", else: "tool_calls")
-            }
-          ]
-        },
-        %{
-          choices: [],
-          usage: %{
-            prompt_tokens: Map.get(usage, :input_tokens, 0),
-            completion_tokens: Map.get(usage, :output_tokens, 0)
           }
-        }
-      ]
+        ]
+    end
+
+    defp texts(%ReqLLM.Response{message: %{content: content}}) do
+      for %{type: :text, text: text} <- content,
+          do: %{choices: [%{index: 0, delta: %{role: "assistant", content: text}}]}
     end
 
     defp tool_call(%ReqLLM.ToolCall{id: id, function: function}, index),
