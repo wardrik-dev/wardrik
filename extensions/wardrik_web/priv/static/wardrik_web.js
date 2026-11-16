@@ -7,12 +7,13 @@
       beforeUpdate() { this.pinned = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80 },
       updated() { if (this.pinned) window.scrollTo(0, document.body.scrollHeight) }
     },
-    // Sends the composer's form on Enter; Shift+Enter makes a new line.
+    // Sends the composer's form on Enter; Shift+Enter makes a new line. Empties it once sent.
     SendOnEnter: {
       mounted() {
         this.el.addEventListener("keydown", (e) => {
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); this.el.form.requestSubmit() }
         })
+        this.handleEvent("composer:sent", () => { this.el.value = "" })
       }
     }
   }
