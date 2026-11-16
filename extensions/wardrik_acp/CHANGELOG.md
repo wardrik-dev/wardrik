@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.4 (2026-11-16)
+
+- Opening a connection no longer fails with `noproc` when one by the same name has just stopped.
+
 ## 0.1.0-rc.3 (2026-11-14)
 
 - Requires `wardrik_core` 0.1.0-rc.8, whose modules tools and middleware are written with are

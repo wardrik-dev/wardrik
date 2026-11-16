@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.11 (2026-11-16)
+
+- Several Wardrik instances can run on one node, each with its own store. `:prefix` sets where an
+  instance keeps its agents; `"wardrik/"` unless set. Stored keys are unchanged.
+- Heartbeats are polled with every backend. An EKV store no longer subscribes to them.
+
 ## 0.1.0-rc.10 (2026-11-15)
 
 - `WardrikCore.evaluate/2` runs as the step `{:evaluate, model}`, whose stop event carries its
