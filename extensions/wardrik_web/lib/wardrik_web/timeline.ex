@@ -106,6 +106,10 @@ defmodule WardrikWeb.Timeline do
   attr :chat, :boolean, default: false
   attr :empty, :string, default: "No messages yet."
 
+  attr :doing, :map,
+    default: nil,
+    doc: "The agent's activity while a run goes, as `agent.read` gives it. Shown at the end."
+
   @spec timeline(map()) :: Phoenix.LiveView.Rendered.t()
   def timeline(assigns) do
     ~H"""
@@ -128,9 +132,6 @@ defmodule WardrikWeb.Timeline do
             </span>
           </header>
           <.step :for={step <- item["steps"] || []} step={step} chat={@chat} />
-          <div :if={@chat and item["status"] == "running" and item["steps"] in [nil, []]} class="step">
-            <span class="sub">Working…</span>
-          </div>
           <div :if={item["error"]} class="step">
             <span class="pill error">error</span> {item["error"]}
           </div>
@@ -145,9 +146,53 @@ defmodule WardrikWeb.Timeline do
         <header :if={!@chat}><b>Generating…</b><span class="pill running">running</span></header>
         <div class="step"><.markdown text={text} /></div>
       </article>
+      <.working :if={@doing} doing={@doing} />
     </div>
     """
   end
+
+  attr :doing, :map, required: true
+
+  # A line saying what the agent does now, with how long it has been at it.
+  defp working(assigns) do
+    assigns = assign(assigns, :label, working_label(assigns.doing["doing"] || []))
+
+    ~H"""
+    <div class="working" role="status">
+      <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>{@label}</span>
+      <span
+        :if={@doing["since"]}
+        class="sub"
+        id="working-elapsed"
+        phx-hook="Elapsed"
+        phx-update="ignore"
+        data-since={@doing["since"]}
+      ></span>
+    </div>
+    """
+  end
+
+  @running ~w(wardrik.tool_call.started wardrik.tool_call.retrying)
+
+  defp working_label(doing) do
+    case Enum.filter(doing, &(&1["type"] in @running)) do
+      [] -> step_label(List.last(doing))
+      calls -> "Using " <> Enum.map_join(calls, ", ", &tool_name(&1["tool"]["name"]))
+    end
+  end
+
+  defp step_label(%{"type" => "wardrik.message.retrying"}), do: "Trying the model again"
+  defp step_label(%{"type" => "wardrik.message.started"}), do: "Thinking"
+  defp step_label(_step), do: "Working"
+
+  @doc """
+  The name a person reads for tool `name`: an MCP tool's `server__tool` as `server/tool`, as
+  policies name it.
+  """
+  @spec tool_name(String.t() | nil) :: String.t()
+  def tool_name(nil), do: "a tool"
+  def tool_name(name), do: String.replace(name, "__", "/", global: false)
 
   @doc "The box to write a message in. Enter sends it; Shift+Enter starts a new line. It empties once the message is sent."
   attr :placeholder, :string, default: "Send a message"
@@ -234,17 +279,34 @@ defmodule WardrikWeb.Timeline do
     """
   end
 
+  # Arguments a person can read at a glance: a few short values, none of them nested.
+  defp plain?(arguments) when is_map(arguments) and map_size(arguments) in 1..6,
+    do: Enum.all?(arguments, fn {_key, value} -> short?(value) end)
+
+  defp plain?(_arguments), do: false
+
+  defp short?(value) when is_binary(value), do: String.length(value) <= 300
+  defp short?(value), do: is_number(value) or is_boolean(value)
+
   attr :interrupt, :map, required: true
 
   defp ask(assigns) do
     ~H"""
     <div class="ask">
-      <div class="why">{@interrupt["message"] || "Approve #{@interrupt["name"]}?"}</div>
+      <div class="why">
+        {@interrupt["message"] || "Allow #{tool_name(@interrupt["name"])}?"}
+      </div>
       <div class="sub">
-        <code>{@interrupt["name"]}</code> · {@interrupt["reason"]}
+        Waiting for your approval to use <code>{tool_name(@interrupt["name"])}</code>.
         <span :for={label <- @interrupt["labels"] || []} class="tag">{label}</span>
       </div>
-      <details :if={@interrupt["arguments"]}>
+      <dl :if={plain?(@interrupt["arguments"])} class="args">
+        <%= for {key, value} <- @interrupt["arguments"] do %>
+          <dt>{key}</dt>
+          <dd><code>{value}</code></dd>
+        <% end %>
+      </dl>
+      <details :if={@interrupt["arguments"] && !plain?(@interrupt["arguments"])}>
         <summary>Arguments</summary>
         <.json value={@interrupt["arguments"]} />
       </details>

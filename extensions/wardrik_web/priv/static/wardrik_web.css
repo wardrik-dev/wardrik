@@ -296,6 +296,19 @@ details[open] > summary { margin-bottom: 6px; }
 .side .btn.new { margin: 0 4px 8px; justify-content: center; }
 .side a.nav { overflow-wrap: anywhere; }
 .side a.nav.sub { padding-left: 22px; font-size: 13px; }
+.side a.nav .count { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--wait); color: #fff; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; }
+.working { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.working .dots { display: inline-flex; gap: 3px; }
+.working .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--run); animation: pulse 1.2s ease-in-out infinite; }
+.working .dots i:nth-child(2) { animation-delay: 0.2s; }
+.working .dots i:nth-child(3) { animation-delay: 0.4s; }
+.elsewhere { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.elsewhere a { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; border-radius: var(--radius); background: var(--wait-soft); color: var(--ink); text-decoration: none; font-size: 13px; }
+.elsewhere a .go { margin-left: auto; color: var(--wait); font-weight: 600; }
+.ask dl.args { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0 0; font-size: 13px; }
+.ask dl.args dt { color: var(--muted); }
+.ask dl.args dd { margin: 0; overflow-wrap: anywhere; }
+.ask dl.args code { white-space: pre-wrap; }
 
 .flash { padding: 10px 14px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid; display: flex; justify-content: space-between; gap: 12px; }
 .flash[phx-click] { cursor: pointer; }

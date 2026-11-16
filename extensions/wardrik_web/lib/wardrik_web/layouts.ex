@@ -71,7 +71,8 @@ defmodule WardrikWeb.Layouts do
   @doc """
   The layout of the chat page: the agents to chat with, and the open agent's conversations.
 
-  It reads `@chats`, `@agent` and `@conversation` from the page.
+  It reads `@chats`, `@agent`, `@conversation` and `@waiting`, the calls waiting on a person, from
+  the page. Each agent and conversation shows how many of them are its own.
   """
   @spec chat(map()) :: Phoenix.LiveView.Rendered.t()
   def chat(assigns) do
@@ -93,6 +94,7 @@ defmodule WardrikWeb.Layouts do
           title={chat.id}
         >
           {chat.name}
+          <.waiting count={waits(@waiting, chat.id)} />
         </.link>
         <.link
           :for={conversation <- chat.conversations}
@@ -103,6 +105,7 @@ defmodule WardrikWeb.Layouts do
           title={conversation}
         >
           {chat_label(conversation)}
+          <.waiting count={waits(@waiting, chat.id, conversation)} />
         </.link>
       <% end %>
       <:foot>
@@ -112,6 +115,20 @@ defmodule WardrikWeb.Layouts do
     </.shell>
     """
   end
+
+  attr :count, :integer, required: true
+
+  defp waiting(assigns) do
+    ~H"""
+    <span :if={@count > 0} class="count" title="Waiting for your approval">{@count}</span>
+    """
+  end
+
+  defp waits(waiting, agent),
+    do: Enum.count(waiting, &(&1["agent"]["id"] == agent))
+
+  defp waits(waiting, agent, conversation),
+    do: Enum.count(waiting, &(&1["agent"]["id"] == agent and &1["conversation"] == conversation))
 
   # The chat page names a chat it starts by when, as "web 2026-11-16 06:38:01 k3fq".
   defp chat_label("web " <> <<stamp::binary-size(16), _rest::binary>> = conversation) do
