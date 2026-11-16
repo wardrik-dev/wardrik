@@ -3,13 +3,26 @@ defmodule WardrikACP.Worktree do
 
   alias WardrikACP.Checkout
 
+  # Without a checkout, it is a scratch directory: no repository and no branch.
   @enforce_keys [:checkout, :path, :branch]
   defstruct [:checkout, :path, :branch]
 
-  @type t() :: %__MODULE__{checkout: Checkout.t(), path: Path.t(), branch: String.t()}
+  @type t() :: %__MODULE__{
+          checkout: Checkout.t() | nil,
+          path: Path.t(),
+          branch: String.t() | nil
+        }
 
-  @doc "Adds the worktree on its branch, unless it's there. A new branch starts at the checkout's base."
+  @doc """
+  Adds the worktree on its branch, unless it's there. A new branch starts at the checkout's base.
+  A scratch directory is made, and its time of last use set.
+  """
   @spec open(t()) :: :ok | {:error, String.t()}
+  def open(%__MODULE__{checkout: nil} = worktree) do
+    File.mkdir_p!(worktree.path)
+    File.touch!(worktree.path)
+  end
+
   def open(%__MODULE__{checkout: checkout} = worktree) do
     with :ok <- repository(checkout.path) do
       if File.dir?(worktree.path), do: :ok, else: add(worktree)
@@ -18,6 +31,8 @@ defmodule WardrikACP.Worktree do
 
   @doc "Returns the branch, its head, and its commits since it left the checkout's base, oldest first."
   @spec report(t()) :: map()
+  def report(%__MODULE__{checkout: nil} = worktree), do: %{"directory" => worktree.path}
+
   def report(%__MODULE__{checkout: checkout} = worktree) do
     head = git!(worktree.path, ["rev-parse", "HEAD"])
 
@@ -30,6 +45,17 @@ defmodule WardrikACP.Worktree do
       "head" => head,
       "commits" => commits(worktree.path, base, head)
     }
+  end
+
+  @doc "Returns the scratch directories in `dir` last used before `time`, a POSIX time in seconds."
+  @spec scratch(Path.t(), integer()) :: [t()]
+  def scratch(dir, time) do
+    pattern = Path.join([dir, "*", ".scratch", "*", "*", "*"])
+
+    for path <- Path.wildcard(pattern, match_dot: true),
+        File.dir?(path),
+        File.stat!(path, time: :posix).mtime < time,
+        do: %__MODULE__{checkout: nil, path: path, branch: nil}
   end
 
   @doc "Returns the checkout's worktrees in `dir`, each on its branch."
@@ -64,8 +90,16 @@ defmodule WardrikACP.Worktree do
     end
   end
 
-  @doc "Removes the worktree and its branch. A worktree with changes or untracked files stays."
+  @doc """
+  Removes the worktree and its branch. A worktree with changes or untracked files stays. A scratch
+  directory is removed with all it holds.
+  """
   @spec remove(t()) :: :ok | {:error, String.t()}
+  def remove(%__MODULE__{checkout: nil} = worktree) do
+    File.rm_rf!(worktree.path)
+    :ok
+  end
+
   def remove(%__MODULE__{checkout: checkout} = worktree) do
     with {:ok, _output} <- git(checkout.path, ["worktree", "remove", worktree.path]),
          {:ok, _output} <- git(checkout.path, ["branch", "-D", worktree.branch]) do

@@ -63,13 +63,15 @@ The model calls `claude` with these arguments:
 | Argument | Value |
 |---|---|
 | `task` | What to do. |
-| `checkout` | The name of a checkout. |
+| `checkout` | The name of a checkout. Optional, and only offered when there are checkouts. |
 | `work` | A name for the piece of work, such as `fix-login`. |
 
 - Each `work` name has its own worktree, branch and session. A later call with the same name
   continues them.
 - The branch is `wardrik/<agent>/<conversation>/<work>`, cut from the checkout's `base`.
 - Pass `checkouts: [:billing]` to limit the checkouts an agent may use.
+- Without `checkout`, the work has a scratch directory of its own in `worktrees`, with no
+  repository or branch. The same `work` name continues it.
 
 The call returns a map:
 
@@ -87,6 +89,8 @@ The call returns a map:
 
 - `message` is the text the coding agent sent after its last tool call.
 - `refused` lists each request the middleware refused, with its reason.
+- Work without a checkout returns `"directory"` in place of `"branch"`, `"worktree"`, `"head"`
+  and `"commits"`.
 
 ## Permission requests
 
@@ -149,7 +153,7 @@ claude_open: [
 |---|---|
 | A request parked. The coding agent is still running. | Answers the request it holds. |
 | A request parked. The coding agent stopped. | Loads or resumes the session, or starts one. Sends the person's decision, and allows that request once. |
-| Wardrik restarted while the call ran. | The call parks as `:in_doubt`. On approval, the coding agent is told to check the worktree and finish. |
+| Wardrik restarted while the call ran. | The call parks as `:in_doubt`. On approval, the coding agent is told to check the working directory and finish. |
 | The call was stopped or timed out. | The prompt was cancelled. The next call sends a new prompt. |
 
 ## Clean up worktrees
@@ -163,6 +167,8 @@ WardrikACP.sweep(MyApp.ACP)
   squashed and cherry-picked work all count.
 - A worktree stays while a call uses its coding agent, while a request waits, and while it has
   changes or untracked files. An idle coding agent is stopped first.
+- A sweep removes each scratch directory not used for `scratch` milliseconds: a week unless set.
+  It stays while a call uses its coding agent and while a request waits.
 - A sweep runs at start, then every `sweep` milliseconds: a day unless set. `sweep: :infinity`
   turns it off.
 

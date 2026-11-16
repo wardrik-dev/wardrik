@@ -128,6 +128,16 @@ A sweep runs each day. It removes each worktree whose work is in its checkout's 
 branch with it. Merged, squashed and cherry-picked work all count. Work with changes or untracked
 files stays.
 
+## Work outside a repository
+
+A call can leave out `checkout`. The coding agent then works in a scratch directory of its own,
+with no repository and no branch. With no `checkouts` in `config.yaml`, every call works this way.
+
+- The directory is `worktrees/claude/.scratch/<agent ID>/<conversation>/<work>`.
+- The same `work` name continues the same session and directory.
+- The call returns the coding agent's last message and the directory.
+- The sweep removes a scratch directory a week after its last call.
+
 ## Run without asking
 
 A coding agent can work with no person in the loop, in one of two ways.

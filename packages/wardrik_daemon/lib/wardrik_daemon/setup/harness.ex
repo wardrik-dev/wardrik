@@ -17,8 +17,8 @@ defmodule WardrikDaemon.Setup.Harness do
   def added(name, text) do
     [
       {:entry, "config.yaml", "harnesses", name,
-       "# A tool of the same name, as tools: [#{name}]. It works in a checkout, as\n" <>
-         "# checkouts: {app: ~/src/app}, on a branch of its own.\n" <> text},
+       "# A tool of the same name, as tools: [#{name}]. It works in a scratch directory, or\n" <>
+         "# in a checkout, as checkouts: {app: ~/src/app}, on a branch of its own.\n" <> text},
       {:write, "policies/coding.yaml", policy()}
     ]
   end

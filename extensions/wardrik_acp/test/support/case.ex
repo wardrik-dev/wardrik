@@ -101,11 +101,15 @@ defmodule WardrikACP.Case do
   end
 
   def call(acp, steps, tags \\ %{}) do
-    args = %{
-      "task" => JSON.encode!(steps),
-      "checkout" => tags[:checkout] || "repo",
-      "work" => tags[:work] || "fix"
-    }
+    args =
+      Map.reject(
+        %{
+          "task" => JSON.encode!(steps),
+          "checkout" => Map.get(tags, :checkout, "repo"),
+          "work" => tags[:work] || "fix"
+        },
+        &match?({_key, nil}, &1)
+      )
 
     context = context(acp, tags)
     [tool] = WardrikACP.tools(context, name: acp, harnesses: :peer)

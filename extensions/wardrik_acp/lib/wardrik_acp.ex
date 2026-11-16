@@ -18,13 +18,17 @@ defmodule WardrikACP do
         middleware: [{Wardrik.Policy.Middleware, Wardrik.Policy.new!(ask: ["claude/execute"])}]
       )
 
-    * The model sees a tool named `claude`. Its arguments are `task`, `checkout` and `work`.
+    * The model sees a tool named `claude`. Its arguments are `task`, `work` and, when there
+      are checkouts, an optional `checkout`.
     * Each `work` name has its own worktree, branch and session. Calling it again continues them.
+    * Without a checkout, the work has a scratch directory of its own in `worktrees`, with no
+      repository. With no checkouts at all, every call works this way.
     * Each permission request from the coding agent runs through the agent's middleware as a tool
       call named `claude__execute`, `claude__edit`, and so on, by ACP tool kind. Its arguments
       are the request's `rawInput`.
     * A request that parks parks the call. Answer it by the call's ID, as for any tool call.
-    * The answer lists the branch, its commits, and the coding agent's last message.
+    * The answer lists the branch, its commits, and the coding agent's last message. Work
+      without a checkout lists its directory in place of the branch and commits.
     * Harness options are in `WardrikACP.Harness`.
 
   ## Telemetry
@@ -68,10 +72,16 @@ defmodule WardrikACP do
                doc:
                  "Milliseconds between sweeps, or `:infinity`. The first runs at start. See `sweep/1`."
              ],
+             scratch: [
+               type: {:or, [:pos_integer, {:in, [:infinity]}]},
+               default: :timer.hours(24 * 7),
+               doc:
+                 "Milliseconds a scratch directory stays after its last call, or `:infinity`. See `sweep/1`."
+             ],
              worktrees: [
                type: :string,
                required: true,
-               doc: "The directory for worktrees, one per piece of work."
+               doc: "The directory for worktrees and scratch directories, one per piece of work."
              ]
            )
 
@@ -101,7 +111,8 @@ defmodule WardrikACP do
           {to_string(name), Checkout.new!(name, checkout)}
         end),
       worktrees: Path.expand(opts[:worktrees]),
-      sweep: opts[:sweep]
+      sweep: opts[:sweep],
+      scratch: opts[:scratch]
     }
 
     children = [
@@ -116,16 +127,17 @@ defmodule WardrikACP do
   end
 
   @doc """
-  Removes each worktree whose work is in its checkout's `base`, with its branch. Returns the paths
-  removed.
+  Removes each worktree whose work is in its checkout's `base`, with its branch, and each scratch
+  directory not used for the `scratch` time. Returns the paths removed.
 
       WardrikACP.sweep(MyApp.ACP)
       #=> ["/var/lib/my_app/worktrees/claude/billing/builder/_/fix-login"]
 
     * Work is in the base when merging the branch would change nothing: merged, squashed or
       cherry-picked.
-    * A worktree stays while a call uses its coding agent, while a request waits, and while it
-      has changes or untracked files. An idle coding agent is stopped first.
+    * A worktree or scratch directory stays while a call uses its coding agent and while a request
+      waits. A worktree also stays while it has changes or untracked files. An idle coding agent
+      is stopped first.
     * With `fetch: true`, the checkout runs `git fetch` first.
   """
   @spec sweep(atom()) :: [Path.t()]
@@ -142,7 +154,8 @@ defmodule WardrikACP do
 
     * `:name` - required. The `WardrikACP` name.
     * `:harnesses` - required. A coding agent's name or a list of them, as `:claude`.
-    * `:checkouts` - the checkouts the tools may work in. All of them by default.
+    * `:checkouts` - the checkouts the tools may work in. All of them by default. Work outside
+      a checkout is always offered.
   """
   @impl Wardrik.Capability
   def tools(_context, opts) do

@@ -6,7 +6,7 @@ defmodule WardrikACP.FailuresTest do
     [tool] = WardrikACP.tools(context, name: acp, harnesses: :peer, checkouts: [])
     args = %{"task" => "Go.", "checkout" => "repo", "work" => "fix"}
 
-    assert {:error, "No checkout named repo. Use one of: ."} = tool.run.(args, context)
+    assert {:error, "No checkout named repo. Leave checkout out."} = tool.run.(args, context)
   end
 
   test "reports an agent that exits while it works", %{acp: acp} do

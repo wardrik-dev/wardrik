@@ -52,5 +52,26 @@ defmodule WardrikDaemon.HarnessesTest do
     assert offered.("growth") == []
   end
 
+  test "a harness without checkouts takes a task and a work name", context do
+    acp = Module.concat(context.wardrik, NoCheckouts)
+    dir = Path.join(System.tmp_dir!(), "harnesses_#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    start_supervised!(
+      {WardrikACP,
+       name: acp,
+       worktrees: Path.join(dir, "worktrees"),
+       checkouts: [],
+       harnesses: [{"claude", [command: "claude-agent-acp"]}]},
+      id: acp
+    )
+
+    agent = Wardrik.Context.new(agent_id: "a")
+    [tool] = WardrikACP.tools(agent, name: acp, harnesses: "claude")
+
+    assert tool.schema["required"] == ["task", "work"]
+    assert Map.keys(tool.schema["properties"]) == ["task", "work"]
+  end
+
   defp entry, do: %{mcp: [], harnesses: [], rest: [], channels: [], notify: [], policy: nil}
 end
