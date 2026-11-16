@@ -1,7 +1,8 @@
 # Builds the site and deploys it to Cloudflare Pages. A daemon or SDK release tag deploys the
-# site people read, so it documents what they install; a push to main that changes docs/ or the
-# SDK deploys a preview at next.wardrik-docs.pages.dev. Run by hand on a tag, it redeploys the
-# site. Needs the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets.
+# site people read, so it documents what they install, and its /install.sh is that release's; a
+# push to main that changes docs/, the SDK or install.sh deploys a preview at
+# next.wardrik-docs.pages.dev. Run by hand on a tag, it redeploys the site. Needs the
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets.
 name: Docs
 
 on:
@@ -9,7 +10,7 @@ on:
     branches: [main]
     # GitHub doesn't apply paths to tag pushes, so every release tag deploys.
     tags: ["wardrik_daemon-v*", "typescript-v*"]
-    paths: ["docs/**", "sdk/typescript/**"]
+    paths: ["docs/**", "sdk/typescript/**", "packages/wardrik_daemon/install.sh"]
   workflow_dispatch:
 
 concurrency:

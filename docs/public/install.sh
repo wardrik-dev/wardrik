@@ -1,0 +1,1 @@
+../../packages/wardrik_daemon/install.sh
