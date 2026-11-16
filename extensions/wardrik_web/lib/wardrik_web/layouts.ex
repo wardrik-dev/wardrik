@@ -31,11 +31,107 @@ defmodule WardrikWeb.Layouts do
     """
   end
 
-  @doc "The layout of each page: navigation and flash messages."
+  @doc "The layout of each dashboard page: navigation and flash messages."
   @spec app(map()) :: Phoenix.LiveView.Rendered.t()
   def app(assigns) do
     assigns = assign(assigns, :pages, Dashboard.pages(assigns.dashboard))
 
+    ~H"""
+    <.shell dashboard={@dashboard} flash={@flash} label="operators" home={[]} content={@inner_content}>
+      <.nav dashboard={@dashboard} here={@here} to={["chat"]} label="Chat" />
+      <.nav dashboard={@dashboard} here={@here} to={[]} label="Agents" also={["agents"]} />
+      <.nav dashboard={@dashboard} here={@here} to={["approvals"]} label="Approvals" />
+      <.nav dashboard={@dashboard} here={@here} to={["audit"]} label="Audit" />
+      <.nav dashboard={@dashboard} here={@here} to={["nodes"]} label="Nodes" />
+      <.nav dashboard={@dashboard} here={@here} to={["operations"]} label="Operations" />
+      <div class="group">Settings</div>
+      <.nav
+        :for={page <- WardrikWeb.SettingPage.all()}
+        dashboard={@dashboard}
+        here={@here}
+        to={[page.path]}
+        label={page.label}
+        off={!Map.has_key?(@dashboard.settings, page.key)}
+      />
+      <div :if={@pages != []} class="group">More</div>
+      <.nav
+        :for={page <- @pages}
+        dashboard={@dashboard}
+        here={@here}
+        to={["x", page.path]}
+        label={page.label}
+      />
+      <:foot>
+        <a href="https://wardrik.dev" target="_blank" rel="noopener">Documentation ↗</a>
+      </:foot>
+    </.shell>
+    """
+  end
+
+  @doc """
+  The layout of the chat page: the agents to chat with, and the open agent's conversations.
+
+  It reads `@chats`, `@agent` and `@conversation` from the page.
+  """
+  @spec chat(map()) :: Phoenix.LiveView.Rendered.t()
+  def chat(assigns) do
+    ~H"""
+    <.shell
+      dashboard={@dashboard}
+      flash={@flash}
+      label="chat"
+      home={["chat"]}
+      content={@inner_content}
+    >
+      <button :if={@agent} class="btn new" type="button" phx-click="new">New chat</button>
+      <div class="group">Agents</div>
+      <%= for chat <- @chats do %>
+        <.link
+          class={["nav", chat.id == @agent && !@conversation && "on"]}
+          navigate={WardrikWeb.path(@dashboard, ["chat", chat.id])}
+          aria-current={chat.id == @agent && !@conversation && "page"}
+          title={chat.id}
+        >
+          {chat.name}
+        </.link>
+        <.link
+          :for={conversation <- chat.conversations}
+          :if={chat.id == @agent}
+          class={["nav", "sub", conversation == @conversation && "on"]}
+          navigate={WardrikWeb.path(@dashboard, ["chat", chat.id], %{"conversation" => conversation})}
+          aria-current={conversation == @conversation && "page"}
+          title={conversation}
+        >
+          {chat_label(conversation)}
+        </.link>
+      <% end %>
+      <:foot>
+        <.link navigate={WardrikWeb.path(@dashboard, [])}>Dashboard</.link>
+        <a href="https://wardrik.dev" target="_blank" rel="noopener">Documentation ↗</a>
+      </:foot>
+    </.shell>
+    """
+  end
+
+  # The chat page names a chat it starts by when, as "web 2026-11-16 06:38:01 k3fq".
+  defp chat_label("web " <> <<stamp::binary-size(16), _rest::binary>> = conversation) do
+    case NaiveDateTime.from_iso8601(stamp <> ":00") do
+      {:ok, _at} -> stamp
+      {:error, _not_ours} -> conversation
+    end
+  end
+
+  defp chat_label(conversation), do: conversation
+
+  attr :dashboard, Dashboard, required: true
+  attr :flash, :map, required: true
+  attr :label, :string, required: true
+  attr :home, :list, required: true
+  attr :content, :any, required: true
+  slot :inner_block, required: true
+  slot :foot, required: true
+
+  defp shell(assigns) do
     ~H"""
     <div class="shell" id="wardrik-shell" phx-window-keydown={close_menu()} phx-key="Escape">
       <header class="topbar">
@@ -56,40 +152,13 @@ defmodule WardrikWeb.Layouts do
             />
           </svg>
         </button>
-        <.link class="wordmark" navigate={WardrikWeb.path(@dashboard, [])}>
-          <span>Wardrik<span class="dot">.</span></span><small>operators</small>
-        </.link>
+        <.wordmark dashboard={@dashboard} home={@home} label={@label} />
       </header>
       <div class="scrim" phx-click={close_menu()} aria-hidden="true"></div>
       <nav class="side" id="wardrik-nav" aria-label="Dashboard" phx-click={close_menu()}>
-        <.link class="wordmark" navigate={WardrikWeb.path(@dashboard, [])}>
-          <span>Wardrik<span class="dot">.</span></span><small>operators</small>
-        </.link>
-        <.nav dashboard={@dashboard} here={@here} to={[]} label="Agents" also={["agents"]} />
-        <.nav dashboard={@dashboard} here={@here} to={["approvals"]} label="Approvals" />
-        <.nav dashboard={@dashboard} here={@here} to={["audit"]} label="Audit" />
-        <.nav dashboard={@dashboard} here={@here} to={["nodes"]} label="Nodes" />
-        <.nav dashboard={@dashboard} here={@here} to={["operations"]} label="Operations" />
-        <div class="group">Settings</div>
-        <.nav
-          :for={page <- WardrikWeb.SettingPage.all()}
-          dashboard={@dashboard}
-          here={@here}
-          to={[page.path]}
-          label={page.label}
-          off={!Map.has_key?(@dashboard.settings, page.key)}
-        />
-        <div :if={@pages != []} class="group">More</div>
-        <.nav
-          :for={page <- @pages}
-          dashboard={@dashboard}
-          here={@here}
-          to={["x", page.path]}
-          label={page.label}
-        />
-        <div class="foot">
-          <a href="https://wardrik.dev" target="_blank" rel="noopener">Documentation ↗</a>
-        </div>
+        <.wordmark dashboard={@dashboard} home={@home} label={@label} />
+        {render_slot(@inner_block)}
+        <div class="foot">{render_slot(@foot)}</div>
       </nav>
       <main class="main">
         <div
@@ -112,9 +181,21 @@ defmodule WardrikWeb.Layouts do
         >
           {msg}<span class="close" aria-hidden="true">×</span>
         </div>
-        {@inner_content}
+        {@content}
       </main>
     </div>
+    """
+  end
+
+  attr :dashboard, Dashboard, required: true
+  attr :home, :list, required: true
+  attr :label, :string, required: true
+
+  defp wordmark(assigns) do
+    ~H"""
+    <.link class="wordmark" navigate={WardrikWeb.path(@dashboard, @home)}>
+      <span>Wardrik<span class="dot">.</span></span><small>{@label}</small>
+    </.link>
     """
   end
 

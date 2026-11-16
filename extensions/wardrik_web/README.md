@@ -5,6 +5,7 @@ your Phoenix app.
 
 With the dashboard you can:
 
+* Chat with your agents.
 * See all your agents and what they are doing.
 * Approve or reject tool calls.
 * Edit an agent's definition and triggers.
@@ -14,6 +15,7 @@ With the dashboard you can:
 
 | Page | What it shows |
 | --- | --- |
+| Chat | A chat with an agent: its answers as they stream in, and the calls that wait on you. Each new chat is a conversation of its own. |
 | Agents | All agents and conversations you can access. |
 | Agent | One agent's timeline, runs, running tool calls, triggers, definition, access and events. |
 | Approvals | Tool calls that are waiting for approval. |
@@ -87,6 +89,14 @@ The dashboard runs every action in this scope. Wardrik's authorizer checks each 
 
 The dashboard calls the resolver each time a page loads. When you remove someone's access, they
 lose the dashboard the next time their browser reconnects.
+
+The chat page shows agents by ID. To show names, add `names/3`. It returns a name for each agent
+ID it knows:
+
+```elixir
+@impl true
+def names(_request, ids, _opts), do: MyApp.Agents.names(ids)
+```
 
 ## Turn on the settings pages
 

@@ -5,6 +5,7 @@ defmodule WardrikWeb.AgentLive do
   import WardrikWeb.Components
 
   alias WardrikWeb.Follow
+  alias WardrikWeb.Timeline
 
   @tabs [
     {"timeline", "Timeline"},
@@ -58,22 +59,8 @@ defmodule WardrikWeb.AgentLive do
   defp follow(socket), do: Follow.start(socket, "agent.events", socket.assigns.input)
 
   @impl true
-  def handle_event("ask", %{"content" => content}, socket) do
-    case String.trim(content) do
-      "" -> {:noreply, socket}
-      content -> {:noreply, act(socket, "agent.ask", %{"content" => content}, nil)}
-    end
-  end
-
-  def handle_event("approve", %{"interrupt" => id} = params, socket) do
-    input = put_present(%{"interrupt" => id}, "note", params["note"])
-    {:noreply, act(socket, "agent.approve", input, "Approved.")}
-  end
-
-  def handle_event("deny", %{"interrupt" => id} = params, socket) do
-    input = put_present(%{"interrupt" => id}, "reason", params["reason"])
-    {:noreply, act(socket, "agent.deny", input, "Rejected.")}
-  end
+  def handle_event(event, params, socket) when event in ~w(ask approve deny),
+    do: {:noreply, Timeline.handle_event(event, params, socket, &load/1)}
 
   def handle_event("move", %{"node" => node}, socket) when node != "",
     do: {:noreply, act(socket, "agent.move", %{"node" => node}, "Moving to #{node}.")}
@@ -116,40 +103,9 @@ defmodule WardrikWeb.AgentLive do
     do: {:noreply, put_flash(socket, kind, message)}
 
   def handle_info({Follow, _message} = message, socket),
-    do: {:noreply, Follow.handle(message, socket, &load/1, on_event: &drafted/2)}
+    do: {:noreply, Follow.handle(message, socket, &load/1, on_event: &Timeline.drafted/2)}
 
-  defp act(socket, id, input, done) do
-    case Wardrik.Scope.run(socket.assigns.scope, id, Map.merge(socket.assigns.input, input)) do
-      {:ok, _answer} ->
-        socket
-        |> clear_flash()
-        |> then(&if(done, do: put_flash(&1, :info, done), else: &1))
-        |> load()
-
-      {:error, error} ->
-        put_flash(socket, :error, error.message)
-    end
-  end
-
-  defp put_present(map, _key, value) when value in [nil, ""], do: map
-  defp put_present(map, key, value), do: Map.put(map, key, value)
-
-  defp drafted(
-         %{
-           "type" => "wardrik.message.delta",
-           "data" => %{"message" => %{"id" => id}, "delta" => delta}
-         },
-         socket
-       ),
-       do: update(socket, :drafts, &Map.update(&1, id, delta, fn text -> text <> delta end))
-
-  defp drafted(
-         %{"type" => "wardrik.message.completed", "data" => %{"message" => %{"id" => id}}},
-         socket
-       ),
-       do: update(socket, :drafts, &Map.delete(&1, id))
-
-  defp drafted(_event, socket), do: socket
+  defp act(socket, id, input, done), do: Timeline.act(socket, id, input, done, &load/1)
 
   defp load(socket) do
     scope = socket.assigns.scope
@@ -265,17 +221,8 @@ defmodule WardrikWeb.AgentLive do
 
     <div class="layout">
       <div>
-        <.timeline :if={@tab == "timeline" && @data} items={@data["items"]} drafts={@drafts} />
-        <form :if={@tab == "timeline"} class="composer" phx-submit="ask">
-          <textarea
-            name="content"
-            placeholder="Send a message"
-            aria-label="Message"
-            phx-hook="SendOnEnter"
-            id="composer"
-          ></textarea>
-          <button class="btn primary">Send</button>
-        </form>
+        <Timeline.timeline :if={@tab == "timeline" && @data} items={@data["items"]} drafts={@drafts} />
+        <Timeline.composer :if={@tab == "timeline"} />
         <.runs :if={@tab == "runs" && @data} runs={@data["runs"]} totals={@data["totals"]} />
         <.calls :if={@tab == "calls" && @data} calls={@data["calls"]} />
         <.live_component
@@ -368,113 +315,6 @@ defmodule WardrikWeb.AgentLive do
           </span>
         </li>
       </ul>
-    </div>
-    """
-  end
-
-  attr :items, :list, required: true
-  attr :drafts, :map, required: true
-
-  defp timeline(assigns) do
-    ~H"""
-    <div class="timeline" id="timeline" phx-hook="FollowEnd">
-      <div :if={@items == [] and @drafts == %{}} class="card empty">No messages yet.</div>
-      <%= for item <- @items do %>
-        <article :if={item["kind"] == "user"} class="msg user">
-          <header><b>{item["sender"] || "user"}</b><span>{ago(item["at"])}</span></header>
-          <div class="text">{item["text"]}</div>
-        </article>
-        <article :if={item["kind"] == "run"} class="msg">
-          <header>
-            <span><b>Run</b> <span :if={item["model"]} class="mono">{item["model"]}</span></span>
-            <span class="actions">
-              <span>{micro_usd(item["cost_micro_usd"])}</span>
-              <span>{ago(item["started_at"])}</span>
-              <.status value={item["status"]} />
-            </span>
-          </header>
-          <.step :for={step <- item["steps"] || []} step={step} />
-          <div :if={item["error"]} class="step">
-            <span class="pill error">error</span> {item["error"]}
-          </div>
-          <.ask
-            :for={interrupt <- item["interrupts"] || []}
-            :if={item["status"] == "waiting"}
-            interrupt={interrupt}
-          />
-        </article>
-      <% end %>
-      <article :for={{id, text} <- @drafts} class="msg" id={"draft-#{id}"}>
-        <header><b>Generating…</b><span class="pill running">running</span></header>
-        <div class="text">{text}</div>
-      </article>
-    </div>
-    """
-  end
-
-  attr :step, :map, required: true
-
-  defp step(%{step: %{"type" => type}} = assigns) when type in ["text", "thinking"] do
-    ~H"""
-    <div class={["step", @step["type"]]}>
-      <div class="text">{@step["text"]}</div>
-    </div>
-    """
-  end
-
-  defp step(%{step: %{"type" => "tool"}} = assigns) do
-    ~H"""
-    <div class="step">
-      <div class="tool">
-        <span class="sub">tool</span><code>{@step["name"]}</code><.status value={@step["status"]} />
-      </div>
-      <div :if={@step["error"]} class="sub">{@step["error"]}</div>
-      <details>
-        <summary>Arguments and result</summary>
-        <.json value={%{"arguments" => @step["arguments"], "result" => @step["result"]}} />
-      </details>
-    </div>
-    """
-  end
-
-  defp step(assigns) do
-    ~H"""
-    <div class="step">
-      <div class="tool">
-        <span class="sub">delegate</span><code>{@step["name"] || "task"}</code><.status value={
-          @step["status"]
-        } /><span class="sub">{@step["tools"]} tool calls</span>
-      </div>
-      <div :if={@step["answer"]} class="text">{@step["answer"]}</div>
-    </div>
-    """
-  end
-
-  attr :interrupt, :map, required: true
-
-  defp ask(assigns) do
-    ~H"""
-    <div class="ask">
-      <div class="why">{@interrupt["message"] || "Approve #{@interrupt["name"]}?"}</div>
-      <div class="sub">
-        <code>{@interrupt["name"]}</code> · {@interrupt["reason"]}
-        <span :for={label <- @interrupt["labels"] || []} class="tag">{label}</span>
-      </div>
-      <details :if={@interrupt["arguments"]}>
-        <summary>Arguments</summary>
-        <.json value={@interrupt["arguments"]} />
-      </details>
-      <form phx-submit="approve">
-        <input type="hidden" name="interrupt" value={@interrupt["id"]} />
-        <input type="text" name="note" placeholder="Note (optional)" aria-label="Note" />
-        <button class="btn primary">Approve</button>
-        <button
-          class="btn danger"
-          type="button"
-          phx-click="deny"
-          phx-value-interrupt={@interrupt["id"]}
-        >Reject</button>
-      </form>
     </div>
     """
   end

@@ -3,6 +3,7 @@ defmodule WardrikDaemon.Web.Resolver do
   @behaviour WardrikWeb.Resolver
 
   alias Wardrik.Error
+  alias WardrikDaemon.AgentRecords
   alias WardrikDaemon.Authenticator
   alias WardrikWeb.Resolver.Request
 
@@ -17,6 +18,16 @@ defmodule WardrikDaemon.Web.Resolver do
   end
 
   def scope(_request, _opts), do: signed_out()
+
+  @impl true
+  def names(%Request{endpoint: endpoint}, ids, _opts) do
+    %{store: store} = endpoint.config(:daemon)
+
+    for id <- ids,
+        {:ok, record} <- [AgentRecords.fetch(store, id)],
+        into: %{},
+        do: {id, record.name}
+  end
 
   defp signed_out, do: {:error, Error.new(:unauthorized, "Sign in with wardrik web.")}
 end

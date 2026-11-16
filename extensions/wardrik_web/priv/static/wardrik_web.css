@@ -268,6 +268,35 @@ details[open] > summary { margin-bottom: 6px; }
 .composer { display: flex; gap: 8px; margin-top: 16px; }
 .composer textarea { font-family: var(--font); font-size: 14px; min-height: 44px; }
 
+.text.md { white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md table, .md blockquote { margin: 0 0 10px; }
+.md ul, .md ol { padding-left: 22px; }
+.md li > p { margin: 0; }
+.md h1, .md h2, .md h3, .md h4 { font-size: 15px; margin: 14px 0 6px; color: var(--ink); }
+.md pre { background: var(--code-bg); color: var(--code-text); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+.md :not(pre) > code { background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+.md blockquote { border-left: 3px solid var(--line-strong); padding-left: 10px; color: var(--muted); }
+.md a { color: var(--accent); }
+
+.chat-page { max-width: 820px; margin: 0 auto; min-height: calc(100vh - 92px); display: flex; flex-direction: column; }
+.chat-page .timeline { flex: 1; }
+.timeline.chat { gap: 18px; }
+.timeline.chat .msg { border: 0; background: transparent; }
+.timeline.chat .msg.user { align-self: flex-end; max-width: 80%; background: var(--bg-sunk); border-radius: 14px; }
+.timeline.chat .msg.user > .text { padding: 8px 14px; }
+.timeline.chat .step { border-top: 0; padding: 4px 0; }
+.timeline.chat .ask { margin: 8px 0; }
+.timeline.chat .card.empty { border: 0; background: transparent; text-align: center; padding: 48px 0; }
+.dock { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 16px; }
+.dock .composer { margin-top: 0; }
+.side .btn.new { margin: 0 4px 8px; justify-content: center; }
+.side a.nav { overflow-wrap: anywhere; }
+.side a.nav.sub { padding-left: 22px; font-size: 13px; }
+
 .flash { padding: 10px 14px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid; display: flex; justify-content: space-between; gap: 12px; }
 .flash[phx-click] { cursor: pointer; }
 .flash .close { opacity: 0.6; font-size: 16px; line-height: 1; }

@@ -41,4 +41,16 @@ defmodule WardrikWeb.Resolver do
   @doc "Returns the scope for the signed-in person, or an error that refuses access."
   @callback scope(Request.t(), opts :: term()) ::
               {:ok, Wardrik.Scope.t()} | {:error, Wardrik.Error.t()}
+
+  @doc """
+  Returns names for the agents `ids`, by ID, that pages show in place of the IDs. An ID left out
+  shows as itself. Optional: without it, pages show IDs.
+
+  The ids are of agents the person's scope lists.
+  """
+  @callback names(Request.t(), ids :: [String.t()], opts :: term()) :: %{
+              String.t() => String.t()
+            }
+
+  @optional_callbacks names: 3
 end
