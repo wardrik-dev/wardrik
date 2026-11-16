@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.3 (2026-11-16)
+
+- A chat page at `/chat`: talk with an agent, start new conversations, and answer approvals in
+  line. Answers render as markdown. The agent timeline shares its components.
+- `c:WardrikWeb.Resolver.names/3`, optional, gives agents display names.
+
 ## 0.1.0-rc.2 (2026-11-13)
 
 - Agents whose saved state can't be read show as `unreadable`, with the reason on the agent's

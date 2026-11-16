@@ -32,7 +32,7 @@ Start `iex`, then paste this with your key:
 
 ```elixir
 Mix.install([
-  {:wardrik_acp, "~> 0.1.0-rc.4"},
+  {:wardrik_acp, "~> 0.1.0-rc.5"},
   {:wardrik, "~> 0.1.0-rc.16"}
 ])
 
