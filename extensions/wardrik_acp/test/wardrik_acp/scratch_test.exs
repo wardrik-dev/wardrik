@@ -38,7 +38,7 @@ defmodule WardrikACP.ScratchTest do
   end
 
   test "sweeps a scratch directory after it goes unused", context do
-    acp = start_acp(context, [repo: context.repo], scratch: 1_000)
+    acp = start_acp(context, [repo: context.repo], scratch: :timer.seconds(30))
     {:ok, old, _context} = call(acp, [write("a.txt")], Map.put(@scratch, :work, "old"))
 
     assert {:park, :ask} =
