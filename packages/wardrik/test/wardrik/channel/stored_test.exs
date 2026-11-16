@@ -1,5 +1,5 @@
 defmodule Wardrik.Channel.StoredTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.Wardrik, only: [unsealed: 2]
 

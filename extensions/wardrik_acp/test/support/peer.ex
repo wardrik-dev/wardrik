@@ -19,7 +19,7 @@
 # $PEER_LOAD=1 offers loadSession, and =fail refuses each load. $PEER_RESUME=1 offers resume.
 # $PEER_SYSTEM=1 offers system prompts.
 
-defmodule Peer do
+defmodule WardrikACP.TestPeer do
   def main do
     # WardrikACP closes stdin, then sends SIGTERM. The peer stops at end of input instead.
     :os.set_signal(:sigterm, :ignore)
@@ -331,5 +331,3 @@ defmodule Peer do
     ErlangError -> System.halt(0)
   end
 end
-
-Peer.main()

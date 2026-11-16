@@ -1,6 +1,5 @@
 defmodule Wardrik.Channel.PackageTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.Channel
 
@@ -13,7 +12,6 @@ defmodule Wardrik.Channel.PackageTest do
   alias Wardrik.Chat.Rooms
   alias Wardrik.Chat.Waiting
 
-  setup :set_mimic_global
   setup :start_wardrik
 
   @maria %Member{id: "U1", name: "maria"}
@@ -91,7 +89,7 @@ defmodule Wardrik.Channel.PackageTest do
       assert {:ok, %Binding{answers: :everything}} =
                Rooms.answers(context.workspace, "C1", :everything)
 
-      answers([answer("Heard.")])
+      answers(context, [answer("Heard.")])
 
       assert {:asked, _conversation} =
                Wardrik.Chat.received(context.workspace, %{
@@ -109,7 +107,7 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "answers a mention in a thread of its own, and replies in it after", context do
-      answers([answer("Hello."), answer("Again.")])
+      answers(context, [answer("Hello."), answer("Again.")])
 
       assert {:asked, {"acme/triage", "chat.T1.C1.1.1"}} =
                Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
@@ -125,7 +123,7 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "carries on from where it posted after the room's process stops", context do
-      answers([answer("Hello."), answer("Again.")])
+      answers(context, [answer("Hello."), answer("Again.")])
       Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Hello.", _answering}}}, 1_000
 
@@ -149,7 +147,7 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "tries a post again that the chat app refused", context do
-      answers([answer("Hello.")])
+      answers(context, [answer("Hello.")])
       :counters.put(context.refusals, 1, 1)
       Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
 
@@ -158,9 +156,7 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "says why a run failed", context do
-      Mimic.stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-        {:error, %RuntimeError{message: "The model is down."}}
-      end)
+      answers(context, [{:status, 503, "The model is down."}])
 
       Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:failed, reason}}}, 5_000
@@ -190,7 +186,7 @@ defmodule Wardrik.Channel.PackageTest do
     end
 
     test "shows what the agent is doing while it works", context do
-      answers([answer("Hello.")])
+      answers(context, [answer("Hello.")])
       Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
 
       assert_receive {:delivered, %Outbound{body: {:status, "is thinking…"}}}, 1_000
@@ -206,7 +202,7 @@ defmodule Wardrik.Channel.PackageTest do
       )
 
       Rooms.joined(context.workspace, "C1")
-      answers([calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
+      answers(context, [calling("call_1", "echo", %{"text" => "hi"}), answer("Done.")])
       Wardrik.Chat.received(context.workspace, mention("Echo hi", "1.1"))
 
       assert_receive {:delivered, %Outbound{body: {:waiting, [%Waiting{} = waiting]}}}, 1_000

@@ -1,20 +1,19 @@
 defmodule Wardrik.DeploymentTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
   @model "anthropic:claude-haiku-4-5"
 
-  setup :set_mimic_global
-
   setup context do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
+        endpoints: endpoints,
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
@@ -26,14 +25,12 @@ defmodule Wardrik.DeploymentTest do
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-    %{wardrik: wardrik, scope: owner(wardrik)}
+    %{fake: fake, wardrik: wardrik, scope: owner(wardrik)}
   end
 
-  test "holds every agent a scope defines to the scope's policy", %{scope: scope} do
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, calling([call("call_1", "echo", %{})])}
+  test "holds every agent a scope defines to the scope's policy", %{fake: fake, scope: scope} do
+    Wardrik.Testing.Model.answer(fake, fn _request ->
+      calling([call("call_1", "echo", %{})])
     end)
 
     ci = %{scope | policy: "careful"}
@@ -74,15 +71,17 @@ defmodule Wardrik.DeploymentTest do
     end
 
     test "brings only the agents it names to their definitions, where it names them", %{
+      fake: fake,
       wardrik: wardrik,
       scope: scope
     } do
       test = self()
 
-      stub(ReqLLM, :stream_text, fn _model, [system | _messages], _opts ->
+      Wardrik.Testing.Model.answer(fake, fn request ->
+        [system | _messages] = Wardrik.Testing.Model.messages(request)
         %ReqLLM.Message{role: :system, content: [part | _rest]} = system
         send(test, {:instructions, part.text})
-        {:ok, answer("Done.")}
+        answer("Done.")
       end)
 
       for id <- ["acme/a", "acme/b"] do

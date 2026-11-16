@@ -1,5 +1,5 @@
 defmodule Wardrik.OwnerServersTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
   import Wardrik.Test.Wardrik

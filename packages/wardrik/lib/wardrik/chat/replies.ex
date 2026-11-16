@@ -21,6 +21,7 @@ defmodule Wardrik.Chat.Replies do
       backend: {Wardrik.Store.Durable, store: channel.store},
       init_info: %{channel: channel}
     ]
+    |> WardrikCore.Backends.Prefixed.options()
     |> DurableServer.Supervisor.child_spec()
     |> Map.put(:id, __MODULE__)
   end

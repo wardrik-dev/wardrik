@@ -1,20 +1,19 @@
 defmodule Wardrik.SpendingTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
   @model "anthropic:claude-haiku-4-5"
 
-  setup :set_mimic_global
-
   setup context do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
+        endpoints: endpoints,
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
@@ -24,26 +23,18 @@ defmodule Wardrik.SpendingTest do
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     event_log = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
-    %{wardrik: wardrik, scope: owner(wardrik)}
+    %{fake: fake, wardrik: wardrik, scope: owner(wardrik)}
   end
 
-  defp answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
-  end
+  defp answers(fake, responses), do: Wardrik.Testing.Model.answer(fake, responses)
 
   defp used(response, input, output),
     do: %{response | usage: %{input_tokens: input, output_tokens: output}}
 
-  test "counts what each model call and tool call spent today", %{scope: scope} do
-    answers([
+  test "counts what each model call and tool call spent today", %{fake: fake, scope: scope} do
+    answers(fake, [
       used(calling([call("call_1", "search", %{})]), 100, 20),
       used(answer("Done."), 50, 10)
     ])
@@ -64,8 +55,8 @@ defmodule Wardrik.SpendingTest do
     assert %{"spent_today" => ^spent} = run!(scope, "agent.read", %{"agent" => "acme/scout"})
   end
 
-  test "counts what a subagent spent once, as the call that ran it", %{scope: scope} do
-    answers([
+  test "counts what a subagent spent once, as the call that ran it", %{fake: fake, scope: scope} do
+    answers(fake, [
       used(calling([call("call_1", "delegate", %{})]), 100, 20),
       used(answer("Done it."), 40, 8),
       used(answer("Done."), 50, 10)

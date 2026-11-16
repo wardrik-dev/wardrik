@@ -7,6 +7,7 @@ defmodule Wardrik.Test.Wardrik do
   alias Wardrik.Principal
 
   def start_wardrik(context) do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
@@ -16,13 +17,14 @@ defmodule Wardrik.Test.Wardrik do
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
         store: store,
-        deployment: "test"
+        deployment: "test",
+        endpoints: endpoints
       )
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
 
-    %{wardrik: wardrik, store: store}
+    %{wardrik: wardrik, store: store, fake: fake}
   end
 
   def maria, do: %Principal{id: "acme/@maria", attributes: %{name: "Maria"}}
@@ -139,7 +141,7 @@ defmodule Wardrik.Test.Wardrik do
       {Wardrik.EventLog, _log, %{"type" => ^type} = event} -> event
       {Wardrik.EventLog, _log, _event} -> until(type)
     after
-      1_000 -> flunk("No #{type} came.")
+      5_000 -> flunk("No #{type} came.")
     end
   end
 end

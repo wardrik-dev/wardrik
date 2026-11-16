@@ -72,7 +72,8 @@ defmodule WardrikCore.MixProject do
         "ex_dna --max-clones 0",
         "reach.check --arch --smells --strict",
         "test --warnings-as-errors --cover --export-coverage default",
-        "test.coverage",
+        # In a VM of its own: in the tests' VM, stopping their cover first takes half a minute in CI.
+        "cmd env MIX_ENV=test mix test.coverage",
         "crap",
         "dialyzer"
       ]

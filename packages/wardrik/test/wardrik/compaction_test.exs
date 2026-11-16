@@ -1,5 +1,5 @@
 defmodule Wardrik.CompactionTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   use Mimic
 
   import Wardrik.Test.LLM

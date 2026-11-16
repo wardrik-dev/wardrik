@@ -1,18 +1,17 @@
 defmodule Wardrik.PolicyOptionTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
-  setup :set_mimic_global
-
   setup context do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
+        endpoints: endpoints,
         authorizer: {Wardrik.Test.Allow, []},
         resolver: {Wardrik.Test.Owned, :"wardrik #{context.test}"},
         name: :"wardrik #{context.test}",
@@ -22,20 +21,12 @@ defmodule Wardrik.PolicyOptionTest do
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     event_log = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
-    %{wardrik: wardrik, scope: owner(wardrik)}
+    %{fake: fake, wardrik: wardrik, scope: owner(wardrik)}
   end
 
-  defp answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
-  end
+  defp answers(fake, responses), do: Wardrik.Testing.Model.answer(fake, responses)
 
   defp start_books(wardrik, policy) do
     {:ok, _agent} =
@@ -47,8 +38,12 @@ defmodule Wardrik.PolicyOptionTest do
       )
   end
 
-  test "asks a person where the agent's policy says to", %{wardrik: wardrik, scope: scope} do
-    answers([calling([call("call_1", "echo", %{"text" => "hi"})]), answer("Done.")])
+  test "asks a person where the agent's policy says to", %{
+    fake: fake,
+    wardrik: wardrik,
+    scope: scope
+  } do
+    answers(fake, [calling([call("call_1", "echo", %{"text" => "hi"})]), answer("Done.")])
     start_books(wardrik, ask: %{"echo" => "Echo this?"})
 
     Wardrik.Agent.ask(scope, "acme/books", "Echo hi")
@@ -66,11 +61,12 @@ defmodule Wardrik.PolicyOptionTest do
   end
 
   test "decides each waiting call on its own, one right after another", %{
+    fake: fake,
     wardrik: wardrik,
     scope: scope
   } do
     calls = [call("call_1", "echo", %{"text" => "hi"}), call("call_2", "echo", %{"text" => "yo"})]
-    answers([calling(calls), answer("Done.")])
+    answers(fake, [calling(calls), answer("Done.")])
     start_books(wardrik, ask: %{"echo" => "Echo this?"})
 
     Wardrik.Agent.ask(scope, "acme/books", "Echo hi and yo")
@@ -86,10 +82,11 @@ defmodule Wardrik.PolicyOptionTest do
   end
 
   test "refuses what the deployment denies, though the agent allows it", %{
+    fake: fake,
     wardrik: wardrik,
     scope: scope
   } do
-    answers([calling([call("call_1", "inbox", %{})]), answer("Done.")])
+    answers(fake, [calling([call("call_1", "inbox", %{})]), answer("Done.")])
     start_books(wardrik, allow: ["inbox"])
 
     Wardrik.Agent.ask(scope, "acme/books", "Read my mail")

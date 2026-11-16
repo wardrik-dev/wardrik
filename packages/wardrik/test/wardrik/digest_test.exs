@@ -1,6 +1,5 @@
 defmodule Wardrik.DigestTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
@@ -26,9 +25,8 @@ defmodule Wardrik.DigestTest do
     defp labelled(message), do: message
   end
 
-  setup :set_mimic_global
-
   setup context do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
@@ -39,28 +37,28 @@ defmodule Wardrik.DigestTest do
         name: :"wardrik #{context.test}",
         store: store,
         idle_timeout: 0.05,
-        middleware: Map.get(context, :middleware, [])
+        middleware: Map.get(context, :middleware, []),
+        endpoints: endpoints
       )
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     event_log = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
     test = self()
 
-    stub(ReqLLM, :stream_text, fn _model,
-                                  [%{content: [%{text: system} | _]} | _] = messages,
-                                  _opts ->
+    Wardrik.Testing.Model.answer(fake, fn request ->
+      [%{content: [%{text: system} | _]} | _] = messages = Wardrik.Testing.Model.messages(request)
+
       if String.starts_with?(system, "Write a digest") do
         send(test, {:digesting, messages})
-        {:ok, used(answer("Asked about tea."))}
+        used(answer("Asked about tea."))
       else
-        {:ok, answer("Tea.")}
+        answer("Tea.")
       end
     end)
 
-    %{wardrik: wardrik, scope: owner(wardrik)}
+    %{wardrik: wardrik, scope: owner(wardrik), fake: fake}
   end
 
   defp used(response), do: %{response | usage: %{input_tokens: 40, output_tokens: 10}}
@@ -141,10 +139,9 @@ defmodule Wardrik.DigestTest do
        %{scope: scope} = cx do
     define(cx, %{"tools" => ["files"]})
 
-    stub(ReqLLM, :stream_text, fn _model, [%{content: [%{text: system} | _]} | _], _opts ->
-      if String.starts_with?(system, "Write a digest"),
-        do: {:error, :rate_limited},
-        else: {:ok, answer("Tea.")}
+    Wardrik.Testing.Model.answer(cx.fake, fn request ->
+      [%{content: [%{text: system} | _]} | _] = Wardrik.Testing.Model.messages(request)
+      if String.starts_with?(system, "Write a digest"), do: {:status, 400}, else: answer("Tea.")
     end)
 
     ask(cx, "Which tea?")

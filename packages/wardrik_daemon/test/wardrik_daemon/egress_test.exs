@@ -102,8 +102,12 @@ defmodule WardrikDaemon.EgressTest do
 
   @tag private: true
   test "lets an owner add them with allow_private_urls, for local use", context do
-    for url <- ["http://127.0.0.1:1/mcp", "https://10.0.0.5/mcp"] do
+    # A server is connected to as it's added, and 10.0.0.5 never answers.
+    for url <- ["http://127.0.0.1:1/mcp", "https://[::1]:1/mcp"] do
       assert {:ok, %{"connected" => true}} = server(context, url)
+    end
+
+    for url <- ["http://127.0.0.1:1/mcp", "https://10.0.0.5/mcp"] do
       assert {:ok, %{"url" => ^url}} = target(context, url)
     end
   end

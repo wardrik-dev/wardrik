@@ -16,7 +16,11 @@ defmodule WardrikGateway.MixProject do
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
         plt_core_path: "priv/plts",
-        plt_local_path: "priv/plts"
+        plt_local_path: "priv/plts",
+        # Sibling packages are path deps, which mix.lock leaves out. They're analysed with this one
+        # instead of kept in the PLT, so the PLT is current whenever mix.lock is.
+        plt_ignore_apps: siblings(),
+        paths: Enum.map([:wardrik_gateway | siblings()], &"_build/#{Mix.env()}/lib/#{&1}/ebin")
       ],
       deps: deps()
     ]
@@ -52,9 +56,10 @@ defmodule WardrikGateway.MixProject do
         "ex_dna --max-clones 0",
         "reach.check --arch --smells --strict",
         "test --warnings-as-errors --cover --export-coverage default",
-        "test.coverage",
+        # In a VM of its own: in the tests' VM, stopping their cover first takes half a minute in CI.
+        "cmd env MIX_ENV=test mix test.coverage",
         "crap",
-        "dialyzer --force-check"
+        "dialyzer"
       ]
     ]
   end
@@ -73,6 +78,18 @@ defmodule WardrikGateway.MixProject do
       {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  # The sibling packages it depends on, directly or through each other. Each mix.exs names its own.
+  defp siblings, do: if(System.get_env("WARDRIK_HEX"), do: [], else: reached(__DIR__, []))
+
+  defp reached(dir, seen) do
+    ~r/sibling\(:(\w+)/
+    |> Regex.scan(File.read!(Path.join(dir, "mix.exs")), capture: :all_but_first)
+    |> Enum.map(fn [name] -> String.to_atom(name) end)
+    |> Enum.reduce(seen, fn name, seen ->
+      if name in seen, do: seen, else: reached(sibling_path(name), [name | seen])
+    end)
   end
 
   # Wardrik's own packages come from this repository, or from Hex with WARDRIK_HEX=1, as when

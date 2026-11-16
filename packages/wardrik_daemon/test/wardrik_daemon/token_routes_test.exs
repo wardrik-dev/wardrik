@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.TokenRoutesTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import WardrikDaemon.Test
 
@@ -14,6 +14,7 @@ defmodule WardrikDaemon.TokenRoutesTest do
     org: payments
     orgs: {growth: {}}
     http: {port: #{port}}
+    web: {enabled: false}
     defaults: {model: #{model()}}
     roles:
       issuer: {rules: [{verbs: ["*"], kinds: [token]}]}

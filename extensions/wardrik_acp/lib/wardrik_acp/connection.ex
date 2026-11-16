@@ -32,19 +32,13 @@ defmodule WardrikACP.Connection do
 
   @doc "Returns the connection for `spec.key`, started if it isn't running."
   @spec open(atom(), spec()) :: {:ok, pid()} | {:error, term()}
+  # Not Registry.lookup/2 first: it can return a connection that just stopped, whose entry the
+  # Registry hasn't removed yet. Registering replaces such an entry.
   def open(acp, spec) do
-    registry = registry(acp)
-
-    case Registry.lookup(registry, spec.key) do
-      [{pid, _value}] ->
-        {:ok, pid}
-
-      [] ->
-        acp
-        |> supervisor()
-        |> DynamicSupervisor.start_child({__MODULE__, {acp, spec}})
-        |> started()
-    end
+    acp
+    |> supervisor()
+    |> DynamicSupervisor.start_child({__MODULE__, {acp, spec}})
+    |> started()
   end
 
   defp started({:ok, pid}), do: {:ok, pid}

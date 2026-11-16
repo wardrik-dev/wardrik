@@ -10,22 +10,21 @@ defmodule Wardrik.Test.WorkerFile do
 end
 
 defmodule Wardrik.OperationToolsTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.LLM
   import Wardrik.Test.Wardrik
 
   @model "anthropic:claude-haiku-4-5"
 
-  setup :set_mimic_global
-
   setup context do
+    {fake, endpoints} = Wardrik.Test.Model.start()
     store_name = :"store #{context.test}"
     store = Wardrik.Test.Store.new(store_name)
 
     wardrik =
       Wardrik.new(
+        endpoints: endpoints,
         name: :"wardrik #{context.test}",
         authorizer:
           {Wardrik.Test.Authorizer, test: self(), decide: &Wardrik.Test.Allow.authorize(&1, [])},
@@ -36,21 +35,22 @@ defmodule Wardrik.OperationToolsTest do
 
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik, wardrik})
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     event_log = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(event_log, :all)
-    %{scope: owner(wardrik)}
+    %{fake: fake, scope: owner(wardrik)}
   end
 
-  defp model(script) do
+  defp model(fake, script) do
     {:ok, steps} = Agent.start_link(fn -> script end)
     test = self()
 
-    stub(ReqLLM, :stream_text, fn _model, messages, opts ->
+    Wardrik.Testing.Model.answer(fake, fn request ->
+      messages = Wardrik.Testing.Model.messages(request)
       said = text(List.last(messages))
-      send(test, {:prompted, said, Enum.map(opts[:tools] || [], & &1.name)})
+      tools = for %{"function" => %{"name" => name}} <- request["tools"] || [], do: name
+      send(test, {:prompted, said, tools})
       send(test, {:sent, Enum.map_join(messages, "\n", &text/1)})
-      {:ok, Agent.get_and_update(steps, &step(&1, said))}
+      Agent.get_and_update(steps, &step(&1, said))
     end)
   end
 
@@ -73,8 +73,11 @@ defmodule Wardrik.OperationToolsTest do
   defp define(scope, id, definition),
     do: run!(scope, "agent.define", Map.put(definition, "agent", id))
 
-  test "reads the deployment without asking, and leaves out what agents/* gives", %{scope: scope} do
-    model([
+  test "reads the deployment without asking, and leaves out what agents/* gives", %{
+    fake: fake,
+    scope: scope
+  } do
+    model(fake, [
       {"How are things",
        calling([
          call("r0", "agents_list", %{}),
@@ -107,8 +110,8 @@ defmodule Wardrik.OperationToolsTest do
     assert after_calls =~ ~s("file":true)
   end
 
-  test "gives a read by name, without the rest", %{scope: scope} do
-    model([{"Runs?", answer("None.")}])
+  test "gives a read by name, without the rest", %{fake: fake, scope: scope} do
+    model(fake, [{"Runs?", answer("None.")}])
     define(scope, "acme/ops", %{"model" => @model, "tools" => ["ops/agent.runs"]})
 
     run!(scope, "agent.ask", %{"agent" => "acme/ops", "content" => "Runs?"})
@@ -117,8 +120,8 @@ defmodule Wardrik.OperationToolsTest do
     assert_received {:prompted, "Runs?", ["agent_runs"]}
   end
 
-  test "asks a person before a change it was given by name", %{scope: scope} do
-    model([
+  test "asks a person before a change it was given by name", %{fake: fake, scope: scope} do
+    model(fake, [
       {"Stop the worker", calling([call("s1", "agent_stop", %{"agent" => "acme/worker"})])},
       {"\"asleep\"", answer("Stopped.")}
     ])

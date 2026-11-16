@@ -1,20 +1,19 @@
 defmodule WardrikDaemon.AssistantTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import WardrikDaemon.Test
 
   alias WardrikDaemon.AgentRecords
 
-  setup :set_mimic_global
-
   setup context do
-    context = dirs(context)
+    context = fake_model(dirs(context))
 
     write(context, "config.yaml", """
     org: acme
     orgs: {growth: {}}
     http: {port: #{free_port()}}
+    web: {enabled: false}
+    #{context.models}
     defaults: {model: #{model()}}
     roles:
       workers: {rules: [{verbs: [create, define, read, ask], kinds: [agent]}]}
@@ -38,14 +37,7 @@ defmodule WardrikDaemon.AssistantTest do
     start_daemon(context)
   end
 
-  defp answers(responses) do
-    {:ok, queue} = Agent.start_link(fn -> responses end)
-    stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
-
-    stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end)}
-    end)
-  end
+  defp answers(context, responses), do: Wardrik.Testing.Model.answer(context.fake, responses)
 
   defp calling(name, args) do
     message =
@@ -65,7 +57,7 @@ defmodule WardrikDaemon.AssistantTest do
     }
 
   defp create(context, aide, args) do
-    answers([calling("agent_create", args), answer("Done.")])
+    answers(context, [calling("agent_create", args), answer("Done.")])
     {:ok, _reply} = Wardrik.Agent.reply(context.admin, aide, "Watch our rivals.")
     {:ok, timeline} = Wardrik.run(context.admin, "agent.timeline", %{"agent" => aide})
     timeline
@@ -91,7 +83,7 @@ defmodule WardrikDaemon.AssistantTest do
 
     # It's held to its maker's policy, and agents_list describes it.
     agents_list = calling("agents_list", %{})
-    answers([agents_list, answer("Listed.")])
+    answers(context, [agents_list, answer("Listed.")])
     {:ok, _reply} = Wardrik.Agent.reply(context.admin, aide, "What runs?")
 
     {:ok, %{"events" => events}} =

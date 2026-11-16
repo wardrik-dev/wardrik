@@ -1,12 +1,10 @@
 defmodule Wardrik.HTTP.WorkerTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.HTTP
 
   alias Wardrik.Test.HTTP.Worker
 
-  setup :set_mimic_global
   setup :start_wardrik
 
   setup context do
@@ -27,7 +25,7 @@ defmodule Wardrik.HTTP.WorkerTest do
        context do
     worker = connect(context)
 
-    answers([
+    answers(context, [
       calling("call_1", "workers__lookup", %{"order" => "A1"}),
       answer("It shipped.")
     ])
@@ -64,7 +62,11 @@ defmodule Wardrik.HTTP.WorkerTest do
 
   test "tells the worker when a call it runs is stopped", context do
     connect(context)
-    answers([calling("call_1", "workers__lookup", %{"order" => "A1"}), answer("Stopped.")])
+
+    answers(context, [
+      calling("call_1", "workers__lookup", %{"order" => "A1"}),
+      answer("Stopped.")
+    ])
 
     request(context, "PUT", "/v1/agents/acme%2Ftriage", %{
       "model" => "anthropic:claude-haiku-4-5",

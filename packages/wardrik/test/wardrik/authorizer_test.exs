@@ -12,7 +12,7 @@ defmodule Wardrik.Test.Asked do
 end
 
 defmodule Wardrik.AuthorizerTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.Wardrik
 

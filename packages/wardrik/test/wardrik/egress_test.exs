@@ -1,5 +1,5 @@
 defmodule Wardrik.EgressTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Wardrik.Egress
 

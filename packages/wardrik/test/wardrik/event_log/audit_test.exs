@@ -1,5 +1,5 @@
 defmodule Wardrik.EventLog.AuditTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   use Mimic
 
   import Wardrik.EventLog.Test.Events

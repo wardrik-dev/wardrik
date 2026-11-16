@@ -1,10 +1,8 @@
 defmodule Wardrik.HTTP.EventStreamTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use ExUnit.Case, async: true
 
   import Wardrik.Test.HTTP
 
-  setup :set_mimic_global
   setup :start_wardrik
 
   setup context do
@@ -17,7 +15,7 @@ defmodule Wardrik.HTTP.EventStreamTest do
   end
 
   test "streams an agent's log, from what's written next", context do
-    answers([answer("Hello.")])
+    answers(context, [answer("Hello.")])
     stream = open(context, "/v1/agents/acme%2Ftriage/events?types=wardrik.run.completed")
 
     request(context, "POST", "/v1/agents/acme%2Ftriage/messages", %{"content" => "Hi"})
@@ -26,7 +24,7 @@ defmodule Wardrik.HTTP.EventStreamTest do
   end
 
   test "resumes after the Last-Event-ID", context do
-    answers([answer("Hello.")])
+    answers(context, [answer("Hello.")])
 
     event_log =
       context.wardrik

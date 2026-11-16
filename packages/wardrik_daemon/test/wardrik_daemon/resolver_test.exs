@@ -1,5 +1,5 @@
 defmodule WardrikDaemon.ResolverTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import WardrikDaemon.Test
 
@@ -15,6 +15,7 @@ defmodule WardrikDaemon.ResolverTest do
     org: platform
     allow_private_urls: true
     http: {port: #{free_port()}}
+    web: {enabled: false}
     defaults: {model: #{model()}}
     mcp:
       stripe: {url: "http://127.0.0.1:1/stripe"}
