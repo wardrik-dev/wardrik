@@ -10,7 +10,7 @@ sidebar:
 Install the release, restart the daemon, and check the running version:
 
 ```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.18/install.sh | sh
+curl -fsSL https://docs.wardrik.dev/install.sh | sh
 systemctl --user restart wardrik
 wardrik version
 ```
