@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0-rc.18 (2026-11-16)
+
+- `wardrik web [AGENT]` opens the dashboard's chat in the browser, already signed in. The link it
+  makes works once, within two minutes; `--print` prints it instead.
+- A first install, at a terminal and not as root, goes on to `wardrik init`, which offers to open
+  the chat. `WARDRIK_NO_INIT` skips it.
+- A dashboard sign-in lasts `web.session_days`, 30 by default, and renews as it's used.
+- Requires `wardrik_acp` 0.1.0-rc.5 and `wardrik_web` 0.1.0-rc.3.
+
 ## 0.1.0-rc.17 (2026-11-16)
 
 - `wardrik connection connect` checks a device sign-in every 250 ms, not every second.

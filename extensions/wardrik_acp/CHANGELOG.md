@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.5 (2026-11-16)
+
+- Stopping a connection waits for its harness to exit: `TERM`, then `KILL` after 3 seconds.
+
 ## 0.1.0-rc.4 (2026-11-16)
 
 - Opening a connection no longer fails with `noproc` when one by the same name has just stopped.
