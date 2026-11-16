@@ -64,12 +64,14 @@ defmodule WardrikACP.FailuresTest do
   end
 
   @tag harness: [idle: 1]
-  test "stops the agent once no call uses it", %{acp: acp} do
+  test "stops the agent once no call uses it, and its harness with it", %{acp: acp, log: log} do
     {:ok, _output, _context} = call(acp, [])
     supervisor = Connection.supervisor(acp)
     [{_id, pid, _type, _modules}] = DynamicSupervisor.which_children(supervisor)
     ref = Process.monitor(pid)
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+    harness = File.read!(log <> ".pid")
+    assert {_gone, 1} = System.cmd("kill", ["-0", harness], stderr_to_stdout: true)
   end
 
   test "refuses a second call on work that's running", %{acp: acp} do
