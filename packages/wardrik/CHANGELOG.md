@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.16 (2026-11-16)
+
+- `Wardrik.Testing.Model` is a model for tests. It serves the Chat Completions API on a port of
+  its own and answers each call from a list or a function. Point `:endpoints` at it in place of
+  stubbing ReqLLM, so tests that run agents can be async.
+- Requires `wardrik_core` 0.1.0-rc.11.
+
 ## 0.1.0-rc.15 (2026-11-15)
 
 - Each judge call, by a policy or a notice judge, is recorded as `wardrik.evaluation.completed`,

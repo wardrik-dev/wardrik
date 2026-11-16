@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.17 (2026-11-16)
+
+- `wardrik connection connect` checks a device sign-in every 250 ms, not every second.
+- Requires `wardrik` 0.1.0-rc.16 and `wardrik_acp` 0.1.0-rc.4.
+
 ## 0.1.0-rc.16 (2026-11-15)
 
 - Each judge call is recorded as `wardrik.evaluation.completed`, with its answers and cost, and

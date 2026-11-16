@@ -16,7 +16,7 @@ end
 Set the API keys for each configured model provider before starting IEx. In a fresh session:
 
 ```elixir
-Mix.install([{:wardrik_gateway, "~> 0.1.0-rc.2"}, {:wardrik_core, "~> 0.1.0-rc.10"}])
+Mix.install([{:wardrik_gateway, "~> 0.1.0-rc.2"}, {:wardrik_core, "~> 0.1.0-rc.11"}])
 
 children = [
   {WardrikGateway,
