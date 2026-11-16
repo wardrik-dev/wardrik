@@ -16,7 +16,7 @@ defmodule WardrikWeb.Timeline do
 
   use Phoenix.Component
 
-  import Phoenix.LiveView, only: [clear_flash: 1, put_flash: 3]
+  import Phoenix.LiveView, only: [clear_flash: 1, push_event: 3, put_flash: 3]
   import WardrikWeb.Components
 
   @markdown [
@@ -34,7 +34,7 @@ defmodule WardrikWeb.Timeline do
   def handle_event("ask", %{"content" => content}, socket, reload) do
     case String.trim(content) do
       "" -> socket
-      content -> act(socket, "agent.ask", %{"content" => content}, nil, reload)
+      content -> act(socket, "agent.ask", %{"content" => content}, nil, &sent(&1, reload))
     end
   end
 
@@ -46,6 +46,13 @@ defmodule WardrikWeb.Timeline do
   def handle_event("deny", %{"interrupt" => id} = params, socket, reload) do
     input = put_present(%{"interrupt" => id}, "reason", params["reason"])
     act(socket, "agent.deny", input, "Rejected.", reload)
+  end
+
+  # A message that fails to send stays in the composer.
+  defp sent(socket, reload) do
+    socket
+    |> push_event("composer:sent", %{})
+    |> reload.()
   end
 
   @doc """
@@ -142,7 +149,7 @@ defmodule WardrikWeb.Timeline do
     """
   end
 
-  @doc "The box to write a message in. Enter sends it; Shift+Enter starts a new line."
+  @doc "The box to write a message in. Enter sends it; Shift+Enter starts a new line. It empties once the message is sent."
   attr :placeholder, :string, default: "Send a message"
 
   @spec composer(map()) :: Phoenix.LiveView.Rendered.t()

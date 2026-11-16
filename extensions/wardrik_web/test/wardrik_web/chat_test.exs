@@ -47,6 +47,8 @@ defmodule WardrikWeb.ChatTest do
     assert %{"agent" => "triage", "content" => "Any news?"} =
              last("agent.ask")
 
+    assert_push_event(view, "composer:sent", %{})
+
     view
     |> form(".ask form", %{"note" => "ok"})
     |> render_submit()
