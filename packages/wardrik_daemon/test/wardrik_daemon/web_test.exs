@@ -89,7 +89,11 @@ defmodule WardrikDaemon.WebTest do
   end
 
   defp web(context, argv, env) do
-    env = Map.merge(%{"WARDRIK_URL" => context.url, "WARDRIK_TOKEN" => context.admin.secret}, env)
+    env =
+      context.env
+      |> Map.merge(%{"WARDRIK_URL" => context.url, "WARDRIK_TOKEN" => context.admin.secret})
+      |> Map.merge(env)
+
     run = fn -> send(self(), {:status, CLI.main(["web" | argv], env: env)}) end
     output = capture_io(run)
     assert_received {:status, 0}
@@ -102,7 +106,7 @@ defmodule WardrikDaemon.WebTest do
 
     opened = opened(browser)
     output = web(context, [], %{"BROWSER" => browser.script})
-    assert output =~ "Opened the dashboard in your browser"
+    assert output =~ "Opened the chat in your browser"
     url = opened.()
     assert output =~ url
     signed_in = fetch(url)
@@ -112,9 +116,32 @@ defmodule WardrikDaemon.WebTest do
     assert printed =~ ~r"^http://127.0.0.1:\d+/web/sign-in\?code=\S+\n$"
     refute_receive {_port, {:data, _args}}, 100
 
+    opened = opened(browser)
+    web(context, ["helper"], %{"BROWSER" => browser.script})
+
+    chat =
+      opened.()
+      |> fetch()
+      |> Req.Response.get_header("location")
+
+    assert ["/web/chat/" <> _id] = chat
+
     remote = web(context, [], %{"SSH_CONNECTION" => "10.0.0.2 50000 10.0.0.1 22"})
     assert remote =~ "Open this link within two minutes"
     assert remote =~ "ssh -L"
+  end
+
+  test "a sign-in link opens the chat with the agent it names", context do
+    context = daemon(context, true)
+
+    assert {:ok, %{"url" => link}} =
+             Client.run(context.admin, "tokens.web", %{"agent" => "agt_1/x"})
+
+    signed_in = fetch(link)
+    assert Req.Response.get_header(signed_in, "location") == ["/web/chat/agt_1%2Fx"]
+
+    assert {:error, "invalid_request", _message} =
+             Client.run(context.admin, "tokens.web", %{"page" => "/admin"})
   end
 
   test "is off with web.enabled false", context do

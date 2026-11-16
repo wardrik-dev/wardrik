@@ -59,7 +59,7 @@ defmodule WardrikDaemon.HTTP do
            |> File.read!()
            |> JSON.decode!()
   @inputs Map.new(
-            ~w(token_input pairing_input),
+            ~w(token_input pairing_input web_input),
             &{&1, JSV.build!(@openapi["components"]["schemas"][&1])}
           )
 
@@ -204,7 +204,8 @@ defmodule WardrikDaemon.HTTP do
     daemon = conn.assigns.daemon
 
     with {:ok, scope} <- authenticated(conn, daemon),
-         {:ok, url} <- WardrikDaemon.Web.sign_in(daemon, scope) do
+         {:ok, input} <- optional(conn, "web_input"),
+         {:ok, url} <- WardrikDaemon.Web.sign_in(daemon, scope, agent: input["agent"]) do
       answer(conn, 201, %{"url" => url})
     else
       {:error, %Error{} = error} -> Response.error(conn, error)
@@ -315,6 +316,19 @@ defmodule WardrikDaemon.HTTP do
   defp input(conn, schema) do
     with {:ok, input} <- json(conn), do: checked(schema, input)
   end
+
+  # A body that may be left out, as nothing or as {}.
+  defp optional(conn, schema) do
+    case Plug.Conn.read_body(conn) do
+      {:ok, "", _conn} -> {:ok, %{}}
+      {:ok, body, _conn} -> decoded(schema, JSON.decode(body))
+    end
+  end
+
+  defp decoded(schema, {:ok, %{} = input}), do: checked(schema, input)
+
+  defp decoded(_schema, _unread),
+    do: {:error, Error.new(:invalid_request, "Send the body as JSON.")}
 
   @doc "Validates `input` against one of the daemon's input schemas, for example `server_input`."
   @spec checked(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}

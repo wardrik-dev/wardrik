@@ -18,6 +18,10 @@
 #   WARDRIK_REPO           the GitHub repository the releases are in, wardrik-dev/wardrik
 #   WARDRIK_DOWNLOAD_URL   where the tarball and its SHA256SUMS are, in place of the
 #                          release's; file:// works, with WARDRIK_VERSION beside it
+#   WARDRIK_NO_INIT        set to anything, a first install doesn't go on to wardrik init
+#
+# A first install, at a terminal and not as root, goes on to wardrik init, which asks for a
+# model and its key and starts the daemon. An install over a config.yaml leaves it be.
 #
 # A tarball is checked against the SHA256SUMS published with it before anything
 # is unpacked, and the release is run once before wardrik points at it. The
@@ -244,13 +248,30 @@ main() {
     note "The daemon keeps its store and keys in the home of whoever runs it, so run it as a user of its own rather than root."
   fi
 
-  cat << EOF
+  # curl | sh gives this script the download as input, so init reads the terminal instead.
+  config=${WARDRIK_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/wardrik}/config.yaml
+  if [ -z "${WARDRIK_NO_INIT:-}" ] && [ ! -e "$config" ] && [ "$(id -u)" != 0 ] &&
+    (: < /dev/tty) 2> /dev/null; then
+    printf '\n'
+    exec "$bin_dir/wardrik" init < /dev/tty
+  fi
+
+  if [ -e "$config" ]; then
+    cat << EOF
+
+    wardrik web                        chat with your agents in the browser
+
+    wardrik help lists every command.
+EOF
+  else
+    cat << EOF
 
     wardrik init                       a first agent, its model and key, and the daemon to run it
 
     It asks what it needs, and says what it does. wardrik help lists every command.
     wardrik uninstall removes it again, and keeps the config, keys and store.
 EOF
+  fi
 }
 
 main "$@"

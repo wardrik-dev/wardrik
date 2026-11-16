@@ -1,12 +1,12 @@
 defmodule WardrikDaemon.CLI.Admin do
   @moduledoc false
 
-  alias WardrikDaemon.CLI.Browser
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Init
   alias WardrikDaemon.CLI.Table
   alias WardrikDaemon.CLI.Terminal
+  alias WardrikDaemon.CLI.Web
   alias WardrikDaemon.Client
   alias WardrikDaemon.Doctor
 
@@ -53,18 +53,7 @@ defmodule WardrikDaemon.CLI.Admin do
           "--purge deletes them too, after asking; --yes doesn't ask."
         ]
       },
-      %Command{
-        name: "web",
-        group: "Daemon",
-        switches: [print: :boolean],
-        summary: "open the web dashboard in your browser, signed in",
-        details: [
-          "It opens a link that works once, within two minutes, and prints it too. The session",
-          "it starts lasts 12 hours. --print only prints it. BROWSER names the browser.",
-          "The dashboard is at /web on the daemon's port. web.enabled: false turns it off."
-        ],
-        run: &web/3
-      },
+      Web.command(),
       %Command{
         name: "status",
         group: "Daemon",
@@ -109,44 +98,6 @@ defmodule WardrikDaemon.CLI.Admin do
 
   defp version([], _flags, cx),
     do: Context.puts(cx, "wardrik #{Application.spec(:wardrik_daemon, :vsn)}")
-
-  defp web([], flags, cx) do
-    with {:ok, client} <- Context.client(cx),
-         {:ok, %{"url" => url} = answer} <-
-           client
-           |> Client.run("tokens.web", %{})
-           |> Context.called(),
-         do: Context.show(cx, answer, fn _answer -> link(cx, url, flags[:print]) end)
-  end
-
-  defp link(cx, url, true), do: Context.puts(cx, url)
-
-  defp link(cx, url, _print) do
-    case Browser.open(cx.env, url) do
-      :ok ->
-        Context.puts(cx, "Opened the dashboard in your browser. If it didn't open, this link")
-        Context.puts(cx, "signs you in, once, within two minutes:")
-        Context.puts(cx, Owl.Data.tag(url, :cyan))
-
-      {:error, why} ->
-        Context.puts(cx, "Open this link within two minutes to sign in. It works once:")
-        Context.puts(cx, Owl.Data.tag(url, :cyan))
-        forward(cx, why, URI.parse(url))
-    end
-  end
-
-  # Over SSH the daemon's own address only answers here, so the person's machine forwards to it.
-  defp forward(cx, :remote, %URI{host: host, port: port})
-       when host in ["localhost", "127.0.0.1"] do
-    {:ok, here} = :inet.gethostname()
-
-    Context.puts(cx, [
-      "From your machine, forward its port first: ",
-      Owl.Data.tag("ssh -L #{port}:localhost:#{port} #{here}", :cyan)
-    ])
-  end
-
-  defp forward(_cx, _why, _url), do: :ok
 
   defp status([], _flags, cx) do
     with {:ok, client} <- Context.client(cx),

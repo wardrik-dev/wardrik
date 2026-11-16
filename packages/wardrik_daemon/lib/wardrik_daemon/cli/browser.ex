@@ -10,6 +10,10 @@ defmodule WardrikDaemon.CLI.Browser do
       up the command that opened it. Whether it worked isn't known; show the link as well.
   """
 
+  @doc "Returns whether `open/2` opens a browser with the environment `env`."
+  @spec opens?(%{String.t() => String.t()}) :: boolean()
+  def opens?(env), do: match?({:ok, _command}, command(env, :os.type()))
+
   @doc "Opens `url` with the environment `env`. Returns why it didn't, if it didn't."
   @spec open(%{String.t() => String.t()}, String.t()) :: :ok | {:error, :remote | :none}
   def open(env, url) do

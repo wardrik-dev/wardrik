@@ -13,7 +13,8 @@ MCP servers, secrets and tokens.
 wardrik web
 ```
 
-It opens the chat in your browser, signed in, and prints the link too. To use the dashboard
+It opens the chat in your browser, signed in, and prints the link too. `wardrik web assistant`
+opens the chat with the assistant. To use the dashboard
 from another machine, see [From another machine](#from-another-machine).
 
 ## Signing in

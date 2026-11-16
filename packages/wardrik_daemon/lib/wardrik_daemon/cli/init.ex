@@ -3,11 +3,13 @@ defmodule WardrikDaemon.CLI.Init do
 
   alias WardrikDaemon.CLI.Access
   alias WardrikDaemon.CLI.Answers
+  alias WardrikDaemon.CLI.Browser
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.CLI.Follow
   alias WardrikDaemon.CLI.Occupant
   alias WardrikDaemon.CLI.Terminal
+  alias WardrikDaemon.CLI.Web
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.EnvFile
   alias WardrikDaemon.Setup
@@ -59,7 +61,8 @@ defmodule WardrikDaemon.CLI.Init do
          cx = %{Context.new(cx.env) | terminal: cx.terminal},
          seal = fn -> sealed(cx, variable, key) end,
          :ok <- daemon(flags, cx, wrote ++ set_up, seal, key != nil or flags[:no_ask] != true),
-         :ok <- ask(flags, cx, variable) do
+         :ok <- ask(flags, cx, variable),
+         :ok <- browse(cx) do
       next(cx, commands)
     end
   end
@@ -403,13 +406,25 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
+  # Offered to a person at a terminal, where a browser opens.
+  defp browse(%{terminal: %Terminal{input?: true}} = cx) do
+    if Browser.opens?(cx.env) and
+         Owl.IO.confirm(message: "Open the chat in your browser?", default: true),
+       do: with({:ok, id} <- Context.agent(cx, "assistant"), do: Web.open(cx, id)),
+       else: :ok
+  end
+
+  defp browse(_cx), do: :ok
+
   defp next(cx, commands) do
     Context.puts(cx, [
       "\n",
       Owl.Box.new(
         to_run(commands) ++
           [
-            "Tell it what you want done:\n",
+            "Chat with it in your browser:\n",
+            Owl.Data.tag("#{cx.program} web", :cyan),
+            "\n\nOr tell it what you want done here:\n",
             Owl.Data.tag(
               ~s(#{cx.program} ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"),
               :cyan

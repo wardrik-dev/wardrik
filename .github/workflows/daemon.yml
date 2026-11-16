@@ -97,7 +97,7 @@ jobs:
           export HOME
           # The runner's image points these at its own home.
           unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME
-          WARDRIK_VERSION="$VERSION" WARDRIK_DOWNLOAD_URL="file://$downloads" sh packages/wardrik_daemon/install.sh
+          WARDRIK_NO_INIT=1 WARDRIK_VERSION="$VERSION" WARDRIK_DOWNLOAD_URL="file://$downloads" sh packages/wardrik_daemon/install.sh
           wardrik="$HOME/.local/bin/wardrik"
 
           trap '"$wardrik" stop || true' EXIT

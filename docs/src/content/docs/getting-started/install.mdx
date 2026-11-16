@@ -34,6 +34,9 @@ docker exec -it wardrik wardrik init
 
 ## 2. Configure Wardrik
 
+At a terminal, the install script goes on to `init`. In Docker, or after
+`WARDRIK_NO_INIT=1`, run it yourself:
+
 ```sh
 wardrik init
 ```
@@ -45,6 +48,7 @@ Wrote /home/me/.config/wardrik/env
 Run the daemon as a systemd user service? [Yn]:
 Sealed ANTHROPIC_API_KEY.
 Asking the assistant: In two short sentences, and without calling a tool, say what you can do for me.
+Open the chat in your browser? [Yn]:
 ```
 
 | File | Contents |
@@ -58,6 +62,8 @@ Asking the assistant: In two short sentences, and without calling a tool, say wh
   never installs anything: it shows the commands to run.
 - The key is stored in the vault, unless `env` already sets it.
 - The CLI authenticates automatically with a local admin token.
+- It offers to open the chat with the assistant in your browser. Later, `wardrik web` opens it.
+- The install script skips `init` when `config.yaml` exists, so an upgrade keeps your setup.
 
 For non-interactive setup, pass flags instead:
 
