@@ -51,6 +51,37 @@ defmodule WardrikDaemon.Test do
     path
   end
 
+  @doc """
+  A stand-in browser: a script that writes the arguments it's run with to a FIFO. Its path has
+  no spaces, as `BROWSER` is a command.
+  """
+  def browser do
+    dir = Path.join(System.tmp_dir!(), "wardrik_browser_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(dir) end)
+
+    fifo = Path.join(dir, "opened")
+    {_out, 0} = System.cmd("mkfifo", [fifo])
+    script = Path.join(dir, "browser")
+    File.write!(script, "#!/bin/sh\necho \"$@\" > '#{fifo}'\n")
+    File.chmod!(script, 0o755)
+    %{script: script, fifo: fifo}
+  end
+
+  @doc "Starts reading `browser`'s next run. Returns a function that waits for its arguments."
+  def opened(browser) do
+    port =
+      Port.open({:spawn_executable, System.find_executable("cat")}, [
+        :binary,
+        args: [browser.fifo]
+      ])
+
+    fn ->
+      assert_receive {^port, {:data, args}}, 5_000
+      String.trim(args)
+    end
+  end
+
   def free_port do
     {:ok, socket} = :gen_tcp.listen(0, [])
     {:ok, port} = :inet.port(socket)

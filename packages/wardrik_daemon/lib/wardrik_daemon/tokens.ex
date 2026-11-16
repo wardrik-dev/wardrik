@@ -118,16 +118,41 @@ defmodule WardrikDaemon.Tokens do
   @doc "Returns the token `secret` is, unless it's unknown, revoked or expired."
   @spec verify(Wardrik.Store.t(), String.t()) :: {:ok, Token.t()} | :error
   def verify(store, secret) do
+    case found(tokens(store), secret) do
+      {:ok, token, _kept} -> {:ok, token}
+      :error -> :error
+    end
+  end
+
+  @doc """
+  Uses up the token `secret` is, so it works once. Returns it, unless it's unknown, revoked,
+  expired or spent already.
+
+  Of two that spend a token at once, one gets it.
+  """
+  @spec spend(Wardrik.Store.t(), String.t()) :: {:ok, Token.t()} | :error
+  def spend(store, secret) do
     kept = tokens(store)
 
+    with {:ok, token, {value, vsn}} <- found(kept, secret),
+         spent = %{value | token: %{token | expires: DateTime.utc_now()}},
+         {:ok, _vsn} <- Wardrik.Store.put(kept, token.id, spent, if_vsn: vsn) do
+      :ok = Wardrik.Store.delete(kept, token.id)
+      {:ok, token}
+    else
+      _refused -> :error
+    end
+  end
+
+  defp found(kept, secret) do
     with ["wdk", id, _random] <- String.split(secret, "_", parts: 3),
-         %{token: token, hash: hash} <- Wardrik.Store.get(kept, id),
+         {%{token: token, hash: hash}, _vsn} = found <- Wardrik.Store.lookup(kept, id),
          true <-
            secret
            |> hash()
            |> Plug.Crypto.secure_compare(hash),
          :gt <- DateTime.compare(token.expires, DateTime.utc_now()) do
-      {:ok, token}
+      {:ok, token, found}
     else
       _refused -> :error
     end

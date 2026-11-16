@@ -78,6 +78,20 @@ defmodule WardrikDaemon.TokensTest do
     assert {:error, %Wardrik.Error{type: :unauthorized}} = authenticate(store, bearer(secret))
   end
 
+  test "spends a token once, also when it's spent from many places at once", %{store: store} do
+    {:ok, %{token: token, secret: secret}} = create(store, "user:payments/@ana")
+
+    spent =
+      1..20
+      |> Task.async_stream(fn _n -> Tokens.spend(store, secret) end)
+      |> Enum.map(fn {:ok, spent} -> spent end)
+
+    assert [{:ok, ^token}] = Enum.filter(spent, &match?({:ok, _token}, &1))
+    assert Tokens.verify(store, secret) == :error
+    assert Tokens.spend(store, secret) == :error
+    assert Tokens.list(store) == []
+  end
+
   test "keeps only a hash of each secret, and never lists one", %{store: store} do
     {:ok, %{token: token, secret: secret}} = create(store, "user:payments/@ana")
     assert "wdk_" <> _rest = secret

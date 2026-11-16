@@ -11,16 +11,16 @@ and tokens.
 
 ```sh
 wardrik web
-# Open this link within two minutes to sign in:
-# http://127.0.0.1:4747/web/sign-in?code=...
 ```
 
-Open the link in a browser on the same machine. To use the dashboard from another machine, see
-[From another machine](#from-another-machine).
+It opens the dashboard in your browser, signed in, and prints the link too. To use the dashboard
+from another machine, see [From another machine](#from-another-machine).
 
 ## Signing in
 
-- The link works for two minutes. Run `wardrik web` again for a new one.
+- The link works once, within two minutes. Run `wardrik web` again for a new one.
+- `BROWSER` names the browser to open. Over SSH, or without a display, `wardrik web` only prints
+  the link, with the `ssh -L` command that forwards the daemon's port. `--print` only prints it.
 - Signing in creates a token for the same user as the command. The session lasts 12 hours.
   Signing out revokes the token.
 - Each page checks permissions as the HTTP API does. A user sees and changes only what their

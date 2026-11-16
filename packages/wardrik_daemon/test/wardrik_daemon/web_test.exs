@@ -1,10 +1,12 @@
 defmodule WardrikDaemon.WebTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureIO
   import Phoenix.ConnTest, only: [build_conn: 0, get: 2, init_test_session: 2]
   import Phoenix.LiveViewTest
   import WardrikDaemon.Test
 
+  alias WardrikDaemon.CLI
   alias WardrikDaemon.Client
 
   @endpoint WardrikDaemon.Web.Endpoint
@@ -72,9 +74,39 @@ defmodule WardrikDaemon.WebTest do
         ],
         do: assert(fetch(context.url <> "/web/" <> page, cookie).body =~ text, page)
 
+    assert fetch(link).body =~ "expired or was used"
     assert fetch(context.url <> "/web/sign-in?code=nope").body =~ "expired"
     assert fetch(context.url <> "/web/sign-out", cookie).body =~ "signed out"
     assert fetch(context.url <> "/web", cookie).status == 302
+  end
+
+  defp web(context, argv, env) do
+    env = Map.merge(%{"WARDRIK_URL" => context.url, "WARDRIK_TOKEN" => context.admin.secret}, env)
+    run = fn -> send(self(), {:status, CLI.main(["web" | argv], env: env)}) end
+    output = capture_io(run)
+    assert_received {:status, 0}
+    output
+  end
+
+  test "wardrik web opens the link in the browser, or prints it", context do
+    context = daemon(context, true)
+    browser = browser()
+
+    opened = opened(browser)
+    output = web(context, [], %{"BROWSER" => browser.script})
+    assert output =~ "Opened the dashboard in your browser"
+    url = opened.()
+    assert output =~ url
+    signed_in = fetch(url)
+    assert Req.Response.get_header(signed_in, "location") == ["/web"]
+
+    printed = web(context, ["--print"], %{"BROWSER" => browser.script})
+    assert printed =~ ~r"^http://127.0.0.1:\d+/web/sign-in\?code=\S+\n$"
+    refute_receive {_port, {:data, _args}}, 100
+
+    remote = web(context, [], %{"SSH_CONNECTION" => "10.0.0.2 50000 10.0.0.1 22"})
+    assert remote =~ "Open this link within two minutes"
+    assert remote =~ "ssh -L"
   end
 
   test "is off with web.enabled false", context do

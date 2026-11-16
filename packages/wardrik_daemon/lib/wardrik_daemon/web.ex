@@ -7,8 +7,8 @@ defmodule WardrikDaemon.Web do
   configuration.
 
     * To turn it off, set `web.enabled: false` in `config.yaml`.
-    * To sign in, run `wardrik web`. It prints a sign-in link. The link expires after two
-      minutes.
+    * To sign in, run `wardrik web`. It opens a sign-in link in the browser, and prints it. The
+      link works once, within two minutes.
     * Signing in creates a token for the same user as the command. The token expires after
       12 hours. Signing out revokes it.
     * The pages check permissions with `WardrikDaemon.Authorizer`, like the HTTP API.
@@ -49,25 +49,41 @@ defmodule WardrikDaemon.Web do
   def sign_in(_daemon, _scope),
     do: {:error, Error.new(:forbidden, "Only a user token can sign in to the dashboard.")}
 
+  # The link holds a token that lasts as long as the link, sealed so it can't be used as an API
+  # token. Signing in spends it, so a link works once.
   defp link(daemon, scope) do
     {:ok, %{secret: secret}} =
       Tokens.create(daemon.store,
-        name: "web dashboard",
+        name: "web sign-in",
         subject: "user:" <> scope.principal.id,
         groups: Map.get(scope.principal.attributes || %{}, :groups, []),
-        expires: DateTime.add(DateTime.utc_now(), @session_hours, :hour)
+        expires: DateTime.add(DateTime.utc_now(), @link_age, :second)
       )
 
     code = Plug.Crypto.encrypt(daemon.web, @salt, secret)
     {:ok, base_url(daemon.config) <> "/web/sign-in?" <> URI.encode_query(%{"code" => code})}
   end
 
-  @doc "Returns the token secret in a sign-in `code`. Returns `:error` if the code is more than two minutes old."
-  @spec secret(String.t(), String.t()) :: {:ok, String.t()} | :error
-  def secret(key, code) do
-    case Plug.Crypto.decrypt(key, @salt, code, max_age: @link_age) do
-      {:ok, secret} -> {:ok, secret}
-      {:error, _reason} -> :error
+  @doc """
+  Signs in with a link's `code`, sealed with `key`. Returns the secret of a new dashboard token.
+
+  Returns `:error` if the code is more than two minutes old, or was used already.
+  """
+  @spec redeem(Wardrik.Store.t(), String.t(), String.t()) :: {:ok, String.t()} | :error
+  def redeem(store, key, code) do
+    with {:ok, secret} <- Plug.Crypto.decrypt(key, @salt, code, max_age: @link_age),
+         {:ok, link} <- Tokens.spend(store, secret) do
+      {:ok, %{secret: session}} =
+        Tokens.create(store,
+          name: "web dashboard",
+          subject: link.subject,
+          groups: link.groups,
+          expires: DateTime.add(DateTime.utc_now(), @session_hours, :hour)
+        )
+
+      {:ok, session}
+    else
+      _refused -> :error
     end
   end
 
