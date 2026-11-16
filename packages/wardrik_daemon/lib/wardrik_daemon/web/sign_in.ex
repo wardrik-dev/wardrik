@@ -19,7 +19,7 @@ defmodule WardrikDaemon.Web.SignIn do
       conn
       |> configure_session(renew: true)
       |> put_session("wardrik_token", secret)
-      |> redirect("/web")
+      |> redirect("/web/chat")
     else
       _none -> page(conn, conn.query_params["code"] && :expired)
     end

@@ -120,6 +120,10 @@ defmodule WardrikWeb.Test.Server do
   defp reply("interrupts.list", _input),
     do: {:ok, %{"interrupts" => [%{"agent" => %{"id" => "triage"}, "interrupt" => @interrupt}]}}
 
+  # A web chat no one has written in yet.
+  defp reply("agent.read", %{"conversation" => "web " <> _new}),
+    do: {:error, Wardrik.Error.new(:not_found, "There's no such conversation.")}
+
   defp reply("agent.read", %{"agent" => "triage"}) do
     agent = hd(@agents)
 

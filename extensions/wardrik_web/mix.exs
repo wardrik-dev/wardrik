@@ -71,6 +71,7 @@ defmodule WardrikWeb.MixProject do
       {:phoenix_html, "~> 4.2"},
       {:nimble_options, "~> 1.1"},
       {:jason, "~> 1.4"},
+      {:mdex, "~> 0.14"},
       {:lazy_html, "~> 0.1", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

@@ -7,6 +7,9 @@ defmodule WardrikWeb.Test.Resolver do
     do: {:ok, Wardrik.Scope.new(server, wardrik: :test, principal: user)}
 
   def scope(_request, _server), do: {:error, Wardrik.Error.new(:unauthorized, "Sign in first.")}
+
+  @impl true
+  def names(_request, ids, _server), do: Map.take(%{"triage" => "Triage desk"}, ids)
 end
 
 defmodule WardrikWeb.Test.Extension do

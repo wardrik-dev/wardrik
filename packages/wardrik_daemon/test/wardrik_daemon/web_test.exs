@@ -22,6 +22,8 @@ defmodule WardrikDaemon.WebTest do
     defaults: {model: #{model()}}
     """)
 
+    write(context, "agents/helper.md", "---\ndescription: Helps.\n---\nYou help.\n")
+
     context = start_daemon(context)
 
     Map.merge(context, %{
@@ -60,12 +62,18 @@ defmodule WardrikDaemon.WebTest do
 
     signed_in = fetch(link)
     assert signed_in.status == 302
-    assert Req.Response.get_header(signed_in, "location") == ["/web"]
+    assert Req.Response.get_header(signed_in, "location") == ["/web/chat"]
     [cookie] = Req.Response.get_header(signed_in, "set-cookie")
     cookie = hd(String.split(cookie, ";"))
 
     assert fetch(context.url <> "/web", cookie).body =~
              "All agents and conversations you can access."
+
+    # With one agent, the chat opens it, by name.
+    opened = fetch(context.url <> "/web/chat", cookie)
+    [chat] = Req.Response.get_header(opened, "location")
+    assert chat =~ "/web/chat/"
+    assert fetch(context.url <> chat, cookie).body =~ ~s(placeholder="Message helper")
 
     for {page, text} <- [
           {"secrets", "New secret"},
@@ -98,7 +106,7 @@ defmodule WardrikDaemon.WebTest do
     url = opened.()
     assert output =~ url
     signed_in = fetch(url)
-    assert Req.Response.get_header(signed_in, "location") == ["/web"]
+    assert Req.Response.get_header(signed_in, "location") == ["/web/chat"]
 
     printed = web(context, ["--print"], %{"BROWSER" => browser.script})
     assert printed =~ ~r"^http://127.0.0.1:\d+/web/sign-in\?code=\S+\n$"

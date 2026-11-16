@@ -5,15 +5,15 @@ sidebar:
   order: 7
 ---
 
-The daemon serves a web dashboard at `/web`, on the HTTP API's port. Use it to see what each agent
-does, approve or deny its calls, check each node's resource use, and manage MCP servers, secrets
-and tokens.
+The daemon serves a web dashboard at `/web`, on the HTTP API's port. Use it to chat with agents,
+see what each agent does, approve or deny its calls, check each node's resource use, and manage
+MCP servers, secrets and tokens.
 
 ```sh
 wardrik web
 ```
 
-It opens the dashboard in your browser, signed in, and prints the link too. To use the dashboard
+It opens the chat in your browser, signed in, and prints the link too. To use the dashboard
 from another machine, see [From another machine](#from-another-machine).
 
 ## Signing in
@@ -32,6 +32,7 @@ from another machine, see [From another machine](#from-another-machine).
 
 | Page | Shows |
 | --- | --- |
+| Chat | chat with an agent, approve its calls as they come up, and start new chats; each chat is a conversation of its own |
 | Agents | every agent and its status, conversations and runs; send a message, move or delete an agent |
 | Approvals | calls that wait on a person; approve or deny each |
 | Audit | who changed what |

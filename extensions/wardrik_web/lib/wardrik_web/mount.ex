@@ -7,7 +7,10 @@ defmodule WardrikWeb.Mount do
   alias WardrikWeb.Dashboard
   alias WardrikWeb.Resolver.Request
 
-  @doc "Assigns the scope the resolver returns, or redirects to the sign-in page."
+  @doc """
+  Assigns the scope the resolver returns, or redirects to the sign-in page. Assigns `:names` too,
+  a function that names agents by ID as the resolver's `c:WardrikWeb.Resolver.names/3` does.
+  """
   @spec on_mount(
           Dashboard.t(),
           map() | :not_mounted_at_router,
@@ -23,6 +26,7 @@ defmodule WardrikWeb.Mount do
         socket =
           socket
           |> assign(:scope, scope)
+          |> assign(:names, names(resolver, request, opts))
           |> assign(:dashboard, dashboard)
           |> assign(:here, dashboard.prefix)
           |> attach_hook(:here, :handle_params, &here/3)
@@ -32,6 +36,12 @@ defmodule WardrikWeb.Mount do
       {:error, _why} ->
         {:halt, redirect(socket, to: dashboard.sign_in)}
     end
+  end
+
+  defp names(resolver, request, opts) do
+    if function_exported?(resolver, :names, 3),
+      do: &resolver.names(request, &1, opts),
+      else: fn _ids -> %{} end
   end
 
   defp here(_params, uri, socket), do: {:cont, assign(socket, :here, URI.parse(uri).path)}
