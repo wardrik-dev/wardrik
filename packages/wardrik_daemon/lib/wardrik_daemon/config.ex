@@ -189,6 +189,13 @@ defmodule WardrikDaemon.Config do
                   type: :boolean,
                   default: true,
                   doc: "`false` to turn the dashboard off. Sign in with `wardrik web`."
+                ],
+                session_days: [
+                  type: :pos_integer,
+                  default: 30,
+                  doc:
+                    "How long a sign-in lasts. Each page that loads with less than half of it " <>
+                      "left starts it over."
                 ]
               ]
             ],
@@ -306,6 +313,7 @@ defmodule WardrikDaemon.Config do
             ip: {127, 0, 0, 1},
             trusted_workers: false,
             web: true,
+            web_session_days: 30,
             storage: nil,
             cluster: nil,
             wardrik: [],
@@ -340,6 +348,7 @@ defmodule WardrikDaemon.Config do
           ip: :inet.ip_address(),
           trusted_workers: boolean(),
           web: boolean(),
+          web_session_days: pos_integer(),
           storage: storage(),
           cluster: Cluster.t() | nil,
           wardrik: keyword(),
@@ -536,6 +545,7 @@ defmodule WardrikDaemon.Config do
         ip: opts[:http][:ip],
         trusted_workers: opts[:http][:trusted_workers],
         web: opts[:web][:enabled],
+        web_session_days: opts[:web][:session_days],
         storage: storage,
         cluster: cluster,
         wardrik: Keyword.take(opts, @wardrik)

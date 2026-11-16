@@ -12,6 +12,7 @@ defmodule WardrikDaemon.CLI.SetupTest do
     assert output =~ "Wrote " <> config
     assert output =~ "agents/assistant.md"
     assert output =~ "Kept  " <> Path.join(context.env["WARDRIK_CONFIG_DIR"], "env")
+    assert output =~ "│ wardrik web "
     assert output =~ ~s(wardrik ask assistant "Tell me when)
     assert File.read!(log) == "start\n"
 

@@ -9,8 +9,9 @@ defmodule WardrikDaemon.Web do
     * To turn it off, set `web.enabled: false` in `config.yaml`.
     * To sign in, run `wardrik web`. It opens a sign-in link in the browser, and prints it. The
       link works once, within two minutes.
-    * Signing in creates a token for the same user as the command. The token expires after
-      12 hours. Signing out revokes it.
+    * Signing in creates a token for the same user as the command. It lasts `web.session_days`,
+      30 by default, and starts over when a page loads with less than half of it left. Signing
+      out revokes it.
     * The pages check permissions with `WardrikDaemon.Authorizer`, like the HTTP API.
   """
 
@@ -20,7 +21,6 @@ defmodule WardrikDaemon.Web do
 
   @salt "wardrik web sign-in"
   @link_age 120
-  @session_hours 12
 
   @doc "Returns the dashboard's secret key base. It is derived from the vault's first key."
   @spec key([String.t()]) :: String.t()
@@ -34,24 +34,32 @@ defmodule WardrikDaemon.Web do
   end
 
   @doc """
-  Creates a sign-in link for the user that `scope` acts as.
+  Creates a sign-in link for the user that `scope` acts as. It opens the chat page.
 
   Only user tokens can create a link. Returns `not_found` when the dashboard is off.
+
+  ## Options
+
+    * `:agent` - the ID of the agent whose chat it opens.
   """
-  @spec sign_in(map(), Wardrik.Scope.t()) :: {:ok, String.t()} | {:error, Error.t()}
-  def sign_in(%{web: nil}, _scope),
+  @spec sign_in(map(), Wardrik.Scope.t(), agent: String.t()) ::
+          {:ok, String.t()} | {:error, Error.t()}
+  def sign_in(daemon, scope, opts \\ [])
+
+  def sign_in(%{web: nil}, _scope, _opts),
     do:
       {:error,
        Error.new(:not_found, "The dashboard is off. Set web.enabled to true in config.yaml.")}
 
-  def sign_in(daemon, %Wardrik.Scope{actor: nil} = scope), do: link(daemon, scope)
+  def sign_in(daemon, %Wardrik.Scope{actor: nil} = scope, opts),
+    do: link(daemon, scope, opts[:agent])
 
-  def sign_in(_daemon, _scope),
+  def sign_in(_daemon, _scope, _opts),
     do: {:error, Error.new(:forbidden, "Only a user token can sign in to the dashboard.")}
 
-  # The link holds a token that lasts as long as the link, sealed so it can't be used as an API
-  # token. Signing in spends it, so a link works once.
-  defp link(daemon, scope) do
+  # The link holds a token that lasts as long as the link, sealed with where it opens so neither
+  # can be used or changed. Signing in spends the token, so a link works once.
+  defp link(daemon, scope, agent) do
     {:ok, %{secret: secret}} =
       Tokens.create(daemon.store,
         name: "web sign-in",
@@ -60,32 +68,48 @@ defmodule WardrikDaemon.Web do
         expires: DateTime.add(DateTime.utc_now(), @link_age, :second)
       )
 
-    code = Plug.Crypto.encrypt(daemon.web, @salt, secret)
+    code = Plug.Crypto.encrypt(daemon.web, @salt, {secret, agent})
     {:ok, base_url(daemon.config) <> "/web/sign-in?" <> URI.encode_query(%{"code" => code})}
   end
 
   @doc """
-  Signs in with a link's `code`, sealed with `key`. Returns the secret of a new dashboard token.
+  Signs in with a link's `code`. Returns the secret of a new dashboard token, and the path the
+  link opens.
 
   Returns `:error` if the code is more than two minutes old, or was used already.
   """
-  @spec redeem(Wardrik.Store.t(), String.t(), String.t()) :: {:ok, String.t()} | :error
-  def redeem(store, key, code) do
-    with {:ok, secret} <- Plug.Crypto.decrypt(key, @salt, code, max_age: @link_age),
-         {:ok, link} <- Tokens.spend(store, secret) do
+  @spec redeem(map(), String.t()) :: {:ok, String.t(), String.t()} | :error
+  def redeem(daemon, code) do
+    with {:ok, {secret, agent}} <-
+           Plug.Crypto.decrypt(daemon.web, @salt, code, max_age: @link_age),
+         {:ok, link} <- Tokens.spend(daemon.store, secret) do
       {:ok, %{secret: session}} =
-        Tokens.create(store,
+        Tokens.create(daemon.store,
           name: "web dashboard",
           subject: link.subject,
           groups: link.groups,
-          expires: DateTime.add(DateTime.utc_now(), @session_hours, :hour)
+          expires: DateTime.add(DateTime.utc_now(), daemon.config.web_session_days, :day)
         )
 
-      {:ok, session}
+      {:ok, session, chat(agent)}
     else
       _refused -> :error
     end
   end
+
+  @doc """
+  Starts the session of the dashboard token `secret` over, if less than half of it is left.
+  Returns `:ok`, also for a token that's unknown or expired.
+  """
+  @spec renew(map(), String.t()) :: :ok
+  def renew(daemon, secret) do
+    days = daemon.config.web_session_days
+    half = DateTime.add(DateTime.utc_now(), days * 12, :hour)
+    Tokens.renew(daemon.store, secret, half, DateTime.add(DateTime.utc_now(), days, :day))
+  end
+
+  defp chat(nil), do: "/web/chat"
+  defp chat(agent), do: "/web/chat/" <> URI.encode(agent, &URI.char_unreserved?/1)
 
   defp base_url(%Config{base_url: nil} = config), do: Config.url(config)
   defp base_url(%Config{base_url: url}), do: String.trim_trailing(url, "/")

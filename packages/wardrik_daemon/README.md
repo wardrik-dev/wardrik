@@ -8,11 +8,12 @@ Requires Linux x86_64 or aarch64 with glibc 2.35+.
 
 ```sh
 curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-v0.1.0-rc.17/install.sh | WARDRIK_VERSION=0.1.0-rc.17 sh
-wardrik init --org acme
 wardrik ask assistant "Summarize this note: The release is scheduled for Friday."
 ```
 
-- `init` prompts for a model provider, model, and API key.
+- At a terminal, the install goes on to `wardrik init`, which prompts for a model provider, model,
+  and API key, and offers to open the chat in your browser. `WARDRIK_NO_INIT=1` skips it; then run
+  `wardrik init` yourself, as `wardrik init --org acme` to name the org.
 - Select Anthropic to run the agent-file example below.
 - It creates configuration files under `~/.config/wardrik` and starts the daemon.
 - Existing files are preserved. On systemd, the daemon runs as a user service.

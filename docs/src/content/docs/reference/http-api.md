@@ -1246,8 +1246,9 @@ Only the `admin` user can create a `user:admin` token.
 
 `POST /v1/tokens/web`
 
-Returns a link that signs the caller in to the [dashboard](/run/dashboard/). The link works once,
-within two minutes. Signing in creates a token for the caller that lasts 12 hours. Only user tokens can
+Returns a link that signs the caller in to the [dashboard](/run/dashboard/) and opens its chat page.
+With `{"agent": ID}` in the body, it opens the chat with that agent. The link works once, within
+two minutes. Signing in creates a token for the caller that lasts `web.session_days`. Only user tokens can
 sign in. Returns `404` while `web.enabled` is `false`.
 
 ```sh

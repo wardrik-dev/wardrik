@@ -92,6 +92,21 @@ defmodule WardrikDaemon.TokensTest do
     assert Tokens.list(store) == []
   end
 
+  test "renews a token that expires before a time, and leaves the rest", %{store: store} do
+    {:ok, %{token: token, secret: secret}} = create(store, "user:payments/@ana")
+    later = DateTime.add(token.expires, 1, :day)
+
+    assert Tokens.renew(store, secret, token.expires, later) == :ok
+    assert [%Token{expires: kept}] = Tokens.list(store)
+    assert DateTime.diff(kept, token.expires) == 0
+
+    assert Tokens.renew(store, secret, later, later) == :ok
+    assert [%Token{expires: renewed}] = Tokens.list(store)
+    assert DateTime.diff(renewed, later) == 0
+
+    assert Tokens.renew(store, "wdk_nope_x", later, later) == :ok
+  end
+
   test "keeps only a hash of each secret, and never lists one", %{store: store} do
     {:ok, %{token: token, secret: secret}} = create(store, "user:payments/@ana")
     assert "wdk_" <> _rest = secret

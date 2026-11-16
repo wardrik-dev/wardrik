@@ -9,11 +9,15 @@ defmodule WardrikDaemon.Web.Resolver do
 
   @impl true
   def scope(%Request{session: %{"wardrik_token" => secret}, endpoint: endpoint}, _opts) do
-    %{store: store, wardrik: wardrik} = endpoint.config(:daemon)
+    %{store: store, wardrik: wardrik} = daemon = endpoint.config(:daemon)
 
     case Authenticator.for_secret(store, wardrik, secret) do
-      {:ok, scope} -> {:ok, scope}
-      :error -> signed_out()
+      {:ok, scope} ->
+        :ok = WardrikDaemon.Web.renew(daemon, secret)
+        {:ok, scope}
+
+      :error ->
+        signed_out()
     end
   end
 

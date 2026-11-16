@@ -8,6 +8,7 @@ defmodule WardrikDaemon.WebTest do
 
   alias WardrikDaemon.CLI
   alias WardrikDaemon.Client
+  alias WardrikDaemon.Tokens
 
   @endpoint WardrikDaemon.Web.Endpoint
 
@@ -89,7 +90,11 @@ defmodule WardrikDaemon.WebTest do
   end
 
   defp web(context, argv, env) do
-    env = Map.merge(%{"WARDRIK_URL" => context.url, "WARDRIK_TOKEN" => context.admin.secret}, env)
+    env =
+      context.env
+      |> Map.merge(%{"WARDRIK_URL" => context.url, "WARDRIK_TOKEN" => context.admin.secret})
+      |> Map.merge(env)
+
     run = fn -> send(self(), {:status, CLI.main(["web" | argv], env: env)}) end
     output = capture_io(run)
     assert_received {:status, 0}
@@ -102,7 +107,7 @@ defmodule WardrikDaemon.WebTest do
 
     opened = opened(browser)
     output = web(context, [], %{"BROWSER" => browser.script})
-    assert output =~ "Opened the dashboard in your browser"
+    assert output =~ "Opened the chat in your browser"
     url = opened.()
     assert output =~ url
     signed_in = fetch(url)
@@ -112,9 +117,32 @@ defmodule WardrikDaemon.WebTest do
     assert printed =~ ~r"^http://127.0.0.1:\d+/web/sign-in\?code=\S+\n$"
     refute_receive {_port, {:data, _args}}, 100
 
+    opened = opened(browser)
+    web(context, ["helper"], %{"BROWSER" => browser.script})
+
+    chat =
+      opened.()
+      |> fetch()
+      |> Req.Response.get_header("location")
+
+    assert ["/web/chat/" <> _id] = chat
+
     remote = web(context, [], %{"SSH_CONNECTION" => "10.0.0.2 50000 10.0.0.1 22"})
     assert remote =~ "Open this link within two minutes"
     assert remote =~ "ssh -L"
+  end
+
+  test "a sign-in link opens the chat with the agent it names", context do
+    context = daemon(context, true)
+
+    assert {:ok, %{"url" => link}} =
+             Client.run(context.admin, "tokens.web", %{"agent" => "agt_1/x"})
+
+    signed_in = fetch(link)
+    assert Req.Response.get_header(signed_in, "location") == ["/web/chat/agt_1%2Fx"]
+
+    assert {:error, "invalid_request", _message} =
+             Client.run(context.admin, "tokens.web", %{"page" => "/admin"})
   end
 
   test "is off with web.enabled false", context do
@@ -122,6 +150,31 @@ defmodule WardrikDaemon.WebTest do
 
     assert {:error, "not_found", _message} = Client.run(context.admin, "tokens.web", %{})
     assert fetch(context.url <> "/web").status == 404
+  end
+
+  test "a sign-in lasts web.session_days, and starts over as pages load", context do
+    context = daemon(context, "true, session_days: 2")
+    store = context.daemon_store
+
+    assert {:ok, %{"url" => link}} = Client.run(context.admin, "tokens.web", %{})
+    fetch(link)
+
+    assert [signed_in] =
+             for(token <- Tokens.list(store), token.name == "web dashboard", do: token)
+
+    assert_in_delta DateTime.diff(signed_in.expires, DateTime.utc_now(), :hour), 48, 1
+
+    {:ok, %{token: short, secret: secret}} =
+      Tokens.create(store,
+        name: "web dashboard",
+        subject: "user:admin",
+        expires: DateTime.add(DateTime.utc_now(), 1, :hour)
+      )
+
+    conn = init_test_session(build_conn(), %{"wardrik_token" => secret})
+    {:ok, _view, _html} = live(conn, "/web/secrets")
+    [renewed] = for(token <- Tokens.list(store), token.id == short.id, do: token)
+    assert_in_delta DateTime.diff(renewed.expires, DateTime.utc_now(), :hour), 48, 1
   end
 
   test "adds and removes secrets, servers and tokens from their pages", context do

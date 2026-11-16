@@ -12,14 +12,14 @@ defmodule WardrikDaemon.Web.SignIn do
   @impl Plug
   def call(conn, :show) do
     conn = fetch_query_params(conn)
-    %{store: store} = conn.private.phoenix_endpoint.config(:daemon)
+    daemon = conn.private.phoenix_endpoint.config(:daemon)
 
     with %{"code" => code} <- conn.query_params,
-         {:ok, secret} <- WardrikDaemon.Web.redeem(store, conn.secret_key_base, code) do
+         {:ok, secret, path} <- WardrikDaemon.Web.redeem(daemon, code) do
       conn
       |> configure_session(renew: true)
       |> put_session("wardrik_token", secret)
-      |> redirect("/web/chat")
+      |> redirect(path)
     else
       _none -> page(conn, conn.query_params["code"] && :expired)
     end

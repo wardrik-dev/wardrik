@@ -76,6 +76,13 @@ defmodule WardrikDaemon.Test do
         args: [browser.fifo]
       ])
 
+    # A cat no browser wrote to would wait on the FIFO for good, holding the test run's output.
+    {:os_pid, cat} = Port.info(port, :os_pid)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      System.cmd("kill", [to_string(cat)], stderr_to_stdout: true)
+    end)
+
     fn ->
       assert_receive {^port, {:data, args}}, 5_000
       String.trim(args)
