@@ -2088,6 +2088,29 @@ export interface ConversationCompactedData {
   tokens_after: number;
 }
 /**
+ * A judge model answered, or failed to answer, questions about a tool call or a finished turn. Its span's parent is the tool call or step it judged.
+ */
+export interface EvaluationCompletedData {
+  /**
+   * The judge model.
+   */
+  model: string;
+  /**
+   * Each question's answer by its name, such as {"probability": 0.72} for a yes-or-no question.
+   */
+  answers?: {
+    [k: string]: unknown;
+  };
+  status: "ok" | "error";
+  error?: ErrorInfo;
+  duration_ms: DurationMs;
+  usage?: Usage;
+  /**
+   * What the call cost, on a call the model answered; null where nobody prices the model, which is not the same as nothing. It isn't in the cost of the tool call or step it judged.
+   */
+  cost?: Cost | null;
+}
+/**
  * Events a reader asked for were dropped from the agent's log before it read them; it reads on from the oldest the log still holds. Sent to that reader alone, and never written.
  */
 export interface EventsDroppedData {
@@ -2639,6 +2662,7 @@ export interface EventData {
   "wardrik.call.killed": CallKilledData;
   "wardrik.conversation.cleared": ConversationClearedData;
   "wardrik.conversation.compacted": ConversationCompactedData;
+  "wardrik.evaluation.completed": EvaluationCompletedData;
   "wardrik.events.dropped": EventsDroppedData;
   "wardrik.file.removed": FileRemovedData;
   "wardrik.file.written": FileWrittenData;

@@ -260,6 +260,27 @@ defmodule Wardrik.Policy.MiddlewareTest do
                run(context, "books__create_bill", %{amount: 9400})
     end
 
+    test "the call's step leaves out the judge's cost, which its evaluation reports", %{
+      context: context
+    } do
+      expect(WardrikCore, :evaluate, fn _context, _args ->
+        {:ok, %{"q0" => %{"probability" => 0.1}, "q1" => %{"probability" => 0.1}}, %{usd: 0.0002}}
+      end)
+
+      test = self()
+      handler = "judge cost #{inspect(test)}"
+
+      stopped = fn _name, measured, metadata, nil -> send(test, {:stop, measured, metadata}) end
+      :telemetry.attach(handler, [:wardrik_core, :step, :stop], stopped, nil)
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      assert {:ok, %Context{measurements: %{usd: 0.0002}}} =
+               run(%{context | agent_id: "a"}, "web_search")
+
+      assert_received {:stop, measured, %{step: {:tool_call, _call}}}
+      refute Map.has_key?(measured, :usd)
+    end
+
     test "a judge with no usable answer asks a person", %{context: context} do
       expect(WardrikCore, :evaluate, fn _context, _args ->
         {:ok, %{}, %{}}

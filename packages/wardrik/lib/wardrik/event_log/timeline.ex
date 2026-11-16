@@ -185,6 +185,9 @@ defmodule Wardrik.EventLog.Timeline do
   defp fold(t, "wardrik.tool_call.denied", %{"tool" => tool} = data, event),
     do: update_tool(t, event, tool, &%{&1 | status: :denied, error: data["reason"]})
 
+  defp fold(t, "wardrik.evaluation.completed", data, event),
+    do: update_run(t, event, &Map.update!(&1, :cost_micro_usd, fn cost -> cost + cost(data) end))
+
   defp fold(t, _type, _data, _event), do: t
 
   # A delegate's events are under its span, or a span opened inside it.

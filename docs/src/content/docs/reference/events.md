@@ -64,6 +64,7 @@ available only while connected.
 | `wardrik.reasoning.delta` | `message`, `delta` | reasoning as it streams. **Live** |
 | `wardrik.message.retrying` | `message`, `attempt`, `attempts`, `wait_ms`, `error` | a model call failed and will be retried |
 | `wardrik.message.completed` | `message`, `status`, `duration_ms`, `response?`, `usage?`, `cost?`, `error?` | a model call returned (`ok`), failed (`error`) or was cancelled (`cancelled`) |
+| `wardrik.evaluation.completed` | `model`, `status`, `duration_ms`, `answers?`, `usage?`, `cost?`, `error?` | a judge model answered about a tool call or a finished turn; its span's parent is what it judged |
 | `wardrik.step.started` | `step` | a named step started |
 | `wardrik.step.completed` | `status`, `duration_ms`, `error?` | a named step ended |
 | `wardrik.activity.changed` | `activity` | the agent's activity changed. **Live** |
@@ -77,7 +78,7 @@ available only while connected.
 | `wardrik.tool_call.started` | `tool`, `decided` | a tool call started |
 | `wardrik.tool_call.progress` | `tool`, `progress`, `total?` | a tool reported progress. **Live** |
 | `wardrik.tool_call.retrying` | `tool`, `attempt`, `attempts`, `wait_ms`, `error` | a retry-safe call crashed or timed out, and will be retried |
-| `wardrik.tool_call.completed` | `tool`, `status`, `replayed`, `error?`, `served_by?`, `cost?` | a tool call returned |
+| `wardrik.tool_call.completed` | `tool`, `status`, `replayed`, `error?`, `served_by?`, `cost?` | a tool call returned; `cost` is what the tool reported, without a judge's |
 | `wardrik.tool_call.denied` | `tool`, `reason`, `decided` | a call was denied without running |
 | `wardrik.interrupt.resolved` | `interrupt`, `decision`, `reason?`, `note?`, `resolved_by?` | a pending call was approved or denied |
 | `wardrik.call.killed` | `agent`, `call` | a running tool call was stopped |

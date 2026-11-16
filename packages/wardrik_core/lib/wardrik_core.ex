@@ -407,9 +407,10 @@ defmodule WardrikCore do
           questions: questions
         )
 
-      context = Wardrik.Context.measure(context, measurements)
+      context = Wardrik.Context.reported(context, measurements)
 
-  Returns each answer by question name, and what the call used.
+  Returns each answer by question name, and what the call used. Its span, the step
+  `{:evaluate, model}`, reports what it used, so add it with `Wardrik.Context.reported/2`.
   """
   @spec evaluate(Context.t(),
           model: String.t(),
@@ -418,6 +419,17 @@ defmodule WardrikCore do
         ) :: {:ok, map(), %{atom() => number()}} | {:error, term()}
   def evaluate(%Context{} = context, args) do
     model = Keyword.fetch!(args, :model)
+
+    case WardrikCore.Telemetry.span(context, {:evaluate, model}, &evaluated(&1, model, args)) do
+      {:ok, %Context{response: {:ok, answers}} = evaluated} ->
+        {:ok, answers, measured(context, evaluated)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp evaluated(context, model, args) do
     spec = Context.spec(context, model)
     all = Context.model_options(context, model)
 
@@ -428,8 +440,15 @@ defmodule WardrikCore do
              Keyword.fetch!(args, :questions),
              Keyword.take(all, @evaluate_options)
            ) do
-      {:ok, response.object, WardrikCore.Usage.measurements(response, spec, context.prices)}
+      measured = WardrikCore.Usage.measurements(response, spec, context.prices)
+      {:ok, %{Context.measure(context, measured) | response: {:ok, response.object}}}
     end
+  end
+
+  defp measured(%Context{measurements: before}, %Context{measurements: now}) do
+    now
+    |> Map.new(fn {key, amount} -> {key, amount - Map.get(before, key, 0)} end)
+    |> Map.reject(fn {_key, amount} -> amount == 0 end)
   end
 
   @doc """

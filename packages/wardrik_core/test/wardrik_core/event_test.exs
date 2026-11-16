@@ -108,4 +108,64 @@ defmodule WardrikCore.EventTest do
     assert :ok = Event.emit(nil, [:my_vault, :stored], %{}, %{name: "github"})
     refute_received {:event, _}
   end
+
+  describe "evaluations" do
+    setup do
+      expect(ReqLLM, :evaluate, fn _model, _state, _questions, _opts ->
+        {:ok,
+         %ReqLLM.Response{
+           id: "eval",
+           model: "jev",
+           context: nil,
+           message: nil,
+           object: %{"send" => %{"probability" => 0.3}},
+           usage: %{input_tokens: 40, output_tokens: 1, total_cost: 0.002}
+         }}
+      end)
+
+      %{context: Context.new(agent_id: "a", events: {Sink, self()})}
+    end
+
+    test "each is a step of its own, with its answers and what it used", %{context: context} do
+      args = [model: "typesafe:jev-latest", state: "x", questions: %{}]
+      assert {:ok, answers, used} = WardrikCore.evaluate(context, args)
+      assert used == %{input_tokens: 40, output_tokens: 1, usd: 0.002}
+
+      assert_received {:event,
+                       %Event{
+                         name: [:wardrik_core, :step, :stop],
+                         measurements: %{usd: 0.002, input_tokens: 40},
+                         metadata: %{
+                           step: {:evaluate, "typesafe:jev-latest"},
+                           response: {:ok, ^answers}
+                         }
+                       }}
+    end
+
+    test "a step that judges leaves out what its evaluation reported", %{context: context} do
+      judging = fn inner ->
+        {:ok, _answers, used} =
+          WardrikCore.evaluate(inner, model: "typesafe:jev-latest", state: "x", questions: %{})
+
+        judged = Context.reported(inner, used)
+        {:ok, Context.measure(judged, :usd, 0.5)}
+      end
+
+      assert {:ok, after_step} = Context.run(context, {:step, "judging"}, judging)
+
+      assert_received {:event,
+                       %Event{
+                         name: [:wardrik_core, :step, :stop],
+                         measurements: step,
+                         metadata: %{step: {:step, "judging"}}
+                       }}
+
+      assert step.usd == 0.5
+      refute Map.has_key?(step, :input_tokens)
+      refute Map.has_key?(step, :reported_usd)
+
+      # Budgets count what the context holds: the evaluation too.
+      assert_in_delta after_step.measurements.usd, 0.502, 1.0e-9
+    end
+  end
 end

@@ -58,7 +58,8 @@ notify:
 - Parked and failed turns are always sent.
 - If the judge can't answer, the answer is sent.
 - Start with a high `send` and lower it as the agent earns trust.
-- The judge's cost counts toward the agent's spending. Set `TYPESAFE_API_KEY` for the default
+- Each judge call is recorded as `wardrik.evaluation.completed`, with its answers and cost, sent
+  or held. Its cost counts toward the agent's spending. Set `TYPESAFE_API_KEY` for the default
   model.
 - Text in the answer can sway the judge. Use it to cut noise, not to keep secrets.
 

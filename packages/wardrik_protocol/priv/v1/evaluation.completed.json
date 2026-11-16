@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:evaluation.completed",
+  "title": "wardrik.evaluation.completed",
+  "description": "A judge model answered, or failed to answer, questions about a tool call or a finished turn. Its span's parent is the tool call or step it judged.",
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "string",
+      "description": "The judge model."
+    },
+    "answers": {
+      "type": "object",
+      "description": "Each question's answer by its name, such as {\"probability\": 0.72} for a yes-or-no question.",
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "error"
+      ]
+    },
+    "error": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
+    },
+    "duration_ms": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
+    },
+    "usage": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/usage"
+    },
+    "cost": {
+      "oneOf": [
+        {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/cost"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the call cost, on a call the model answered; null where nobody prices the model, which is not the same as nothing. It isn't in the cost of the tool call or step it judged."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "model",
+    "status",
+    "duration_ms"
+  ]
+}

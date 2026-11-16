@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-rc.15 (2026-11-15)
+
+- Each judge call, by a policy or a notice judge, is recorded as `wardrik.evaluation.completed`,
+  with its answers, usage and cost. A tool call's `cost` no longer includes its judge's. Read
+  judge costs from the new event.
+- Run totals and the timeline include judge costs.
+- Requires `wardrik_core` 0.1.0-rc.10 and `wardrik_protocol` 0.1.0-rc.11.
+
 ## 0.1.0-rc.14 (2026-11-14)
 
 - A definition's `notify.judge` asks a model whether to send each finished turn's answer. Held
