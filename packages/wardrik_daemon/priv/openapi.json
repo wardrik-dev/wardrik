@@ -348,7 +348,7 @@
       "post": {
         "operationId": "tokens.web",
         "summary": "Create a dashboard sign-in link",
-        "description": "Returns a link that signs the caller in to the web dashboard and opens its chat page, or the chat with agent. The link works once, within two minutes. Signing in creates a token for the caller. The token expires after 12 hours. Only user tokens can sign in. Returns not_found while web.enabled is false.",
+        "description": "Returns a link that signs the caller in to the web dashboard and opens its chat page, or the chat with agent. The link works once, within two minutes. Signing in creates a token for the caller. The token lasts web.session_days, 30 by default. Only user tokens can sign in. Returns not_found while web.enabled is false.",
         "tags": [
           "Tokens"
         ],

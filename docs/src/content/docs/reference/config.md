@@ -410,6 +410,7 @@ and `write` it. Each is `agent:NAME`, in the mounting agent's org.
 | Key | Default | Description |
 | --- | --- | --- |
 | `enabled` | `true` | `false` turns off the [dashboard](/run/dashboard/) at `/web` |
+| `session_days` | `30` | how long a sign-in lasts; a page that loads with less than half left starts it over |
 
 ## storage
 

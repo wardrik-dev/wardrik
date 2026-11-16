@@ -22,8 +22,9 @@ from another machine, see [From another machine](#from-another-machine).
 - The link works once, within two minutes. Run `wardrik web` again for a new one.
 - `BROWSER` names the browser to open. Over SSH, or without a display, `wardrik web` only prints
   the link, with the `ssh -L` command that forwards the daemon's port. `--print` only prints it.
-- Signing in creates a token for the same user as the command. The session lasts 12 hours.
-  Signing out revokes the token.
+- Signing in creates a token for the same user as the command. The session lasts 30 days, and
+  starts over when a page loads with less than half of it left, so a dashboard in use stays
+  signed in. [`web.session_days`](/reference/config/#web) sets it. Signing out revokes the token.
 - Each page checks permissions as the HTTP API does. A user sees and changes only what their
   [roles](/run/orgs/) allow.
 - A program can get a link with [`POST /v1/tokens/web`](/reference/http-api/#create-a-sign-in-link).

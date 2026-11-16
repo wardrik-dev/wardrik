@@ -8,6 +8,7 @@ defmodule WardrikDaemon.WebTest do
 
   alias WardrikDaemon.CLI
   alias WardrikDaemon.Client
+  alias WardrikDaemon.Tokens
 
   @endpoint WardrikDaemon.Web.Endpoint
 
@@ -149,6 +150,31 @@ defmodule WardrikDaemon.WebTest do
 
     assert {:error, "not_found", _message} = Client.run(context.admin, "tokens.web", %{})
     assert fetch(context.url <> "/web").status == 404
+  end
+
+  test "a sign-in lasts web.session_days, and starts over as pages load", context do
+    context = daemon(context, "true, session_days: 2")
+    store = context.daemon_store
+
+    assert {:ok, %{"url" => link}} = Client.run(context.admin, "tokens.web", %{})
+    fetch(link)
+
+    assert [signed_in] =
+             for(token <- Tokens.list(store), token.name == "web dashboard", do: token)
+
+    assert_in_delta DateTime.diff(signed_in.expires, DateTime.utc_now(), :hour), 48, 1
+
+    {:ok, %{token: short, secret: secret}} =
+      Tokens.create(store,
+        name: "web dashboard",
+        subject: "user:admin",
+        expires: DateTime.add(DateTime.utc_now(), 1, :hour)
+      )
+
+    conn = init_test_session(build_conn(), %{"wardrik_token" => secret})
+    {:ok, _view, _html} = live(conn, "/web/secrets")
+    [renewed] = for(token <- Tokens.list(store), token.id == short.id, do: token)
+    assert_in_delta DateTime.diff(renewed.expires, DateTime.utc_now(), :hour), 48, 1
   end
 
   test "adds and removes secrets, servers and tokens from their pages", context do
