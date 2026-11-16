@@ -12,9 +12,10 @@ defmodule WardrikDaemon.Web.SignIn do
   @impl Plug
   def call(conn, :show) do
     conn = fetch_query_params(conn)
+    %{store: store} = conn.private.phoenix_endpoint.config(:daemon)
 
     with %{"code" => code} <- conn.query_params,
-         {:ok, secret} <- WardrikDaemon.Web.secret(conn.secret_key_base, code) do
+         {:ok, secret} <- WardrikDaemon.Web.redeem(store, conn.secret_key_base, code) do
       conn
       |> configure_session(renew: true)
       |> put_session("wardrik_token", secret)
@@ -46,7 +47,7 @@ defmodule WardrikDaemon.Web.SignIn do
   defp page(conn, why) do
     note =
       case why do
-        :expired -> "That link has expired. Run the command again for a new one."
+        :expired -> "That link has expired or was used. Run the command again for a new one."
         :out -> "You're signed out."
         nil -> "Run this on the server to get a sign-in link:"
       end
