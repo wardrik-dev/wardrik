@@ -21,10 +21,14 @@
 
 defmodule WardrikACP.TestPeer do
   def main do
-    # WardrikACP closes stdin, then sends SIGTERM. The peer stops at end of input instead.
-    :os.set_signal(:sigterm, :ignore)
+    # Stops at once on SIGTERM, as harnesses do, without the VM's slower orderly shutdown.
+    {:ok, _id} = System.trap_signal(:sigterm, &halt/0)
+    if log = System.get_env("PEER_LOG"), do: File.write!(log <> ".pid", System.pid())
     loop(%{cwd: nil, session: nil, next: 0})
   end
+
+  @spec halt() :: no_return()
+  defp halt, do: System.halt(0)
 
   defp loop(state) do
     case IO.read(:stdio, :line) do

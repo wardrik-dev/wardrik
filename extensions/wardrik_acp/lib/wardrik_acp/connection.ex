@@ -199,17 +199,30 @@ defmodule WardrikACP.Connection do
   def handle_info(:idle, %{reader: nil} = state), do: {:stop, :normal, state}
   def handle_info(_message, state), do: {:noreply, state}
 
+  # Stopping waits for the harness to exit, so nothing it writes lands after the connection is
+  # gone, such as in a worktree being swept. It gets SIGTERM, then SIGKILL, within the default
+  # five seconds a supervisor gives a worker to stop.
   @impl GenServer
   def terminate(_reason, %{port: port}) when is_port(port) do
-    with {:os_pid, pid} <- Port.info(port, :os_pid) do
-      Port.close(port)
-      System.cmd("kill", ["-TERM", to_string(pid)], stderr_to_stdout: true)
-    end
+    with {:os_pid, pid} <- Port.info(port, :os_pid),
+         :timeout <- signalled(port, pid, "-TERM", 3_000),
+         :timeout <- signalled(port, pid, "-KILL", 1_000),
+         do: Port.close(port)
 
     :ok
   end
 
   def terminate(_reason, _state), do: :ok
+
+  defp signalled(port, pid, signal, wait) do
+    System.cmd("kill", [signal, to_string(pid)], stderr_to_stdout: true)
+
+    receive do
+      {^port, {:exit_status, _status}} -> :exited
+    after
+      wait -> :timeout
+    end
+  end
 
   defp handled(message, {:noreply, state}), do: {:cont, message(message, state)}
   defp handled(_message, stop), do: {:halt, stop}
