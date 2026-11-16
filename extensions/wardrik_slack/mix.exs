@@ -40,7 +40,7 @@ defmodule WardrikSlack.MixProject do
     do:
       ["lib", "test/support"] ++
         Enum.map(
-          ~w(authorizers.ex directory.ex owned.ex channel/chat.ex),
+          ~w(authorizers.ex directory.ex owned.ex model.ex channel/chat.ex),
           &Path.expand(&1, Path.join(__DIR__, "../../packages/wardrik/test/support"))
         )
 
