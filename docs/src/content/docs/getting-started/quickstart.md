@@ -8,7 +8,7 @@ Create an agent that saves a note. Review the proposed file write before allowin
 ## 1. Install and configure Wardrik
 
 ```sh
-curl -fsSL https://docs.wardrik.dev/install.sh | sh
+curl -fsSL https://wardrik.dev/install.sh | sh
 ```
 
 The install goes on to `wardrik init`: choose a model provider and enter your API key. `init`

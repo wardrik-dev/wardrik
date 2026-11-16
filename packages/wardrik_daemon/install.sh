@@ -2,7 +2,7 @@
 #
 # Installs wardrik, the daemon and the command that runs it, from a release.
 #
-#   curl -fsSL https://docs.wardrik.dev/install.sh | sh
+#   curl -fsSL https://wardrik.dev/install.sh | sh
 #   curl -fsSL https://github.com/wardrik-dev/wardrik/releases/download/wardrik_daemon-vVERSION/install.sh | sh
 #   sh install.sh wardrik-0.1.0-linux-x86_64.tar.gz     a tarball you already have
 #

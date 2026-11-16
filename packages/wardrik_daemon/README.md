@@ -7,7 +7,7 @@ Run Wardrik agents from Markdown files, configure the daemon with YAML, and send
 Requires Linux x86_64 or aarch64 with glibc 2.35+.
 
 ```sh
-curl -fsSL https://docs.wardrik.dev/install.sh | sh
+curl -fsSL https://wardrik.dev/install.sh | sh
 wardrik ask assistant "Summarize this note: The release is scheduled for Friday."
 ```
 
