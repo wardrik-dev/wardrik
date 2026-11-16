@@ -86,6 +86,26 @@ children = [
 
 To keep agents in Postgres, use `Wardrik.Store.Durable` from `wardrik`.
 
+## Several on one node
+
+Give each instance a `:name` and a backend of its own:
+
+```elixir
+alias WardrikCore.Backends.MemoryStore
+
+children = [
+  Supervisor.child_spec({MemoryStore, name: :support_agents}, id: :support_agents),
+  {WardrikCore, name: :support, backend: {MemoryStore, name: :support_agents}},
+  Supervisor.child_spec({MemoryStore, name: :billing_agents}, id: :billing_agents),
+  {WardrikCore, name: :billing, backend: {MemoryStore, name: :billing_agents}}
+]
+
+{:ok, _pid} = WardrikCore.start_agent(:support, agent_id: "a", model: "anthropic:claude-haiku-4-5")
+```
+
+- Calls take the instance's name first. Without one, they use `WardrikCore`.
+- `:prefix` sets where an instance keeps agents in its backend. `"wardrik/"` by default.
+
 ## Crash recovery
 
 - An agent that crashes restarts and picks its message back up.

@@ -7,12 +7,12 @@ defmodule Wardrik.Testing.Model do
 
       Wardrik.new(
         endpoints: %{"test" => Wardrik.Testing.Model.endpoint(model)},
-        defaults: [model: "test"]
+        defaults: %{"model" => "test"}
       )
 
   An answer is a `ReqLLM.Response`, `{:status, code}` or `{:status, code, message}` to fail the
-  call with that HTTP status, or a function. A function takes the call's request, decoded from JSON, and returns an answer.
-  Answers given as a function answer every call.
+  call with that HTTP status, or a function. A function takes the call's request, decoded from
+  JSON, and returns an answer. Answers given as a function answer every call.
   """
 
   # A restart would answer from the start again.

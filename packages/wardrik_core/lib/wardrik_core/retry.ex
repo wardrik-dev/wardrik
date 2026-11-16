@@ -8,7 +8,7 @@ defmodule WardrikCore.Retry do
       WardrikCore.start_agent(
         agent_id: "triage",
         model: "anthropic:claude-haiku-4-5",
-        retries: [attempts: 3, max_wait: :timer.seconds(10), on_exhausted: :fail]
+        retries: [attempts: 10, max_wait: :timer.minutes(2)]
       )
 
   ## Options

@@ -62,7 +62,11 @@ Wardrik.Agent.reply(scope, agent, "Summarize this note: The release is scheduled
 - [Connect MCP servers](pages/servers.md)
 - [Store credentials and connect accounts](pages/credentials.md)
 - [Read events and audit records](pages/events.md)
-- `Serve HTTP requests`
+- [Store agents and events](pages/storage.md)
+- [Give agents files](pages/files.md)
+- [Serve HTTP requests](pages/http.md)
+- [Connect chat apps](pages/chat.md)
+- [Test agents and adapters](pages/testing.md)
 
 ## Livebook examples
 
