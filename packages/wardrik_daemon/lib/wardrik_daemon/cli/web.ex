@@ -18,7 +18,8 @@ defmodule WardrikDaemon.CLI.Web do
       summary: "chat in your browser, signed in to the web dashboard",
       details: [
         "It opens the chat with AGENT, or the chat page, and prints the link too. The link works",
-        "once, within two minutes; the session it starts lasts 12 hours. --print only prints it.",
+        "once, within two minutes; the session lasts web.session_days, 30 by default, from the",
+        "last use. --print only prints the link.",
         "BROWSER names the browser. web.enabled: false in config.yaml turns the dashboard off."
       ],
       run: &run/3

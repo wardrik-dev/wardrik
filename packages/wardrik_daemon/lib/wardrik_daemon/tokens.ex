@@ -144,6 +144,24 @@ defmodule WardrikDaemon.Tokens do
     end
   end
 
+  @doc """
+  Moves the expiry of the token `secret` to `expires`, if it expires before `before`. Returns
+  `:ok`, also for a token that's unknown, revoked or expired.
+  """
+  @spec renew(Wardrik.Store.t(), String.t(), DateTime.t(), DateTime.t()) :: :ok
+  def renew(store, secret, before, expires) do
+    kept = tokens(store)
+
+    with {:ok, token, {value, vsn}} <- found(kept, secret),
+         :lt <- DateTime.compare(token.expires, before) do
+      renewed = %{value | token: %{token | expires: expires}}
+      # A revoke or another renewal since the read wins.
+      _written = Wardrik.Store.put(kept, token.id, renewed, if_vsn: vsn)
+    end
+
+    :ok
+  end
+
   defp found(kept, secret) do
     with ["wdk", id, _random] <- String.split(secret, "_", parts: 3),
          {%{token: token, hash: hash}, _vsn} = found <- Wardrik.Store.lookup(kept, id),
