@@ -15,6 +15,42 @@
         })
         this.handleEvent("composer:sent", () => { this.el.value = "" })
       }
+    },
+    // Counts the time since data-since, as 0:42 or 1:05:09.
+    Elapsed: {
+      mounted() {
+        const tick = () => {
+          const s = Math.max(0, Math.floor((Date.now() - Date.parse(this.el.dataset.since)) / 1000))
+          const [h, m, r] = [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60]
+          const pad = (n) => String(n).padStart(2, "0")
+          this.el.textContent = h > 0 ? `${h}:${pad(m)}:${pad(r)}` : `${m}:${pad(r)}`
+        }
+        tick()
+        this.timer = setInterval(tick, 1000)
+      },
+      destroyed() { clearInterval(this.timer) }
+    },
+    // Tells the reader, by a browser notification, when more calls wait for their approval while
+    // the tab is in the background. Offers a button to allow notifications until they're decided.
+    NotifyWaiting: {
+      mounted() {
+        this.count = Number(this.el.dataset.count)
+        if (!("Notification" in window) || Notification.permission !== "default") return
+        const button = document.getElementById("notify-me")
+        if (!button) return
+        button.hidden = false
+        button.addEventListener("click", () => {
+          Notification.requestPermission().then(() => { button.hidden = true })
+        })
+      },
+      updated() {
+        const count = Number(this.el.dataset.count)
+        const more = count > this.count
+        this.count = count
+        if (more && document.hidden && "Notification" in window && Notification.permission === "granted") {
+          new Notification(document.title, { body: this.el.dataset.text, tag: "wardrik-waiting" })
+        }
+      }
     }
   }
   const liveSocket = new LiveView.LiveSocket(meta("wardrik-socket"), Phoenix.Socket, {

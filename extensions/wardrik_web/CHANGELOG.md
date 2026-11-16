@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0-rc.5 (2026-11-16)
+
+- The chat's sidebar updates while it's open, and counts each agent's and conversation's calls
+  waiting for approval. The tab's title counts them too.
+- A call waiting in another chat shows above the composer, as a link to it. "Notify me" turns on
+  a browser notification for each new one while the tab is in the background.
+- While a run goes, a line says what the agent does, such as "Using claude", and for how long.
+- Approval cards ask "Allow claude/execute?" and show short arguments in line.
+
 ## 0.1.0-rc.4 (2026-11-16)
 
 - The chat composer empties once a message is sent. A message that fails to send stays.

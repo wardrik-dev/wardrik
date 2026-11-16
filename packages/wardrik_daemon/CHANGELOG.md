@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.20 (2026-11-16)
+
+- The web chat shows the calls waiting for approval across agents, and what the agent does now.
+  Requires `wardrik_web` 0.1.0-rc.5.
+
 ## 0.1.0-rc.19 (2026-11-16)
 
 - A harness works without `checkouts`. A call that names no checkout works in a scratch

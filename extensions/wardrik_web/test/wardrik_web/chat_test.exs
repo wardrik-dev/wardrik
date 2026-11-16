@@ -70,6 +70,66 @@ defmodule WardrikWeb.ChatTest do
     assert html =~ conversation
   end
 
+  test "counts the calls waiting for approval in the sidebar and the tab's title", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/ops/chat/triage")
+
+    assert has_element?(view, ~s(.side a[href="/ops/chat/triage"] .count), "1")
+    refute has_element?(view, ~s(.side a[href="/ops/chat/digest"] .count))
+    assert page_title(view) =~ "(1) Triage desk"
+
+    # The open chat shows its own call in line, not as a link to elsewhere.
+    refute has_element?(view, ".elsewhere a")
+
+    send(view.pid, :refresh)
+    assert has_element?(view, ~s(.side a[href="/ops/chat/triage"] .count), "1")
+  end
+
+  test "links calls waiting in other chats", %{conn: conn} do
+    {:ok, view, _html} =
+      live(conn, "/ops/chat/triage?conversation=web%202026-11-16%2010:00:00%20ab")
+
+    assert has_element?(view, ~s(.elsewhere a[href="/ops/chat/triage"]), "github/open_issue")
+
+    assert has_element?(
+             view,
+             ~s(#waiting-notify[data-text="Triage desk is waiting for your approval."])
+           )
+  end
+
+  test "says what the agent does while it works, and asks in plain words" do
+    html =
+      render_component(&WardrikWeb.Timeline.timeline/1,
+        items: [
+          %{
+            "kind" => "run",
+            "status" => "waiting",
+            "interrupts" => [
+              %{"id" => "c1", "name" => "claude__execute", "arguments" => %{"command" => "ls ~"}}
+            ]
+          }
+        ],
+        drafts: %{},
+        chat: true,
+        doing: %{
+          "since" => "2026-11-16T18:00:00Z",
+          "doing" => [%{"type" => "wardrik.tool_call.started", "tool" => %{"name" => "claude"}}]
+        }
+      )
+
+    assert html =~ "Using claude"
+    assert html =~ ~s(data-since="2026-11-16T18:00:00Z")
+    assert html =~ "Allow claude/execute?"
+    assert html =~ "<dt>command</dt>"
+    assert html =~ "<code>ls ~</code>"
+
+    thinking = %{"doing" => [%{"type" => "wardrik.message.started"}]}
+
+    html =
+      render_component(&WardrikWeb.Timeline.timeline/1, items: [], drafts: %{}, doing: thinking)
+
+    assert html =~ "Thinking"
+  end
+
   test "drops raw HTML and unsafe links from markdown" do
     html =
       render_component(&WardrikWeb.Timeline.markdown/1,
