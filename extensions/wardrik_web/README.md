@@ -33,7 +33,7 @@ Add `wardrik_web` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:wardrik_web, "~> 0.1.0-rc.3"}
+    {:wardrik_web, "~> 0.1.0-rc.4"}
   ]
 end
 ```

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.19 (2026-11-16)
+
+- A harness works without `checkouts`. A call that names no checkout works in a scratch
+  directory in `worktrees/`.
+- The install lines use `https://wardrik.dev/install.sh`.
+- Requires `wardrik_acp` 0.1.0-rc.6 and `wardrik_web` 0.1.0-rc.4.
+
 ## 0.1.0-rc.18 (2026-11-16)
 
 - `wardrik web [AGENT]` opens the dashboard's chat in the browser, already signed in. The link it
