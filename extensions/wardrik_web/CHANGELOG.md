@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.4 (2026-11-16)
+
+- The chat composer empties once a message is sent. A message that fails to send stays.
+
 ## 0.1.0-rc.3 (2026-11-16)
 
 - A chat page at `/chat`: talk with an agent, start new conversations, and answer approvals in

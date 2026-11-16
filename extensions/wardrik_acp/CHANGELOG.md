@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.6 (2026-11-16)
+
+- `checkout` is optional, and the tool only offers it when there are checkouts. Work without one
+  runs in a scratch directory of its own, `<worktrees>/<harness>/.scratch/...`, and returns its
+  directory.
+- `scratch`: how long a sweep keeps an unused scratch directory, a week by default.
+
 ## 0.1.0-rc.5 (2026-11-16)
 
 - Stopping a connection waits for its harness to exit: `TERM`, then `KILL` after 3 seconds.

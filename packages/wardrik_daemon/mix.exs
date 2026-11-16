@@ -4,7 +4,7 @@ defmodule WardrikDaemon.MixProject do
   def project do
     [
       app: :wardrik_daemon,
-      version: "0.1.0-rc.18",
+      version: "0.1.0-rc.19",
       elixir: "~> 1.20",
       description:
         "Wardrik as a daemon: agents from files, config.yaml, an HTTP API, and the wardrik command.",
@@ -84,9 +84,9 @@ defmodule WardrikDaemon.MixProject do
       sibling(:wardrik_brave, "~> 0.1.0-rc.4"),
       sibling(:wardrik_gateway, "~> 0.1.0-rc.2"),
       sibling(:wardrik_research, "~> 0.1.0-rc.3"),
-      sibling(:wardrik_acp, "~> 0.1.0-rc.5"),
+      sibling(:wardrik_acp, "~> 0.1.0-rc.6"),
       sibling(:wardrik_rest, "~> 0.1.0-rc.2"),
-      sibling(:wardrik_web, "~> 0.1.0-rc.3"),
+      sibling(:wardrik_web, "~> 0.1.0-rc.4"),
       {:phoenix, "~> 1.8"},
       {:phoenix_live_view, "~> 1.2"},
       {:req, "~> 0.5"},
