@@ -13,18 +13,23 @@ defmodule WardrikACP.Sweep do
   def start_link(settings), do: GenServer.start_link(__MODULE__, settings)
 
   @doc """
-  Removes each worktree whose work is in its checkout's base, and its branch. A worktree stays
-  while a call uses its coding agent, while a request waits, or while it has changes or untracked
-  files. An idle coding agent is stopped first. Returns the paths removed.
+  Removes each worktree whose work is in its checkout's base, and its branch, and each scratch
+  directory not used for `settings.scratch` milliseconds. Either stays while a call uses its coding
+  agent or while a request waits. A worktree also stays while it has changes or untracked files.
+  An idle coding agent is stopped first. Returns the paths removed.
   """
   @spec run(map()) :: [Path.t()]
   def run(settings) do
-    removed =
+    merged =
       for checkout <- Map.values(settings.checkouts),
           :ok <- [Worktree.fetch(checkout)],
           worktree <- Worktree.list(checkout, settings.worktrees),
-          idle?(settings.acp, worktree.path),
           Worktree.merged?(worktree),
+          do: worktree
+
+    removed =
+      for worktree <- merged ++ scratch(settings),
+          idle?(settings.acp, worktree.path),
           :ok <- [Worktree.remove(worktree)] do
         File.rm(worktree.path <> ".json")
         worktree.path
@@ -40,6 +45,13 @@ defmodule WardrikACP.Sweep do
     })
 
     removed
+  end
+
+  defp scratch(%{scratch: :infinity}), do: []
+
+  defp scratch(settings) do
+    before = System.os_time(:second) - div(settings.scratch, 1000)
+    Worktree.scratch(settings.worktrees, before)
   end
 
   # A coding agent with nothing to do is stopped, so its worktree can go.

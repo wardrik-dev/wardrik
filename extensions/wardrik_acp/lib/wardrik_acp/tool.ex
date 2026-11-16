@@ -24,40 +24,52 @@ defmodule WardrikACP.Tool do
   end
 
   defp description(harness) do
-    "Sends a coding task to #{harness.name}. It works in a git worktree of the checkout, on a " <>
-      "branch of its own, and returns its last message, the branch and its commits."
+    "Sends a task to #{harness.name}. With a checkout, it works in a git worktree of it, on a " <>
+      "branch of its own, and returns its last message, the branch and its commits. Without " <>
+      "one, it works in a scratch directory of its own and returns its last message."
   end
 
   defp schema(checkouts) do
     %{
       "type" => "object",
-      "properties" => %{
-        "task" => %{
-          "type" => "string",
-          "description" => "What to do, with everything needed to do it."
-        },
-        "checkout" => %{
-          "type" => "string",
-          "enum" => checkouts,
-          "description" => "The repository to work in."
-        },
-        "work" => %{
-          "type" => "string",
-          "description" =>
-            "A short name for this piece of work, such as fix-login. The same name continues the same session and branch."
-        }
-      },
-      "required" => ["task", "checkout", "work"]
+      "properties" =>
+        checkouts
+        |> checkout()
+        |> Map.merge(%{
+          "task" => %{
+            "type" => "string",
+            "description" => "What to do, with everything needed to do it."
+          },
+          "work" => %{
+            "type" => "string",
+            "description" =>
+              "A short name for this piece of work, such as fix-login. The same name continues the same session and directory."
+          }
+        }),
+      "required" => ["task", "work"]
+    }
+  end
+
+  defp checkout([]), do: %{}
+
+  defp checkout(checkouts) do
+    %{
+      "checkout" => %{
+        "type" => "string",
+        "enum" => checkouts,
+        "description" => "The repository to work in. Leave it out for work outside a repository."
+      }
     }
   end
 
   defp run(settings, harness, checkouts, args, context) do
-    if args["checkout"] in checkouts,
+    if args["checkout"] in [nil | checkouts],
       do: started(settings, harness, args, context),
-      else:
-        {:error,
-         "No checkout named #{args["checkout"]}. Use one of: #{Enum.join(checkouts, ", ")}."}
+      else: {:error, "No checkout named #{args["checkout"]}. #{named(checkouts)}"}
   end
+
+  defp named([]), do: "Leave checkout out."
+  defp named(checkouts), do: "Use one of #{Enum.join(checkouts, ", ")}, or leave it out."
 
   defp started(settings, harness, args, %Context{step: {:tool_call, call}} = context) do
     worktree = worktree(settings, harness, args, context)
@@ -91,19 +103,28 @@ defmodule WardrikACP.Tool do
   end
 
   defp worktree(settings, harness, args, context) do
-    checkout = Map.fetch!(settings.checkouts, args["checkout"])
-
     owner = [
       segment(context.agent_id),
       segment(context.conversation || "_"),
       segment(args["work"])
     ]
 
-    %Worktree{
-      checkout: checkout,
-      path: Path.join([settings.worktrees, harness.name, segment(args["checkout"]) | owner]),
-      branch: Enum.join(["wardrik" | owner], "/")
-    }
+    case args["checkout"] do
+      nil ->
+        # A segment has no dot, so no checkout's directory is `.scratch`.
+        %Worktree{
+          checkout: nil,
+          path: Path.join([settings.worktrees, harness.name, ".scratch" | owner]),
+          branch: nil
+        }
+
+      name ->
+        %Worktree{
+          checkout: Map.fetch!(settings.checkouts, name),
+          path: Path.join([settings.worktrees, harness.name, segment(name) | owner]),
+          branch: Enum.join(["wardrik" | owner], "/")
+        }
+    end
   end
 
   defp segment(text) do
@@ -127,7 +148,7 @@ defmodule WardrikACP.Tool do
   defp begin(reader, %Resume{reason: :in_doubt}, _attached, task) do
     prompt(
       reader,
-      "Wardrik restarted while you worked on this task. Check the worktree, then finish it:\n\n" <>
+      "Wardrik restarted while you worked on this task. Check the working directory, then finish it:\n\n" <>
         task
     )
   end

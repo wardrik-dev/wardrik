@@ -19,8 +19,10 @@ defmodule WardrikDaemon.Config.Harnesses do
     * A harness takes `WardrikACP.Harness`'s options. `timeout` and `idle` are in seconds.
     * A checkout is a git repository with a commit: its path, or `WardrikACP.Checkout`'s options.
       New work starts from `base`. Worktrees go in the data directory's `worktrees`.
-    * A daily sweep removes each worktree whose work is in its checkout's `base`. See
-      `WardrikACP.sweep/1`.
+    * A call that names no checkout works in a scratch directory, also in `worktrees`. With no
+      checkouts, every call does.
+    * A daily sweep removes each worktree whose work is in its checkout's `base`, and each
+      scratch directory a week after its last call. See `WardrikACP.sweep/1`.
     * A harness no entry in `orgs` lists is the deployment's org's.
   """
 

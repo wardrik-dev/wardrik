@@ -271,6 +271,9 @@ checkouts:
 Worktrees go in `worktrees/` in `WARDRIK_DATA_HOME`. A daily sweep removes each one whose work is
 in `base`.
 
+A harness works without checkouts. A call that names no checkout works in a scratch directory in
+`worktrees/`. The sweep removes it a week after its last call.
+
 ## rest
 
 ```yaml
