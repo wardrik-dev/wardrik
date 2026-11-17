@@ -6,6 +6,9 @@ defmodule Wardrik.Trigger do
     * once: `at`, a time in `timezone`. It's removed after it runs.
     * when one of its `feed` URLs has new entries.
     * when a service sends its `webhook` a request.
+
+  Each run asks the agent in `ask_in`, a conversation of the agent's, or in the agent's own
+  conversation when it names none.
   """
 
   use Wardrik.Type,
@@ -22,6 +25,7 @@ defmodule Wardrik.Trigger do
       jitter: "jitter",
       feed: "feed",
       webhook: {"webhook", Wardrik.Trigger.Webhook},
+      ask_in: "ask_in",
       next_at: {"next_at", :datetime}
     ]
 end

@@ -227,6 +227,63 @@ defmodule Wardrik.AgentToolsTest do
              run!(scope, "agent.definition", %{"agent" => "acme/worker"})
   end
 
+  test "a follow-up it schedules itself from a conversation answers in that conversation", %{
+    fake: fake,
+    scope: scope
+  } do
+    at =
+      DateTime.utc_now()
+      |> DateTime.add(86_400)
+      |> DateTime.truncate(:second)
+
+    model(fake, [
+      {"Follow up tomorrow",
+       calling([
+         call("s1", "self_schedule", %{
+           "name" => "follow-up",
+           "at" => DateTime.to_iso8601(at),
+           "prompt" => "Check the launch."
+         })
+       ])},
+      {"follow-up", answer("Scheduled.")},
+      {"Check the launch.", answer("Launch went fine.")}
+    ])
+
+    define(scope, "acme/front", %{
+      "model" => @model,
+      "tools" => ["self/*"],
+      "policy" => %{"allow" => ["self_schedule"]}
+    })
+
+    run!(scope, "agent.ask", %{
+      "agent" => "acme/front",
+      "conversation" => "C1",
+      "content" => "Follow up tomorrow"
+    })
+
+    until("wardrik.run.completed")
+
+    wardrik = Wardrik.Instance.fetch!(scope.wardrik)
+    triggers = Wardrik.triggers(wardrik)
+
+    assert [{%Wardrik.Triggers.Trigger{name: "follow-up", ask_in: "C1"}, ^at}] =
+             Wardrik.Triggers.list(triggers, "acme/front")
+
+    assert %{"definition" => %{"triggers" => [%{"ask_in" => "C1"}]}} =
+             run!(scope, "agent.definition", %{"agent" => "acme/front"})
+
+    ask = %Wardrik.Triggers.Target.Ask{
+      agent: "acme/front",
+      prompt: "Check the launch.",
+      trigger: "follow-up",
+      overlap: :queue,
+      conversation: "C1"
+    }
+
+    assert :asked = Wardrik.Triggers.Agents.ask(ask, wardrik)
+    assert %{"conversation" => "C1"} = until("wardrik.run.completed")
+  end
+
   test "brings back an answer that came while it wasn't running", %{fake: fake, scope: scope} do
     model(fake, [
       {"Ask the worker",

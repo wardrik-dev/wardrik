@@ -230,7 +230,8 @@ defmodule Wardrik.Triggers.Run do
       prompt: prompt,
       trigger: trigger.name,
       overlap: trigger.overlap,
-      labels: labels
+      labels: labels,
+      conversation: trigger.ask_in
     }
 
     case module.ask(ask, opts) do

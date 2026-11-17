@@ -7,7 +7,8 @@ defmodule Wardrik.Triggers.Target.Ask do
         prompt: "Write the digest.",
         trigger: "daily",
         overlap: :settle,
-        labels: []
+        labels: [],
+        conversation: nil
       }
 
   ## Fields
@@ -20,16 +21,19 @@ defmodule Wardrik.Triggers.Target.Ask do
       to answer `:busy` while the agent is busy otherwise.
     * `:labels` - `["outside"]` when the prompt holds feed entries or a webhook body. `[]`
       otherwise.
+    * `:conversation` - the conversation to ask in, as the trigger names it. `nil` for the
+      agent's own.
   """
 
   @enforce_keys [:agent, :prompt, :trigger]
-  defstruct [:agent, :prompt, :trigger, overlap: :settle, labels: []]
+  defstruct [:agent, :prompt, :trigger, :conversation, overlap: :settle, labels: []]
 
   @type t() :: %__MODULE__{
           agent: String.t(),
           prompt: String.t(),
           trigger: String.t(),
           overlap: :skip | :queue | :settle,
-          labels: [String.t()]
+          labels: [String.t()],
+          conversation: String.t() | nil
         }
 end

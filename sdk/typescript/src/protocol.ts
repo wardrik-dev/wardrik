@@ -1861,6 +1861,10 @@ export interface TriggerDefinition {
    */
   prompt_file?: string;
   /**
+   * The conversation each run asks the agent in, as an agent's conversation ID. Leave it out to ask in the agent's own conversation. An agent's self_schedule and self_trigger_set set it to the conversation they are called from, so a follow-up asked for in a chat thread answers in that thread.
+   */
+  ask_in?: string;
+  /**
    * What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run.
    */
   overlap?: "skip" | "queue" | "settle";

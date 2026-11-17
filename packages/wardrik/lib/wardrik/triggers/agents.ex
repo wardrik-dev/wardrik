@@ -9,8 +9,8 @@ defmodule Wardrik.Triggers.Agents do
   alias Wardrik.Triggers.Target.Secret
 
   @impl Wardrik.Triggers.Target
-  def ask(%Ask{agent: agent_id} = ask, wardrik) do
-    case Running.awake(wardrik, agent_id) do
+  def ask(%Ask{agent: agent_id, conversation: conversation} = ask, wardrik) do
+    case Running.awake(wardrik, {agent_id, conversation}) do
       {:ok, pid} -> overlapped(pid, ask, wardrik)
       {:error, _error} -> :no_agent
     end

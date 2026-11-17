@@ -136,7 +136,7 @@ defmodule Wardrik.AgentTools do
         "self_trigger_set",
         "Set one of your own triggers by name: a schedule, a feed or a webhook. It answers with the next run, if any, as next_at.",
         trigger_schema(:self),
-        &set(me, self, &1)
+        &set_own(me, self, &1)
       ),
       change(
         "self_trigger_remove",
@@ -155,7 +155,7 @@ defmodule Wardrik.AgentTools do
   # Both come from the operation's own input, so they keep to the protocol.
   defp trigger_schema(reach) do
     %{"properties" => properties, "required" => required} = trigger_input()
-    properties = Map.drop(properties, ["name", "next_at"])
+    properties = Map.drop(properties, ["name", "next_at", "ask_in"])
     reached(%{"type" => "object", "properties" => properties, "required" => required}, reach)
   end
 
@@ -270,9 +270,16 @@ defmodule Wardrik.AgentTools do
 
   defp set(me, agent, args), do: run(me, "agent.trigger_set", Map.put(args, "agent", agent))
 
+  # A trigger an agent sets itself from a conversation answers in that conversation, so a
+  # follow-up asked for in a thread comes back in the thread.
+  defp set_own(%{conversation: nil} = me, agent, args), do: set(me, agent, args)
+
+  defp set_own(%{conversation: conversation} = me, agent, args),
+    do: set(me, agent, Map.put(args, "ask_in", conversation))
+
   defp scheduled(me, agent, args) do
     {name, fields} = Map.pop_lazy(args, "name", &schedule_name/0)
-    set(me, agent, Map.put(fields, "trigger", name))
+    set_own(me, agent, Map.put(fields, "trigger", name))
   end
 
   defp schedule_name do

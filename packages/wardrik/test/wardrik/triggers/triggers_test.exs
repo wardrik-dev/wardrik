@@ -260,6 +260,21 @@ defmodule Wardrik.TriggersTest do
       refute_receive {:asked, _agent, _prompt, _opts}, 100
     end
 
+    test "asks in the conversation it names", %{triggers: triggers, store: store} do
+      assert {:ok, %Trigger{ask_in: "C1"}} =
+               Wardrik.Triggers.set(triggers, @agent, %{
+                 "name" => "follow-up",
+                 "at" => DateTime.to_iso8601(ahead(3600)),
+                 "prompt" => "Check the launch.",
+                 "ask_in" => "C1"
+               })
+
+      due(store, triggers, "follow-up", 5)
+
+      assert_receive {:asked, @agent, "Check the launch.",
+                      [trigger: "follow-up", overlap: :queue, labels: [], conversation: "C1"]}
+    end
+
     test "moves its run when its time changes", %{triggers: triggers} do
       launch_at =
         3600
