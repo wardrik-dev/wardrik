@@ -24,6 +24,8 @@ defmodule Wardrik.Credentials do
       end
 
     * `{:authorize, url}` parks the call on a `Wardrik.Credentials.Authorization`.
+    * `{:ok, %Wardrik.Credentials.Endpoint{}}` also says where an MCP server is reached, for
+      services each person or agent reaches at an address of its own.
     * Call `report_refusal/2` when a service rejects a token, then fetch again.
     * Tokens are never saved or emitted. Keep them out of private data and attributes.
 

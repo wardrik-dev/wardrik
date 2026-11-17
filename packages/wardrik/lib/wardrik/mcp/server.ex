@@ -4,7 +4,7 @@ defmodule Wardrik.MCP.Server do
   @secret {:tuple, [{:in, [:secret]}, :string]}
 
   @http NimbleOptions.new!(
-          url: [type: :string, required: true],
+          url: [type: :string],
           headers: [
             type: {:map, :string, {:or, [:string, @secret, {:list, {:or, [:string, @secret]}}]}},
             default: %{}
@@ -27,6 +27,8 @@ defmodule Wardrik.MCP.Server do
               A command gets its `env` plus #{Enum.map_join(@inherited, ", ", &"`#{&1}`")}, and
               nothing else from your app's environment. A header's value is a string,
               `{:secret, name}`, or a list of both, as `["Bearer ", {:secret, "LINEAR_TOKEN"}]`.
+              A server over HTTP may leave out `url` if its credential is a
+              `Wardrik.Credentials.Endpoint` that gives one.
               """
             ],
             owner: [
@@ -118,6 +120,8 @@ defmodule Wardrik.MCP.Server do
   """
 
   @behaviour Wardrik.Format
+
+  alias Wardrik.Credentials.Endpoint
 
   @options @schema.schema
            |> Keyword.keys()
@@ -253,24 +257,30 @@ defmodule Wardrik.MCP.Server do
     ArgumentError -> {:error, "its cost names a measure this release doesn't count"}
   end
 
-  @doc "Builds a server named `name`. Raises `NimbleOptions.ValidationError` on invalid options."
+  @doc """
+  Builds a server named `name`. Raises `NimbleOptions.ValidationError` on invalid options, and
+  `ArgumentError` for a server over HTTP with neither a `url` nor a credential to give one.
+  """
   @spec new!(atom() | String.t(), keyword()) :: t()
-  def new!(name, opts),
-    do: struct!(__MODULE__, [name: to_string(name)] ++ NimbleOptions.validate!(opts, @schema))
+  def new!(name, opts) do
+    server =
+      struct!(__MODULE__, [name: to_string(name)] ++ NimbleOptions.validate!(opts, @schema))
+
+    if addressed?(server) or server.credential_name != nil,
+      do: server,
+      else:
+        raise(
+          ArgumentError,
+          "a server over HTTP needs a :url, or a :credential_name whose credential gives one"
+        )
+  end
 
   @doc false
   @spec transport(term()) :: {:ok, {:stdio | :streamable_http, keyword()}} | {:error, String.t()}
   def transport({:streamable_http, opts}) do
-    with {:ok, opts} <- options(opts, @http) do
-      case URI.new(opts[:url]) do
-        {:ok, %URI{scheme: scheme, host: host}}
-        when scheme in ~w(http https) and host not in [nil, ""] ->
-          {:ok, {:streamable_http, opts}}
-
-        _invalid ->
-          {:error, "a server over HTTP needs an http or https :url, got: #{inspect(opts[:url])}"}
-      end
-    end
+    with {:ok, opts} <- options(opts, @http),
+         :ok <- check_url(opts[:url]),
+         do: {:ok, {:streamable_http, opts}}
   end
 
   def transport({:stdio, opts}) do
@@ -279,6 +289,24 @@ defmodule Wardrik.MCP.Server do
 
   def transport(other),
     do: {:error, "expected {:stdio, opts} or {:streamable_http, opts}, got: #{inspect(other)}"}
+
+  defp check_url(nil), do: :ok
+
+  defp check_url(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host}}
+      when scheme in ~w(http https) and host not in [nil, ""] ->
+        :ok
+
+      _invalid ->
+        {:error, "a server over HTTP needs an http or https :url, got: #{inspect(url)}"}
+    end
+  end
+
+  defp addressed?(%__MODULE__{transport: {:streamable_http, opts}}),
+    do: Keyword.has_key?(opts, :url)
+
+  defp addressed?(%__MODULE__{transport: {:stdio, _opts}}), do: true
 
   defp options(opts, schema) do
     case NimbleOptions.validate(opts, schema) do
@@ -295,12 +323,63 @@ defmodule Wardrik.MCP.Server do
     do: {:error, "a server added as the app runs is reached over HTTP"}
 
   def reachable(%__MODULE__{transport: {:streamable_http, opts}, check: check}) do
-    url = Keyword.fetch!(opts, :url)
+    case opts[:url] do
+      nil -> :ok
+      url -> check_reachable(check, url)
+    end
+  end
 
+  defp check_reachable(check, url) do
     case check.(url) do
       :ok -> :ok
       {:error, why} -> {:error, "#{url} can't be reached: #{why}"}
     end
+  end
+
+  @doc """
+  Returns the server as `credential` reaches it, and the token to send: a
+  `Wardrik.Credentials.Endpoint` gives its `url` and `headers`, and anything else is the token.
+  """
+  @spec apply_credential(t(), term()) :: {:ok, t(), term()} | {:error, String.t()}
+  def apply_credential(%__MODULE__{} = server, %Endpoint{} = endpoint) do
+    with {:ok, server} <- route(server, endpoint), do: {:ok, server, endpoint.token}
+  end
+
+  def apply_credential(%__MODULE__{} = server, token) do
+    if addressed?(server),
+      do: {:ok, server, token},
+      else: {:error, "#{server.name}'s credential gives no URL to connect to"}
+  end
+
+  defp route(%__MODULE__{transport: {:stdio, _opts}} = server, %Endpoint{
+         url: nil,
+         headers: headers
+       })
+       when map_size(headers) == 0,
+       do: {:ok, server}
+
+  defp route(%__MODULE__{transport: {:stdio, _opts}} = server, _endpoint),
+    do:
+      {:error, "#{server.name} runs as a command, so its credential can't give a URL or headers"}
+
+  defp route(%__MODULE__{transport: {:streamable_http, opts}} = server, endpoint) do
+    opts =
+      opts
+      |> Keyword.update(:headers, endpoint.headers, &Map.merge(&1, endpoint.headers))
+      |> put_url(endpoint.url)
+
+    with :ok <- check_url(endpoint.url),
+         :ok <- check_routed(server, opts),
+         do: {:ok, %{server | transport: {:streamable_http, opts}}}
+  end
+
+  defp put_url(opts, nil), do: opts
+  defp put_url(opts, url), do: Keyword.put(opts, :url, url)
+
+  defp check_routed(server, opts) do
+    if Keyword.has_key?(opts, :url),
+      do: :ok,
+      else: {:error, "#{server.name}'s credential gives no URL to connect to"}
   end
 
   @doc "Returns the server with its header secrets read, or `{:error, reason}`."

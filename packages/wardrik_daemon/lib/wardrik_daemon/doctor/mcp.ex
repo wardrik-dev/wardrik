@@ -8,8 +8,9 @@ defmodule WardrikDaemon.Doctor.MCP do
 
   @doc """
   Checks a server in `config.yaml`: that a command is on the PATH, or that a URL lists tools
-  with its headers, and how many `only` and `except` keep. A server reached with each user's account, or with headers the vault holds,
-  is only reached.
+  with its headers, and how many `only` and `except` keep. A server reached with each user's
+  account, or with headers the vault holds, is only reached. A server whose credential gives its
+  URL isn't reached.
   """
   @spec check({atom() | String.t(), keyword()}, keyword()) :: WardrikDaemon.Doctor.check()
   def check({name, opts}, req_options) do
@@ -26,7 +27,17 @@ defmodule WardrikDaemon.Doctor.MCP do
   end
 
   defp check(label, server, {:streamable_http, transport}, req_options) do
-    url = Keyword.fetch!(transport, :url)
+    case transport[:url] do
+      nil ->
+        {:ok, label,
+         "the credential #{server.credential_name} gives each user's URL, so it's reached as they connect"}
+
+      url ->
+        check_url(label, server, transport, url, req_options)
+    end
+  end
+
+  defp check_url(label, server, transport, url, req_options) do
     %URI{host: host, port: port} = URI.parse(url)
     at = "#{host}:#{port}"
 

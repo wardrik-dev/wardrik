@@ -13,7 +13,8 @@ defmodule WardrikDaemon.Config.MCP do
           timeout: 30
 
     * A server has `command` (with `args`, `env`) or `url` (with `headers`), not both.
-    * `url` is the full endpoint, used as given.
+    * `url` is the full endpoint, used as given. A server whose `credential` gives each user's
+      URL, as a broker may, leaves it out.
     * It takes `Wardrik.MCP.Server`'s options too, except `transport` and `owner`.
     * `credential` is `credential_name`. `timeout` is in seconds.
     * Orgs and people add their own servers. See Wardrik's `servers.*` operations.
@@ -36,7 +37,7 @@ defmodule WardrikDaemon.Config.MCP do
     {transport, own} = Map.split(server, @transport)
 
     with :ok <- manage(own, path),
-         {:ok, transport} <- transport(transport, path),
+         {:ok, transport} <- transport(transport, Map.has_key?(own, "credential"), path),
          {:ok, own} <-
            own
            |> rename()
@@ -67,20 +68,25 @@ defmodule WardrikDaemon.Config.MCP do
 
   defp rename(own), do: own
 
-  defp transport(%{"url" => _url, "command" => _command}, path),
+  defp transport(%{"url" => _url, "command" => _command}, _credential, path),
     do: {:error, "#{path}: has a url or a command, not both"}
 
-  defp transport(%{"url" => url} = server, _path),
+  defp transport(%{"url" => url} = server, _credential, _path),
     do: {:ok, {:streamable_http, url: url, headers: Map.get(server, "headers", %{})}}
 
-  defp transport(%{"command" => command} = server, _path),
+  defp transport(%{"command" => command} = server, _credential, _path),
     do:
       {:ok,
        {:stdio,
         command: command, args: Map.get(server, "args", []), env: Map.get(server, "env", %{})}}
 
-  defp transport(_server, path),
-    do: {:error, "#{path}: has a command to run it, or a url to reach it at"}
+  defp transport(server, true, _path),
+    do: {:ok, {:streamable_http, headers: Map.get(server, "headers", %{})}}
+
+  defp transport(_server, false, path),
+    do:
+      {:error,
+       "#{path}: has a command to run it, a url to reach it at, or a credential that gives the url"}
 
   defp option({:timeout, seconds}) when is_number(seconds), do: {:timeout, round(seconds * 1000)}
   defp option({:cost, cost}) when is_map(cost), do: {:cost, Enum.map(cost, &cost/1)}

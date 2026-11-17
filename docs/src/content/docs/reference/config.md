@@ -211,7 +211,7 @@ mcp:
 
 | Key | Description |
 | --- | --- |
-| `url`, `headers` | a Streamable HTTP endpoint, used as given |
+| `url`, `headers` | a Streamable HTTP endpoint, used as given; `url` may be left out when a [broker](/build/accounts/#a-credential-broker) gives it with `credential` |
 | `command`, `args`, `env` | a program run over stdio; not with `url` |
 | `only`, `except` | tool names to include or exclude |
 | `prefix` | the tool name prefix; default: the server's name |

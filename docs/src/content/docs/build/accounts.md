@@ -124,6 +124,7 @@ The broker answers `200` with one of:
 | Answer | What happens |
 | --- | --- |
 | `{"token": "...", "expires_in": 3600}` | The call goes ahead. The daemon keeps the token in memory for each agent until it expires. |
+| `{"url": "https://...", "headers": {...}, "expires_in": 3600}` | The same, and the MCP server is reached at that URL with those headers. Either may come alone or with `token`. |
 | `{"authorize": "https://..."}` | The call waits on that link, as for a sign-in. |
 | `{"error": "..."}` | The call fails with that message. |
 
@@ -142,7 +143,17 @@ Notes:
 - `refused` is `true` after a service refused the last token the broker gave.
 - Without `expires_in`, the daemon asks the broker on every call.
 - The broker can answer each agent differently. The daemon keeps tokens per agent.
+- An MCP server whose broker always gives a URL leaves out `url`, as below. Each user then
+  reaches it at their own URL, such as a tenant's endpoint or a proxy that adds the real
+  credential on the way out.
+- Headers from the broker replace the server's own headers of the same name.
 - `wardrik doctor` checks that the broker answers.
+
+```yaml title="~/.config/wardrik/config.yaml"
+mcp:
+  gmail:
+    credential: gmail
+```
 
 ## Details
 

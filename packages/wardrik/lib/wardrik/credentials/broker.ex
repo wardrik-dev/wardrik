@@ -41,6 +41,9 @@ defmodule Wardrik.Credentials.Broker do
 
     * `{"token": "...", "expires_in": 3600}` - the call goes ahead. Without `expires_in`, the
       broker is asked again on the next call.
+    * `{"url": "https://...", "headers": {"x-api-key": "..."}, "expires_in": 3600}` - the same,
+      for an MCP server each user reaches at a URL of their own, or with headers of their own.
+      Either may come alone or with `token`. See `Wardrik.Credentials.Endpoint`.
     * `{"authorize": "https://..."}` - the call waits on that link, as for a sign-in.
     * `{"error": "..."}` - the call fails with that message.
 
@@ -63,6 +66,7 @@ defmodule Wardrik.Credentials.Broker do
 
   use GenServer
 
+  alias Wardrik.Credentials.Endpoint
   alias Wardrik.Credentials.Request
   alias Wardrik.Principal
   alias Wardrik.Triggers.Webhook
@@ -186,26 +190,52 @@ defmodule Wardrik.Credentials.Broker do
     end
   end
 
-  defp handle_answer(%{"token" => token} = answer, request, table, now) when is_binary(token) do
-    case answer["expires_in"] do
-      seconds when is_integer(seconds) and seconds > 0 ->
-        :ets.insert(table, {build_cache_key(request), token, now + seconds})
-
-      _uncached ->
-        :ok
-    end
-
-    {:ok, token}
-  end
-
   defp handle_answer(%{"authorize" => url}, _request, _table, _now) when is_binary(url),
     do: {:authorize, url}
 
   defp handle_answer(%{"error" => message}, _request, _table, _now) when is_binary(message),
     do: {:error, message}
 
-  defp handle_answer(_answer, _request, _table, _now),
-    do: {:error, "The credential broker's answer has no token, authorize or error."}
+  defp handle_answer(answer, request, table, now) do
+    case build_credential(answer) do
+      {:ok, credential} ->
+        cache_credential(table, build_cache_key(request), credential, answer["expires_in"], now)
+        {:ok, credential}
+
+      :error ->
+        {:error, "The credential broker's answer has no token, url, authorize or error."}
+    end
+  end
+
+  defp build_credential(answer) do
+    endpoint = %Endpoint{
+      token: answer["token"],
+      url: answer["url"],
+      headers: Map.get(answer, "headers", %{})
+    }
+
+    if valid_endpoint?(endpoint), do: {:ok, reduce_to_token(endpoint)}, else: :error
+  end
+
+  defp valid_endpoint?(%Endpoint{token: token, url: url, headers: headers}) do
+    text_or_nil?(token) and text_or_nil?(url) and is_map(headers) and
+      Enum.all?(headers, fn {_name, value} -> is_binary(value) end) and
+      {token, url, headers} != {nil, nil, %{}}
+  end
+
+  defp text_or_nil?(value), do: is_nil(value) or is_binary(value)
+
+  defp reduce_to_token(%Endpoint{token: token, url: nil, headers: headers})
+       when map_size(headers) == 0,
+       do: token
+
+  defp reduce_to_token(endpoint), do: endpoint
+
+  defp cache_credential(table, key, credential, seconds, now)
+       when is_integer(seconds) and seconds > 0,
+       do: :ets.insert(table, {key, credential, now + seconds})
+
+  defp cache_credential(_table, _key, _credential, _seconds, _now), do: :ok
 
   defp post_to_broker(settings, secret, body) do
     options =

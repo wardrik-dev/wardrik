@@ -161,6 +161,9 @@ Wardrik.start_link(
 
 - Wardrik asks the broker for each credential in `credentials`. The vault gives the rest.
 - The broker answers with a token, a link to sign in at, or an error.
+- The broker can also say where to connect: a URL and headers for an MCP server, which Wardrik
+  hands tools as a `Wardrik.Credentials.Endpoint`. A server whose broker always gives a URL
+  leaves out its own.
 - The broker reports a credential granted or revoked with `Wardrik.Hook.broker/2`, or over HTTP at
   `POST /v1/broker`.
 - See `Wardrik.Credentials.Broker` for the requests and answers.

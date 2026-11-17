@@ -6,6 +6,7 @@ defmodule Wardrik.Credentials.BrokerTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.Credentials.Broker
+  alias Wardrik.Credentials.Endpoint
   alias Wardrik.Credentials.Request
   alias Wardrik.Triggers.Webhook
 
@@ -172,6 +173,27 @@ defmodule Wardrik.Credentials.BrokerTest do
 
     assert resolve(wardrik, "mail") == {:error, "Maria left."}
     assert [_first, _again] = asked.()
+  end
+
+  test "gives where to connect when the broker says, as well as what to send", %{
+    wardrik: wardrik,
+    answering: answering
+  } do
+    answering.([
+      %{url: "https://tenant.test/mcp", headers: %{"x-api-key" => "k"}, expires_in: 60},
+      %{token: "tok", url: "https://tenant.test/mcp"},
+      %{headers: %{"x-api-key" => 1}}
+    ])
+
+    endpoint = %Endpoint{url: "https://tenant.test/mcp", headers: %{"x-api-key" => "k"}}
+    assert resolve(wardrik, "mail") == {:ok, endpoint}
+    assert resolve(wardrik, "mail") == {:ok, endpoint}
+
+    assert resolve(wardrik, "mail", "acme/@maria/other") ==
+             {:ok, %Endpoint{token: "tok", url: "https://tenant.test/mcp"}}
+
+    assert {:error, "The credential broker's answer has no token" <> _} =
+             resolve(wardrik, "mail", "acme/@maria/third")
   end
 
   test "hands the credentials it doesn't broker to the rest", %{wardrik: wardrik, asked: asked} do

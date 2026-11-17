@@ -286,6 +286,18 @@ defmodule WardrikDaemon.ConfigTest do
     end
   end
 
+  test "reads a server whose credential gives its url", context do
+    assert {:ok, config} =
+             read(context, """
+             mcp:
+               mail: {credential: mail, headers: {x-app: wardrik}}
+             """)
+
+    assert [{"mail", mail}] = config.mcp
+    assert mail[:transport] == {:streamable_http, headers: %{"x-app" => "wardrik"}}
+    assert mail[:credential_name] == "mail"
+  end
+
   test "reads which tools a server gates, whom it trusts, and whether workers are trusted",
        context do
     assert {:ok, config} =
@@ -469,6 +481,8 @@ defmodule WardrikDaemon.ConfigTest do
       {"mcp: {a: {url: https://x.test, zzz_colour: red}}", "mcp.a.zzz_colour: isn't an option"},
       {"mcp: {a: {url: https://x.test, name: red}}", "mcp.a: unknown options [:name]"},
       {"mcp: {a: {args: []}}", "mcp.a: has a command"},
+      {"mcp: {a: {headers: {x: y}}}",
+       "mcp.a: has a command to run it, a url to reach it at, or a credential"},
       {"mcp: {a: 1}", "mcp.a: is a server's keys"},
       {"mcp: [a]", "invalid value for :mcp option: expected map"},
       {"harnesses: {c: {args: []}}", "harnesses.c: required :command option not found"},

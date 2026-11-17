@@ -1,6 +1,7 @@
 defmodule Wardrik.MCP.ServerTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.Credentials.Endpoint
   alias Wardrik.MCP.Server
 
   test "sends a credential in a header over HTTP, as its scheme says" do
@@ -21,6 +22,63 @@ defmodule Wardrik.MCP.ServerTest do
 
     assert {:streamable_http, opts} = Server.transport(server, "tok")
     assert opts[:headers] == %{"x-key" => "tok"}
+  end
+
+  test "connects where an endpoint credential says, with its headers" do
+    server =
+      Server.new!("a",
+        transport: {:streamable_http, headers: %{"x-app" => "1", "x-key" => "default"}},
+        credential_name: "a"
+      )
+
+    endpoint = %Endpoint{url: "https://tenant.test/mcp", headers: %{"x-key" => "maria's"}}
+    assert {:ok, routed, nil} = Server.apply_credential(server, endpoint)
+    assert {:streamable_http, opts} = Server.transport(routed, nil)
+    assert opts[:base_url] == "https://tenant.test"
+    assert opts[:mcp_path] == "/mcp"
+    assert opts[:headers] == %{"x-app" => "1", "x-key" => "maria's"}
+
+    endpoint = %Endpoint{url: "https://tenant.test/mcp", token: "tok"}
+    assert {:ok, routed, "tok"} = Server.apply_credential(server, endpoint)
+    assert {:streamable_http, opts} = Server.transport(routed, "tok")
+    assert opts[:headers]["authorization"] == "Bearer tok"
+
+    assert {:error, "a's credential gives no URL" <> _} = Server.apply_credential(server, "tok")
+
+    assert {:error, "a's credential gives no URL" <> _} =
+             Server.apply_credential(server, %Endpoint{headers: %{"x-key" => "k"}})
+
+    assert {:error, "a server over HTTP needs an http or https :url" <> _} =
+             Server.apply_credential(server, %Endpoint{url: "ftp://tenant.test"})
+  end
+
+  test "needs a url over HTTP, unless its credential gives one" do
+    assert_raise ArgumentError, ~r/needs a :url, or a :credential_name/, fn ->
+      Server.new!("a", transport: {:streamable_http, headers: %{}})
+    end
+
+    server = Server.new!("a", transport: {:streamable_http, url: "https://mcp.test/mcp"})
+    assert {:ok, ^server, "tok"} = Server.apply_credential(server, "tok")
+
+    endpoint = %Endpoint{headers: %{"x-key" => "k"}}
+    assert {:ok, routed, nil} = Server.apply_credential(server, endpoint)
+    assert {:streamable_http, opts} = Server.transport(routed, nil)
+    assert opts[:base_url] == "https://mcp.test"
+    assert opts[:headers] == %{"x-key" => "k"}
+  end
+
+  test "gives a command an endpoint's token, but not a URL" do
+    server =
+      Server.new!("a",
+        transport: {:stdio, command: "x"},
+        credential_name: "a",
+        credential_env: "A_TOKEN"
+      )
+
+    assert {:ok, ^server, "tok"} = Server.apply_credential(server, %Endpoint{token: "tok"})
+
+    assert {:error, "a runs as a command" <> _} =
+             Server.apply_credential(server, %Endpoint{url: "https://tenant.test/mcp"})
   end
 
   test "reaches a server over HTTP through its Wardrik.MCP's own pool" do
