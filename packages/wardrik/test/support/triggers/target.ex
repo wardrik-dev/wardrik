@@ -9,6 +9,7 @@ defmodule Wardrik.Triggers.Test.Target do
   @impl true
   def ask(%Ask{} = ask, %{test: test, answer: answer}) do
     opts = [trigger: ask.trigger, overlap: ask.overlap, labels: ask.labels]
+    opts = if ask.conversation, do: opts ++ [conversation: ask.conversation], else: opts
     send(test, {:asked, ask.agent, ask.prompt, opts})
     answer
   end

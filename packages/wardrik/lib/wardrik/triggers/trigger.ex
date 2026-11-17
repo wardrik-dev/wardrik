@@ -43,6 +43,7 @@ defmodule Wardrik.Triggers.Trigger do
     :prompt,
     :prompt_file,
     :webhook,
+    :ask_in,
     timezone: "Etc/UTC",
     overlap: :settle,
     missed: :run_once,
@@ -58,6 +59,7 @@ defmodule Wardrik.Triggers.Trigger do
           prompt: String.t() | nil,
           prompt_file: String.t() | nil,
           webhook: %{secret: String.t(), verify: :shared | :standard} | nil,
+          ask_in: String.t() | nil,
           timezone: String.t(),
           overlap: :skip | :queue | :settle,
           missed: :run_once | :skip,
@@ -68,7 +70,7 @@ defmodule Wardrik.Triggers.Trigger do
   @typedoc "How a run went. Matches the protocol's `trigger.fired` status."
   @type status() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
 
-  @keys ~w(name every at timezone prompt prompt_file overlap missed jitter feed webhook)
+  @keys ~w(name every at timezone prompt prompt_file overlap missed jitter feed webhook ask_in)
   @overlaps %{"skip" => :skip, "queue" => :queue, "settle" => :settle}
   @missed %{"run_once" => :run_once, "skip" => :skip}
   @verifies %{"shared" => :shared, "standard" => :standard}
@@ -91,7 +93,8 @@ defmodule Wardrik.Triggers.Trigger do
          {:ok, overlap} <- choice(fields, "overlap", @overlaps, default_overlap(clock, webhook)),
          {:ok, missed} <- choice(fields, "missed", @missed, :run_once),
          {:ok, feeds} <- feeds(Map.get(fields, "feed", [])),
-         :ok <- fed(feeds, clock) do
+         :ok <- fed(feeds, clock),
+         :ok <- ask_in(fields["ask_in"]) do
       {:ok,
        %__MODULE__{
          name: name,
@@ -101,6 +104,7 @@ defmodule Wardrik.Triggers.Trigger do
          prompt: fields["prompt"],
          prompt_file: fields["prompt_file"],
          webhook: webhook,
+         ask_in: fields["ask_in"],
          timezone: Map.get(fields, "timezone", "Etc/UTC"),
          overlap: overlap,
          missed: missed,
@@ -126,7 +130,8 @@ defmodule Wardrik.Triggers.Trigger do
       "missed" => Atom.to_string(trigger.missed),
       "jitter" => if(trigger.jitter > 0, do: trigger.jitter),
       "feed" => if(trigger.feeds != [], do: trigger.feeds),
-      "webhook" => webhook_json(trigger.webhook)
+      "webhook" => webhook_json(trigger.webhook),
+      "ask_in" => trigger.ask_in
     }
 
     Map.reject(fields, fn {_key, value} -> is_nil(value) end)
@@ -146,6 +151,10 @@ defmodule Wardrik.Triggers.Trigger do
   end
 
   defp name(_name), do: {:error, "a trigger's name is text"}
+
+  defp ask_in(nil), do: :ok
+  defp ask_in(conversation) when is_binary(conversation) and conversation != "", do: :ok
+  defp ask_in(_conversation), do: {:error, "ask_in is a conversation's ID, as text"}
 
   defp webhook(nil), do: {:ok, nil}
 

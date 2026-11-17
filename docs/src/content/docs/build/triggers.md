@@ -133,6 +133,9 @@ curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json
 - With `self/*` in its tools, an agent can set its own triggers. With `agents/*`, it can set
   another agent's. `self_schedule` and `agent_schedule` set a schedule; `*_trigger_set` sets any
   trigger. Each change needs approval unless the policy allows the tool by name.
+- A trigger an agent sets itself from a conversation, such as a chat thread, has `ask_in` set to
+  that conversation, so each run answers there. A trigger without `ask_in` asks the agent's own
+  conversation.
 - `prompt_file: HEARTBEAT.md` reads the prompt from the agent's [files](/concepts/files-and-memory/),
   so the agent can edit it.
 - `notify: {to: [ops], on: [finished]}` sends each run's reply to a target. See

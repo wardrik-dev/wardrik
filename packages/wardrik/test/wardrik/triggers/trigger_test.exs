@@ -68,6 +68,21 @@ defmodule Wardrik.Triggers.TriggerTest do
              Trigger.encode(trigger)
   end
 
+  test "keeps the conversation it asks in, and says when that isn't one" do
+    fields = %{"at" => "2026-11-17T09:00", "prompt" => "Go.", "ask_in" => "C1"}
+
+    assert {:ok, %Trigger{ask_in: "C1"} = trigger} = Trigger.decode(fields)
+    assert %{"ask_in" => "C1"} = Trigger.encode(trigger)
+
+    own = Map.delete(fields, "ask_in")
+    assert {:ok, %Trigger{ask_in: nil} = trigger} = Trigger.decode(own)
+    encoded = Trigger.encode(trigger)
+    refute Map.has_key?(encoded, "ask_in")
+
+    assert {:error, "ask_in is a conversation's ID, as text"} =
+             Trigger.decode(%{fields | "ask_in" => 7})
+  end
+
   test "says what's wrong with a single time" do
     at = %{"at" => "2026-11-17T09:00", "prompt" => "Go."}
 

@@ -36,6 +36,10 @@
       "type": "string",
       "description": "Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files."
     },
+    "ask_in": {
+      "type": "string",
+      "description": "The conversation each run asks the agent in, as an agent's conversation ID. Leave it out to ask in the agent's own conversation. An agent's self_schedule and self_trigger_set set it to the conversation they are called from, so a follow-up asked for in a chat thread answers in that thread."
+    },
     "overlap": {
       "type": "string",
       "enum": [
