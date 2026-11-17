@@ -11,6 +11,8 @@ defmodule WardrikDaemon.DoctorTest do
     dirs(context)
   end
 
+  defp slack(%Plug.Conn{path_info: ["mcp"]} = conn), do: mcp(conn, [%{name: "search_issues"}])
+
   defp slack(%Plug.Conn{path_info: ["api", method]} = conn) do
     case {method, Plug.Conn.get_req_header(conn, "authorization")} do
       {"auth.test", ["Bearer xoxb"]} ->
@@ -21,6 +23,29 @@ defmodule WardrikDaemon.DoctorTest do
 
       _refused ->
         Req.Test.json(conn, %{ok: false, error: "invalid_auth"})
+    end
+  end
+
+  # Answers as a Streamable HTTP server does: initialize as JSON, tools/list as an event stream.
+  defp mcp(conn, tools) do
+    {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+    case JSON.decode!(body) do
+      %{"method" => "initialize", "id" => id} ->
+        conn
+        |> Plug.Conn.put_resp_header("mcp-session-id", "s1")
+        |> Req.Test.json(%{jsonrpc: "2.0", id: id, result: %{protocolVersion: "2025-06-18"}})
+
+      %{"method" => "notifications/initialized"} ->
+        Plug.Conn.send_resp(conn, 202, "")
+
+      %{"method" => "tools/list", "id" => id} ->
+        ["s1"] = Plug.Conn.get_req_header(conn, "mcp-session-id")
+        message = JSON.encode!(%{jsonrpc: "2.0", id: id, result: %{tools: tools}})
+
+        conn
+        |> Plug.Conn.put_resp_content_type("text/event-stream")
+        |> Plug.Conn.send_resp(200, "event: message\ndata: #{message}\n\n")
     end
   end
 
@@ -129,7 +154,7 @@ defmodule WardrikDaemon.DoctorTest do
     assert config =~ "reads; the vault must hold GITHUB_CLIENT_SECRET"
     assert [{:ok, "1 key from config.yaml, which seals"}] = found(checks, "vault")
     assert [{:ok, "runs sh"}] = found(checks, "mcp notes")
-    assert [{:ok, "answers at 127.0.0.1:" <> _port}] = found(checks, "mcp github")
+    assert [{:ok, "lists 1 tool at 127.0.0.1:" <> _port}] = found(checks, "mcp github")
 
     assert [
              {:ok,
@@ -143,6 +168,45 @@ defmodule WardrikDaemon.DoctorTest do
 
     assert capture_io(fn -> assert Doctor.print(checks) == 0 end) =~
              ~r/ok    channel slack  takes/
+  end
+
+  test "says which servers list tools, which refuse, and which it can't list", context do
+    port = listening()
+
+    Req.Test.stub(__MODULE__, fn
+      %Plug.Conn{path_info: ["refused"]} = conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{error: %{message: "This API key has no access"}})
+
+      conn ->
+        mcp(conn, [%{name: "a"}, %{name: "b"}])
+    end)
+
+    write(context, "config.yaml", """
+    mcp:
+      open: {url: "http://127.0.0.1:#{port}/mcp", headers: {x-api-key: k}}
+      kept: {url: "http://127.0.0.1:#{port}/mcp", except: [b]}
+      refused: {url: "http://127.0.0.1:#{port}/refused"}
+      sealed: {url: "http://127.0.0.1:#{port}/mcp", headers: {x-api-key: "${SEALED_KEY}"}}
+      github: {url: "http://127.0.0.1:#{port}/mcp", credential: github}
+    """)
+
+    checks = run(context.env)
+
+    assert [{:ok, "lists 2 tools at 127.0.0.1:" <> _port}] = found(checks, "mcp open")
+
+    assert [{:ok, kept}] = found(checks, "mcp kept")
+    assert kept =~ ~r/^lists 2 tools at 127.0.0.1:\d+; only and except keep 1$/
+
+    assert [{:fail, refused}] = found(checks, "mcp refused")
+    assert refused =~ "but initialize gets 403: This API key has no access"
+
+    assert [{:ok, sealed}] = found(checks, "mcp sealed")
+    assert sealed =~ "the vault holds its headers"
+
+    assert [{:ok, github}] = found(checks, "mcp github")
+    assert github =~ "each user's account reaches it"
   end
 
   test "says whether each harness runs and each checkout is a repository", context do

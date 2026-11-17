@@ -18,12 +18,15 @@ ok    env            /home/me/.config/wardrik/env sets 3 variables
 ok    config         /home/me/.config/wardrik/config.yaml reads
 ok    storage        keeps everything on this node's disk, under /home/me/.local/share/wardrik/store
 ok    vault          1 key from /home/me/.local/share/wardrik/vault_key, which seals
-ok    mcp github     answers at api.githubcopilot.com:443
+ok    mcp linear     lists 23 tools at mcp.linear.app:443
+FAIL  mcp crm        answers at mcp.crm.example:443, but initialize gets 401: invalid key
 FAIL  mcp notes      runs npx, which isn't on this machine's PATH
 ok    agents         2 agent files and 1 policy read
 ```
 
 - `wardrik doctor` reads the same files as the daemon, so it works when the daemon won't start.
+- It asks each MCP server at a URL for its tools, with the server's headers. A server reached
+  with each user's account, or with headers the vault holds, is only reached.
 - Under systemd, the log is `journalctl --user -u wardrik -f`. Under `wardrik serve`, it's the
   terminal.
 

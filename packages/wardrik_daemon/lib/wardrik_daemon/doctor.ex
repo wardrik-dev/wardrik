@@ -6,11 +6,14 @@ defmodule WardrikDaemon.Doctor do
       ok    env            /home/me/.config/wardrik/env sets 3 variables
       ok    config         /home/me/.config/wardrik/config.yaml reads
       ok    vault          1 key from /home/me/.local/share/wardrik/vault_key, which seals
-      ok    mcp github     answers at api.githubcopilot.com:443
+      ok    mcp linear     lists 23 tools at mcp.linear.app:443
+      ok    mcp github     answers at api.githubcopilot.com:443; each user's account reaches it, so its tools aren't listed here
       FAIL  mcp notes      runs npx, which isn't on this machine's PATH
       ok    agents         2 agent files and 1 policy read
 
     * It can't open a running daemon's store, so a `${NAME}` only the vault holds goes unchecked.
+    * An MCP server at a URL is asked for its tools, unless each user's account or the vault
+      reaches it.
     * If `config.yaml` doesn't read, nothing after it is checked.
   """
 
@@ -87,16 +90,18 @@ defmodule WardrikDaemon.Doctor do
 
   defp checks(config, dirs, env, opts) do
     [storage(config, dirs), vault(config, dirs, env), brave(config)] ++
-      Enum.map(config.mcp, &mcp/1) ++
+      Enum.map(config.mcp, &WardrikDaemon.Doctor.MCP.check(&1, req_options(opts))) ++
       Enum.map(config.harnesses, &harness/1) ++
       Enum.map(config.checkouts, &checkout/1) ++
-      Enum.map(config.channels, &channel(&1, Keyword.get(opts, :req_options, []))) ++
+      Enum.map(config.channels, &channel(&1, req_options(opts))) ++
       oauth(config) ++
       Enum.map(config.warnings, &{:warn, "config", &1}) ++
       WardrikDaemon.Doctor.Agents.check(config, dirs) ++
-      saved(dirs, Keyword.get(opts, :req_options, [])) ++
+      saved(dirs, req_options(opts)) ++
       assistant(config, dirs)
   end
+
+  defp req_options(opts), do: Keyword.get(opts, :req_options, [])
 
   # Saved states are the running daemon's to read; with none running, the other checks say so.
   defp saved(dirs, req_options) do
@@ -263,27 +268,9 @@ defmodule WardrikDaemon.Doctor do
     end
   end
 
-  defp mcp({name, opts}), do: mcp(name, Keyword.fetch!(opts, :transport))
-
-  defp mcp(name, {:stdio, opts}) do
-    command = Keyword.fetch!(opts, :command)
-
-    if System.find_executable(command),
-      do: {:ok, "mcp #{name}", "runs #{command}"},
-      else: {:fail, "mcp #{name}", "runs #{command}, which isn't on this machine's PATH"}
-  end
-
-  defp mcp(name, {:streamable_http, opts}) do
-    url = Keyword.fetch!(opts, :url)
-    %URI{host: host, port: port} = URI.parse(url)
-
-    case reachable(host, port) do
-      :ok -> {:ok, "mcp #{name}", "answers at #{host}:#{port}"}
-      {:error, why} -> {:fail, "mcp #{name}", "doesn't answer at #{host}:#{port}: #{why}"}
-    end
-  end
-
-  defp reachable(host, port) do
+  @doc "Returns `:ok` if `host` takes a TCP connection on `port`, or why not."
+  @spec reachable(String.t(), :inet.port_number()) :: :ok | {:error, charlist()}
+  def reachable(host, port) do
     address = to_charlist(host)
 
     case :gen_tcp.connect(address, port, [], @connect_timeout) do
