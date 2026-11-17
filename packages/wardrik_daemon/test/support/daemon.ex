@@ -69,7 +69,7 @@ defmodule WardrikDaemon.Test do
   end
 
   @doc "Starts reading `browser`'s next run. Returns a function that waits for its arguments."
-  def opened(browser) do
+  def start_reading(browser) do
     port =
       Port.open({:spawn_executable, System.find_executable("cat")}, [
         :binary,
@@ -130,7 +130,7 @@ defmodule WardrikDaemon.Test do
   Returns the ID of a record for `label`, as `"payments/@ana/notes"`: owned by `payments/@ana`,
   and named after the whole label, so labels never share a name. Makes it the first time.
   """
-  def recorded(context, label) do
+  def ensure_record(context, label) do
     {owner, _name} =
       label
       |> String.split("/")
@@ -145,7 +145,7 @@ defmodule WardrikDaemon.Test do
 
     org = WardrikDaemon.Owners.org(owner)
 
-    case WardrikDaemon.AgentRecords.named(context.daemon_store, org, name) do
+    case WardrikDaemon.AgentRecords.fetch_by_name(context.daemon_store, org, name) do
       {:ok, record} ->
         record.id
 
@@ -163,7 +163,7 @@ defmodule WardrikDaemon.Test do
 
   @doc "Returns the ID of the agent called `name` in `org`."
   def id(context, org, name) do
-    {:ok, record} = WardrikDaemon.AgentRecords.named(context.daemon_store, org, name)
+    {:ok, record} = WardrikDaemon.AgentRecords.fetch_by_name(context.daemon_store, org, name)
     record.id
   end
 

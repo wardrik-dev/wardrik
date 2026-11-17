@@ -77,9 +77,9 @@ defmodule WardrikWeb.OperationLive do
 
   @impl true
   def handle_info({Follow, _message} = message, socket),
-    do: {:noreply, Follow.handle(message, socket, & &1, on_event: &kept/2)}
+    do: {:noreply, Follow.handle(message, socket, & &1, on_event: &keep/2)}
 
-  defp kept(event, socket), do: update(socket, :events, &Enum.take([event | &1], @kept))
+  defp keep(event, socket), do: update(socket, :events, &Enum.take([event | &1], @kept))
 
   @impl true
   def render(assigns) do

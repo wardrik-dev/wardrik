@@ -49,8 +49,8 @@ defmodule Wardrik.Workspace.File do
   Wraps a tool's `answer` with the labels of `files`, as `{:ok, %ReqLLM.ToolResult{}}`. Returns
   `{:ok, answer}` when there are none.
   """
-  @spec labelled(map(), [t()]) :: {:ok, map() | ReqLLM.ToolResult.t()}
-  def labelled(answer, files) do
+  @spec label_answer(map(), [t()]) :: {:ok, map() | ReqLLM.ToolResult.t()}
+  def label_answer(answer, files) do
     labels =
       files
       |> Enum.flat_map(&labels/1)

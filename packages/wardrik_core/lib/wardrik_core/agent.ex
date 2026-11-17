@@ -30,7 +30,7 @@ defmodule WardrikCore.Agent do
     # credo:disable-for-next-line WardrikCore.Credo.Check.NoSelfSend
     send(self(), :maybe_run)
 
-    if state.context, do: started(state)
+    if state.context, do: start(state)
     {:ok, state, permanent: true}
   end
 
@@ -55,7 +55,7 @@ defmodule WardrikCore.Agent do
 
   # A saved state that can't be read is kept as it was, and the agent stops until it's fixed.
   def handle_call({:configure, opts}, _from, state) do
-    state = configured(state, opts)
+    state = configure(state, opts)
 
     case State.unreadable(state) do
       nil -> {:reply, :ok, state, {:continue, :maybe_run}, sync: true}
@@ -72,7 +72,7 @@ defmodule WardrikCore.Agent do
   def handle_call(:stop, _from, state), do: {:stop, :permanent, :ok, state}
 
   def handle_call({:resume, input, metadata}, _from, %State{state: :waiting} = state),
-    do: {:reply, :ok, resumed(state, input, metadata)}
+    do: {:reply, :ok, resume(state, input, metadata)}
 
   def handle_call({:resume, input, metadata}, _from, %State{state: :running} = state) do
     if answerable?(state, input),
@@ -87,7 +87,7 @@ defmodule WardrikCore.Agent do
 
   def handle_call({:checkpoint, checkpoint}, {pid, _tag}, %State{task: %Task{pid: pid}} = state) do
     emit(state, [:turn, :checkpoint], %{calls: length(checkpoint.calls)}, %{})
-    {:reply, :ok, State.checkpointed(state, checkpoint), sync: true}
+    {:reply, :ok, State.put_checkpoint(state, checkpoint), sync: true}
   end
 
   def handle_call({:checkpoint, _checkpoint}, _from, state), do: {:reply, :stale, state}
@@ -97,7 +97,7 @@ defmodule WardrikCore.Agent do
 
   def handle_call(:interrupt, _from, %State{state: :waiting} = state) do
     stop_turn(state, %{outcome: :interrupted, kept: length(state.in_flight), dropped: 0})
-    {:reply, :ok, State.unanswered(state), {:continue, :maybe_run}, sync: true}
+    {:reply, :ok, State.drop_turn(state), {:continue, :maybe_run}, sync: true}
   end
 
   def handle_call(:interrupt, _from, state), do: {:reply, {:error, :idle}, state}
@@ -136,7 +136,7 @@ defmodule WardrikCore.Agent do
     state = %{state | answers: rest}
 
     if answerable?(state, input),
-      do: {:noreply, resumed(state, input, metadata), {:continue, :maybe_run}},
+      do: {:noreply, resume(state, input, metadata), {:continue, :maybe_run}},
       else: {:noreply, state, {:continue, :maybe_run}}
   end
 
@@ -150,7 +150,7 @@ defmodule WardrikCore.Agent do
     # One that can't read its state waits; the next start or configure is told why.
     case settings(state, module, opts) do
       {:ok, settings} ->
-        {:noreply, configured(state, WardrikCore.settings!(settings)), {:continue, :maybe_run}}
+        {:noreply, configure(state, WardrikCore.settings!(settings)), {:continue, :maybe_run}}
 
       :none ->
         {:noreply, state}
@@ -167,7 +167,7 @@ defmodule WardrikCore.Agent do
   def handle_info({:DOWN, ref, :process, _pid, reason}, %State{task: %Task{ref: ref}} = state) do
     Logger.error("Turn crashed for agent #{state.agent_id}: #{inspect(reason)}")
     stop_turn(state, %{outcome: :crash})
-    {:noreply, State.unanswered(state), {:continue, :maybe_run}, sync: true}
+    {:noreply, State.drop_turn(state), {:continue, :maybe_run}, sync: true}
   end
 
   def handle_info({:turn_timeout, ref}, %State{task: %Task{ref: ref}} = state),
@@ -205,18 +205,18 @@ defmodule WardrikCore.Agent do
   end
 
   # A loaded agent starts once it's configured, as only then are its events known.
-  defp configured(%State{context: nil} = state, settings) do
+  defp configure(%State{context: nil} = state, settings) do
     state = State.configure(state, settings)
-    if State.ready?(state), do: started(state)
+    if State.ready?(state), do: start(state)
     state
   end
 
-  defp configured(state, settings), do: State.configure(state, settings)
+  defp configure(state, settings), do: State.configure(state, settings)
 
-  defp started(state),
+  defp start(state),
     do: emit(state, [:agent, :start], %{system_time: System.system_time()}, %{state: state.state})
 
-  defp resumed(state, input, metadata) do
+  defp resume(state, input, metadata) do
     parked = state.parked
     resume = %Resume{reason: parked.reason, input: input, metadata: metadata}
 
@@ -228,7 +228,7 @@ defmodule WardrikCore.Agent do
 
     state
     |> start_turn(:resume, context, %{metadata: metadata}, fn -> Turn.resume(context, resume) end)
-    |> State.answered(input)
+    |> State.note_answered(input)
   end
 
   defp answerable?(state, input) when is_map(input) and map_size(input) > 0 do
@@ -293,15 +293,15 @@ defmodule WardrikCore.Agent do
 
       _stopped ->
         stop_turn(state, %{outcome: outcome, kept: length(state.in_flight), dropped: 0})
-        State.unanswered(state)
+        State.drop_turn(state)
     end
   end
 
   defp finish(state, result) do
     result = keepable(state, result)
-    stop_turn(state, ended(result))
+    stop_turn(state, handle_finish(result))
     log_ended(state, result)
-    State.finished(state, result)
+    State.finish_turn(state, result)
   end
 
   # A turn waiting on what the agent can't save fails, rather than every save after it.
@@ -314,10 +314,10 @@ defmodule WardrikCore.Agent do
 
   defp keepable(_state, result), do: result
 
-  defp ended({:park, reason, _context}), do: %{outcome: :park, reason: reason}
-  defp ended({:ok, context}), do: %{outcome: :ok, messages: answer(context.messages)}
-  defp ended({:error, reason}), do: %{outcome: :error, reason: reason}
-  defp ended(result), do: %{outcome: elem(result, 0)}
+  defp handle_finish({:park, reason, _context}), do: %{outcome: :park, reason: reason}
+  defp handle_finish({:ok, context}), do: %{outcome: :ok, messages: answer(context.messages)}
+  defp handle_finish({:error, reason}), do: %{outcome: :error, reason: reason}
+  defp handle_finish(result), do: %{outcome: elem(result, 0)}
 
   defp answer(messages) do
     messages

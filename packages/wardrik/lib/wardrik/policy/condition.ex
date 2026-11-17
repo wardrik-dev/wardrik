@@ -13,7 +13,7 @@ defmodule Wardrik.Policy.Condition do
 
   @type t() :: %__MODULE__{path: [String.t()], test: test()}
 
-  @type held() :: boolean() | :maybe
+  @type check_conditions() :: boolean() | :maybe
 
   @condition ~r/\A([A-Za-z_][\w-]*(?:\.[\w-]+)*)\s*(==|>=|<=|!=|=|>|<|:(?=\s|"|\z))\s*(.*)\z/su
   @comparisons %{">" => :gt, ">=" => :ge, "<" => :lt, "<=" => :le}
@@ -35,18 +35,18 @@ defmodule Wardrik.Policy.Condition do
   defp classify(read) do
     read
     |> Enum.split_with(&is_nil/1)
-    |> classified()
+    |> handle_classify()
   end
 
-  defp classified({_resources, []}), do: :resource
+  defp handle_classify({_resources, []}), do: :resource
 
-  defp classified({[], conditions}) do
+  defp handle_classify({[], conditions}) do
     conditions
     |> Enum.map(&condition/1)
     |> Read.all()
   end
 
-  defp classified(_mixed), do: {:error, @mixed}
+  defp handle_classify(_mixed), do: {:error, @mixed}
 
   defp condition([path, ":", value]),
     do: {:error, "writes #{path}: #{value}; a condition on a value is #{path} = #{value}"}
@@ -134,8 +134,8 @@ defmodule Wardrik.Policy.Condition do
     end
   end
 
-  @spec held([t()], map()) :: held()
-  def held(conditions, arguments) do
+  @spec check_conditions([t()], map()) :: check_conditions()
+  def check_conditions(conditions, arguments) do
     Enum.reduce_while(conditions, true, fn condition, held ->
       case check(arguments, condition.path, condition.test) do
         false -> {:halt, false}

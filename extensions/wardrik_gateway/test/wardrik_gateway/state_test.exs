@@ -13,7 +13,7 @@ defmodule WardrikGateway.StateTest do
     |> State.new()
   end
 
-  defp failed(state, model, times),
+  defp fail(state, model, times),
     do:
       Enum.reduce(1..times, state, fn _time, state ->
         elem(State.report(state, model, :failed, 0), 1)
@@ -28,7 +28,7 @@ defmodule WardrikGateway.StateTest do
   end
 
   test "opens a model's breaker after its failures, and skips to the next model" do
-    state = failed(state(breaker: [failures: 2, open_for: 1_000]), @haiku, 1)
+    state = fail(state(breaker: [failures: 2, open_for: 1_000]), @haiku, 1)
     assert {{:go, @haiku, 0}, _state} = State.admit(state, [@haiku, @mini], 0, 0)
 
     assert {[{[:wardrik_gateway, :breaker_opened], %{model: @haiku}}], state} =
@@ -45,7 +45,7 @@ defmodule WardrikGateway.StateTest do
   end
 
   test "lets one call try an open model again, and closes or reopens on its answer" do
-    state = failed(state(breaker: [failures: 1, open_for: 1_000]), @haiku, 1)
+    state = fail(state(breaker: [failures: 1, open_for: 1_000]), @haiku, 1)
 
     assert {{:go, @haiku, 0}, probing} = State.admit(state, [@haiku], 0, 1_000)
     assert {{:wait, 1_000}, _state} = State.admit(probing, [@haiku], 0, 1_000)
@@ -88,7 +88,7 @@ defmodule WardrikGateway.StateTest do
     state = state(breaker: [failures: 1])
     assert {[], ^state} = State.report(state, @haiku, :hopeless, 0)
 
-    open = failed(state, @haiku, 1)
+    open = fail(state, @haiku, 1)
     assert {[], ^open} = State.report(open, @haiku, :failed, 0)
   end
 

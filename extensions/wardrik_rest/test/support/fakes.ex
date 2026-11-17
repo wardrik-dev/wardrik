@@ -11,7 +11,7 @@ defmodule WardrikRest.Test.Credentials do
   end
 
   @impl true
-  def refused(%{name: name}, tokens) do
+  def report_refusal(%{name: name}, tokens) do
     Agent.update(tokens, fn [_refused | rest] -> rest end)
     send(self(), {:refused, name})
     :ok

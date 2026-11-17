@@ -11,7 +11,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     A saved state this release can't read is never replaced or skipped quietly:
 
-      * It's noted with why, once for each state, with a warning. See `noted/2`.
+      * It's noted with why, once for each state, with a warning. See `fetch_unreadable_reason/2`.
       * Discovery passes it over, and starting it again is refused with
         `{:unreadable, reason}`. Only `discard/2` removes it.
 
@@ -80,13 +80,13 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     @impl DurableServer.StorageBackend
     def list_all_objects_stream(store, prefix, opts) do
       with_body? = Keyword.get(opts, :include_objects, false)
-      listed(store, prefix, with_body?)
+      list(store, prefix, with_body?)
     end
 
     @impl DurableServer.StorageBackend
     def put_object(store, key, data, opts) do
       with {:ok, put_opts} <- condition(opts),
-           {:ok, vsn} <- Wardrik.Store.put(store, key, stored(data), put_opts) do
+           {:ok, vsn} <- Wardrik.Store.put(store, key, store(data), put_opts) do
         {:ok, %{body: data, etag: etag(vsn)}}
       end
     end
@@ -97,10 +97,10 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     @impl DurableServer.StorageBackend
     def delete_object(store, key, opts) do
       with {_value, current} <- Wardrik.Store.lookup(store, key),
-           {:ok, vsn} <- expected(opts, current) do
+           {:ok, vsn} <- expect(opts, current) do
         store
         |> Wardrik.Store.delete(key, if_vsn: vsn)
-        |> deleted(store, key)
+        |> delete(store, key)
       else
         nil -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
@@ -109,9 +109,9 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     @impl DurableServer.StorageBackend
     def try_claim(store, key, body) do
-      case Wardrik.Store.put(store, key, stored(body), if_vsn: nil) do
+      case Wardrik.Store.put(store, key, store(body), if_vsn: nil) do
         {:ok, vsn} -> {:ok, {:claimed, etag(vsn)}}
-        {:error, :conflict} -> held(store, key)
+        {:error, :conflict} -> hold(store, key)
         {:error, reason} -> {:error, reason}
       end
     end
@@ -121,22 +121,22 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
       do: update(store, key, update, Keyword.get(opts, :max_retries, @max_retries))
 
     @impl DurableServer.StorageBackend
-    def encode(_store, data), do: {:ok, stored(data)}
+    def encode(_store, data), do: {:ok, store(data)}
 
     @impl DurableServer.StorageBackend
     def decode(_store, data), do: body(data)
 
-    defp listed(store, prefix, true) do
+    defp list(store, prefix, true) do
       for {key, value, vsn} <- Wardrik.Store.entries(store, prefix),
-          listed <- listed_with_body(store, key, value, vsn),
+          listed <- list_with_body(store, key, value, vsn),
           do: listed
     end
 
-    defp listed(store, prefix, false),
+    defp list(store, prefix, false),
       do:
         for({key, vsn} <- Wardrik.Store.versions(store, prefix), do: %{key: key, etag: etag(vsn)})
 
-    defp listed_with_body(store, key, value, vsn) do
+    defp list_with_body(store, key, value, vsn) do
       case body(value) do
         {:ok, body} ->
           [%{key: key, etag: etag(vsn), body: body}]
@@ -147,7 +147,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
       end
     end
 
-    defp held(store, key) do
+    defp hold(store, key) do
       with {value, _vsn} <- Wardrik.Store.lookup(store, key),
            {:error, reason} <- body(value) do
         note(store, key, reason, value)
@@ -161,11 +161,11 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
     Returns why the saved state `key` can't be read, if a read found it so and it hasn't been
     written since. `store` is the one given as `:store`.
 
-        Wardrik.Store.Durable.noted(store, "wardrik/agents/acme.drafts")
+        Wardrik.Store.Durable.fetch_unreadable_reason(store, "wardrik/agents/acme.drafts")
         #=> {:ok, "it holds a policy_ask, which none of its middleware or capabilities reads"}
     """
-    @spec noted(Wardrik.Store.t(), String.t()) :: {:ok, String.t()} | :error
-    def noted(store, key) do
+    @spec fetch_unreadable_reason(Wardrik.Store.t(), String.t()) :: {:ok, String.t()} | :error
+    def fetch_unreadable_reason(store, key) do
       durable = durable(store)
       notes = notes(durable)
 
@@ -181,7 +181,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     @doc """
     Reads the saved state `key`. Returns `:ok` if it's readable or there's none, or why it
-    can't be read, noting it as `noted/2` returns it.
+    can't be read, noting it as `fetch_unreadable_reason/2` returns it.
     """
     @spec check(Wardrik.Store.t(), String.t()) :: :ok | {:error, String.t()}
     def check(store, key) do
@@ -193,7 +193,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
         {:error, reason}
       else
         _readable_or_none ->
-          case noted(store, key) do
+          case fetch_unreadable_reason(store, key) do
             {:ok, reason} -> {:error, reason}
             :error -> :ok
           end
@@ -202,7 +202,7 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
 
     @doc """
     Notes that the agent reading the saved state `key` found it unreadable, and why, as
-    `noted/2` returns it until the state is written again.
+    `fetch_unreadable_reason/2` returns it until the state is written again.
     """
     @spec note(Wardrik.Store.t(), String.t(), String.t()) :: :ok
     def note(store, key, reason) do
@@ -279,27 +279,27 @@ if Code.ensure_loaded?(DurableServer.StorageBackend) do
       end
     end
 
-    defp expected(opts, current) do
+    defp expect(opts, current) do
       case Keyword.fetch(opts, :etag) do
         {:ok, etag} -> vsn(etag)
         :error -> {:ok, current}
       end
     end
 
-    defp deleted(:ok, _store, _key), do: :ok
+    defp delete(:ok, _store, _key), do: :ok
 
-    defp deleted({:error, :conflict}, store, key) do
+    defp delete({:error, :conflict}, store, key) do
       if Wardrik.Store.lookup(store, key) == nil,
         do: {:error, :not_found},
         else: {:error, :conflict}
     end
 
-    defp deleted({:error, reason}, _store, _key), do: {:error, reason}
+    defp delete({:error, reason}, _store, _key), do: {:error, reason}
 
-    defp stored(%StoredState{} = stored_state),
+    defp store(%StoredState{} = stored_state),
       do: StoredState.to_object_store_term(stored_state)
 
-    defp stored(data), do: data
+    defp store(data), do: data
 
     defp body(value) do
       case StoredState.from_object_store_term(value) do

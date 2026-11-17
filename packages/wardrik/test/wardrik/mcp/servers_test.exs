@@ -65,11 +65,11 @@ defmodule Wardrik.MCP.ServersTest do
 
       :ok = Wardrik.MCP.add(@mcp, name, transport: {:streamable_http, url: url})
       on_exit(fn -> Wardrik.MCP.remove(@mcp, name) end)
-      connected(name)
+      connect(name)
 
       offered = tools(name)
       assert ["#{name}__ping"] == Enum.map(offered, & &1.name)
-      assert [^path | _rest] = paths = requested()
+      assert [^path | _rest] = paths = request()
       assert Enum.uniq(paths) == [path]
     end
   end
@@ -101,7 +101,7 @@ defmodule Wardrik.MCP.ServersTest do
       %{secrets: secrets, url: "http://127.0.0.1:#{port}/mcp"}
     end
 
-    defp secured(url, owner, value),
+    defp secure(url, owner, value),
       do: [
         transport: {:streamable_http, url: url, headers: %{"authorization" => value}},
         owner: owner
@@ -111,7 +111,7 @@ defmodule Wardrik.MCP.ServersTest do
       secrets: secrets,
       url: url
     } do
-      server = secured(url, "acme", ["Bearer ", {:secret, "KEY"}])
+      server = secure(url, "acme", ["Bearer ", {:secret, "KEY"}])
       assert :ok = Wardrik.MCP.add(Wardrik.MCPCase.Secrets, "crm", server)
 
       assert_receive {:read, "acme", "KEY"}
@@ -126,13 +126,16 @@ defmodule Wardrik.MCP.ServersTest do
     end
 
     test "is down while one can't be read, and says why", %{url: url} do
-      theirs = secured(url, "globex", {:secret, "KEY"})
+      theirs = secure(url, "globex", {:secret, "KEY"})
       server = Server.new!("theirs", theirs)
 
-      assert Server.resolved(server) ==
+      assert Server.resolve_headers(server) ==
                {:error, "the secret KEY can't be read: Wardrik.MCP was given no :secret"}
 
-      assert Server.resolved(%{server | secret: fn _owner, _name -> {:error, :not_found} end}) ==
+      assert Server.resolve_headers(%{
+               server
+               | secret: fn _owner, _name -> {:error, :not_found} end
+             }) ==
                {:error, "the secret KEY can't be read: :not_found"}
 
       log =
@@ -156,7 +159,7 @@ defmodule Wardrik.MCP.ServersTest do
 
       check = fn url ->
         send(test, {:checked, url})
-        Agent.get_and_update(answers, &answered/1)
+        Agent.get_and_update(answers, &take_answer/1)
       end
 
       start_supervised!({Wardrik.MCP, name: Wardrik.MCPCase.Checked, check: check}, id: :checked)
@@ -199,7 +202,7 @@ defmodule Wardrik.MCP.ServersTest do
       )
 
     on_exit(fn -> Wardrik.MCP.remove(@mcp, "isolated") end)
-    connected("isolated")
+    connect("isolated")
 
     assert {:ok, env, _context} = call("isolated", "env")
     env = JSON.decode!(env)

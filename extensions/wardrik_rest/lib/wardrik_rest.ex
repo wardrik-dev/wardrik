@@ -83,13 +83,13 @@ defmodule WardrikRest do
           "properties" => %{"type" => %{"type" => "string", "description" => "As #{example}."}},
           "required" => ["type"]
         },
-        run: fn %{"type" => type}, _context -> described(api, type) end,
+        run: fn %{"type" => type}, _context -> describe(api, type) end,
         annotations: [read_only: true, idempotent: true, gated: false, timeout: @margin]
       )
     ]
   end
 
-  defp described(api, type) do
+  defp describe(api, type) do
     tools =
       Map.new(api.operations, fn operation ->
         properties = Map.new(operation.parameters, &{&1.name, &1.schema})

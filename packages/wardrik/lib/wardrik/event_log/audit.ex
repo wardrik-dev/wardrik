@@ -15,7 +15,7 @@ defmodule Wardrik.EventLog.Audit do
     data =
       data
       |> Value.put("actor", Value.principal(opts[:actor]))
-      |> Value.put("assumed_by", assumed_by(opts[:assumed_by]))
+      |> Value.put("assumed_by", assume_by(opts[:assumed_by]))
 
     event =
       CloudEvent.new(type,
@@ -48,8 +48,8 @@ defmodule Wardrik.EventLog.Audit do
     }
   end
 
-  defp assumed_by([_principal | _principals] = principals),
+  defp assume_by([_principal | _principals] = principals),
     do: Enum.map(principals, &Value.principal/1)
 
-  defp assumed_by(_nobody), do: nil
+  defp assume_by(_nobody), do: nil
 end

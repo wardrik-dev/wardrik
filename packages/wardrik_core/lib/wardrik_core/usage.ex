@@ -35,19 +35,19 @@ defmodule WardrikCore.Usage do
   defp dollars(usage, model, prices) do
     case ReqLLM.model(model) do
       {:ok, catalogued} ->
-        priced(usage, catalogued, Map.get(prices, LLMDB.Model.spec(catalogued)))
+        compute_price(usage, catalogued, Map.get(prices, LLMDB.Model.spec(catalogued)))
 
       {:error, _reason} ->
         nil
     end
   end
 
-  defp priced(usage, %LLMDB.Model{pricing: %{currency: "USD"}}, nil),
+  defp compute_price(usage, %LLMDB.Model{pricing: %{currency: "USD"}}, nil),
     do: Map.get(usage, :total_cost)
 
-  defp priced(_usage, _model, nil), do: nil
+  defp compute_price(_usage, _model, nil), do: nil
 
-  defp priced(usage, _model, price) do
+  defp compute_price(usage, _model, price) do
     cache_read = tokens(usage, [:cache_read_tokens, :cached_tokens])
     cache_write = tokens(usage, [:cache_write_tokens, :cache_creation_tokens])
     input = max(tokens(usage, [:input_tokens]) - cache_read - cache_write, 0)

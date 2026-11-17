@@ -1,6 +1,6 @@
 defmodule Wardrik.Chat.Inbound do
   @moduledoc """
-  A message someone posted in a room. Adapters pass it to `Wardrik.Chat.received/2`.
+  A message someone posted in a room. Adapters pass it to `Wardrik.Chat.answer_inbound/2`.
 
     * `:room` - the room it was posted in.
     * `:thread` - the thread it replies in, or `nil` if it starts one.

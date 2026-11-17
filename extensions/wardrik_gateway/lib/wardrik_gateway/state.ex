@@ -56,9 +56,9 @@ defmodule WardrikGateway.State do
   @doc "Records how a call to `model` went. Returns the events it set off."
   @spec report(t(), String.t(), outcome(), integer()) :: {[event()], t()}
   def report(state, model, {:ok, tokens}, now) do
-    events = if match?(%{until: _}, state.breakers[model]), do: [closed(model)], else: []
+    events = if match?(%{until: _}, state.breakers[model]), do: [close(model)], else: []
     state = %{state | breakers: Map.delete(state.breakers, model)}
-    {events, charged(state, provider(model), tokens, now)}
+    {events, charge(state, provider(model), tokens, now)}
   end
 
   def report(state, model, {:limited, wait}, now) do
@@ -70,7 +70,7 @@ defmodule WardrikGateway.State do
 
   def report(state, model, :failed, now) do
     breaker = Map.get(state.breakers, model, %{failures: []})
-    {events, breaker} = failed(breaker, state.settings.breaker, model, now)
+    {events, breaker} = fail(breaker, state.settings.breaker, model, now)
     {events, put_in(state.breakers[model], breaker)}
   end
 
@@ -93,40 +93,40 @@ defmodule WardrikGateway.State do
         until: now + state.settings.breaker.open_for
       })
 
-  defp failed(%{probing: true}, settings, model, now),
-    do: {[opened(model)], %{until: now + settings.open_for}}
+  defp fail(%{probing: true}, settings, model, now),
+    do: {[open(model)], %{until: now + settings.open_for}}
 
-  defp failed(%{until: _until} = open, _settings, _model, _now), do: {[], open}
+  defp fail(%{until: _until} = open, _settings, _model, _now), do: {[], open}
 
-  defp failed(%{failures: failures}, settings, model, now) do
+  defp fail(%{failures: failures}, settings, model, now) do
     failures = [now | Enum.filter(failures, &(&1 > now - settings.within))]
 
     if length(failures) >= settings.failures,
-      do: {[opened(model)], %{until: now + settings.open_for}},
+      do: {[open(model)], %{until: now + settings.open_for}},
       else: {[], %{failures: failures}}
   end
 
-  defp opened(model), do: {[:wardrik_gateway, :breaker_opened], %{model: model}}
-  defp closed(model), do: {[:wardrik_gateway, :breaker_closed], %{model: model}}
+  defp open(model), do: {[:wardrik_gateway, :breaker_opened], %{model: model}}
+  defp close(model), do: {[:wardrik_gateway, :breaker_closed], %{model: model}}
 
   defp bucket(state, provider, now) do
     limits = Map.get(state.settings.limits, provider, [])
     bucket = Map.get(state.buckets, provider, %{})
     held = max(Map.get(bucket, :held, now) - now, 0)
-    {requests, bucket} = requested(bucket, limits[:requests_per_minute], now)
+    {requests, bucket} = request(bucket, limits[:requests_per_minute], now)
     tokens = max(Map.get(bucket, :tokens, now) - now - @window, 0)
     {ceil(Enum.max([held, requests, tokens])), bucket}
   end
 
-  defp requested(bucket, nil, _now), do: {0, bucket}
+  defp request(bucket, nil, _now), do: {0, bucket}
 
-  defp requested(bucket, per_minute, now) do
+  defp request(bucket, per_minute, now) do
     interval = @window / per_minute
     due = max(Map.get(bucket, :requests, now), now)
     {max(due - now - (@window - interval), 0), Map.put(bucket, :requests, due + interval)}
   end
 
-  defp charged(state, provider, tokens, now) do
+  defp charge(state, provider, tokens, now) do
     case state.settings.limits[provider][:tokens_per_minute] do
       nil ->
         state

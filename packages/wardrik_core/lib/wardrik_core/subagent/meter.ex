@@ -10,7 +10,7 @@ defmodule WardrikCore.Subagent.Meter do
 
   @impl Wardrik.Middleware
   def call(%Context{step: :generate} = context, next, %__MODULE__{table: meter}),
-    do: metered(context, next, meter)
+    do: meter_call(context, next, meter)
 
   def call(
         %Context{step: {:tool_call, call}} = context,
@@ -19,7 +19,7 @@ defmodule WardrikCore.Subagent.Meter do
       ) do
     true = :ets.insert(meter, {:call, call.id})
     progress(metered, call, tool_calls(meter))
-    metered(context, next, meter)
+    meter_call(context, next, meter)
   end
 
   def call(context, next, _meter), do: next.(context)
@@ -40,17 +40,20 @@ defmodule WardrikCore.Subagent.Meter do
     end
   end
 
-  defp metered(context, next, meter) do
+  defp meter_call(context, next, meter) do
     result = next.(context)
-    true = :ets.insert(meter, {:gained, gained(context.measurements, measured(result, context))})
+
+    true =
+      :ets.insert(meter, {:gained, compute_gain(context.measurements, measure(result, context))})
+
     result
   end
 
-  defp measured({:ok, after_step}, _context), do: after_step.measurements
-  defp measured({:park, _reason, after_step}, _context), do: after_step.measurements
-  defp measured({:error, _reason}, context), do: context.measurements
+  defp measure({:ok, after_step}, _context), do: after_step.measurements
+  defp measure({:park, _reason, after_step}, _context), do: after_step.measurements
+  defp measure({:error, _reason}, context), do: context.measurements
 
-  defp gained(before, measured) do
+  defp compute_gain(before, measured) do
     measured
     |> Map.new(fn {key, amount} -> {key, amount - Map.get(before, key, 0)} end)
     |> Map.reject(fn {_key, amount} -> amount == 0 end)

@@ -11,12 +11,12 @@ defmodule Wardrik.EventLog.TailTest do
 
   defp following(stream, events, sequence) do
     Stream.each(stream, fn
-      {%{"sequence" => ^sequence}, _cursor} -> stopped(events, "agt_1")
+      {%{"sequence" => ^sequence}, _cursor} -> emit_stop(events, "agt_1")
       _other -> :ok
     end)
   end
 
-  defp written(store, sequence) do
+  defp write(store, sequence) do
     number =
       sequence
       |> Integer.to_string()
@@ -32,7 +32,7 @@ defmodule Wardrik.EventLog.TailTest do
       :ok = Wardrik.EventLog.subscribe(events, ["agt_1", {"agt_2", "C1"}])
 
       for log <- ["agt_1", {"agt_1", "C1"}, "agt_10", "agt_2", {"agt_2", "C1"}, {"agt_2", "C2"}],
-          do: stopped(events, log)
+          do: emit_stop(events, log)
 
       assert_received {Wardrik.EventLog, {"agt_1", nil}, _event}
       assert_received {Wardrik.EventLog, {"agt_1", "C1"}, _event}
@@ -43,7 +43,7 @@ defmodule Wardrik.EventLog.TailTest do
 
     test "sends a conversation's subscriber none of the agent's other logs", %{events: events} do
       :ok = Wardrik.EventLog.subscribe(events, [{"agt_1", "C1"}])
-      for log <- ["agt_1", {"agt_1", "C2"}, {"agt_1", "C1"}], do: stopped(events, log)
+      for log <- ["agt_1", {"agt_1", "C2"}, {"agt_1", "C1"}], do: emit_stop(events, log)
 
       assert_received {Wardrik.EventLog, {"agt_1", "C1"}, _event}
       refute_received {Wardrik.EventLog, _log, _event}
@@ -51,13 +51,13 @@ defmodule Wardrik.EventLog.TailTest do
 
     test "sends every log to a subscriber to :all", %{events: events} do
       :ok = Wardrik.EventLog.subscribe(events, :all)
-      for log <- ["agt_1", {"agt_2", "C1"}], do: stopped(events, log)
+      for log <- ["agt_1", {"agt_2", "C1"}], do: emit_stop(events, log)
 
       assert_received {Wardrik.EventLog, {"agt_1", nil}, _event}
       assert_received {Wardrik.EventLog, {"agt_2", "C1"}, _event}
 
       :ok = Wardrik.EventLog.unsubscribe(events, :all)
-      stopped(events, "agt_1")
+      emit_stop(events, "agt_1")
 
       refute_received {Wardrik.EventLog, _log, _event}
     end
@@ -65,14 +65,14 @@ defmodule Wardrik.EventLog.TailTest do
     test "stops sending once unsubscribed", %{events: events} do
       :ok = Wardrik.EventLog.subscribe(events, ["agt_1", {"agt_1", nil}, {"agt_1", "C1"}])
       :ok = Wardrik.EventLog.unsubscribe(events, ["agt_1"])
-      stopped(events, {"agt_1", "C2"})
-      stopped(events, {"agt_1", "C1"})
+      emit_stop(events, {"agt_1", "C2"})
+      emit_stop(events, {"agt_1", "C1"})
 
       refute_received {Wardrik.EventLog, {"agt_1", "C2"}, _event}
       assert_received {Wardrik.EventLog, {"agt_1", "C1"}, _event}
 
       :ok = Wardrik.EventLog.unsubscribe(events, [{"agt_1", nil}, {"agt_1", "C1"}])
-      stopped(events, {"agt_1", "C1"})
+      emit_stop(events, {"agt_1", "C1"})
 
       refute_received {Wardrik.EventLog, _log, _event}
     end
@@ -80,8 +80,8 @@ defmodule Wardrik.EventLog.TailTest do
 
   describe "streaming" do
     test "reads on from a cursor, then follows what's written", %{events: events} do
-      stopped(events, "agt_1")
-      stopped(events, "agt_1")
+      emit_stop(events, "agt_1")
+      emit_stop(events, "agt_1")
       cursor = Cursor.encode(%{{"agt_1", nil} => 1})
 
       {:ok, stream} = Wardrik.EventLog.stream(events, ["agt_1"], after: cursor)
@@ -97,7 +97,7 @@ defmodule Wardrik.EventLog.TailTest do
     end
 
     test "starts at what's written next without a cursor", %{events: events} do
-      stopped(events, "agt_1")
+      emit_stop(events, "agt_1")
       send(self(), {Wardrik.EventLog, {"agt_1", nil}, %{"type" => "wardrik.message.delta"}})
 
       {:ok, stream} = Wardrik.EventLog.stream(events, ["agt_1"])
@@ -105,7 +105,7 @@ defmodule Wardrik.EventLog.TailTest do
       taken =
         stream
         |> Stream.each(fn {event, _cursor} ->
-          if event["type"] == "wardrik.message.delta", do: stopped(events, {"agt_1", "C1"})
+          if event["type"] == "wardrik.message.delta", do: emit_stop(events, {"agt_1", "C1"})
         end)
         |> Enum.take(2)
 
@@ -118,7 +118,7 @@ defmodule Wardrik.EventLog.TailTest do
     end
 
     test "follows one conversation's log, and none of the agent's others", %{events: events} do
-      for log <- ["agt_1", {"agt_1", "C2"}, {"agt_1", "C1"}], do: stopped(events, log)
+      for log <- ["agt_1", {"agt_1", "C2"}, {"agt_1", "C1"}], do: emit_stop(events, log)
 
       {:ok, stream} =
         Wardrik.EventLog.stream(events, [{"agt_1", "C1"}], after: Cursor.encode(%{}))
@@ -126,8 +126,8 @@ defmodule Wardrik.EventLog.TailTest do
       taken =
         stream
         |> Stream.each(fn _taken ->
-          stopped(events, {"agt_1", "C2"})
-          stopped(events, {"agt_1", "C1"})
+          emit_stop(events, {"agt_1", "C2"})
+          emit_stop(events, {"agt_1", "C1"})
         end)
         |> Enum.take(2)
 
@@ -138,7 +138,7 @@ defmodule Wardrik.EventLog.TailTest do
     end
 
     test "takes each kept event once", %{events: events} do
-      stopped(events, "agt_1")
+      emit_stop(events, "agt_1")
       {:ok, %{events: [first]}} = Wardrik.EventLog.page(events, ["agt_1"])
       send(self(), {Wardrik.EventLog, {"agt_1", nil}, first})
 
@@ -157,7 +157,7 @@ defmodule Wardrik.EventLog.TailTest do
       store: store
     } do
       store = Wardrik.Store.scope(store, "wardrik_events")
-      written(store, 2)
+      write(store, 2)
       send(self(), {Wardrik.EventLog, {"agt_1", nil}, %{"type" => "wardrik.message.delta"}})
 
       {:ok, stream} = Wardrik.EventLog.stream(events, ["agt_1"], after: Cursor.encode(%{}))
@@ -165,7 +165,7 @@ defmodule Wardrik.EventLog.TailTest do
       taken =
         stream
         |> Stream.each(fn {event, _cursor} ->
-          if event["type"] == "wardrik.message.delta", do: written(store, 1)
+          if event["type"] == "wardrik.message.delta", do: write(store, 1)
         end)
         |> Enum.take(3)
 
@@ -174,8 +174,8 @@ defmodule Wardrik.EventLog.TailTest do
     end
 
     test "takes only the types asked for, and every gap", %{events: events} do
-      stopped(events, "agt_1", ~U[2000-01-01 00:00:00Z])
-      stopped(events, "agt_1")
+      emit_stop(events, "agt_1", ~U[2000-01-01 00:00:00Z])
+      emit_stop(events, "agt_1")
       :ok = Wardrik.EventLog.trim(events, ~U[2001-01-01 00:00:00Z])
       send(self(), {Wardrik.EventLog, {"agt_1", nil}, %{"type" => "wardrik.message.delta"}})
 
@@ -196,7 +196,7 @@ defmodule Wardrik.EventLog.TailTest do
     end
 
     test "closes after the events it follows have stopped", %{events: events} do
-      stopped(events, "agt_1")
+      emit_stop(events, "agt_1")
       {:ok, stream} = Wardrik.EventLog.stream(events, ["agt_1"], after: Cursor.encode(%{}))
 
       taken =

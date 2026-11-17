@@ -30,81 +30,81 @@ defmodule WardrikDaemon.Console.Printer do
   def event(printer, %{"type" => "wardrik.reasoning.delta", "data" => %{"delta" => text}}) do
     {settled, printer} = settle(printer, :answer)
     {lines, reasoning} = Markdown.push(printer.reasoning, text)
-    {thought, printer} = thought(lines, %{printer | reasoning: reasoning})
+    {thought, printer} = think(lines, %{printer | reasoning: reasoning})
     {settled ++ thought, printer}
   end
 
   def event(printer, %{"type" => "wardrik." <> type, "data" => data}) do
-    case said(type, data) do
+    case say(type, data) do
       nil ->
         {[], printer}
 
       lines ->
         {settled, printer} = settle(printer)
-        {settled ++ Enum.map(lines, &fitted(&1, printer.width)), printer}
+        {settled ++ Enum.map(lines, &fit_line(&1, printer.width)), printer}
     end
   end
 
   def event(printer, _event), do: {[], printer}
 
-  defp fitted({:cut, line}, width), do: Owl.Data.truncate(line, width)
-  defp fitted(line, _width), do: line
+  defp fit_line({:cut, line}, width), do: Owl.Data.truncate(line, width)
+  defp fit_line(line, _width), do: line
 
-  defp said("message.created", %{"message" => message} = data),
+  defp say("message.created", %{"message" => message} = data),
     do: [{:cut, [Owl.Data.tag("› ", :cyan), sender(data["sender"]), text(message)]}]
 
-  defp said("tool_call.started", %{"tool" => tool}),
+  defp say("tool_call.started", %{"tool" => tool}),
     do: [{:cut, ["  ", Owl.Data.tag("→", :cyan), " ", tool["name"], arguments(tool)]}]
 
-  defp said("tool_call.completed", %{"tool" => tool, "status" => "ok"}),
+  defp say("tool_call.completed", %{"tool" => tool, "status" => "ok"}),
     do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", tool["name"]]}]
 
-  defp said("tool_call.completed", %{"tool" => tool} = data),
+  defp say("tool_call.completed", %{"tool" => tool} = data),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", tool["name"], ": ", why(data["error"])]}]
 
-  defp said("tool_call.denied", %{"tool" => tool, "reason" => reason}),
+  defp say("tool_call.denied", %{"tool" => tool, "reason" => reason}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", tool["name"], " was refused: ", reason]}]
 
-  defp said("message.retrying", data) do
+  defp say("message.retrying", data) do
     again =
       ", again in #{ceil(data["wait_ms"] / 1_000)}s (#{data["attempt"]} of #{data["attempts"]})"
 
     [{:cut, ["  ", Owl.Data.tag("↻", :yellow), " model failed: ", why(data["error"]), again]}]
   end
 
-  defp said("conversation.compacted", data) do
+  defp say("conversation.compacted", data) do
     counts = "#{data["messages_before"]} messages to #{data["messages_after"]}"
     [{:cut, ["  ", Owl.Data.tag("·", :cyan), " compacted the history, ", counts]}]
   end
 
-  defp said("run.interrupted", %{"interrupts" => interrupts}) do
+  defp say("run.interrupted", %{"interrupts" => interrupts}) do
     [
       Owl.Data.tag("Waiting on a person for #{count(interrupts)}:", [:bright, :yellow])
       | Enum.map(interrupts, &waiting/1)
     ]
   end
 
-  defp said("run.completed", _data), do: []
+  defp say("run.completed", _data), do: []
 
-  defp said("run.failed", data),
+  defp say("run.failed", data),
     do: [Owl.Data.tag("✗ the turn failed: #{why(data["error"])}", :red)]
 
-  defp said("run.cancelled", _data), do: [Owl.Data.tag("■ stopped", :yellow)]
+  defp say("run.cancelled", _data), do: [Owl.Data.tag("■ stopped", :yellow)]
 
-  defp said("run.deadline_exceeded", _data),
+  defp say("run.deadline_exceeded", _data),
     do: [Owl.Data.tag("■ stopped: it ran past its timeout", :yellow)]
 
-  defp said(_type, _data), do: nil
+  defp say(_type, _data), do: nil
 
   defp waiting(interrupt) do
     name = interrupt["name"] || "the model"
-    {:cut, ["  ? ", name, "  ", interrupt["id"], "  ", interrupt["message"], held(interrupt)]}
+    {:cut, ["  ? ", name, "  ", interrupt["id"], "  ", interrupt["message"], hold(interrupt)]}
   end
 
-  defp held(%{"labels" => [_label | _labels]}),
+  defp hold(%{"labels" => [_label | _labels]}),
     do: Owl.Data.tag("  (after content from outside)", :yellow)
 
-  defp held(_interrupt), do: []
+  defp hold(_interrupt), do: []
 
   defp sender(%{"id" => id}), do: Owl.Data.tag(id <> ": ", @faint)
   defp sender(_sender), do: []
@@ -138,13 +138,13 @@ defmodule WardrikDaemon.Console.Printer do
 
   defp settle(printer, :reasoning) do
     {lines, _reasoning} = Markdown.flush(printer.reasoning)
-    {thought, printer} = thought(lines, %{printer | reasoning: Markdown.new()})
+    {thought, printer} = think(lines, %{printer | reasoning: Markdown.new()})
     closed = if printer.thinking?, do: [""], else: []
     {thought ++ closed, %{printer | thinking?: false}}
   end
 
   # A line of space sets a run of reasoning off from what's around it.
-  defp thought(lines, printer) do
+  defp think(lines, printer) do
     case reasoning(lines, printer) do
       [_line | _lines] = thought when not printer.thinking? ->
         {["" | thought], %{printer | thinking?: true}}
@@ -154,14 +154,14 @@ defmodule WardrikDaemon.Console.Printer do
     end
   end
 
-  defp answer(lines, printer), do: Enum.flat_map(lines, &laid_out(&1, printer.width))
+  defp answer(lines, printer), do: Enum.flat_map(lines, &lay_out(&1, printer.width))
 
   defp reasoning(lines, printer) do
     lines
-    |> Enum.flat_map(&laid_out(&1, printer.width - 2))
+    |> Enum.flat_map(&lay_out(&1, printer.width - 2))
     |> Enum.map(&Owl.Data.tag(["┊ ", &1], @faint))
   end
 
-  defp laid_out(%Table{} = table, width), do: Table.lines(table, max(width, 2))
-  defp laid_out(line, _width), do: [line]
+  defp lay_out(%Table{} = table, width), do: Table.lines(table, max(width, 2))
+  defp lay_out(line, _width), do: [line]
 end

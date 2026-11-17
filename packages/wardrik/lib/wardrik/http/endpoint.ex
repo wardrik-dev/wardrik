@@ -204,7 +204,7 @@ defmodule Wardrik.HTTP.Endpoint do
 
   defp respond(conn, scope, %{stream: true} = operation, input, settings) do
     case event_stream?(conn) do
-      true -> stream(conn, scope, operation, resumed(conn, input), settings)
+      true -> stream(conn, scope, operation, resume(conn, input), settings)
       false -> Response.answer(conn, operation, Wardrik.Scope.run(scope, operation.id, input))
     end
   end
@@ -221,7 +221,7 @@ defmodule Wardrik.HTTP.Endpoint do
     |> Enum.any?(&String.contains?(&1, "text/event-stream"))
   end
 
-  defp resumed(conn, input) do
+  defp resume(conn, input) do
     case get_req_header(conn, "last-event-id") do
       [cursor | _rest] -> Map.put_new(input, "after", cursor)
       [] -> input

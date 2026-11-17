@@ -85,17 +85,25 @@ defmodule Wardrik.FunctionsTest do
       refute function_exported?(module, Functions.name(operation), 3), operation.id
     end
 
-    assert Types.named("agent.deny", [agent: "acme/books", interrupt: "call_1", reason: "No."], [
-             :agent,
-             :interrupt
-           ]) == %{"agent" => "acme/books", "interrupt" => "call_1", "reason" => "No."}
+    assert Types.encode_named_input(
+             "agent.deny",
+             [agent: "acme/books", interrupt: "call_1", reason: "No."],
+             [
+               :agent,
+               :interrupt
+             ]
+           ) == %{"agent" => "acme/books", "interrupt" => "call_1", "reason" => "No."}
 
     assert_raise KeyError, fn ->
-      Types.named("agent.kill", [agent: "acme/books"], [:agent, :call])
+      Types.encode_named_input("agent.kill", [agent: "acme/books"], [:agent, :call])
     end
 
     assert_raise ArgumentError, fn ->
-      Types.named("agent.decide", [agent: "acme/books", decisions: %{}, colour: "red"], [:agent])
+      Types.encode_named_input(
+        "agent.decide",
+        [agent: "acme/books", decisions: %{}, colour: "red"],
+        [:agent]
+      )
     end
   end
 

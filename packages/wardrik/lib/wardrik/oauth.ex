@@ -150,7 +150,7 @@ defmodule Wardrik.OAuth do
     registry = registry(oauth)
 
     case Registry.lookup(registry, {:id, id}) do
-      [{pid, _value}] -> described(pid)
+      [{pid, _value}] -> describe(pid)
       [] -> :error
     end
   end
@@ -161,12 +161,12 @@ defmodule Wardrik.OAuth do
 
   Returns `{:ok, map}` with `:provider`, `:principal` and `:url`, or `:error` if it has ended.
   """
-  @spec started(atom(), String.t()) :: {:ok, map()} | :error
-  def started(oauth, state) do
+  @spec fetch_sign_in(atom(), String.t()) :: {:ok, map()} | :error
+  def fetch_sign_in(oauth, state) do
     registry = registry(oauth)
 
     case Registry.lookup(registry, {:state, state}) do
-      [{pid, _value}] -> described(pid)
+      [{pid, _value}] -> describe(pid)
       [] -> :error
     end
   end
@@ -185,7 +185,7 @@ defmodule Wardrik.OAuth do
     Registry.lookup(registry, {:flow, name, id}) != []
   end
 
-  defp described(pid) do
+  defp describe(pid) do
     {:ok, Flow.describe(pid)}
   catch
     :exit, _ended -> :error
@@ -210,13 +210,13 @@ defmodule Wardrik.OAuth do
     with %{"state" => state} when is_binary(state) <- params,
          registry = registry(oauth),
          [{pid, _value}] <- Registry.lookup(registry, {:state, state}) do
-      finished(pid, params, principal)
+      handle_finish(pid, params, principal)
     else
       _none -> {:error, :no_such_flow}
     end
   end
 
-  defp finished(pid, params, principal) do
+  defp handle_finish(pid, params, principal) do
     Flow.finish(pid, params, principal)
   catch
     :exit, _ended -> {:error, :no_such_flow}
@@ -230,14 +230,14 @@ defmodule Wardrik.OAuth do
   def renew(%Grants.Request{name: name, principal: principal, grant: %{value: value}}, oauth) do
     settings = settings(oauth)
 
-    case renewed(settings, name, principal, value) do
+    case handle_renew(settings, name, principal, value) do
       :ask -> begin(settings, name, principal)
       renewed -> renewed
     end
   end
 
   @impl Wardrik.Vault.Grants
-  def refused(%Grants.Request{name: name, principal: principal}, oauth) do
+  def report_refusal(%Grants.Request{name: name, principal: principal}, oauth) do
     oauth
     |> settings()
     |> Renewal.expire(name, principal)
@@ -267,7 +267,7 @@ defmodule Wardrik.OAuth do
       page: String.trim_trailing(page, "/"),
       resolver: opts.resolver,
       on_granted: opts.on_granted,
-      req_options: checked(opts.check) ++ opts.req_options,
+      req_options: check(opts.check) ++ opts.req_options,
       registry: registry(opts.name),
       flows: Module.concat(opts.name, Flows)
     }
@@ -280,8 +280,8 @@ defmodule Wardrik.OAuth do
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
-  defp checked(nil), do: []
-  defp checked(check), do: [check: check]
+  defp check(nil), do: []
+  defp check(check), do: [check: check]
 
   defp settings(oauth) do
     registry = registry(oauth)
@@ -303,19 +303,19 @@ defmodule Wardrik.OAuth do
 
   # A fresh token is used as it is. An expired one is refreshed only by the provider that issued
   # it, so its refresh token and the provider's client never meet another app's.
-  defp renewed(settings, name, principal, value) do
+  defp handle_renew(settings, name, principal, value) do
     case Token.decode(value) do
       {:ok, token} ->
         if Token.fresh?(token),
           do: {:ok, token.access_token},
-          else: refreshed(settings, name, principal, token)
+          else: refresh(settings, name, principal, token)
 
       {:error, :unreadable} ->
         :ask
     end
   end
 
-  defp refreshed(settings, name, principal, token) do
+  defp refresh(settings, name, principal, token) do
     case resolve(settings, name, principal) do
       {:ok, %Provider{key: key} = provider} ->
         if key == token.provider,
@@ -333,7 +333,7 @@ defmodule Wardrik.OAuth do
   defp resolve(settings, name, principal) do
     with {:ok, provider} <-
            Resolver.resolve(settings, %Resolver.Request{name: name, principal: principal}),
-         do: {:ok, Registration.registered(settings, provider)}
+         do: {:ok, Registration.put_registered_client(settings, provider)}
   end
 
   defp over_current(vault, principal, name) do

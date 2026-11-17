@@ -29,18 +29,18 @@ defmodule Wardrik.Delegation do
   Records that `:asker`, as `{agent, conversation}`, sent `:agent` the `:message`.
 
       :ok =
-        Wardrik.Delegation.asked(MyApp.AgentRuntime,
+        Wardrik.Delegation.record_ask(MyApp.AgentRuntime,
           asker: {"agt_ops", nil},
           agent: "agt_reconciler",
           message: "msg_x1"
         )
   """
-  @spec asked(atom() | Wardrik.t(),
+  @spec record_ask(atom() | Wardrik.t(),
           asker: Running.key(),
           agent: String.t(),
           message: String.t()
         ) :: :ok
-  def asked(instance, args) do
+  def record_ask(instance, args) do
     {agent, conversation} = Keyword.fetch!(args, :asker)
     log = {Keyword.fetch!(args, :agent), nil}
     asker = %{"agent" => agent, "conversation" => conversation}
@@ -61,34 +61,33 @@ defmodule Wardrik.Delegation do
 
     wardrik
     |> pending()
-    |> Enum.each(&caught_up(wardrik, &1))
+    |> Enum.each(&catch_up(wardrik, &1))
 
     {:noreply, wardrik}
   end
 
   @impl GenServer
   def handle_info({Wardrik.EventLog, log, event}, wardrik) do
-    seen(wardrik, log, event)
+    see(wardrik, log, event)
     {:noreply, wardrik}
   end
 
-  defp seen(wardrik, log, %{"type" => "wardrik.run.started", "data" => %{"run" => run}}) do
+  defp see(wardrik, log, %{"type" => "wardrik.run.started", "data" => %{"run" => run}}) do
     run
     |> Map.get("message_ids", [])
-    |> Enum.each(&taken(wardrik, log, run["id"], &1))
+    |> Enum.each(&take(wardrik, log, run["id"], &1))
   end
 
-  defp seen(wardrik, log, %{"type" => "wardrik.run.completed", "data" => data}),
-    do: answered(wardrik, log, data["run"]["id"], "#{Wardrik.Reply.text(data["messages"])}")
+  defp see(wardrik, log, %{"type" => "wardrik.run.completed", "data" => data}),
+    do: answer(wardrik, log, data["run"]["id"], "#{Wardrik.Reply.text(data["messages"])}")
 
-  defp seen(wardrik, log, %{"type" => "wardrik.run.failed", "data" => data}),
-    do:
-      answered(wardrik, log, data["run"]["id"], "It couldn't answer: #{data["error"]["message"]}")
+  defp see(wardrik, log, %{"type" => "wardrik.run.failed", "data" => data}),
+    do: answer(wardrik, log, data["run"]["id"], "It couldn't answer: #{data["error"]["message"]}")
 
-  defp seen(wardrik, log, %{"type" => "wardrik.run.cancelled", "data" => data}),
-    do: answered(wardrik, log, data["run"]["id"], "It stopped before it answered.")
+  defp see(wardrik, log, %{"type" => "wardrik.run.cancelled", "data" => data}),
+    do: answer(wardrik, log, data["run"]["id"], "It stopped before it answered.")
 
-  defp seen(_wardrik, _log, _event), do: :ok
+  defp see(_wardrik, _log, _event), do: :ok
 
   defp pending(wardrik) do
     store = store(wardrik)
@@ -96,7 +95,7 @@ defmodule Wardrik.Delegation do
     for prefix <- ["delegation/asked/", "delegation/runs/"],
         key <- Wardrik.Store.keys(store, prefix),
         uniq: true,
-        do: logged(String.replace_prefix(key, prefix, ""))
+        do: log(String.replace_prefix(key, prefix, ""))
   end
 
   # Each key holds the log's agent and conversation, and the ID, each URL-encoded on its own.
@@ -107,7 +106,7 @@ defmodule Wardrik.Delegation do
     |> then(&"delegation/#{kind}/#{&1}")
   end
 
-  defp logged(key) do
+  defp log(key) do
     segments =
       key
       |> String.split("/")
@@ -119,17 +118,17 @@ defmodule Wardrik.Delegation do
     end
   end
 
-  defp caught_up(wardrik, log, cursor \\ nil) do
+  defp catch_up(wardrik, log, cursor \\ nil) do
     {:ok, %{events: events, next: next}} =
       wardrik
       |> Wardrik.events()
       |> Wardrik.EventLog.page([log], after: cursor, limit: 500)
 
-    Enum.each(events, &seen(wardrik, log, &1))
-    if events != [], do: caught_up(wardrik, log, next)
+    Enum.each(events, &see(wardrik, log, &1))
+    if events != [], do: catch_up(wardrik, log, next)
   end
 
-  defp taken(wardrik, log, run, id) do
+  defp take(wardrik, log, run, id) do
     store = store(wardrik)
 
     with %{} = asker <- Wardrik.Store.get(store, key("asked", log, id)) do
@@ -140,7 +139,7 @@ defmodule Wardrik.Delegation do
     end
   end
 
-  defp answered(wardrik, log, run, said) do
+  defp answer(wardrik, log, run, said) do
     store = store(wardrik)
     key = key("runs", log, run)
 
@@ -163,7 +162,7 @@ defmodule Wardrik.Delegation do
   end
 
   defp scope(wardrik, log, from) do
-    case Wardrik.Resolver.defined(wardrik, from) do
+    case Wardrik.Resolver.resolve_current(wardrik, from) do
       {:ok, %Wardrik.Resolved{principal: %Principal{} = principal}} ->
         scope = Wardrik.as(wardrik.name, principal, actor: {:agent, from})
         {:ok, %{scope | labels: labels(wardrik, log)}}

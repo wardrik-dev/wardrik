@@ -80,18 +80,18 @@ defmodule WardrikDaemon.Rest do
   defp read(%{settings: settings, apis: apis} = state) do
     read =
       Enum.reduce(settings.apis, apis, fn {name, entry}, read ->
-        if Map.has_key?(read, name), do: read, else: loaded(read, settings, {name, entry})
+        if Map.has_key?(read, name), do: read, else: load(read, settings, {name, entry})
       end)
 
     if map_size(read) < length(settings.apis), do: Process.send_after(self(), :read, @retry)
     %{state | apis: read}
   end
 
-  defp loaded(read, settings, {name, %Entry{} = entry}) do
+  defp load(read, settings, {name, %Entry{} = entry}) do
     opts =
       [name: name, egress: settings.egress, req_options: settings.req_options] ++ entry.options
 
-    with {:ok, source} <- described(settings, entry),
+    with {:ok, source} <- describe(settings, entry),
          {:ok, api} <- WardrikRest.API.load(source, opts) do
       Map.put(read, name, api)
     else
@@ -101,15 +101,15 @@ defmodule WardrikDaemon.Rest do
     end
   end
 
-  defp described(settings, %Entry{reader: reader, location: location}) do
+  defp describe(settings, %Entry{reader: reader, location: location}) do
     module = Map.fetch!(@readers, reader)
 
     if URI.parse(location).scheme in ["http", "https"],
-      do: fetched(settings, module, location),
+      do: fetch(settings, module, location),
       else: file(settings, module, location)
   end
 
-  defp fetched(settings, module, url) do
+  defp fetch(settings, module, url) do
     with :ok <- settings.egress.(url),
          do: {:ok, {module, url: url, req_options: settings.req_options}}
   end

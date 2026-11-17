@@ -47,7 +47,7 @@ defmodule Wardrik.HTTP.EventStreamTest do
 
     Wardrik.Test.HTTP.Authenticator.revoke(context.wardrik, context.secret)
 
-    assert ended(stream)
+    assert finish(stream)
   end
 
   test "answers a page as JSON without Accept: text/event-stream", context do
@@ -76,26 +76,26 @@ defmodule Wardrik.HTTP.EventStreamTest do
     end
   end
 
-  defp ended(stream) do
-    case parsed(stream) do
+  defp finish(stream) do
+    case parse(stream) do
       [:done] -> true
-      _data -> ended(stream)
+      _data -> finish(stream)
     end
   end
 
   defp next(stream) do
-    case parsed(stream) do
+    case parse(stream) do
       [data: data] -> data
       [:done] -> flunk("The stream ended.")
     end
   end
 
-  defp parsed(stream) do
+  defp parse(stream) do
     receive do
       message ->
         case Req.parse_message(stream, message) do
           {:ok, parts} -> parts
-          :unknown -> parsed(stream)
+          :unknown -> parse(stream)
         end
     after
       1_000 -> flunk("The stream sent nothing.")

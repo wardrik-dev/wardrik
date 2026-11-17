@@ -112,14 +112,14 @@ defmodule Wardrik.OAuth.AppsTest do
     {:ok, _added} = add(scope, "acme", "google")
     {:ok, _added} = add(scope, "ana", "google")
 
-    assert %{owner: "ana"} = Apps.chosen(wardrik, %Principal{id: "ana"}, "google")
-    assert %{owner: "deployment"} = Apps.chosen(wardrik, %Principal{id: "bob"}, "google")
-    assert nil == Apps.chosen(wardrik, %Principal{id: "bob"}, "linear")
+    assert %{owner: "ana"} = Apps.choose(wardrik, %Principal{id: "ana"}, "google")
+    assert %{owner: "deployment"} = Apps.choose(wardrik, %Principal{id: "bob"}, "google")
+    assert nil == Apps.choose(wardrik, %Principal{id: "bob"}, "linear")
 
     {:ok, _added} = add(scope, "acme", "linear")
-    assert %{owner: "acme"} = Apps.chosen(wardrik, %Principal{id: "ana"}, "linear")
+    assert %{owner: "acme"} = Apps.choose(wardrik, %Principal{id: "ana"}, "linear")
 
-    offered = Apps.offered(wardrik, %Principal{id: "ana"})
+    offered = Apps.list_offered(wardrik, %Principal{id: "ana"})
     assert ["google", "linear"] = Enum.map(offered, & &1.name)
   end
 end

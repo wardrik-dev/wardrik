@@ -30,13 +30,13 @@ defmodule Wardrik.SpendingTest do
 
   defp answers(fake, responses), do: Wardrik.Testing.Model.answer(fake, responses)
 
-  defp used(response, input, output),
+  defp put_usage(response, input, output),
     do: %{response | usage: %{input_tokens: input, output_tokens: output}}
 
   test "counts what each model call and tool call spent today", %{fake: fake, scope: scope} do
     answers(fake, [
-      used(calling([call("call_1", "search", %{})]), 100, 20),
-      used(answer("Done."), 50, 10)
+      put_usage(calling([call("call_1", "search", %{})]), 100, 20),
+      put_usage(answer("Done."), 50, 10)
     ])
 
     run!(scope, "agent.define", %{
@@ -57,9 +57,9 @@ defmodule Wardrik.SpendingTest do
 
   test "counts what a subagent spent once, as the call that ran it", %{fake: fake, scope: scope} do
     answers(fake, [
-      used(calling([call("call_1", "delegate", %{})]), 100, 20),
-      used(answer("Done it."), 40, 8),
-      used(answer("Done."), 50, 10)
+      put_usage(calling([call("call_1", "delegate", %{})]), 100, 20),
+      put_usage(answer("Done it."), 40, 8),
+      put_usage(answer("Done."), 50, 10)
     ])
 
     run!(scope, "agent.define", %{
@@ -91,8 +91,8 @@ defmodule Wardrik.SpendingTest do
     assert %{"next_runs" => %{"hourly" => hourly, "daily" => daily}} =
              run!(scope, "agent.definition", %{"agent" => "acme/scout"})
 
-    next_hourly = parsed(hourly)
-    assert DateTime.compare(next_hourly, parsed(daily)) == :lt
+    next_hourly = parse(hourly)
+    assert DateTime.compare(next_hourly, parse(daily)) == :lt
 
     assert %{"agents" => [%{"next_run" => ^hourly, "spent_today" => %{"tokens" => 0}}]} =
              run!(scope, "agents.list", %{})
@@ -100,7 +100,7 @@ defmodule Wardrik.SpendingTest do
     assert {:ok, %Wardrik.Agent{next_run: %DateTime{}}} = Wardrik.Agent.read(scope, "acme/scout")
   end
 
-  defp parsed(text) do
+  defp parse(text) do
     {:ok, at, _offset} = DateTime.from_iso8601(text)
     at
   end

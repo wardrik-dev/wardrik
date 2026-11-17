@@ -37,13 +37,13 @@ defmodule WardrikACP.TestPeer do
 
       line ->
         line
-        |> received()
+        |> handle_receive()
         |> handle(state)
         |> loop()
     end
   end
 
-  defp received(line) do
+  defp handle_receive(line) do
     if log = System.get_env("PEER_LOG"), do: File.write(log, line, [:append])
     JSON.decode!(line)
   end
@@ -98,7 +98,7 @@ defmodule WardrikACP.TestPeer do
 
       state
     else
-      loaded(id, params, state)
+      load(id, params, state)
     end
   end
 
@@ -145,7 +145,7 @@ defmodule WardrikACP.TestPeer do
   end
 
   defp steps(text) do
-    case decoded(text) do
+    case decode(text) do
       {:ok, steps} -> steps
       :error -> [%{"say" => "received: " <> text} | tail(text)]
     end
@@ -157,20 +157,20 @@ defmodule WardrikACP.TestPeer do
       |> String.split("\n\n")
       |> List.last()
 
-    case decoded(last) do
+    case decode(last) do
       {:ok, steps} -> steps
       :error -> []
     end
   end
 
-  defp decoded(text) do
+  defp decode(text) do
     case JSON.decode(text) do
       {:ok, steps} when is_list(steps) -> {:ok, steps}
       _text -> :error
     end
   end
 
-  defp loaded(id, params, state) do
+  defp load(id, params, state) do
     update(params["sessionId"], %{
       "sessionUpdate" => "agent_message_chunk",
       "content" => %{"type" => "text", "text" => "replayed"}
@@ -307,7 +307,7 @@ defmodule WardrikACP.TestPeer do
   defp next_line do
     case IO.read(:stdio, :line) do
       :eof -> System.halt(0)
-      line -> received(line)
+      line -> handle_receive(line)
     end
   end
 

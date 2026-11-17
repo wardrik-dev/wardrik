@@ -11,7 +11,7 @@ defmodule WardrikWeb.Timeline do
         do: {:noreply, WardrikWeb.Timeline.handle_event(event, params, socket, &load/1)}
 
       def handle_info({WardrikWeb.Follow, _message} = message, socket),
-        do: {:noreply, WardrikWeb.Follow.handle(message, socket, &load/1, on_event: &WardrikWeb.Timeline.drafted/2)}
+        do: {:noreply, WardrikWeb.Follow.handle(message, socket, &load/1, on_event: &WardrikWeb.Timeline.add_draft/2)}
   """
 
   use Phoenix.Component
@@ -33,8 +33,11 @@ defmodule WardrikWeb.Timeline do
           Phoenix.LiveView.Socket.t()
   def handle_event("ask", %{"content" => content}, socket, reload) do
     case String.trim(content) do
-      "" -> socket
-      content -> act(socket, "agent.ask", %{"content" => content}, nil, &sent(&1, reload))
+      "" ->
+        socket
+
+      content ->
+        act(socket, "agent.ask", %{"content" => content}, nil, &clear_composer(&1, reload))
     end
   end
 
@@ -49,7 +52,7 @@ defmodule WardrikWeb.Timeline do
   end
 
   # A message that fails to send stays in the composer.
-  defp sent(socket, reload) do
+  defp clear_composer(socket, reload) do
     socket
     |> push_event("composer:sent", %{})
     |> reload.()
@@ -78,8 +81,8 @@ defmodule WardrikWeb.Timeline do
   defp put_present(map, key, value), do: Map.put(map, key, value)
 
   @doc "Adds a streamed piece of an answer to `:drafts`, and drops the answer once it's complete."
-  @spec drafted(map(), Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
-  def drafted(
+  @spec add_draft(map(), Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def add_draft(
         %{
           "type" => "wardrik.message.delta",
           "data" => %{"message" => %{"id" => id}, "delta" => delta}
@@ -88,13 +91,13 @@ defmodule WardrikWeb.Timeline do
       ),
       do: update(socket, :drafts, &Map.update(&1, id, delta, fn text -> text <> delta end))
 
-  def drafted(
+  def add_draft(
         %{"type" => "wardrik.message.completed", "data" => %{"message" => %{"id" => id}}},
         socket
       ),
       do: update(socket, :drafts, &Map.delete(&1, id))
 
-  def drafted(_event, socket), do: socket
+  def add_draft(_event, socket), do: socket
 
   @doc """
   The conversation, oldest first, with the answers being written at its end.

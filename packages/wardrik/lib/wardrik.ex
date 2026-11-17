@@ -594,12 +594,12 @@ defmodule Wardrik do
   the `principal` it's for, whether they or an agent waiting on them started it. `:error` once
   it has ended, or without `:oauth`.
 
-      Wardrik.started_sign_in(MyApp.AgentRuntime, "1lnrCkd...")
+      Wardrik.fetch_sign_in(MyApp.AgentRuntime, "1lnrCkd...")
       #=> {:ok, %{provider: "github", principal: %Wardrik.Principal{id: "user_42"}}}
   """
-  @spec started_sign_in(atom() | t(), String.t()) ::
+  @spec fetch_sign_in(atom() | t(), String.t()) ::
           {:ok, %{provider: String.t(), principal: Principal.t()}} | :error
-  def started_sign_in(instance, state) do
+  def fetch_sign_in(instance, state) do
     case Instance.fetch!(instance) do
       %__MODULE__{oauth: nil} ->
         :error
@@ -607,13 +607,13 @@ defmodule Wardrik do
       wardrik ->
         wardrik
         |> oauth()
-        |> Wardrik.OAuth.started(state)
-        |> started()
+        |> Wardrik.OAuth.fetch_sign_in(state)
+        |> start()
     end
   end
 
-  defp started({:ok, flow}), do: {:ok, Map.take(flow, [:provider, :principal])}
-  defp started(:error), do: :error
+  defp start({:ok, flow}), do: {:ok, Map.take(flow, [:provider, :principal])}
+  defp start(:error), do: :error
 
   @doc """
   Returns whether `principal`'s sign-in to `provider` is under way.

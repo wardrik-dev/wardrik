@@ -24,7 +24,7 @@ defmodule Wardrik.Credentials do
       end
 
     * `{:authorize, url}` parks the call on a `Wardrik.Credentials.Authorization`.
-    * Call `refused/2` when a service rejects a token, then fetch again.
+    * Call `report_refusal/2` when a service rejects a token, then fetch again.
     * Tokens are never saved or emitted. Keep them out of private data and attributes.
 
   See the [Credentials](credentials.html) guide.
@@ -41,9 +41,9 @@ defmodule Wardrik.Credentials do
               {:ok, secret :: term()} | {:authorize, url :: String.t()} | {:error, term()}
 
   @doc "Called when a service refused the credential the request names. Optional."
-  @callback refused(Request.t(), opts :: term()) :: :ok
+  @callback report_refusal(Request.t(), opts :: term()) :: :ok
 
-  @optional_callbacks refused: 2
+  @optional_callbacks report_refusal: 2
 
   @doc """
   Fetches the credential `name` for whoever the turn acts for.
@@ -61,19 +61,19 @@ defmodule Wardrik.Credentials do
 
     request
     |> module.resolve(opts)
-    |> fetched(request)
+    |> handle_fetch(request)
   end
 
   @doc "Tells the credentials module that a service refused the credential `name`."
-  @spec refused(Context.t(), String.t()) :: :ok
-  def refused(%Context{credentials: nil}, _name), do: :ok
+  @spec report_refusal(Context.t(), String.t()) :: :ok
+  def report_refusal(%Context{credentials: nil}, _name), do: :ok
 
-  def refused(%Context{credentials: entry} = context, name) do
+  def report_refusal(%Context{credentials: entry} = context, name) do
     {module, opts} = Context.entry(entry)
     request = build_request(context, name)
 
-    if Code.ensure_loaded?(module) and function_exported?(module, :refused, 2),
-      do: module.refused(request, opts),
+    if Code.ensure_loaded?(module) and function_exported?(module, :report_refusal, 2),
+      do: module.report_refusal(request, opts),
       else: :ok
   end
 
@@ -89,8 +89,8 @@ defmodule Wardrik.Credentials do
   defp find_call_id({:tool_call, %Wardrik.ToolCall{id: id}}), do: id
   defp find_call_id(_step), do: nil
 
-  defp fetched({:authorize, url}, %Request{name: name, principal: principal}),
+  defp handle_fetch({:authorize, url}, %Request{name: name, principal: principal}),
     do: {:park, %Authorization{url: url, credential: name, principal: principal}}
 
-  defp fetched(resolved, _request), do: resolved
+  defp handle_fetch(resolved, _request), do: resolved
 end

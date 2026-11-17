@@ -149,9 +149,9 @@ defmodule Wardrik.Store.DurableConformance do
             end)
 
           assert [_once] = Regex.scan(~r/can't be read/, log)
-          assert {:ok, ^why} = Durable.noted(store, key)
+          assert {:ok, ^why} = Durable.fetch_unreadable_reason(store, key)
           assert :ok = Durable.discard(store, key)
-          assert :error = Durable.noted(store, key)
+          assert :error = Durable.fetch_unreadable_reason(store, key)
           assert {:ok, {:claimed, _etag}} = Durable.try_claim(backend, key, stored)
         end
       end

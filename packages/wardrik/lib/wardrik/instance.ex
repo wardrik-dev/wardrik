@@ -34,9 +34,9 @@ defmodule Wardrik.Instance do
 
   @doc "Returns the code `use Wardrik` injects."
   @spec using(atom() | nil) :: Macro.t()
-  def using(otp_app), do: {:__block__, [], [started(otp_app), scopes()]}
+  def using(otp_app), do: {:__block__, [], [start(otp_app), scopes()]}
 
-  defp started(otp_app) do
+  defp start(otp_app) do
     quote do
       @behaviour Wardrik
 

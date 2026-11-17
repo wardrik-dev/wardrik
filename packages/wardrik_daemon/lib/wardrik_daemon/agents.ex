@@ -34,19 +34,19 @@ defmodule WardrikDaemon.Agents do
 
   @impl Wardrik.Declarations
   def declared?(opts, id) do
-    declared = declared(opts)
+    declared = declare(opts)
     id in Map.values(declared)
   end
 
   @impl Wardrik.Declarations
   def reload(opts) do
     restart = opts[:restart] || fn -> false end
-    if restart.(), do: [], else: defined_all(opts)
+    if restart.(), do: [], else: define_all(opts)
   end
 
-  defp defined_all(opts) do
-    last = declared(opts)
-    read = for path <- files(opts), do: {path, claimed(opts, path, last)}
+  defp define_all(opts) do
+    last = declare(opts)
+    read = for path <- files(opts), do: {path, claim(opts, path, last)}
 
     declared =
       for {path, result} <- read,
@@ -59,11 +59,11 @@ defmodule WardrikDaemon.Agents do
     gone = Enum.uniq(claimed) -- Map.values(declared)
 
     {:ok, _vsn} = Wardrik.Store.put(opts[:store], @key, declared)
-    problems = Enum.map(read, &defined(opts, &1)) ++ Enum.map(gone, &forgotten(opts, &1))
-    for problem <- problems, problem != :ok, do: logged(problem)
+    problems = Enum.map(read, &define(opts, &1)) ++ Enum.map(gone, &forget(opts, &1))
+    for problem <- problems, problem != :ok, do: log(problem)
   end
 
-  defp logged(problem) do
+  defp log(problem) do
     Logger.warning("Wardrik #{problem}")
     problem
   end
@@ -79,32 +79,32 @@ defmodule WardrikDaemon.Agents do
     |> Enum.sort()
   end
 
-  defp declared(opts), do: Wardrik.Store.get(opts[:store], @key) || %{}
+  defp declare(opts), do: Wardrik.Store.get(opts[:store], @key) || %{}
 
   # The file's agent keeps the ID a file gave it. A new one gets a new ID, unless another agent
   # has its name.
-  defp claimed(opts, path, last) do
+  defp claim(opts, path, last) do
     with {:ok, agent, definition} <- AgentFile.read(path, opts[:config]) do
-      case AgentRecords.named(opts[:store], agent.org, agent.name) do
-        {:ok, record} -> kept(opts, {agent, definition}, record, record.id in Map.values(last))
-        :error -> created(opts, {agent, definition})
+      case AgentRecords.fetch_by_name(opts[:store], agent.org, agent.name) do
+        {:ok, record} -> keep(opts, {agent, definition}, record, record.id in Map.values(last))
+        :error -> create(opts, {agent, definition})
       end
     end
   end
 
-  defp kept(_opts, {%{owner: owner}, definition}, %{owner: owner} = record, true),
+  defp keep(_opts, {%{owner: owner}, definition}, %{owner: owner} = record, true),
     do: {:ok, record, definition}
 
-  defp kept(_opts, {agent, _definition}, record, true),
+  defp keep(_opts, {agent, _definition}, record, true),
     do:
       {:error,
        "#{agent.name} is #{record.owner}'s agent. Remove its file and reload before giving it to #{agent.owner}."}
 
-  defp kept(opts, declared, _record, false), do: created(opts, declared)
+  defp keep(opts, declared, _record, false), do: create(opts, declared)
 
   # A name an agent made through the API has stays its own while the agent is defined. A name
   # another node's reload claimed for this file is this file's agent, defined or not yet.
-  defp created(opts, {agent, definition}) do
+  defp create(opts, {agent, definition}) do
     case AgentRecords.create(opts[:store],
            owner: agent.owner,
            name: agent.name,
@@ -137,15 +137,16 @@ defmodule WardrikDaemon.Agents do
   defp declares({:ok, record, _definition}, _last), do: record.id
   defp declares({:error, _why}, last), do: last
 
-  defp defined(_opts, {path, {:error, why}}), do: "didn't read an agent. #{path}: #{why}"
+  defp define(_opts, {path, {:error, why}}), do: "didn't read an agent. #{path}: #{why}"
 
-  defp defined(opts, {path, {:ok, record, definition}}) do
-    with {:ok, definition} <- AgentRecords.identified(opts[:store], record.org, definition),
+  defp define(opts, {path, {:ok, record, definition}}) do
+    with {:ok, definition} <-
+           AgentRecords.replace_shared_names(opts[:store], record.org, definition),
          {:ok, snapshot} <-
            opts
            |> scope()
            |> Wardrik.run("agent.define", Map.put(definition, "agent", record.id)) do
-      started_over(snapshot, record, path)
+      start_over(snapshot, record, path)
     else
       {:error, %Wardrik.Error{message: message}} ->
         "didn't define #{record.name}. #{path}: #{message}"
@@ -155,12 +156,12 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  defp started_over(%{"reset" => reset}, record, path),
+  defp start_over(%{"reset" => reset}, record, path),
     do: "started #{record.name} over. #{path}: #{Enum.join(reset, " ")}"
 
-  defp started_over(_snapshot, _record, _path), do: :ok
+  defp start_over(_snapshot, _record, _path), do: :ok
 
-  defp forgotten(opts, id) do
+  defp forget(opts, id) do
     scope = scope(opts)
 
     case Wardrik.run(scope, "agent.forget", %{"agent" => id}) do

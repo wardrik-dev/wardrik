@@ -101,7 +101,7 @@ defmodule Wardrik.Agent do
   def reply(scope, agent, input, opts \\ []) do
     scope
     |> follow(agent, input, opts)
-    |> Enum.reduce(nil, &ended/2)
+    |> Enum.reduce(nil, &finish/2)
   rescue
     error in Wardrik.Error -> {:error, error}
   end
@@ -133,13 +133,13 @@ defmodule Wardrik.Agent do
     {:ok, ref}
   end
 
-  defp ended({:done, reply}, _acc), do: {:ok, reply}
-  defp ended({:waiting, interrupts}, _acc), do: {:waiting, interrupts}
+  defp finish({:done, reply}, _acc), do: {:ok, reply}
+  defp finish({:waiting, interrupts}, _acc), do: {:waiting, interrupts}
 
-  defp ended({:failed, why}, _acc),
+  defp finish({:failed, why}, _acc),
     do: {:error, Wardrik.Error.new(:unavailable, "The run failed: #{why}")}
 
-  defp ended({:text, _chunk}, acc), do: acc
+  defp finish({:text, _chunk}, acc), do: acc
 
   defp text({:text, chunk}), do: [chunk]
   defp text(_ended), do: []

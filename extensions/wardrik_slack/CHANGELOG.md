@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-rc.6 (2026-11-16)
+
+- **Upgrading:** functions are named for what they do. `WardrikSlack.Install.installed/3` is
+  `complete_install/3`; in `WardrikSlack.Messages`, `answered` and `stopped` are `mark_answered`
+  and `mark_stopped`; `WardrikSlack.Rooms.shown/1` is `get_display_name/1`;
+  `WardrikSlack.Waiting.asked/1` is `describe_asks/1`.
+- Requires `wardrik` 0.1.0-rc.17.
+
 ## 0.1.0-rc.5 (2026-11-12)
 
 - Requires `wardrik` 0.1.0-rc.11 in place of `wardrik_channel`, which it took in. The chat kit is

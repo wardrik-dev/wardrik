@@ -85,32 +85,32 @@ defmodule Wardrik.Tool do
       ReqLLM.Tool.new!(
         name: tool.name,
         description: tool.description,
-        parameter_schema: offered(tool.schema),
+        parameter_schema: offer(tool.schema),
         callback: fn _args -> {:error, :run_by_wardrik_core} end
       )
 
     %{tool | req_llm: req_llm}
   end
 
-  defp offered(schema) when is_map(schema) do
+  defp offer(schema) when is_map(schema) do
     schema
     |> Map.delete("pattern")
     |> Map.new(fn
       {key, %{} = schemas} when key in ["properties", "$defs", "definitions"] ->
-        {key, Map.new(schemas, fn {name, schema} -> {name, offered(schema)} end)}
+        {key, Map.new(schemas, fn {name, schema} -> {name, offer(schema)} end)}
 
       {key, schemas} when key in ["oneOf", "anyOf", "allOf"] and is_list(schemas) ->
-        {key, Enum.map(schemas, &offered/1)}
+        {key, Enum.map(schemas, &offer/1)}
 
       {key, %{} = schema} when key in ["items", "additionalProperties", "not"] ->
-        {key, offered(schema)}
+        {key, offer(schema)}
 
       other ->
         other
     end)
   end
 
-  defp offered(schema), do: schema
+  defp offer(schema), do: schema
 
   @doc "Adds `annotations`, such as `read_only: true`. Replaces any with the same key."
   @spec annotate(t(), keyword() | map()) :: t()

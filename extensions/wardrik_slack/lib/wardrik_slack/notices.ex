@@ -16,7 +16,7 @@ defmodule WardrikSlack.Notices do
   @spec message(Wardrik.Notice.t()) :: %{text: String.t(), blocks: [map()]}
   def message(%Wardrik.Notice{kind: :parked, agent: agent} = notice) do
     calls = Waiting.from_notice(notice)
-    text = "`#{agent}` waits for someone to #{WardrikSlack.Waiting.asked(calls)}."
+    text = "`#{agent}` waits for someone to #{WardrikSlack.Waiting.describe_asks(calls)}."
     %{text: text, blocks: [Blocks.section(text) | WardrikSlack.Waiting.calls_blocks(calls)]}
   end
 

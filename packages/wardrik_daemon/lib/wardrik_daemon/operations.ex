@@ -172,8 +172,8 @@ defmodule WardrikDaemon.Operations do
 
   # Each agent is listed only where the caller may read it, so they learn of no other.
   defp perform(%{daemon: daemon, scope: scope}, "agents.find", %{"owner" => owner} = input) do
-    with :ok <- Allowed.named(owner),
-         :ok <- Allowed.kept(owner, daemon.orgs) do
+    with :ok <- Allowed.check_owner_name(owner),
+         :ok <- Allowed.check_kept(owner, daemon.orgs) do
       agents =
         for record <- AgentRecords.in_org(daemon.store, Owners.org(owner)),
             input["name"] in [nil, record.name],
@@ -185,13 +185,13 @@ defmodule WardrikDaemon.Operations do
   end
 
   defp perform(%{daemon: daemon, scope: scope}, "agents.create", %{"owner" => owner} = input) do
-    with :ok <- Allowed.owned(daemon, scope, owner, {"agent.create", :agents}),
+    with :ok <- Allowed.check_owned(daemon, scope, owner, {"agent.create", :agents}),
          {:ok, record} <- CreateAgent.create(daemon, scope, {owner, Map.delete(input, "owner")}),
          do: {:ok, encode_record(record)}
   end
 
   defp perform(%{daemon: daemon, scope: scope}, "ceilings.list", %{"owner" => owner}) do
-    with :ok <- Allowed.owned(daemon, scope, owner, {"ceiling.read", :ceiling}),
+    with :ok <- Allowed.check_owned(daemon, scope, owner, {"ceiling.read", :ceiling}),
          {:ok, ceilings} <- Ceiling.list(daemon, owner),
          do: {:ok, %{"ceilings" => ceilings}}
   end
@@ -200,12 +200,17 @@ defmodule WardrikDaemon.Operations do
   defp perform(%{daemon: daemon, scope: scope}, "connections.pair", input) do
     %{"provider" => provider, "code" => code} = input
 
-    with :ok <- Allowed.authorized(scope, "connection.connect", {:connection, scope.principal.id}),
+    with :ok <-
+           Allowed.check_authorized(
+             scope,
+             "connection.connect",
+             {:connection, scope.principal.id}
+           ),
          do: Connections.pair(daemon, scope.principal, {provider, code})
   end
 
   defp perform(%{daemon: daemon, scope: scope}, "tokens.list", _input) do
-    with :ok <- Allowed.authorized(scope, "token.read", {:token, "*"}) do
+    with :ok <- Allowed.check_authorized(scope, "token.read", {:token, "*"}) do
       tokens =
         daemon.store
         |> Tokens.list()
@@ -217,12 +222,12 @@ defmodule WardrikDaemon.Operations do
 
   # The subject is checked as the resource, so a rule's names can say whom a token may act as.
   defp perform(%{daemon: daemon, scope: scope}, "tokens.create", input) do
-    with :ok <- Allowed.authorized(scope, "token.create", {:token, input["subject"]}),
+    with :ok <- Allowed.check_authorized(scope, "token.create", {:token, input["subject"]}),
          do: Tokens.issue(daemon.store, input)
   end
 
   defp perform(%{daemon: daemon, scope: scope}, "tokens.revoke", %{"id" => id}) do
-    with :ok <- Allowed.authorized(scope, "token.delete", {:token, id}),
+    with :ok <- Allowed.check_authorized(scope, "token.delete", {:token, id}),
          :ok <- Tokens.revoke(daemon.store, id),
          do: {:ok, nil}
   end

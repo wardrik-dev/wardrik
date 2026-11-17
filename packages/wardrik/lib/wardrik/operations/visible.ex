@@ -25,7 +25,7 @@ defmodule Wardrik.Operations.Visible do
 
       case input["limit"] do
         nil -> {:ok, Enum.to_list(keys), nil}
-        limit -> paged(Enum.take(keys, limit + 1), limit)
+        limit -> paginate(Enum.take(keys, limit + 1), limit)
       end
     end
   end
@@ -42,12 +42,12 @@ defmodule Wardrik.Operations.Visible do
     |> Stream.filter(fn {agent, _conversation} -> visible?(scope, input, agent) end)
   end
 
-  defp paged(keys, limit) when length(keys) > limit do
+  defp paginate(keys, limit) when length(keys) > limit do
     page = Enum.take(keys, limit)
     {:ok, page, cursor(List.last(page))}
   end
 
-  defp paged(keys, _limit), do: {:ok, keys, nil}
+  defp paginate(keys, _limit), do: {:ok, keys, nil}
 
   defp cursor({agent, conversation}) do
     [agent, conversation]

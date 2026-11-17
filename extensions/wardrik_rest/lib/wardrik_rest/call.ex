@@ -45,7 +45,7 @@ defmodule WardrikRest.Call do
          {:ok, headers} <- headers(call) do
       call
       |> request(secrets, headers)
-      |> answered(call, {attempt, credentials(api, schemes)})
+      |> answer(call, {attempt, credentials(api, schemes)})
     end
   end
 
@@ -101,7 +101,7 @@ defmodule WardrikRest.Call do
         method: operation.method,
         url: api.base_url <> path(operation, args),
         params: query(given, args) ++ for({{:query, name}, value} <- secrets, do: {name, value}),
-        headers: Map.new(argued(given, args) ++ headers ++ Enum.flat_map(secrets, &header/1)),
+        headers: Map.new(argue(given, args) ++ headers ++ Enum.flat_map(secrets, &header/1)),
         receive_timeout: api.timeout,
         retry: false
       ] ++ body(operation, given, args) ++ api.req_options
@@ -122,64 +122,69 @@ defmodule WardrikRest.Call do
     for %{in: :query, name: name} <- given, value <- List.wrap(args[name]), do: {name, value}
   end
 
-  defp argued(given, args),
+  defp argue(given, args),
     do: for(%{in: :header, name: name} <- given, do: {name, to_string(args[name])})
 
   defp body(operation, given, args) do
     cond do
-      payload = Enum.find(given, &(&1.in == :payload)) -> sent(operation, args[payload.name])
-      Enum.any?(operation.parameters, &(&1.in == :body)) -> sent(operation, fields(given, args))
-      true -> []
+      payload = Enum.find(given, &(&1.in == :payload)) ->
+        encode_body(operation, args[payload.name])
+
+      Enum.any?(operation.parameters, &(&1.in == :body)) ->
+        encode_body(operation, fields(given, args))
+
+      true ->
+        []
     end
   end
 
   defp fields(given, args),
     do: Map.new(for %{in: :body, name: name} <- given, do: {name, args[name]})
 
-  defp sent(%Operation{encoding: :json}, body), do: [json: body]
-  defp sent(%Operation{encoding: :form}, body), do: [form: form(body, nil)]
+  defp encode_body(%Operation{encoding: :json}, body), do: [json: body]
+  defp encode_body(%Operation{encoding: :form}, body), do: [form: form(body, nil)]
 
   # Nested as card[number]=4242 and items[0][price]=p_1, as form-encoded APIs such as Stripe's take.
   defp form(%{} = map, prefix) do
     map
     |> Enum.sort()
-    |> Enum.flat_map(fn {key, value} -> form(value, nested(prefix, key)) end)
+    |> Enum.flat_map(fn {key, value} -> form(value, nest_key(prefix, key)) end)
   end
 
   defp form(list, prefix) when is_list(list),
     do:
       list
       |> Enum.with_index()
-      |> Enum.flat_map(fn {value, i} -> form(value, nested(prefix, i)) end)
+      |> Enum.flat_map(fn {value, i} -> form(value, nest_key(prefix, i)) end)
 
   defp form(nil, _prefix), do: []
   defp form(value, prefix), do: [{prefix, to_string(value)}]
 
-  defp nested(nil, key), do: to_string(key)
-  defp nested(prefix, key), do: "#{prefix}[#{key}]"
+  defp nest_key(nil, key), do: to_string(key)
+  defp nest_key(prefix, key), do: "#{prefix}[#{key}]"
 
   defp header({:bearer, token}), do: [{"authorization", "Bearer " <> token}]
   defp header({{:header, name}, value}), do: [{name, value}]
   defp header({{:query, _name}, _value}), do: []
 
-  defp answered({:ok, %Req.Response{status: status, body: body}}, call, _how)
+  defp answer({:ok, %Req.Response{status: status, body: body}}, call, _how)
        when status in 200..299,
-       do: {:ok, sized(body, call.api.max_result_bytes)}
+       do: {:ok, limit_size(body, call.api.max_result_bytes)}
 
-  defp answered({:ok, %Req.Response{status: 401}}, call, {:first, [_ | _] = names}) do
-    Enum.each(names, &Credentials.refused(call.context, &1))
+  defp answer({:ok, %Req.Response{status: 401}}, call, {:first, [_ | _] = names}) do
+    Enum.each(names, &Credentials.report_refusal(call.context, &1))
     attempt(call, :again)
   end
 
-  defp answered({:ok, %Req.Response{status: 429}}, call, _how), do: unavailable(call, 429)
+  defp answer({:ok, %Req.Response{status: 429}}, call, _how), do: unavailable(call, 429)
 
-  defp answered({:ok, %Req.Response{status: status}}, call, _how) when status >= 500,
+  defp answer({:ok, %Req.Response{status: status}}, call, _how) when status >= 500,
     do: unavailable(call, status)
 
-  defp answered({:ok, %Req.Response{status: status, body: body}}, call, _how),
+  defp answer({:ok, %Req.Response{status: status, body: body}}, call, _how),
     do: {:error, "#{call.api.name} answered #{status}: #{message(body)}"}
 
-  defp answered({:error, reason}, call, _how),
+  defp answer({:error, reason}, call, _how),
     do:
       raise(
         WardrikRest.Unavailable,
@@ -189,9 +194,9 @@ defmodule WardrikRest.Call do
   defp unavailable(call, status),
     do: raise(WardrikRest.Unavailable, "#{call.api.name} answered #{status}.")
 
-  defp sized("", _limit), do: %{}
+  defp limit_size("", _limit), do: %{}
 
-  defp sized(body, limit) do
+  defp limit_size(body, limit) do
     text = if is_binary(body), do: body, else: JSON.encode!(body)
     if byte_size(text) <= limit, do: body, else: cut(text, limit)
   end

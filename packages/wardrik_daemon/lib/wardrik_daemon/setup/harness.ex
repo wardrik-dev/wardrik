@@ -13,8 +13,8 @@ defmodule WardrikDaemon.Setup.Harness do
     do: not match?(%{"harnesses" => %{^name => _harness}}, Machine.config(machine))
 
   @doc "Returns the changes that add the harness `name`, its options the YAML `text`."
-  @spec added(String.t(), String.t()) :: [Setup.change()]
-  def added(name, text) do
+  @spec build_add_changes(String.t(), String.t()) :: [Setup.change()]
+  def build_add_changes(name, text) do
     [
       {:entry, "config.yaml", "harnesses", name,
        "# A tool of the same name, as tools: [#{name}]. It works in a scratch directory, or\n" <>

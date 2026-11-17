@@ -20,7 +20,7 @@ defmodule WardrikACP.ScratchTest do
     {:ok, second, _context} = call(acp, [], @scratch)
 
     assert first["directory"] == second["directory"]
-    assert [_session] = sent(log, "session/new")
+    assert [_session] = find_sent(log, "session/new")
   end
 
   test "offers checkout only when there are checkouts", context do

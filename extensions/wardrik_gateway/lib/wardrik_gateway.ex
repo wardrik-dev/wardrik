@@ -66,20 +66,20 @@ defmodule WardrikGateway do
   @impl Wardrik.Middleware
   def call(%Context{step: :generate} = context, next, gateway) do
     {models, wait} = GenServer.call(gateway, {:plan, context.model})
-    tried(context, next, gateway, models, now() + wait, nil)
+    handle_try(context, next, gateway, models, now() + wait, nil)
   end
 
   def call(context, next, _gateway), do: next.(context)
 
-  defp tried(context, next, gateway, models, deadline, failed) do
+  defp handle_try(context, next, gateway, models, deadline, failed) do
     remaining = max(deadline - now(), 0)
 
     case GenServer.call(gateway, {:admit, models, remaining}) do
       {:go, model, wait} ->
-        held(context, model, wait)
+        hold(context, model, wait)
         result = next.(%{context | model: model})
 
-        answered(
+        answer(
           result,
           %{context: context, next: next, gateway: gateway},
           models,
@@ -89,16 +89,16 @@ defmodule WardrikGateway do
 
       {:wait, wait} when is_integer(wait) and wait <= remaining ->
         Process.sleep(wait)
-        tried(context, next, gateway, models, deadline, failed)
+        handle_try(context, next, gateway, models, deadline, failed)
 
       {:wait, _wait} ->
         {:error, failed || %WardrikGateway.Unavailable{models: models}}
     end
   end
 
-  defp held(_context, _model, 0), do: :ok
+  defp hold(_context, _model, 0), do: :ok
 
-  defp held(context, model, wait) do
+  defp hold(context, model, wait) do
     :telemetry.execute([:wardrik_gateway, :limited], %{wait: wait}, %{
       model: model,
       agent_id: context.agent_id
@@ -107,12 +107,12 @@ defmodule WardrikGateway do
     Process.sleep(wait)
   end
 
-  defp answered({:ok, context} = answer, call, _models, _deadline, model) do
+  defp answer({:ok, context} = answer, call, _models, _deadline, model) do
     report(call.gateway, model, {:ok, tokens(context.response)})
     answer
   end
 
-  defp answered({:error, reason} = error, call, models, deadline, model) do
+  defp answer({:error, reason} = error, call, models, deadline, model) do
     outcome = outcome(reason)
     report(call.gateway, model, outcome)
 
@@ -128,7 +128,7 @@ defmodule WardrikGateway do
     end
   end
 
-  defp answered(parked, _call, _models, _deadline, _model), do: parked
+  defp answer(parked, _call, _models, _deadline, _model), do: parked
 
   defp failover(call, rest, deadline, reason, model, next_model) do
     :telemetry.execute([:wardrik_gateway, :failover], %{}, %{
@@ -138,7 +138,7 @@ defmodule WardrikGateway do
       agent_id: call.context.agent_id
     })
 
-    tried(call.context, call.next, call.gateway, rest, deadline, reason)
+    handle_try(call.context, call.next, call.gateway, rest, deadline, reason)
   end
 
   defp after_model(models, model) do

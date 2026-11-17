@@ -6,15 +6,15 @@ defmodule WardrikDaemon.Test.Screen do
 
   use Agent
 
-  def start_link(opts), do: served(Agent.start_link(fn -> [] end), opts[:notify])
+  def start_link(opts), do: serve_agent(Agent.start_link(fn -> [] end), opts[:notify])
 
-  def written(device) do
+  def read_screen(device) do
     device
     |> Agent.get(&Enum.reverse/1)
     |> IO.iodata_to_binary()
   end
 
-  defp served({:ok, agent}, notify) do
+  defp serve_agent({:ok, agent}, notify) do
     pid = spawn_link(fn -> serve(agent, notify) end)
     {:ok, pid, agent}
   end
@@ -23,7 +23,7 @@ defmodule WardrikDaemon.Test.Screen do
     receive do
       {:io_request, from, ref, request} ->
         send(from, {:io_reply, ref, reply(agent, request)})
-        if notify, do: send(notify, {:screen, written(agent)})
+        if notify, do: send(notify, {:screen, read_screen(agent)})
         serve(agent, notify)
     end
   end

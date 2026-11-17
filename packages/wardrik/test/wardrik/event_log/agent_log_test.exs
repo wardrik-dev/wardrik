@@ -27,13 +27,13 @@ defmodule Wardrik.EventLog.AgentLogTest do
     :ok
   end
 
-  defp streamed(acc \\ []) do
+  defp stream(acc \\ []) do
     receive do
       {Wardrik.EventLog, _log, %{"type" => "wardrik.run.completed"} = event} ->
         Enum.reverse([event | acc])
 
       {Wardrik.EventLog, _log, event} ->
-        streamed([event | acc])
+        stream([event | acc])
     after
       1_000 -> flunk("The run never completed: #{inspect(Enum.map(acc, & &1["type"]))}")
     end
@@ -54,7 +54,7 @@ defmodule Wardrik.EventLog.AgentLogTest do
       )
 
     :ok = WardrikCore.ask(agent, "Say hi")
-    {kept_streamed, live} = Enum.split_with(streamed(), &Map.has_key?(&1, "sequence"))
+    {kept_streamed, live} = Enum.split_with(stream(), &Map.has_key?(&1, "sequence"))
 
     assert {:ok, %{events: kept}} = Wardrik.EventLog.page(:agent_log_events, ["agt_1"])
     assert kept == kept_streamed
@@ -101,7 +101,7 @@ defmodule Wardrik.EventLog.AgentLogTest do
       )
 
     :ok = WardrikCore.ask(agent, "Say hi")
-    streamed()
+    stream()
 
     assert {:ok, %{events: [started | _] = kept}} =
              Wardrik.EventLog.page(:agent_log_events, [{"agt_1", "C1"}])
@@ -127,7 +127,7 @@ defmodule Wardrik.EventLog.AgentLogTest do
       )
 
     :ok = WardrikCore.ask(agent, "Say hi")
-    streamed()
+    stream()
 
     assert {timeline, %{{"agt_1", nil} => 6}} =
              Wardrik.EventLog.view(:agent_log_events, "agt_1", Timeline)

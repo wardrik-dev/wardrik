@@ -34,21 +34,21 @@ defmodule Wardrik.Operations.NotifyTargets do
   @doc "Lists the owner's targets. The deployment's include those Wardrik's `:notify` names."
   @spec list(Scope.t(), map()) :: {:ok, map()}
   def list(%Scope{wardrik: wardrik}, %{"owner" => owner}) do
-    declared = if owner == Owned.deployment(), do: declared(wardrik), else: []
+    declared = if owner == Owned.deployment(), do: declare(wardrik), else: []
     owned = Owned.own(wardrik, __MODULE__, owner)
-    {:ok, %{"targets" => declared ++ Enum.map(owned, &listed/1)}}
+    {:ok, %{"targets" => declared ++ Enum.map(owned, &handle_list/1)}}
   end
 
   @doc "Adds a webhook for the owner's agents' notices."
   @spec add(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def add(%Scope{wardrik: wardrik} = scope, %{"owner" => owner, "name" => name} = input) do
-    with :ok <- unused(wardrik, owner, name),
+    with :ok <- check_unused(wardrik, owner, name),
          :ok <- reachable(wardrik, input["url"]),
          {:ok, secret} <- secret(wardrik, owner, input["secret"]),
          target = %{owner: owner, name: name, url: input["url"], secret: secret},
          :ok <- Owned.put(wardrik, __MODULE__, target) do
-      changed(scope, "notify_target.added", {owner, name, %{"url" => input["url"]}})
-      {:ok, listed(target)}
+      change(scope, "notify_target.added", {owner, name, %{"url" => input["url"]}})
+      {:ok, handle_list(target)}
     end
   end
 
@@ -61,8 +61,8 @@ defmodule Wardrik.Operations.NotifyTargets do
 
       target ->
         :ok = Owned.delete(wardrik, __MODULE__, owner, name)
-        changed(scope, "notify_target.removed", {owner, name, %{}})
-        {:ok, listed(target)}
+        change(scope, "notify_target.removed", {owner, name, %{}})
+        {:ok, handle_list(target)}
     end
   end
 
@@ -71,15 +71,17 @@ defmodule Wardrik.Operations.NotifyTargets do
   takes them: its own of each name, else the one another owner lets it use, else the
   deployment's. A name more than one other owner's would do for is left out.
   """
-  @spec reached(Wardrik.t(), Principal.t()) :: %{String.t() => Wardrik.Resolved.notify_target()}
-  def reached(wardrik, principal) do
+  @spec list_reached(Wardrik.t(), Principal.t()) :: %{
+          String.t() => Wardrik.Resolved.notify_target()
+        }
+  def list_reached(wardrik, principal) do
     candidates =
       for(target <- Owned.all(wardrik, __MODULE__), do: Map.put(target, :sent, webhook(target))) ++
         for {name, _target} <- wardrik.notify.targets,
             do: %{owner: Owned.deployment(), name: name, sent: name}
 
     for {name, named} <- Enum.group_by(candidates, & &1.name),
-        %{sent: sent} <- [Owned.chosen(wardrik, principal, named, @use)],
+        %{sent: sent} <- [Owned.choose(wardrik, principal, named, @use)],
         into: %{},
         do: {name, sent}
   end
@@ -95,7 +97,7 @@ defmodule Wardrik.Operations.NotifyTargets do
   defp webhook(target),
     do: {OwnedWebhook, [url: target.url, owner: target.owner, secret: target.secret]}
 
-  defp declared(wardrik) do
+  defp declare(wardrik) do
     for {name, {module, opts}} <- wardrik.notify.targets do
       kind =
         module
@@ -114,7 +116,7 @@ defmodule Wardrik.Operations.NotifyTargets do
     end
   end
 
-  defp unused(wardrik, owner, name) do
+  defp check_unused(wardrik, owner, name) do
     if Owned.get(wardrik, __MODULE__, Owned.reference(owner, name)) == nil and
          not declared?(wardrik, owner, name),
        do: :ok,
@@ -156,7 +158,7 @@ defmodule Wardrik.Operations.NotifyTargets do
          )}
   end
 
-  defp listed(target) do
+  defp handle_list(target) do
     listed = %{
       "owner" => target.owner,
       "name" => target.name,
@@ -168,7 +170,7 @@ defmodule Wardrik.Operations.NotifyTargets do
     if target.secret, do: Map.put(listed, "secret", %{"name" => target.secret}), else: listed
   end
 
-  defp changed(scope, type, {owner, name, data}),
+  defp change(scope, type, {owner, name, data}),
     do:
       Changes.record_deployment(scope,
         type: type,

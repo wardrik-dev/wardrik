@@ -5,7 +5,7 @@ defmodule Wardrik.EventLog.Timeline do
       {timeline, cursor} = Wardrik.EventLog.view(MyApp.Events, "agt_1", Wardrik.EventLog.Timeline)
       Wardrik.EventLog.Timeline.items(timeline)
 
-  To keep a screen current, fold in each new event and redraw what `touched/1` names.
+  To keep a screen current, fold in each new event and redraw what `list_touched/1` names.
 
   ## Items
 
@@ -61,7 +61,7 @@ defmodule Wardrik.EventLog.Timeline do
     timeline = %{timeline | touched: []}
 
     case {delegate_of(timeline, event), type} do
-      {nil, "wardrik.subagent.started"} -> delegated(timeline, data, event)
+      {nil, "wardrik.subagent.started"} -> delegate(timeline, data, event)
       {nil, _type} -> fold(timeline, type, data, event)
       {step_id, _type} -> in_delegate(timeline, step_id, type, data, event)
     end
@@ -85,8 +85,8 @@ defmodule Wardrik.EventLog.Timeline do
   Returns the ids of the items the last event changed, or `:reset` where it cleared the
   conversation and every item before it is gone.
   """
-  @spec touched(t()) :: [String.t()] | :reset
-  def touched(%__MODULE__{touched: touched}), do: touched
+  @spec list_touched(t()) :: [String.t()] | :reset
+  def list_touched(%__MODULE__{touched: touched}), do: touched
 
   @doc "Returns the latest run, or `nil` before any."
   @spec current_run(t()) :: map() | nil
@@ -147,7 +147,7 @@ defmodule Wardrik.EventLog.Timeline do
     do: update_run(t, event, &%{&1 | status: :waiting, interrupts: interrupts})
 
   defp fold(t, type, data, event) when is_map_key(@ended, type),
-    do: update_run(t, event, &finished(&1, Map.fetch!(@ended, type), data, event))
+    do: update_run(t, event, &finish(&1, Map.fetch!(@ended, type), data, event))
 
   defp fold(t, "wardrik.interrupt.resolved", %{"interrupt" => %{"id" => id}}, _event) do
     case Enum.find(t.items, fn {_id, item} -> waiting_on?(item, id) end) do
@@ -160,13 +160,13 @@ defmodule Wardrik.EventLog.Timeline do
     do: update_run(t, event, &%{&1 | model: get_in(data, ["request", "model"]) || &1.model})
 
   defp fold(t, "wardrik.reasoning.delta", %{"message" => %{"id" => id}, "delta" => delta}, event),
-    do: update_run(t, event, &streamed(&1, "think-" <> id, :thinking, delta))
+    do: update_run(t, event, &stream(&1, "think-" <> id, :thinking, delta))
 
   defp fold(t, "wardrik.message.delta", %{"message" => %{"id" => id}, "delta" => delta}, event),
-    do: update_run(t, event, &streamed(&1, "text-" <> id, :text, delta))
+    do: update_run(t, event, &stream(&1, "text-" <> id, :text, delta))
 
   defp fold(t, "wardrik.message.completed", %{"message" => message} = data, event),
-    do: update_run(t, event, &answered(&1, message, data))
+    do: update_run(t, event, &handle_answer(&1, message, data))
 
   defp fold(t, "wardrik.tool_call.started", %{"tool" => tool}, event),
     do: update_run(t, event, &put_step(&1, tool_step(tool)))
@@ -196,7 +196,7 @@ defmodule Wardrik.EventLog.Timeline do
       Map.get(t.delegated, CloudEvent.span_id(event)) ||
         Map.get(t.delegated, event["parentspanid"])
 
-  defp delegated(t, data, event) do
+  defp delegate(t, data, event) do
     span = CloudEvent.span_id(event)
     id = "agent-" <> span
     t = %{t | delegated: Map.put(t.delegated, span, id)}
@@ -225,10 +225,10 @@ defmodule Wardrik.EventLog.Timeline do
         update_delegate(t, event, step_id, &%{&1 | tools: data["tool_calls"] || &1.tools})
 
       {"wardrik.subagent.completed", true} ->
-        concluded(t, event, step_id, data, &%{&1 | status: :ok, answer: answer(data)})
+        conclude(t, event, step_id, data, &%{&1 | status: :ok, answer: answer(data)})
 
       {"wardrik.subagent.failed", true} ->
-        concluded(
+        conclude(
           t,
           event,
           step_id,
@@ -244,7 +244,7 @@ defmodule Wardrik.EventLog.Timeline do
   defp answer(%{"message" => message}), do: text(message, "text")
   defp answer(_data), do: nil
 
-  defp concluded(t, event, step_id, data, fun) do
+  defp conclude(t, event, step_id, data, fun) do
     t
     |> update_delegate(event, step_id, &fun.(%{&1 | tools: data["tool_calls"] || &1.tools}))
     |> update_run(event, &Map.update!(&1, :cost_micro_usd, fn spent -> spent + cost(data) end))
@@ -259,36 +259,36 @@ defmodule Wardrik.EventLog.Timeline do
     end)
   end
 
-  defp finished(run, status, data, event) do
+  defp finish(run, status, data, event) do
     %{
       run
       | status: status,
         finished_at: event["time"],
         interrupts: [],
         error: error_text(data["error"]) || run.error,
-        steps: Enum.map(run.steps, &settled/1)
+        steps: Enum.map(run.steps, &settle/1)
     }
   end
 
-  defp settled(%{type: type} = step) when type in [:thinking, :text], do: %{step | live: false}
-  defp settled(step), do: step
+  defp settle(%{type: type} = step) when type in [:thinking, :text], do: %{step | live: false}
+  defp settle(step), do: step
 
-  defp answered(run, %{"id" => id} = message, data) do
+  defp handle_answer(run, %{"id" => id} = message, data) do
     run
-    |> completed("think-" <> id, :thinking, text(message, "reasoning"))
-    |> completed("text-" <> id, :text, text(message, "text"))
+    |> complete("think-" <> id, :thinking, text(message, "reasoning"))
+    |> complete("text-" <> id, :text, text(message, "text"))
     |> Map.update!(:cost_micro_usd, &(&1 + cost(data)))
     |> Map.update!(:error, &(error_text(data["error"]) || &1))
   end
 
   defp cost(data), do: get_in(data, ["cost", "micro_usd"]) || 0
 
-  defp streamed(run, id, type, delta) do
+  defp stream(run, id, type, delta) do
     step = find_step(run, id) || %{id: id, type: type, text: "", live: true}
     put_step(run, %{step | text: step.text <> delta, live: true})
   end
 
-  defp completed(run, id, type, text) do
+  defp complete(run, id, type, text) do
     case {find_step(run, id), text} do
       {nil, ""} -> run
       {nil, text} -> put_step(run, %{id: id, type: type, text: text, live: false})

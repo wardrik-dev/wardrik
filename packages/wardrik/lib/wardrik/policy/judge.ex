@@ -83,7 +83,7 @@ defmodule Wardrik.Policy.Judge do
   @doc "Reads a judge from a map with string keys, such as one parsed from YAML."
   @spec decode(map()) :: {:ok, t()} | {:error, String.t()}
   def decode(fields) when is_map(fields) do
-    with :ok <- Read.known(fields, @fields, "a judge"),
+    with :ok <- Read.check_known(fields, @fields, "a judge"),
          {:ok, questions} <- questions(Map.get(fields, "questions", [])) do
       {:ok,
        %__MODULE__{model: Map.get(fields, "model", %__MODULE__{}.model), questions: questions}}
@@ -95,7 +95,7 @@ defmodule Wardrik.Policy.Judge do
   @doc "Encodes a judge as the map `decode/1` reads."
   @spec to_json(t()) :: map()
   def to_json(%__MODULE__{model: model, questions: questions}),
-    do: %{"model" => model, "questions" => Enum.map(questions, &Read.written/1)}
+    do: %{"model" => model, "questions" => Enum.map(questions, &Read.stringify_keys/1)}
 
   defp questions(questions) when is_list(questions) do
     questions
@@ -170,40 +170,40 @@ defmodule Wardrik.Policy.Judge do
     answer =
       judge
       |> judge(call)
-      |> trusted(call)
+      |> apply_trust(call)
 
     case answer do
       {:pass, measurements} ->
         %{decision | measurements: measurements}
 
       {judged, measurements} ->
-        %{over(decision, judged(decision.policy, judged)) | measurements: measurements}
+        %{over(decision, handle_judge(decision.policy, judged)) | measurements: measurements}
     end
   end
 
   defp judge(judge, call) do
-    case asked(judge, call) do
+    case ask(judge, call) do
       [] -> {:pass, %{}}
-      asked -> answered(asked, evaluation(judge, asked, call))
+      asked -> answer(asked, evaluation(judge, asked, call))
     end
   end
 
-  defp trusted({:allow, measurements}, %Call{labels: labels}) do
+  defp apply_trust({:allow, measurements}, %Call{labels: labels}) do
     if @outside in labels, do: {:pass, measurements}, else: {:allow, measurements}
   end
 
-  defp trusted(judged, _call), do: judged
+  defp apply_trust(judged, _call), do: judged
 
-  defp judged(policy, :allow), do: %Decision{effect: :allow, policy: policy, cause: :judge}
+  defp handle_judge(policy, :allow), do: %Decision{effect: :allow, policy: policy, cause: :judge}
 
-  defp judged(policy, {effect, message}),
+  defp handle_judge(policy, {effect, message}),
     do: %Decision{effect: effect, message: message, policy: policy, cause: :judge}
 
   defp over(%Decision{cause: :no_rule}, %Decision{effect: :allow} = judged), do: judged
   defp over(decision, %Decision{effect: :allow}), do: decision
   defp over(decision, judged), do: Decision.strictest([decision, judged])
 
-  defp asked(judge, %Call{name: name}) do
+  defp ask(judge, %Call{name: name}) do
     judge.questions
     |> Enum.map(&Map.new/1)
     |> Enum.filter(&names?(Map.get(&1, :tools, []), name))
@@ -215,14 +215,14 @@ defmodule Wardrik.Policy.Judge do
   defp evaluation(_judge, _asked, %Call{evaluate: nil}), do: {:error, :no_evaluate}
 
   defp evaluation(judge, asked, %Call{} = call) do
-    state = %{"tool" => Name.shown(call.name), "arguments" => call.arguments}
+    state = %{"tool" => Name.format_name(call.name), "arguments" => call.arguments}
     call.evaluate.(judge.model, state, Enum.map(asked, & &1.question))
   end
 
-  defp answered(asked, {:ok, probabilities, measurements}),
+  defp answer(asked, {:ok, probabilities, measurements}),
     do: {verdict(Enum.zip(asked, probabilities)), measurements}
 
-  defp answered(asked, {:error, reason}) do
+  defp answer(asked, {:error, reason}) do
     if Enum.any?(asked, &(Map.has_key?(&1, :deny) or Map.has_key?(&1, :ask))),
       do: {{:ask, "The judge couldn't answer (#{why(reason)}), so a person decides."}, %{}},
       else: {:pass, %{}}
@@ -232,16 +232,16 @@ defmodule Wardrik.Policy.Judge do
   defp why(reason), do: inspect(reason)
 
   defp verdict(answers) do
-    with nil <- crossed(answers, :deny),
-         nil <- crossed(answers, :ask) do
+    with nil <- cross(answers, :deny),
+         nil <- cross(answers, :ask) do
       if allowed?(answers), do: :allow, else: :pass
     end
   end
 
-  defp crossed(answers, effect) do
+  defp cross(answers, effect) do
     case Enum.find(answers, &over?(&1, effect)) do
       nil -> nil
-      answer -> {effect, said(answer)}
+      answer -> {effect, say(answer)}
     end
   end
 
@@ -258,8 +258,8 @@ defmodule Wardrik.Policy.Judge do
     end
   end
 
-  defp said({%{message: message}, _probability}), do: message
+  defp say({%{message: message}, _probability}), do: message
 
-  defp said({question, probability}),
+  defp say({question, probability}),
     do: "Judged #{round(probability * 100)}% likely: #{question.question}"
 end

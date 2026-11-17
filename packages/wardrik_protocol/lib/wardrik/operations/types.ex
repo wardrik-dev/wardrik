@@ -122,25 +122,25 @@ defmodule Wardrik.Operations.Types do
   An `:interrupt` struct gives its `:agent` and `:conversation` where they're missing.
   Raises `KeyError` for a missing parameter and `ArgumentError` for an unknown key.
   """
-  @spec named(String.t(), keyword(), [atom()]) :: map()
-  def named(id, input, keys) do
-    input = interrupted(input)
+  @spec encode_named_input(String.t(), keyword(), [atom()]) :: map()
+  def encode_named_input(id, input, keys) do
+    input = interrupt(input)
     path = Map.new(keys, &{Atom.to_string(&1), path(Keyword.fetch!(input, &1))})
 
     {held, rest} =
       input
       |> Keyword.drop(keys)
-      |> Keyword.split(held(id))
+      |> Keyword.split(hold(id))
 
     id
     |> encode(rest)
-    |> then(&checked(id, &1))
+    |> then(&validate_fields!(id, &1))
     |> Map.merge(path)
     |> conversation(held)
   end
 
   # An interrupt from `reply/4` or `interrupts.list` names its agent and conversation.
-  defp interrupted(input) do
+  defp interrupt(input) do
     case Keyword.get(input, :interrupt) do
       %Interrupt{agent: agent, conversation: conversation} when is_binary(agent) ->
         input
@@ -152,7 +152,7 @@ defmodule Wardrik.Operations.Types do
     end
   end
 
-  defp held(id) do
+  defp hold(id) do
     case WardrikProtocol.operation(id) do
       %{conversation: nil} -> []
       _operation -> [:conversation]
@@ -162,8 +162,8 @@ defmodule Wardrik.Operations.Types do
   @doc """
   Returns the JSON `input` if it holds only the operation's own fields, or raises `ArgumentError`.
   """
-  @spec checked(String.t(), map()) :: map()
-  def checked(id, input) do
+  @spec validate_fields!(String.t(), map()) :: map()
+  def validate_fields!(id, input) do
     case fields(WardrikProtocol.operation(id)) do
       :any ->
         input

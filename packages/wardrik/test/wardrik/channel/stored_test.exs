@@ -1,7 +1,7 @@
 defmodule Wardrik.Channel.StoredTest do
   use ExUnit.Case, async: true
 
-  import Wardrik.Test.Wardrik, only: [unsealed: 2]
+  import Wardrik.Test.Wardrik, only: [unseal_secret: 2]
 
   alias Wardrik.Channel.Installation
   alias Wardrik.Chat.Channel
@@ -42,7 +42,7 @@ defmodule Wardrik.Channel.StoredTest do
 
     assert Channel.install(channel, installation) == :ok
     assert Channel.installation(channel, "T1") == {:ok, installation}
-    assert unsealed(wardrik, {"acme", "chat:T1"}) == {:ok, "xoxb-acme"}
+    assert unseal_secret(wardrik, {"acme", "chat:T1"}) == {:ok, "xoxb-acme"}
 
     assert Channel.uninstall(channel, "T1") == :ok
     assert Channel.installation(channel, "T1") == :error
@@ -65,16 +65,22 @@ defmodule Wardrik.Channel.StoredTest do
       installation
     end
 
-    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme") == []
+    assert Wardrik.Channels.list_installations(wardrik, channel: "chat", owner: "acme") == []
 
     org = installed.("T1", "acme")
     jon = installed.("T2", "acme/@jon")
     installed.("T3", "globex")
 
-    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme") == [org]
-    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme/@jon") == [jon]
-    assert Wardrik.Channels.owned(wardrik, channel: "chat", owner: "acme/@maria") == []
-    assert Wardrik.Channels.owned(wardrik, channel: "teams", owner: "acme") == []
+    assert Wardrik.Channels.list_installations(wardrik, channel: "chat", owner: "acme") == [org]
+
+    assert Wardrik.Channels.list_installations(wardrik, channel: "chat", owner: "acme/@jon") == [
+             jon
+           ]
+
+    assert Wardrik.Channels.list_installations(wardrik, channel: "chat", owner: "acme/@maria") ==
+             []
+
+    assert Wardrik.Channels.list_installations(wardrik, channel: "teams", owner: "acme") == []
   end
 
   test "finds no channel by a name the Wardrik doesn't run", %{wardrik: wardrik} do

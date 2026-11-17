@@ -10,7 +10,7 @@ defmodule Wardrik.Views.Timeline do
       for {event, _cursor} <- stream, reduce: timeline do
         timeline ->
           timeline = Wardrik.Views.Timeline.apply(timeline, event)
-          redraw(Wardrik.Views.Timeline.touched(timeline))
+          redraw(Wardrik.Views.Timeline.list_touched(timeline))
           timeline
       end
 
@@ -67,8 +67,8 @@ defmodule Wardrik.Views.Timeline do
   Returns the ids of the items the last event changed, or `:reset` where it cleared the
   conversation and every item before it is gone.
   """
-  @spec touched(t()) :: [String.t()] | :reset
-  defdelegate touched(timeline), to: Timeline
+  @spec list_touched(t()) :: [String.t()] | :reset
+  defdelegate list_touched(timeline), to: Timeline
 
   @doc "Returns the latest run, or `nil` before any."
   @spec current_run(t()) :: map() | nil

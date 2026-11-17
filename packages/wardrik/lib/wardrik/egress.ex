@@ -42,7 +42,7 @@ defmodule Wardrik.Egress do
   @spec public(String.t()) :: :ok | {:error, String.t()}
   def public(url) do
     case URI.parse(url) do
-      %URI{scheme: "https", host: host} when is_binary(host) and host != "" -> reached(host)
+      %URI{scheme: "https", host: host} when is_binary(host) and host != "" -> reach(host)
       _other -> {:error, "#{url} isn't an https URL"}
     end
   end
@@ -61,12 +61,12 @@ defmodule Wardrik.Egress do
   def public?({0x2002, hi, lo, _d, _e, _f, _g, _h}), do: public?(ipv4(hi, lo))
   def public?(address), do: not Enum.any?(@not_public_v6, &within?(address, &1))
 
-  defp reached(host) do
+  defp reach(host) do
     charlist = String.to_charlist(host)
 
     case :inet.parse_address(charlist) do
       {:ok, address} -> literal(host, address)
-      {:error, :einval} -> resolved(host, addresses(host))
+      {:error, :einval} -> resolve(host, addresses(host))
     end
   end
 
@@ -74,9 +74,9 @@ defmodule Wardrik.Egress do
     if public?(address), do: :ok, else: {:error, "#{host} is a private address"}
   end
 
-  defp resolved(host, []), do: {:error, "#{host} doesn't resolve"}
+  defp resolve(host, []), do: {:error, "#{host} doesn't resolve"}
 
-  defp resolved(host, addresses) do
+  defp resolve(host, addresses) do
     case Enum.reject(addresses, &public?/1) do
       [] -> :ok
       [address | _rest] -> {:error, "#{host} is at #{:inet.ntoa(address)}, a private address"}

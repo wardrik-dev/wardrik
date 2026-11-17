@@ -15,11 +15,11 @@ defmodule WardrikDaemon.Orgs do
   @type settings() :: %{policy: [Wardrik.Policy.t()], ceilings: [Ceiling.t()]}
 
   @doc "Returns `:ok` if the daemon runs `org`, or else a `not_found` error."
-  @spec known(String.t(), map()) :: :ok | {:error, Error.t()}
-  def known(org, %{org: own, orgs: orgs}) do
+  @spec check_known(String.t(), map()) :: :ok | {:error, Error.t()}
+  def check_known(org, %{org: own, orgs: orgs}) do
     if org == own or Map.has_key?(orgs, org),
       do: :ok,
-      else: {:error, Error.new(:not_found, "There's no org #{org} here: #{declared(own, orgs)}.")}
+      else: {:error, Error.new(:not_found, "There's no org #{org} here: #{declare(own, orgs)}.")}
   end
 
   @doc """
@@ -27,7 +27,7 @@ defmodule WardrikDaemon.Orgs do
   """
   @spec settings(String.t(), map()) :: {:ok, settings()} | {:error, Error.t()}
   def settings(org, %{orgs: orgs, policies: policies} = opts) do
-    with :ok <- known(org, opts), do: held(org, names(orgs, org), policies)
+    with :ok <- check_known(org, opts), do: hold(org, names(orgs, org), policies)
   end
 
   defp names(orgs, org) do
@@ -37,10 +37,10 @@ defmodule WardrikDaemon.Orgs do
     |> Enum.uniq()
   end
 
-  defp held(org, names, policies) do
+  defp hold(org, names, policies) do
     case Enum.reject(names, &Map.has_key?(policies, &1)) do
       [] ->
-        split = Enum.map(names, &pooled(&1, Map.fetch!(policies, &1)))
+        split = Enum.map(names, &pool_budget(&1, Map.fetch!(policies, &1)))
 
         with {:ok, ceilings} <- ceilings(org, split),
              do: {:ok, %{policy: Enum.map(split, &elem(&1, 1)), ceilings: ceilings}}
@@ -72,13 +72,16 @@ defmodule WardrikDaemon.Orgs do
     end)
   end
 
-  defp pooled(name, %Wardrik.Policy{budget: %Wardrik.Policy.Budget{per: per} = budget} = policy)
+  defp pool_budget(
+         name,
+         %Wardrik.Policy{budget: %Wardrik.Policy.Budget{per: per} = budget} = policy
+       )
        when per != :turn,
        do: {name, %{policy | budget: nil}, budget}
 
-  defp pooled(name, policy), do: {name, policy, nil}
+  defp pool_budget(name, policy), do: {name, policy, nil}
 
-  defp declared(own, orgs) do
+  defp declare(own, orgs) do
     named = Enum.sort([own | Map.keys(orgs) -- ["*"]])
     "config.yaml declares #{Enum.join(Enum.uniq(named), ", ")}"
   end

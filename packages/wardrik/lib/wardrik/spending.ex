@@ -10,14 +10,14 @@ defmodule Wardrik.Spending do
     do: next.(context)
 
   def call(%Context{step: :generate} = context, next, instance),
-    do: counted(context, next, instance)
+    do: handle_count(context, next, instance)
 
   def call(%Context{step: {:tool_call, _call}} = context, next, instance),
-    do: counted(context, next, instance)
+    do: handle_count(context, next, instance)
 
   def call(context, next, _instance), do: next.(context)
 
-  defp counted(context, next, instance) do
+  defp handle_count(context, next, instance) do
     case next.(context) do
       {:ok, after_step} = done ->
         wardrik = Wardrik.Instance.fetch!(instance)
@@ -34,7 +34,7 @@ defmodule Wardrik.Spending do
   middleware doesn't count.
   """
   @spec count(Wardrik.t(), String.t(), map(), map()) :: :ok
-  def count(wardrik, id, before, measured), do: spent(wardrik, id, gained(before, measured))
+  def count(wardrik, id, before, measured), do: spend(wardrik, id, compute_gain(before, measured))
 
   @doc """
   Returns what the agent `id` spent today.
@@ -64,15 +64,15 @@ defmodule Wardrik.Spending do
     end)
   end
 
-  defp gained(before, measured) do
+  defp compute_gain(before, measured) do
     Map.new([:input_tokens, :output_tokens, :usd], fn key ->
       {key, Map.get(measured, key, 0) - Map.get(before, key, 0)}
     end)
   end
 
-  defp spent(_wardrik, _id, %{input_tokens: 0, output_tokens: 0, usd: 0}), do: :ok
+  defp spend(_wardrik, _id, %{input_tokens: 0, output_tokens: 0, usd: 0}), do: :ok
 
-  defp spent(wardrik, id, gained) do
+  defp spend(wardrik, id, gained) do
     tokens = gained.input_tokens + gained.output_tokens
     add(store(wardrik), key(id), tokens, gained.usd)
   end

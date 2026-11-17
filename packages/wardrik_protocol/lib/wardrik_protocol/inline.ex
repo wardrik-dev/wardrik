@@ -16,7 +16,7 @@ defmodule WardrikProtocol.Inline do
   end
 
   @spec whole(term(), Path.t()) :: term()
-  def whole(%{"$ref" => @prefix <> ref}, dir), do: whole(referenced(ref, dir), dir)
+  def whole(%{"$ref" => @prefix <> ref}, dir), do: whole(reference(ref, dir), dir)
 
   def whole(%{} = schema, dir),
     do: Map.new(schema, fn {key, value} -> {key, whole(value, dir)} end)
@@ -24,7 +24,7 @@ defmodule WardrikProtocol.Inline do
   def whole(list, dir) when is_list(list), do: Enum.map(list, &whole(&1, dir))
   def whole(value, _dir), do: value
 
-  defp referenced(ref, dir) do
+  defp reference(ref, dir) do
     case String.split(ref, "#/$defs/") do
       [name, type] -> get_in(read(dir, name), ["$defs", type])
       [name] -> read(dir, name)

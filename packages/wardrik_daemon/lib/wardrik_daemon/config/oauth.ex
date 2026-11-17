@@ -28,7 +28,7 @@ defmodule WardrikDaemon.Config.OAuth do
   def read(nil, _page), do: {:ok, nil}
 
   def read(section, page) do
-    Options.loaded([Wardrik.OAuth.Provider, Req.Steps])
+    Options.load_modules([Wardrik.OAuth.Provider, Req.Steps])
     {providers, own} = Map.pop(section, "providers", %{})
 
     with {:ok, own} <- Options.validate(own, schema(), "oauth"),
@@ -55,13 +55,13 @@ defmodule WardrikDaemon.Config.OAuth do
 
     with {:ok, opts} <- Options.convert(provider, schema, path),
          opts = Enum.map(opts, &value/1),
-         {:ok, _provider} <- Options.built(fn -> built(name, opts) end, path) do
+         {:ok, _provider} <- Options.call_builder(fn -> build(name, opts) end, path) do
       {:ok, opts}
     end
   end
 
   # Wardrik names each app; see `Wardrik.OAuth.Apps.key/1`.
-  defp built(name, opts) do
+  defp build(name, opts) do
     key = Wardrik.OAuth.Apps.key(%{owner: "deployment", name: to_string(name)})
     Wardrik.OAuth.Provider.new(name, [key: key] ++ opts)
   end

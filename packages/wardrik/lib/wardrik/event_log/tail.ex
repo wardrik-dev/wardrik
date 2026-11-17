@@ -40,7 +40,7 @@ defmodule Wardrik.EventLog.Tail do
   end
 
   defp start(store, resources, nil), do: {[], Reader.head(store, resources)}
-  defp start(store, resources, cursor), do: {Reader.covered(store, resources), cursor}
+  defp start(store, resources, cursor), do: {Reader.list_covered_logs(store, resources), cursor}
 
   defp next(%{replay: [log | logs]} = tail) do
     case read(tail, log) do
@@ -51,33 +51,33 @@ defmodule Wardrik.EventLog.Tail do
 
   defp next(%{replay: []} = tail) do
     receive do
-      {Wardrik.EventLog, log, event} -> arrived(tail, log, event)
+      {Wardrik.EventLog, log, event} -> arrive(tail, log, event)
     end
   end
 
-  defp arrived(tail, log, %{"sequence" => sequence}) do
+  defp arrive(tail, log, %{"sequence" => sequence}) do
     if String.to_integer(sequence) > Map.get(tail.positions, log, 0),
-      do: caught_up(tail, log, []),
+      do: catch_up(tail, log, []),
       else: {[], tail}
   end
 
-  defp arrived(tail, _log, live), do: {[{live, tail.positions}], tail}
+  defp arrive(tail, _log, live), do: {[{live, tail.positions}], tail}
 
-  defp caught_up(tail, log, taken) do
+  defp catch_up(tail, log, taken) do
     case read(tail, log) do
       {[], tail} -> {taken, tail}
-      {read, tail} -> caught_up(tail, log, taken ++ read)
+      {read, tail} -> catch_up(tail, log, taken ++ read)
     end
   end
 
   defp read(tail, log) do
     tail.settings
     |> Reader.entries(log, after: Map.get(tail.positions, log, 0), limit: @page)
-    |> Enum.map_reduce(tail, &passed/2)
+    |> Enum.map_reduce(tail, &pass_entry/2)
   end
 
-  defp passed({_log, _sequence, event} = entry, tail) do
-    positions = Reader.advanced(tail.positions, [entry])
+  defp pass_entry({_log, _sequence, event} = entry, tail) do
+    positions = Reader.advance_cursor(tail.positions, [entry])
     {{event, positions}, %{tail | positions: positions}}
   end
 

@@ -37,7 +37,7 @@ defmodule WardrikSlack.HTTP do
         text(200, challenge)
 
       {:ok, %{"type" => "event_callback"} = callback} ->
-        acted(channel, fn -> Dispatch.event(channel, callback) end)
+        act(channel, fn -> Dispatch.event(channel, callback) end)
 
       _other ->
         text(200, "")
@@ -47,7 +47,7 @@ defmodule WardrikSlack.HTTP do
   defp route(channel, %{path: "actions", body: body}) do
     with %{"payload" => text} <- URI.decode_query(body),
          {:ok, payload} <- JSON.decode(text) do
-      acted(channel, fn -> Dispatch.interactive(channel, payload) end)
+      act(channel, fn -> Dispatch.interactive(channel, payload) end)
     else
       _unreadable -> text(400, "That isn't a payload Slack sends.")
     end
@@ -55,7 +55,7 @@ defmodule WardrikSlack.HTTP do
 
   defp route(_channel, _request), do: text(404, "Slack sends nothing here.")
 
-  defp acted(channel, act) do
+  defp act(channel, act) do
     tasks = WardrikSlack.tasks(channel)
     task = Task.Supervisor.async_nolink(tasks, act)
     if Task.yield(task, @wait) == nil, do: Task.ignore(task)

@@ -29,7 +29,7 @@ defmodule WardrikDaemon.CLI.Agents do
           "user:, as user:acme/@jon, status:idle, status:running, status:parked or status:asleep,",
           "and attention, an agent waiting on a person."
         ],
-        run: &listed/3
+        run: &list/3
       },
       %Command{
         name: "agent show",
@@ -38,7 +38,7 @@ defmodule WardrikDaemon.CLI.Agents do
         switches: @conversation,
         count: 1,
         summary: "what an agent is, and what it does now",
-        run: &shown/3
+        run: &show/3
       },
       %Command{
         name: "agent ask",
@@ -53,7 +53,7 @@ defmodule WardrikDaemon.CLI.Agents do
           "carries on. --no-wait only sends it. --conversation ID sends it to one conversation.",
           "With no MESSAGE at a terminal, it's written in $VISUAL or $EDITOR."
         ],
-        run: &asked/3
+        run: &ask/3
       },
       %Command{
         name: "agent follow",
@@ -64,7 +64,7 @@ defmodule WardrikDaemon.CLI.Agents do
         count: 1,
         summary: "follow what an agent does, until Ctrl-C",
         details: ["With --json, each event as the HTTP API streams it, a line each."],
-        run: &followed/3
+        run: &follow/3
       },
       %Command{
         name: "agent history",
@@ -98,7 +98,7 @@ defmodule WardrikDaemon.CLI.Agents do
         details: [
           "--all stops every agent's turn. Messages queued behind a turn are dropped too."
         ],
-        run: &cancelled/3
+        run: &cancel/3
       },
       %Command{
         name: "agent rm",
@@ -107,7 +107,7 @@ defmodule WardrikDaemon.CLI.Agents do
         count: 1,
         summary: "remove an agent, and everything it had",
         details: ["An agent a file declares stays; remove its file and reload instead."],
-        run: &removed/3
+        run: &remove/3
       },
       %Command{
         name: "agent calls",
@@ -125,7 +125,7 @@ defmodule WardrikDaemon.CLI.Agents do
         switches: @conversation,
         count: 2,
         summary: "stop one tool call an agent is running",
-        run: &killed/3
+        run: &kill/3
       },
       %Command{
         name: "agent move",
@@ -134,7 +134,7 @@ defmodule WardrikDaemon.CLI.Agents do
         switches: @conversation,
         count: 2,
         summary: "start an agent again on another node of the cluster",
-        run: &moved/3
+        run: &move/3
       }
     ]
   end
@@ -151,48 +151,48 @@ defmodule WardrikDaemon.CLI.Agents do
         with {:ok, id} <- Context.agent(cx, agent),
              input = Context.conversation(%{"agent" => id}, flags),
              {:ok, answer} <- Context.call(cx, operation, input),
-             do: Context.done(cx, answer, "#{said} #{agent}.")
+             do: Context.report_done(cx, answer, "#{said} #{agent}.")
       end
     }
   end
 
-  defp followed([agent], flags, cx) do
+  defp follow([agent], flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          do: Follow.events(cx, agent: id, name: agent, conversation: flags[:conversation])
   end
 
-  defp cancelled([], %{all: true} = flags, cx) when not is_map_key(flags, :conversation),
-    do: cancelled_all(cx, %{})
+  defp cancel([], %{all: true} = flags, cx) when not is_map_key(flags, :conversation),
+    do: cancel_all(cx, %{})
 
-  defp cancelled([agent], flags, cx) when not is_map_key(flags, :all) do
+  defp cancel([agent], flags, cx) when not is_map_key(flags, :all) do
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, answer} <-
            Context.call(cx, "agent.cancel", Context.conversation(%{"agent" => id}, flags)),
-         do: Context.done(cx, answer, "Stopped the turn of #{agent}.")
+         do: Context.report_done(cx, answer, "Stopped the turn of #{agent}.")
   end
 
-  defp cancelled([_ | _] = agents, flags, cx)
+  defp cancel([_ | _] = agents, flags, cx)
        when not is_map_key(flags, :all) and not is_map_key(flags, :conversation) do
-    with {:ok, ids} <- Context.agents(cx, agents), do: cancelled_all(cx, %{"agents" => ids})
+    with {:ok, ids} <- Context.agents(cx, agents), do: cancel_all(cx, %{"agents" => ids})
   end
 
-  defp cancelled(_arguments, _flags, _cx),
+  defp cancel(_arguments, _flags, _cx),
     do:
       {:error, "Usage: wardrik agent cancel AGENT [--conversation ID], AGENT..., or --all alone"}
 
-  defp cancelled_all(cx, input) do
+  defp cancel_all(cx, input) do
     with {:ok, %{"cancelled" => ids} = answer} <- Context.call(cx, "agents.cancel", input) do
       names = if ids == [], do: %{}, else: Context.names(cx)
-      Context.done(cx, answer, stopped(Enum.map(ids, &shown(names, &1))))
+      Context.report_done(cx, answer, stop(Enum.map(ids, &show(names, &1))))
     end
   end
 
-  defp stopped([]), do: "No agent was taking a turn."
-  defp stopped(names), do: "Stopped the turns of #{Enum.join(names, ", ")}."
+  defp stop([]), do: "No agent was taking a turn."
+  defp stop(names), do: "Stopped the turns of #{Enum.join(names, ", ")}."
 
-  defp shown(names, id), do: get_in(names, [id, "shown"]) || id
+  defp show(names, id), do: get_in(names, [id, "shown"]) || id
 
-  defp listed(query, flags, cx) do
+  defp list(query, flags, cx) do
     with {:ok, %{"agents" => all}} <- Context.call(cx, "agents.list", %{}) do
       names = Context.names(cx)
       agents = Enum.filter(all, &matches?(&1, names[&1["id"]], query))
@@ -209,7 +209,7 @@ defmodule WardrikDaemon.CLI.Agents do
     do:
       for(
         agent <- agents,
-        do: row(shown(names, agent["id"]), agent, agent["spent_today"], agent["conversation"])
+        do: row(show(names, agent["id"]), agent, agent["spent_today"], agent["conversation"])
       )
 
   defp rows(agents, names, false) do
@@ -218,8 +218,8 @@ defmodule WardrikDaemon.CLI.Agents do
 
     for agent <- own do
       held = Map.get(by_agent, agent["id"], [])
-      spent = Enum.reduce(held, agent["spent_today"], &added(&2, &1["spent_today"]))
-      row(shown(names, agent["id"]), agent, spent, if(held != [], do: length(held)))
+      spent = Enum.reduce(held, agent["spent_today"], &add_usage(&2, &1["spent_today"]))
+      row(show(names, agent["id"]), agent, spent, if(held != [], do: length(held)))
     end
   end
 
@@ -227,9 +227,9 @@ defmodule WardrikDaemon.CLI.Agents do
     do: [
       name,
       status(agent["status"]),
-      queued(agent["pending"]),
+      queue(agent["pending"]),
       Clock.from_now(agent["next_run"]),
-      spent(spent),
+      spend(spent),
       conversations
     ]
 
@@ -239,18 +239,18 @@ defmodule WardrikDaemon.CLI.Agents do
   defp status("unreadable"), do: {"unreadable", :red}
   defp status(status), do: status
 
-  defp added(%{"tokens" => tokens, "usd" => usd}, %{"tokens" => more, "usd" => more_usd}),
+  defp add_usage(%{"tokens" => tokens, "usd" => usd}, %{"tokens" => more, "usd" => more_usd}),
     do: %{"tokens" => tokens + more, "usd" => usd + more_usd}
 
-  defp added(spent, _none), do: spent
+  defp add_usage(spent, _none), do: spent
 
-  defp spent(%{"tokens" => tokens, "usd" => usd}), do: spent(tokens, usd, usd > 0)
-  defp spent(_none), do: nil
+  defp spend(%{"tokens" => tokens, "usd" => usd}), do: spend(tokens, usd, usd > 0)
+  defp spend(_none), do: nil
 
-  defp spent(0, _usd, false), do: nil
-  defp spent(tokens, _usd, false), do: "#{Clock.amount(tokens)} tokens"
+  defp spend(0, _usd, false), do: nil
+  defp spend(tokens, _usd, false), do: "#{Clock.amount(tokens)} tokens"
 
-  defp spent(tokens, usd, true),
+  defp spend(tokens, usd, true),
     do: "#{Clock.amount(tokens)} tokens, $#{:erlang.float_to_binary(usd / 1, decimals: 2)}"
 
   defp matches?(agent, named, query),
@@ -266,10 +266,10 @@ defmodule WardrikDaemon.CLI.Agents do
   defp matches_word?(agent, named, text),
     do: String.contains?(agent["id"], text) or String.contains?(named["name"] || "", text)
 
-  defp queued(pending) when pending in [nil, 0], do: nil
-  defp queued(pending), do: pending
+  defp queue(pending) when pending in [nil, 0], do: nil
+  defp queue(pending), do: pending
 
-  defp shown([agent], flags, cx) do
+  defp show([agent], flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, read} <-
            Context.call(cx, "agent.read", Context.conversation(%{"agent" => id}, flags)),
@@ -317,26 +317,26 @@ defmodule WardrikDaemon.CLI.Agents do
   defp policy(name) when is_binary(name), do: name
   defp policy(_rules), do: "its own rules"
 
-  defp asked([agent], flags, %{terminal: %{input?: true}} = cx) do
+  defp ask([agent], flags, %{terminal: %{input?: true}} = cx) do
     with {:ok, editor} <- editor(cx) do
-      case written(cx, editor, agent) do
+      case write(cx, editor, agent) do
         "" -> {:error, "The message was empty, so nothing was sent."}
-        message -> asked([agent, message], flags, cx)
+        message -> ask([agent, message], flags, cx)
       end
     end
   end
 
-  defp asked([_agent], _flags, cx),
+  defp ask([_agent], _flags, cx),
     do: {:error, "Give the message: #{cx.program} ask AGENT MESSAGE"}
 
-  defp asked([agent | words], %{no_wait: true} = flags, cx) do
+  defp ask([agent | words], %{no_wait: true} = flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          input = %{"agent" => id, "content" => Enum.join(words, " ")},
          {:ok, answer} <- Context.call(cx, "agent.ask", Context.conversation(input, flags)),
-         do: Context.done(cx, answer, "Sent it to #{agent}.")
+         do: Context.report_done(cx, answer, "Sent it to #{agent}.")
   end
 
-  defp asked([agent | words], flags, cx) do
+  defp ask([agent | words], flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          do:
            Follow.turn(cx,
@@ -361,7 +361,7 @@ defmodule WardrikDaemon.CLI.Agents do
          "There's no #{editor} here to write the message in. Set $VISUAL or $EDITOR, or give the message: #{cx.program} ask AGENT MESSAGE"}
   end
 
-  defp written(cx, editor, agent) do
+  defp write(cx, editor, agent) do
     editor =
       case cx.terminal.tty? and File.read_link("/proc/self/fd/0") do
         {:ok, "/dev/" <> _tty = tty} -> "#{editor} __FILE__ < #{tty} > #{tty}"
@@ -378,26 +378,26 @@ defmodule WardrikDaemon.CLI.Agents do
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, %{"items" => items} = answer} <-
            Context.call(cx, "agent.timeline", Context.conversation(%{"agent" => id}, flags)) do
-      Context.show(cx, answer, fn _answer -> Enum.each(items, &said(cx, &1)) end)
+      Context.show(cx, answer, fn _answer -> Enum.each(items, &say(cx, &1)) end)
     end
   end
 
-  defp said(cx, %{"kind" => "user"} = item),
+  defp say(cx, %{"kind" => "user"} = item),
     do: Context.puts(cx, [Owl.Data.tag("› ", :cyan), sender(item["sender"]), item["text"] || ""])
 
-  defp said(cx, %{"kind" => "run", "status" => status, "steps" => steps}) do
+  defp say(cx, %{"kind" => "run", "status" => status, "steps" => steps}) do
     Enum.each(steps, &step(cx, &1))
-    ended(cx, status)
+    finish(cx, status)
     Context.puts(cx, "")
   end
 
-  defp said(_cx, _item), do: :ok
+  defp say(_cx, _item), do: :ok
 
   defp sender(sender) when is_binary(sender), do: Owl.Data.tag(sender <> ": ", :light_black)
   defp sender(_sender), do: []
 
-  defp ended(_cx, "completed"), do: :ok
-  defp ended(cx, status), do: Context.puts(cx, Owl.Data.tag("[#{status}]", :yellow))
+  defp finish(_cx, "completed"), do: :ok
+  defp finish(cx, status), do: Context.puts(cx, Owl.Data.tag("[#{status}]", :yellow))
 
   defp step(cx, %{"type" => "text", "text" => text}) do
     {lines, buffer} = Markdown.push(Markdown.new(), text)
@@ -421,10 +421,10 @@ defmodule WardrikDaemon.CLI.Agents do
   defp tool_mark("ok"), do: Owl.Data.tag("✓", :green)
   defp tool_mark(_status), do: Owl.Data.tag("✗", :red)
 
-  defp removed([agent], _flags, cx) do
+  defp remove([agent], _flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, answer} <- Context.call(cx, "agent.forget", %{"agent" => id}),
-         do: Context.done(cx, answer, "Removed #{agent}.")
+         do: Context.report_done(cx, answer, "Removed #{agent}.")
   end
 
   defp calls([agent], flags, cx) do
@@ -440,17 +440,17 @@ defmodule WardrikDaemon.CLI.Agents do
     end
   end
 
-  defp killed([agent, call], flags, cx) do
+  defp kill([agent, call], flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          input = Context.conversation(%{"agent" => id, "call" => call}, flags),
          {:ok, answer} <- Context.call(cx, "agent.kill", input),
-         do: Context.done(cx, answer, "Stopped #{call}.")
+         do: Context.report_done(cx, answer, "Stopped #{call}.")
   end
 
-  defp moved([agent, node], flags, cx) do
+  defp move([agent, node], flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          input = Context.conversation(%{"agent" => id, "node" => node}, flags),
          {:ok, answer} <- Context.call(cx, "agent.move", input),
-         do: Context.done(cx, answer, "Moved #{agent} to #{node}.")
+         do: Context.report_done(cx, answer, "Moved #{agent} to #{node}.")
   end
 end

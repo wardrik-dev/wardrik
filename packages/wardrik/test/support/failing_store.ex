@@ -24,11 +24,11 @@ defmodule Wardrik.Test.FailingStore do
 
   @impl true
   def put(config, path, value, opts),
-    do: written(config, path, fn -> ETS.put(config.name, path, value, opts) end)
+    do: write(config, path, fn -> ETS.put(config.name, path, value, opts) end)
 
   @impl true
   def delete(config, path, opts),
-    do: written(config, path, fn -> ETS.delete(config.name, path, opts) end)
+    do: write(config, path, fn -> ETS.delete(config.name, path, opts) end)
 
   @impl true
   def lookup(config, path), do: ETS.lookup(config.name, path)
@@ -36,7 +36,7 @@ defmodule Wardrik.Test.FailingStore do
   @impl true
   def keys(config, prefix), do: ETS.keys(config.name, prefix)
 
-  defp written(%{failing: failing}, path, write) do
+  defp write(%{failing: failing}, path, write) do
     case ETS.lookup(failing, "scope") do
       {scope, _vsn} ->
         if String.starts_with?(path, scope), do: {:error, :unavailable}, else: write.()

@@ -53,7 +53,7 @@ end
 
 :ok = WardrikCore.ask(agent, "Where is order 1001?")
 
-{:tool_calls, [{call, {:park, :approval}}]} = WardrikCore.parked(agent)
+{:tool_calls, [{call, {:park, :approval}}]} = WardrikCore.get_parked(agent)
 :ok = WardrikCore.resume(agent, %{call.id => :approve}, %{by: "user:maria"})
 ```
 

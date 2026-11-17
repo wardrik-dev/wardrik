@@ -1,6 +1,6 @@
 defmodule WardrikSlack.Messages do
   @moduledoc """
-  Passes messages posted in Slack channels to `Wardrik.Chat.received/2`, and reacts to them.
+  Passes messages posted in Slack channels to `Wardrik.Chat.answer_inbound/2`, and reacts to them.
 
     * A message the agent takes gets :eyes:, then :white_check_mark: once it's answered.
     * A message the agent couldn't take gets a reply in its thread saying why.
@@ -54,7 +54,7 @@ defmodule WardrikSlack.Messages do
       mentioned?: String.contains?(text, mention)
     }
 
-    case Wardrik.Chat.received(workspace, inbound) do
+    case Wardrik.Chat.answer_inbound(workspace, inbound) do
       {:asked, conversation} ->
         react(workspace, "reactions.add", room, ts, "eyes")
         {:asked, conversation}
@@ -73,8 +73,8 @@ defmodule WardrikSlack.Messages do
   defp thread(thread, _ts), do: thread
 
   @doc "Swaps :eyes: for :white_check_mark: on the answered messages `ids`."
-  @spec answered(Workspace.t(), String.t(), [String.t()]) :: :ok
-  def answered(workspace, room, ids) do
+  @spec mark_answered(Workspace.t(), String.t(), [String.t()]) :: :ok
+  def mark_answered(workspace, room, ids) do
     for ts <- ids do
       react(workspace, "reactions.remove", room, ts, "eyes")
       react(workspace, "reactions.add", room, ts, "white_check_mark")
@@ -84,8 +84,8 @@ defmodule WardrikSlack.Messages do
   end
 
   @doc "Removes :eyes: from the messages `ids`, when a run stops before answering."
-  @spec stopped(Workspace.t(), String.t(), [String.t()]) :: :ok
-  def stopped(workspace, room, ids) do
+  @spec mark_stopped(Workspace.t(), String.t(), [String.t()]) :: :ok
+  def mark_stopped(workspace, room, ids) do
     for ts <- ids, do: react(workspace, "reactions.remove", room, ts, "eyes")
     :ok
   end

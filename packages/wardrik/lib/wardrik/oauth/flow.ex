@@ -89,7 +89,7 @@ defmodule Wardrik.OAuth.Flow do
 
   def handle_call(:sign_in, _from, flow), do: {:reply, %{url: flow.url}, flow}
 
-  def handle_call(:describe, _from, flow), do: {:reply, described(flow), flow}
+  def handle_call(:describe, _from, flow), do: {:reply, handle_describe(flow), flow}
 
   # Someone other than the principal who started it can't finish or end it.
   def handle_call(
@@ -102,7 +102,7 @@ defmodule Wardrik.OAuth.Flow do
 
   def handle_call({:finish, %{"error" => error}, _principal}, _from, flow) do
     outcome = {:error, {:refused, error}}
-    {:stop, :normal, outcome, ended(flow, outcome)}
+    {:stop, :normal, outcome, end_flow(flow, outcome)}
   end
 
   def handle_call(
@@ -110,8 +110,8 @@ defmodule Wardrik.OAuth.Flow do
         _from,
         %{kind: :browser} = flow
       ) do
-    outcome = exchanged(flow, code, params["iss"])
-    {:stop, :normal, finished(outcome, flow), ended(flow, outcome)}
+    outcome = exchange(flow, code, params["iss"])
+    {:stop, :normal, handle_outcome(outcome, flow), end_flow(flow, outcome)}
   end
 
   def handle_call({:finish, _params, _principal}, _from, flow),
@@ -121,10 +121,10 @@ defmodule Wardrik.OAuth.Flow do
   def handle_info(:poll, flow) do
     flow.metadata
     |> Device.poll(flow.provider, device: flow.device, req_options: flow.settings.req_options)
-    |> polled(flow)
+    |> poll(flow)
   end
 
-  def handle_info(:expire, flow), do: {:stop, :normal, ended(flow, {:error, :expired})}
+  def handle_info(:expire, flow), do: {:stop, :normal, end_flow(flow, {:error, :expired})}
 
   defp start(:device, flow) do
     with {:ok, device} <- Device.request(flow.metadata, flow.provider, flow.settings.req_options) do
@@ -149,7 +149,7 @@ defmodule Wardrik.OAuth.Flow do
     end
   end
 
-  defp described(%{kind: :device} = flow) do
+  defp handle_describe(%{kind: :device} = flow) do
     %{
       provider: flow.provider.name,
       principal: flow.principal,
@@ -158,10 +158,10 @@ defmodule Wardrik.OAuth.Flow do
     }
   end
 
-  defp described(flow),
+  defp handle_describe(flow),
     do: %{provider: flow.provider.name, principal: flow.principal, url: flow.url}
 
-  defp exchanged(flow, code, iss) do
+  defp exchange(flow, code, iss) do
     exchange = [
       code: code,
       verifier: flow.verifier,
@@ -171,30 +171,30 @@ defmodule Wardrik.OAuth.Flow do
 
     with :ok <- issuer(flow.metadata, iss),
          {:ok, token} <- Browser.exchange(flow.metadata, flow.provider, exchange) do
-      granted(flow, token)
+      grant(flow, token)
     end
   end
 
   defp issuer(metadata, iss),
     do: if(Browser.issued_by?(metadata, iss), do: :ok, else: {:error, :wrong_issuer})
 
-  defp finished(:granted, flow),
+  defp handle_outcome(:granted, flow),
     do: {:ok, %{provider: flow.provider.name, principal: flow.principal}}
 
-  defp finished(outcome, _flow), do: outcome
+  defp handle_outcome(outcome, _flow), do: outcome
 
-  defp polled({:ok, %Token{} = token}, flow),
-    do: {:stop, :normal, ended(flow, granted(flow, token))}
+  defp poll({:ok, %Token{} = token}, flow),
+    do: {:stop, :normal, end_flow(flow, grant(flow, token))}
 
-  defp polled({:error, reason}, flow), do: {:stop, :normal, ended(flow, {:error, reason})}
+  defp poll({:error, reason}, flow), do: {:stop, :normal, end_flow(flow, {:error, reason})}
 
-  defp polled(waiting, flow) do
+  defp poll(waiting, flow) do
     interval = Device.next_interval(waiting, flow.interval)
     schedule(interval)
     {:noreply, %{flow | interval: interval}}
   end
 
-  defp granted(flow, token) do
+  defp grant(flow, token) do
     %{settings: settings, provider: provider, principal: principal} = flow
 
     with {:ok, _vsn} <- Wardrik.OAuth.keep(settings, provider, principal, token) do
@@ -209,7 +209,7 @@ defmodule Wardrik.OAuth.Flow do
     do: apply(module, function, [name, principal | args])
 
   # Its names go before it answers, so no caller finds the flow under way once it's ended.
-  defp ended(flow, outcome) do
+  defp end_flow(flow, outcome) do
     registry = flow.settings.registry
     for key <- Registry.keys(registry, self()), do: Registry.unregister(registry, key)
 

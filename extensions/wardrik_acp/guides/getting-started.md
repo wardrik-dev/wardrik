@@ -119,7 +119,7 @@ Wait.idle(agent)
 ## 7. Answer each request
 
 ```elixir
-{:tool_calls, [{call, {:park, ask}}]} = WardrikCore.parked(agent)
+{:tool_calls, [{call, {:park, ask}}]} = WardrikCore.get_parked(agent)
 ask.message
 #=> "claude/edit needs your approval."
 ask.call.arguments

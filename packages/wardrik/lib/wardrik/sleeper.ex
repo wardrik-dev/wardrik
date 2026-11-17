@@ -59,14 +59,14 @@ defmodule Wardrik.Sleeper do
   def handle_info({ref, result}, %{digests: digests} = state) when is_map_key(digests, ref) do
     Process.demonitor(ref, [:flush])
     {id, digests} = Map.pop!(digests, ref)
-    if match?({:error, _reason}, result), do: failed(id, result)
+    if match?({:error, _reason}, result), do: fail(id, result)
     {:noreply, sleep(%{state | digests: digests}, id)}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{digests: digests} = state)
       when is_map_key(digests, ref) do
     {id, digests} = Map.pop!(digests, ref)
-    failed(id, reason)
+    fail(id, reason)
     {:noreply, sleep(%{state | digests: digests}, id)}
   end
 
@@ -96,7 +96,7 @@ defmodule Wardrik.Sleeper do
     end
   end
 
-  defp failed(id, reason),
+  defp fail(id, reason),
     do: Logger.warning("#{Running.describe(id)} didn't write its digest: #{inspect(reason)}")
 
   defp sleep(%{wardrik: wardrik} = state, id) do

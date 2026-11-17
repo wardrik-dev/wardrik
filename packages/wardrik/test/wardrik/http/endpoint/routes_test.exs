@@ -8,7 +8,7 @@ defmodule Wardrik.HTTP.Endpoint.RoutesTest do
         path <- [operation.path, operation.conversation],
         path != nil,
         agent <- ["agt_01JF8X5RQ2", "acme/@jon/triage", "a b%2F"] do
-      {segments, params} = filled(path, agent)
+      {segments, params} = fill(path, agent)
       method = String.upcase(operation.method)
 
       assert {:ok, %{id: id}, ^params} = Routes.match(method, segments)
@@ -42,7 +42,7 @@ defmodule Wardrik.HTTP.Endpoint.RoutesTest do
   end
 
   # Path segments arrive decoded: each parameter is one segment, whatever it holds.
-  defp filled(template, agent) do
+  defp fill(template, agent) do
     template
     |> String.split("/", trim: true)
     |> Enum.map_reduce(%{}, fn

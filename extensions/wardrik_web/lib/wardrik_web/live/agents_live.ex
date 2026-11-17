@@ -35,7 +35,7 @@ defmodule WardrikWeb.AgentsLive do
     end
   end
 
-  defp shown(agents, query, only) do
+  defp show(agents, query, only) do
     query = String.downcase(query)
 
     Enum.filter(agents, fn agent ->
@@ -60,7 +60,7 @@ defmodule WardrikWeb.AgentsLive do
     assigns =
       assign(assigns,
         statuses: @statuses,
-        shown: shown(assigns.agents, assigns.query, assigns.only)
+        shown: show(assigns.agents, assigns.query, assigns.only)
       )
 
     ~H"""

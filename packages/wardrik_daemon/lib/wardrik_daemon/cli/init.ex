@@ -50,16 +50,16 @@ defmodule WardrikDaemon.CLI.Init do
   end
 
   defp run([], flags, cx) do
-    found(cx)
+    find_key_variable(cx)
 
-    with {:ok, given} <- Answers.given(flags),
+    with {:ok, given} <- Answers.parse_given(flags),
          {:ok, provider, variable} <- provider(flags, cx),
          {:ok, model} <- model(flags, cx, provider),
          {:ok, key} <- key(flags, cx, variable),
          wrote = write(cx, flags, "#{provider}:#{model}"),
          {:ok, set_up, commands} <- set_up(cx, given, flags),
          cx = %{Context.new(cx.env) | terminal: cx.terminal},
-         seal = fn -> sealed(cx, variable, key) end,
+         seal = fn -> seal(cx, variable, key) end,
          :ok <- daemon(flags, cx, wrote ++ set_up, seal, key != nil or flags[:no_ask] != true),
          :ok <- ask(flags, cx, variable),
          :ok <- browse(cx) do
@@ -72,23 +72,23 @@ defmodule WardrikDaemon.CLI.Init do
 
     with {:ok, changes, asked} <-
            Setup.plan(Setup.steps(), machine, Answers.answer(cx, given, flags)),
-         :ok <- unasked(cx, Answers.unasked(given, asked)),
+         :ok <- warn_unasked(cx, Answers.list_unasked(given, asked)),
          {:ok, done} <- Setup.apply(changes, cx.dirs) do
       for {said, path} when said in [:wrote, :kept] <- done,
-          do: Context.puts(cx, said(said, path))
+          do: Context.puts(cx, say(said, path))
 
       {:ok, for({:wrote, path} <- done, do: path),
        for({:command, command, why} <- done, do: {command, why})}
     end
   end
 
-  defp unasked(cx, lines),
+  defp warn_unasked(cx, lines),
     do: Enum.each(lines, &Context.puts(cx, [Owl.Data.tag("! ", :yellow), &1]))
 
-  defp said(:wrote, path), do: [Owl.Data.tag("Wrote", :green), " ", path]
-  defp said(:kept, path), do: [Owl.Data.tag("Kept ", :light_black), " ", path]
+  defp say(:wrote, path), do: [Owl.Data.tag("Wrote", :green), " ", path]
+  defp say(:kept, path), do: [Owl.Data.tag("Kept ", :light_black), " ", path]
 
-  defp found(cx) do
+  defp find_key_variable(cx) do
     case for({_provider, variable} <- providers(), cx.env[variable], uniq: true, do: variable) do
       [] -> Context.puts(cx, "Found no model provider's key here.")
       keys -> Context.puts(cx, "Found #{Enum.join(keys, ", ")} here.")
@@ -191,7 +191,7 @@ defmodule WardrikDaemon.CLI.Init do
         {:ok, key}
 
       cx.terminal.input? ->
-        typed(cx, variable)
+        read_secret(cx, variable)
 
       true ->
         {:error,
@@ -199,7 +199,7 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  defp typed(cx, variable) do
+  defp read_secret(cx, variable) do
     case Terminal.secret(cx.terminal, "#{variable}, not shown as you type: ") do
       nil ->
         Context.puts(
@@ -244,7 +244,7 @@ defmodule WardrikDaemon.CLI.Init do
 
   defp written?(cx, path, text, mode) do
     if File.exists?(path) do
-      Context.puts(cx, said(:kept, path))
+      Context.puts(cx, say(:kept, path))
       false
     else
       path
@@ -253,7 +253,7 @@ defmodule WardrikDaemon.CLI.Init do
 
       File.write!(path, text)
       File.chmod!(path, mode)
-      Context.puts(cx, said(:wrote, path))
+      Context.puts(cx, say(:wrote, path))
       true
     end
   end
@@ -263,7 +263,7 @@ defmodule WardrikDaemon.CLI.Init do
   defp daemon(flags, cx, wrote, seal, needed?) do
     case Context.call(cx, "deployment.nodes", %{}) do
       {:ok, _nodes} -> with :ok <- elsewhere(cx), :ok <- seal.(), do: running(cx, wrote)
-      {:error, _down} -> with :ok <- vacant(cx), :ok <- started(flags, cx, needed?), do: seal.()
+      {:error, _down} -> with :ok <- vacant(cx), :ok <- start(flags, cx, needed?), do: seal.()
     end
   end
 
@@ -278,7 +278,7 @@ defmodule WardrikDaemon.CLI.Init do
       %Occupant{root: root} = occupant when root != ours ->
         Context.puts(cx, [
           Owl.Data.tag("! ", :yellow),
-          Occupant.told(occupant, cx.env, cx.program, true)
+          Occupant.describe_occupant(occupant, cx.env, cx.program, true)
         ])
 
       _ours ->
@@ -292,14 +292,14 @@ defmodule WardrikDaemon.CLI.Init do
   defp vacant(cx) do
     case Occupant.find(cx.env) do
       nil -> :ok
-      occupant -> {:error, Occupant.told(occupant, cx.env, cx.program, false)}
+      occupant -> {:error, Occupant.describe_occupant(occupant, cx.env, cx.program, false)}
     end
   end
 
   defp running(_cx, []), do: :ok
-  defp running(cx, _wrote), do: reloaded(cx, Context.call(cx, "deployment.reload", %{}))
+  defp running(cx, _wrote), do: reload(cx, Context.call(cx, "deployment.reload", %{}))
 
-  defp reloaded(cx, {:ok, answer}) do
+  defp reload(cx, {:ok, answer}) do
     Context.puts(cx, "The daemon runs, and read what init wrote.")
 
     for problem <- Map.get(answer, "problems", []),
@@ -308,18 +308,18 @@ defmodule WardrikDaemon.CLI.Init do
     :ok
   end
 
-  defp reloaded(_cx, {:error, why}), do: {:error, why}
+  defp reload(_cx, {:error, why}), do: {:error, why}
 
-  defp started(flags, %{env: %{"WARDRIK_SCRIPT" => script}} = cx, needed?) do
+  defp start(flags, %{env: %{"WARDRIK_SCRIPT" => script}} = cx, needed?) do
     args = if service?(flags, cx), do: ["service", "install"], else: ["start"]
 
     case System.cmd(script, args, into: IO.stream(), stderr_to_stdout: true) do
-      {_output, 0} -> if needed?, do: answered(cx), else: :ok
+      {_output, 0} -> if needed?, do: answer(cx), else: :ok
       {_output, _failed} -> {:error, "#{cx.program} #{Enum.join(args, " ")} failed."}
     end
   end
 
-  defp started(_flags, _cx, _needed?),
+  defp start(_flags, _cx, _needed?),
     do:
       {:error,
        "The daemon isn't running. Start it, as with mix wardrik serve, and run init again."}
@@ -341,14 +341,14 @@ defmodule WardrikDaemon.CLI.Init do
       )
   end
 
-  defp answered(cx),
+  defp answer(cx),
     do:
       Terminal.spinning(cx.terminal, "Waiting for the daemon to answer", fn ->
         answering(cx, 60)
       end)
 
   defp answering(cx, 0),
-    do: {:error, "The daemon didn't answer in a minute. #{logged(cx)}"}
+    do: {:error, "The daemon didn't answer in a minute. #{log(cx)}"}
 
   defp answering(cx, tries) do
     case Context.call(cx, "deployment.nodes", %{}) do
@@ -361,7 +361,7 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  defp logged(cx) do
+  defp log(cx) do
     pattern = Path.join([cx.dirs.state, "log", "erlang.log.*"])
 
     case Path.wildcard(pattern) do
@@ -381,9 +381,9 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  defp sealed(_cx, _variable, nil), do: :ok
+  defp seal(_cx, _variable, nil), do: :ok
 
-  defp sealed(cx, variable, key),
+  defp seal(cx, variable, key),
     do: Access.seal(cx, owner: "deployment", name: variable, value: key, purpose: "api_key")
 
   defp ask(%{no_ask: true}, _cx, _variable), do: :ok

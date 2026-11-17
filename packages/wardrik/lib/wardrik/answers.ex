@@ -24,20 +24,20 @@ defmodule Wardrik.Answers do
     timeout = Keyword.get(opts, :timeout, @timeout)
 
     Stream.resource(
-      fn -> started(scope, log, input) end,
+      fn -> start(scope, log, input) end,
       &next(&1, timeout),
-      &stopped/1
+      &stop/1
     )
   end
 
-  defp started(%Scope{wardrik: instance} = scope, {agent, conversation} = log, input) do
+  defp start(%Scope{wardrik: instance} = scope, {agent, conversation} = log, input) do
     events =
       instance
       |> Instance.fetch!()
       |> Wardrik.events()
 
     {:ok, _page} =
-      allowed(Wardrik.Agent.events(scope, agent, [limit: 1], conversation: conversation))
+      allow(Wardrik.Agent.events(scope, agent, [limit: 1], conversation: conversation))
 
     :ok = Wardrik.EventLog.subscribe(events, [log])
 
@@ -51,30 +51,30 @@ defmodule Wardrik.Answers do
     end
   end
 
-  defp allowed({:ok, page}), do: {:ok, page}
-  defp allowed({:error, error}), do: raise(error)
+  defp allow({:ok, page}), do: {:ok, page}
+  defp allow({:error, error}), do: raise(error)
 
   defp next(%{done: true} = state, _timeout), do: {:halt, state}
 
   defp next(%{agent: agent} = state, timeout) do
     receive do
-      {Wardrik.EventLog, ^agent, event} -> seen(event, state)
+      {Wardrik.EventLog, ^agent, event} -> see(event, state)
     after
       timeout -> {[{:failed, "Nothing came for #{timeout} ms."}], %{state | done: true}}
     end
   end
 
-  defp seen(%{"type" => "wardrik.run.started", "data" => %{"run" => run}}, %{run: nil} = state) do
+  defp see(%{"type" => "wardrik.run.started", "data" => %{"run" => run}}, %{run: nil} = state) do
     if state.message in Map.get(run, "message_ids", []),
       do: {[], %{state | run: run["id"]}},
       else: {[], state}
   end
 
-  defp seen(event, %{run: run} = state) when is_binary(run) do
+  defp see(event, %{run: run} = state) when is_binary(run) do
     if trace(event) == run, do: ours(event, state), else: {[], state}
   end
 
-  defp seen(_event, state), do: {[], state}
+  defp see(_event, state), do: {[], state}
 
   defp ours(%{"type" => "wardrik.message.delta", "data" => %{"delta" => text}}, state),
     do: {[{:text, text}], %{state | text: [state.text | text]}}
@@ -109,7 +109,7 @@ defmodule Wardrik.Answers do
   defp why("wardrik.run.cancelled", _data), do: "It was cancelled."
   defp why("wardrik.run.deadline_exceeded", _data), do: "It ran past its timeout."
 
-  defp stopped(%{events: events, agent: agent}) do
+  defp stop(%{events: events, agent: agent}) do
     :ok = Wardrik.EventLog.unsubscribe(events, [agent])
     flush(agent)
   end

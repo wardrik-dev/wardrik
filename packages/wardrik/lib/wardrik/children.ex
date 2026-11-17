@@ -44,7 +44,7 @@ defmodule Wardrik.Children do
       name: Wardrik.oauth(wardrik),
       vault: Wardrik.vault(wardrik),
       store: wardrik.store,
-      on_granted: {Wardrik.SignIns, :granted, [Wardrik.agents(wardrik)]},
+      on_granted: {Wardrik.SignIns, :resume_waiting, [Wardrik.agents(wardrik)]},
       check: wardrik.egress
     ]
 
@@ -82,7 +82,7 @@ defmodule Wardrik.Children do
     apply(start_module, start_function, start_args)
   end
 
-  defp started(spec, build), do: %{spec | start: {__MODULE__, :start_built, [build]}}
+  defp start(spec, build), do: %{spec | start: {__MODULE__, :start_built, [build]}}
 
   defp events(wardrik) do
     {Wardrik.EventLog,
@@ -118,7 +118,7 @@ defmodule Wardrik.Children do
       )
       |> module.child_spec()
       |> Supervisor.child_spec(id: {Wardrik.Channel, name})
-      |> started({__MODULE__, :channel_spec, [wardrik, name, module, opts]})
+      |> start({__MODULE__, :channel_spec, [wardrik, name, module, opts]})
     end
   end
 

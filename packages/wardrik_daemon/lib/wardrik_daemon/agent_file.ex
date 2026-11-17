@@ -60,14 +60,14 @@ defmodule WardrikDaemon.AgentFile do
     org = fields["org"] || org(fields["owner"], config.org)
     owner = owner(fields["owner"], org)
 
-    with :ok <- unnamed(fields),
-         :ok <- named(name),
-         :ok <- declared(org, config),
-         :ok <- owned(owner, org, fields["owner"]),
+    with :ok <- check_named(fields),
+         :ok <- validate_name(name),
+         :ok <- declare(org, config),
+         :ok <- validate_owner(owner, org, fields["owner"]),
          do: {:ok, %{org: org, owner: owner, name: name}}
   end
 
-  defp unnamed(fields) do
+  defp check_named(fields) do
     if Map.has_key?(fields, "name") or Map.has_key?(fields, "user"),
       do:
         {:error,
@@ -75,13 +75,13 @@ defmodule WardrikDaemon.AgentFile do
       else: :ok
   end
 
-  defp named(name) do
+  defp validate_name(name) do
     if AgentRecords.name?(name),
       do: :ok,
       else: {:error, "isn't named as an agent is: letters, digits, _, . and -, at most 64"}
   end
 
-  defp declared(org, config) do
+  defp declare(org, config) do
     orgs = Map.delete(config.orgs, "*")
 
     if org == config.org or Map.has_key?(orgs, org),
@@ -89,7 +89,7 @@ defmodule WardrikDaemon.AgentFile do
       else: {:error, "is in the org #{inspect(org)}, which config.yaml doesn't declare"}
   end
 
-  defp owned(owner, org, given) do
+  defp validate_owner(owner, org, given) do
     if is_binary(owner) and Owners.valid?(owner) and Owners.within?(owner, org),
       do: :ok,
       else:

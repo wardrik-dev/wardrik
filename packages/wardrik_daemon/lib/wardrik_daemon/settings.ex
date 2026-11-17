@@ -72,12 +72,12 @@ defmodule WardrikDaemon.Settings do
 
         with {:ok, %{^listed => items}} <-
                Wardrik.run(scope, operation <> ".list", %{"owner" => owner}),
-             do: {:ok, Enum.map(items, &named/1)}
+             do: {:ok, Enum.map(items, &encode_item/1)}
 
       %{store: store, kind: checked} ->
-        with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.read", checked}) do
+        with :ok <- Allowed.check_owned(daemon, scope, owner, {"#{checked}.read", checked}) do
           items = store.list(daemon, owner)
-          {:ok, Enum.map(items, &named/1)}
+          {:ok, Enum.map(items, &encode_item/1)}
         end
     end
   end
@@ -90,13 +90,13 @@ defmodule WardrikDaemon.Settings do
       %{operation: operation} ->
         with {:ok, added} <-
                Wardrik.run(scope, operation <> ".add", Map.put(input, "owner", owner)),
-             do: {:ok, named(added)}
+             do: {:ok, encode_item(added)}
 
       %{store: store, kind: checked, input: schema} ->
-        with {:ok, input} <- WardrikDaemon.HTTP.checked(schema, input),
-             :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.add", checked}),
+        with {:ok, input} <- WardrikDaemon.HTTP.validate_input(schema, input),
+             :ok <- Allowed.check_owned(daemon, scope, owner, {"#{checked}.add", checked}),
              {:ok, added} <- store.add(daemon, {owner, input}, scope.principal),
-             do: {:ok, named(added)}
+             do: {:ok, encode_item(added)}
     end
   end
 
@@ -110,14 +110,14 @@ defmodule WardrikDaemon.Settings do
         with {:ok, _removed} <- Wardrik.run(scope, operation <> ".remove", input), do: :ok
 
       %{store: store, kind: checked} ->
-        with :ok <- Allowed.owned(daemon, scope, owner, {"#{checked}.delete", checked}),
+        with :ok <- Allowed.check_owned(daemon, scope, owner, {"#{checked}.delete", checked}),
              {:ok, _removed} <- store.remove(daemon, {owner, name}, scope.principal),
              do: :ok
     end
   end
 
   # A notify target names its signing secret as %{"name" => name}.
-  defp named(item) do
+  defp encode_item(item) do
     Map.new(item, fn
       {"secret", %{"name" => name}} -> {"secret", name}
       pair -> pair

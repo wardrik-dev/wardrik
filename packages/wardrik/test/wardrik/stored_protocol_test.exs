@@ -19,7 +19,7 @@ defmodule Wardrik.StoredProtocolTest do
   @middleware [{Wardrik.Policy.Middleware, []}]
   @span %Span{id: "00f067aa0ba902b7", trace: "4bf92f3577b34da6a3ce929d0e0e4736"}
 
-  defp kept(state) do
+  defp keep(state) do
     state
     |> State.dump()
     |> JSON.encode!()
@@ -46,7 +46,7 @@ defmodule Wardrik.StoredProtocolTest do
     }
   end
 
-  defp shown(name, metadata) do
+  defp show(name, metadata) do
     event = %Event{
       name: [:wardrik_core | name],
       time: ~U[2026-11-13 12:00:00Z],
@@ -61,7 +61,7 @@ defmodule Wardrik.StoredProtocolTest do
   end
 
   defp interrupts(state),
-    do: shown([:turn, :stop], %{kind: :run, outcome: :park, reason: state.parked.reason})
+    do: show([:turn, :stop], %{kind: :run, outcome: :park, reason: state.parked.reason})
 
   test "each reason an agent waits on shows the same once kept" do
     maria = %Principal{id: "user:maria", attributes: %{"name" => "Maria"}}
@@ -89,7 +89,7 @@ defmodule Wardrik.StoredProtocolTest do
 
     for reason <- reasons do
       state = waiting(reason)
-      assert interrupts(kept(state)) == interrupts(state)
+      assert interrupts(keep(state)) == interrupts(state)
     end
   end
 
@@ -115,8 +115,8 @@ defmodule Wardrik.StoredProtocolTest do
     ]
 
     state = waiting(:in_doubt, messages)
-    completed = &shown([:turn, :stop], %{kind: :run, outcome: :ok, messages: &1.parked.messages})
-    restored = kept(state)
+    completed = &show([:turn, :stop], %{kind: :run, outcome: :ok, messages: &1.parked.messages})
+    restored = keep(state)
 
     assert completed.(restored) == completed.(state)
   end

@@ -19,11 +19,11 @@ defmodule Wardrik.OAuth.ClientSecrets do
 
     case Keyword.fetch!(args, :secret) do
       nil -> :ok
-      secret -> sealed(settings, name, secret)
+      secret -> handle_seal(settings, name, secret)
     end
   end
 
-  defp sealed(settings, name, secret) do
+  defp handle_seal(settings, name, secret) do
     sealed = %Secret{principal: @owner, name: name, value: secret}
 
     case Wardrik.Vault.put(settings.vault, sealed, kind: :client_secret) do

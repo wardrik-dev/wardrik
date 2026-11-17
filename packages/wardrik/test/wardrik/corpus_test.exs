@@ -50,14 +50,14 @@ defmodule Wardrik.CorpusTest do
   end
 
   test "reads what this release keeps" do
-    for row <- kept(), do: read!(row, "this release")
+    for row <- keep(), do: read!(row, "this release")
   end
 
   @tag :corpus
   test "writes this release's corpus" do
     version = Mix.Project.config()[:version]
     Elixir.File.mkdir_p!(@corpus)
-    rows = JSON.encode!(kept())
+    rows = JSON.encode!(keep())
     path = Path.join(@corpus, version <> ".json")
     Elixir.File.write!(path, rows)
   end
@@ -99,7 +99,7 @@ defmodule Wardrik.CorpusTest do
   defp agent!(_scope, _key, _value, _release), do: :ok
 
   # One of each kind of value Wardrik keeps, written through the store as it writes them.
-  defp kept do
+  defp keep do
     store = Wardrik.Store.ETS.new(name: :"corpus #{System.unique_integer([:positive])}")
     start_supervised!({Wardrik.Store, store})
     maria = %Principal{id: "acme/@maria", attributes: %{"name" => "Maria"}}
@@ -127,14 +127,14 @@ defmodule Wardrik.CorpusTest do
         version: nil
       )
 
-    owned(%{store: store})
+    put_owned_app(%{store: store})
     mcp(store)
     agents(store, maria)
 
     raw(store)
   end
 
-  defp owned(wardrik) do
+  defp put_owned_app(wardrik) do
     app = %{
       owner: "acme",
       name: "linear",

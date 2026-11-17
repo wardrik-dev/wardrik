@@ -64,7 +64,7 @@ defmodule Wardrik.OAuth.Device do
 
     metadata.token_endpoint
     |> Request.post_as(form, [as: provider] ++ Keyword.fetch!(args, :req_options))
-    |> polled(metadata.token_endpoint)
+    |> handle_poll(metadata.token_endpoint)
   end
 
   @doc "Returns milliseconds to wait before the next poll. Adds 5 seconds after `:slow_down`."
@@ -72,17 +72,21 @@ defmodule Wardrik.OAuth.Device do
   def next_interval(:slow_down, interval_ms), do: interval_ms + :timer.seconds(5)
   def next_interval(_poll, interval_ms), do: interval_ms
 
-  defp polled({:ok, _status, %{"error" => "authorization_pending"}}, _endpoint), do: :pending
-  defp polled({:ok, _status, %{"error" => "slow_down"}}, _endpoint), do: :slow_down
+  defp handle_poll({:ok, _status, %{"error" => "authorization_pending"}}, _endpoint), do: :pending
+  defp handle_poll({:ok, _status, %{"error" => "slow_down"}}, _endpoint), do: :slow_down
 
-  defp polled({:ok, _status, %{"error" => "access_denied"}}, _endpoint),
+  defp handle_poll({:ok, _status, %{"error" => "access_denied"}}, _endpoint),
     do: {:error, :access_denied}
 
-  defp polled({:ok, _status, %{"error" => "expired_token"}}, _endpoint), do: {:error, :expired}
-  defp polled({:ok, status, _body}, _endpoint) when status >= 500, do: {:retry, {:http, status}}
-  defp polled({:ok, status, body}, endpoint), do: Token.from_response(status, body, endpoint)
-  defp polled({:error, {:unreachable, reason}}, _endpoint), do: {:retry, reason}
-  defp polled({:error, reason}, _endpoint), do: {:error, reason}
+  defp handle_poll({:ok, _status, %{"error" => "expired_token"}}, _endpoint),
+    do: {:error, :expired}
+
+  defp handle_poll({:ok, status, _body}, _endpoint) when status >= 500,
+    do: {:retry, {:http, status}}
+
+  defp handle_poll({:ok, status, body}, endpoint), do: Token.from_response(status, body, endpoint)
+  defp handle_poll({:error, {:unreachable, reason}}, _endpoint), do: {:retry, reason}
+  defp handle_poll({:error, reason}, _endpoint), do: {:error, reason}
 
   defp read(%{"device_code" => device_code, "user_code" => user_code} = body) do
     case {body["verification_uri"] || body["verification_url"], body["expires_in"]} do

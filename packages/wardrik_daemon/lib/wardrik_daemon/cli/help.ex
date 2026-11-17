@@ -78,10 +78,10 @@ defmodule WardrikDaemon.CLI.Help do
   defp listing(cx, group, commands) do
     Context.puts(cx, Owl.Data.tag(group, [:bright, :cyan]))
 
-    Enum.each(commands, &Context.puts(cx, listed(&1)))
+    Enum.each(commands, &Context.puts(cx, list(&1)))
   end
 
-  defp listed(command) do
+  defp list(command) do
     typed =
       "#{command.name} #{command.arguments}"
       |> String.trim()

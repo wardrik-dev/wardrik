@@ -67,7 +67,7 @@ defmodule WardrikCore.Backends.MemoryStore do
     table
     |> :ets.tab2list()
     |> Enum.filter(fn {key, _body, _version} -> String.starts_with?(key, prefix) end)
-    |> Enum.map(fn {key, body, version} -> listed(key, body, version, include_body?) end)
+    |> Enum.map(fn {key, body, version} -> list(key, body, version, include_body?) end)
   end
 
   @impl DurableServer.StorageBackend
@@ -152,8 +152,8 @@ defmodule WardrikCore.Backends.MemoryStore do
     end
   end
 
-  defp listed(key, body, version, true), do: %{key: key, etag: etag(version), body: body}
-  defp listed(key, _body, version, false), do: %{key: key, etag: etag(version)}
+  defp list(key, body, version, true), do: %{key: key, etag: etag(version), body: body}
+  defp list(key, _body, version, false), do: %{key: key, etag: etag(version)}
 
   defp object(body, version), do: %{body: body, etag: etag(version)}
 

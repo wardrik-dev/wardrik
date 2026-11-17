@@ -36,15 +36,15 @@ defmodule WardrikDaemon.Keys do
           deployment? or owner != Owned.deployment(),
           do: %{owner: owner, name: name}
 
-    case chosen(wardrik, principal, candidates) do
+    case choose(wardrik, principal, candidates) do
       %{owner: owner} -> Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :api_key)
       _none -> {:error, :not_found}
     end
   end
 
-  defp chosen(_wardrik, nil, candidates),
+  defp choose(_wardrik, nil, candidates),
     do: Enum.find(candidates, &(&1.owner == Owned.deployment()))
 
-  defp chosen(wardrik, principal, candidates),
-    do: Owned.chosen(wardrik, principal, candidates, {"secret.use", :secret})
+  defp choose(wardrik, principal, candidates),
+    do: Owned.choose(wardrik, principal, candidates, {"secret.use", :secret})
 end

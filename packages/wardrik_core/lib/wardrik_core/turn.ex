@@ -63,7 +63,7 @@ defmodule WardrikCore.Turn do
   @doc "Calls the context's model once, as a `:generate` step, streaming nothing."
   @spec call_model(Context.t()) :: Wardrik.Middleware.result()
   def call_model(%Context{} = context),
-    do: Context.run(context, :generate, &called(&1, fn _chunk -> :ok end))
+    do: Context.run(context, :generate, &call(&1, fn _chunk -> :ok end))
 
   @doc "Asks the turn running in `pid` to end at its next step."
   @spec yield(pid()) :: :ok
@@ -74,7 +74,7 @@ defmodule WardrikCore.Turn do
 
   defp reenter(context, %Resume{reason: {:tool_calls, results}} = resume) do
     context = clear_resume(context)
-    parked = parked_calls(results)
+    parked = collect_parked_calls(results)
     calls = Enum.map(parked, fn {call, _reason} -> call end)
     {rerun, context} = ToolRunner.run(context, calls, resume: resume_each(parked, resume))
 
@@ -83,7 +83,7 @@ defmodule WardrikCore.Turn do
 
   defp reenter(context, _resume), do: loop(context, context.max_rounds)
 
-  defp parked_calls(results) do
+  defp collect_parked_calls(results) do
     for {call, {:park, reason}} <- results, do: {call, reason}
   end
 
@@ -116,7 +116,7 @@ defmodule WardrikCore.Turn do
   end
 
   defp step(context, rounds) do
-    with {:ok, context} <- generated(context) do
+    with {:ok, context} <- handle_generate(context) do
       context = clear_resume(context)
 
       case tool_calls(context.response) do
@@ -126,17 +126,19 @@ defmodule WardrikCore.Turn do
     end
   end
 
-  defp generated(%Context{resume: %Resume{reason: %Retry.Exhausted{}, input: input}} = context)
+  defp handle_generate(
+         %Context{resume: %Resume{reason: %Retry.Exhausted{}, input: input}} = context
+       )
        when is_map(input) do
     case Map.get(input, "model") do
       {:deny, reason} -> {:error, reason}
-      _try_again -> retried(context)
+      _try_again -> retry(context)
     end
   end
 
-  defp generated(context), do: retried(context)
+  defp handle_generate(context), do: retry(context)
 
-  defp retried(context) do
+  defp retry(context) do
     generate = fn -> Context.run(context, :generate, &generate/1) end
 
     case Retry.run(context.retries, generate,
@@ -144,7 +146,7 @@ defmodule WardrikCore.Turn do
            announce: &model_retrying(context, &1)
          ) do
       {:ok, generated} -> generated
-      {:spent, failed, tries} -> spent(context, failed, tries)
+      {:spent, failed, tries} -> spend(context, failed, tries)
     end
   end
 
@@ -160,7 +162,7 @@ defmodule WardrikCore.Turn do
     )
   end
 
-  defp spent(context, {:error, reason} = failed, tries) do
+  defp spend(context, {:error, reason} = failed, tries) do
     case Retry.on_exhausted(context.retries) do
       :fail ->
         failed
@@ -237,11 +239,11 @@ defmodule WardrikCore.Turn do
     do: %{context | messages: context.messages ++ messages}
 
   defp dispatch(%Context{on_chunk: handlers} = context, chunk) do
-    streamed(context, chunk)
+    stream(context, chunk)
     Enum.each(handlers, fn handler -> handler.(chunk) end)
   end
 
-  defp streamed(context, %ReqLLM.StreamChunk{type: type, text: text})
+  defp stream(context, %ReqLLM.StreamChunk{type: type, text: text})
        when type in [:content, :thinking] do
     Event.emit(context, [:wardrik_core, :message, :delta], %{}, %{
       agent_id: context.agent_id,
@@ -251,28 +253,30 @@ defmodule WardrikCore.Turn do
     })
   end
 
-  defp streamed(_context, _chunk), do: :ok
+  defp stream(_context, _chunk), do: :ok
 
-  defp prompt(%Context{instructions: nil, messages: messages}), do: Enum.map(messages, &dated/1)
+  defp prompt(%Context{instructions: nil, messages: messages}),
+    do: Enum.map(messages, &add_date/1)
 
   defp prompt(%Context{instructions: instructions, messages: messages}),
-    do: [ReqLLM.Context.system(instructions) | Enum.map(messages, &dated/1)]
+    do: [ReqLLM.Context.system(instructions) | Enum.map(messages, &add_date/1)]
 
   # The model knows the time only from each message's, so it can work out "tomorrow at 9".
-  defp dated(%ReqLLM.Message{role: :user, metadata: %{sent_at: %DateTime{} = sent}} = message),
+  defp add_date(%ReqLLM.Message{role: :user, metadata: %{sent_at: %DateTime{} = sent}} = message),
     do: %{
       message
       | content:
-          message.content ++ [ReqLLM.Message.ContentPart.text("(Sent #{sent_line(sent)}.)")]
+          message.content ++
+            [ReqLLM.Message.ContentPart.text("(Sent #{format_sent_line(sent)}.)")]
     }
 
-  defp dated(message), do: message
+  defp add_date(message), do: message
 
-  defp sent_line(sent), do: Calendar.strftime(sent, "%A %Y-%m-%d %H:%M UTC")
+  defp format_sent_line(sent), do: Calendar.strftime(sent, "%A %Y-%m-%d %H:%M UTC")
 
-  defp generate(%Context{} = context), do: called(context, &dispatch(context, &1))
+  defp generate(%Context{} = context), do: call(context, &dispatch(context, &1))
 
-  defp called(context, on_chunk) do
+  defp call(context, on_chunk) do
     tools = Enum.map(context.tools, fn tool -> tool.req_llm end)
 
     opts = [tools: tools] ++ Context.model_options(context, context.model)

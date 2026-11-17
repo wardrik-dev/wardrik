@@ -2,7 +2,7 @@ defmodule WardrikDaemon.Allowed do
   @moduledoc """
   Permission checks for the daemon's HTTP routes and dashboard pages.
 
-      :ok = WardrikDaemon.Allowed.owned(daemon, scope, "acme", {"secret.read", :secret})
+      :ok = WardrikDaemon.Allowed.check_owned(daemon, scope, "acme", {"secret.read", :secret})
 
   `WardrikDaemon.Authorizer` defines what each scope can do.
   """
@@ -14,33 +14,33 @@ defmodule WardrikDaemon.Allowed do
   Checks that the daemon runs `owner`. Then checks that `scope` can do `action` on the owner's
   resources of type `kind`.
   """
-  @spec owned(map(), Wardrik.Scope.t(), String.t(), {String.t(), atom()}) ::
+  @spec check_owned(map(), Wardrik.Scope.t(), String.t(), {String.t(), atom()}) ::
           :ok | {:error, Error.t()}
-  def owned(daemon, scope, owner, {action, kind}) do
-    with :ok <- named(owner),
-         :ok <- authorized(scope, action, {kind, owner}),
-         do: kept(owner, daemon.orgs)
+  def check_owned(daemon, scope, owner, {action, kind}) do
+    with :ok <- check_owner_name(owner),
+         :ok <- check_authorized(scope, action, {kind, owner}),
+         do: check_kept(owner, daemon.orgs)
   end
 
   @doc "Checks that `scope` can do `action` on `resource`."
-  @spec authorized(Wardrik.Scope.t(), String.t(), {atom(), String.t()}) ::
+  @spec check_authorized(Wardrik.Scope.t(), String.t(), {atom(), String.t()}) ::
           :ok | {:error, Error.t()}
-  def authorized(scope, action, resource) do
+  def check_authorized(scope, action, resource) do
     case Wardrik.Authorizer.authorize(scope, action: action, resource: resource) do
       :ok ->
         :ok
 
       {:error, :not_found} ->
-        {:error, Error.new(:not_found, "There's no #{described(resource)}.")}
+        {:error, Error.new(:not_found, "There's no #{describe(resource)}.")}
 
       {:error, :forbidden} ->
-        {:error, Error.new(:forbidden, "You may not do this to the #{described(resource)}.")}
+        {:error, Error.new(:forbidden, "You may not do this to the #{describe(resource)}.")}
     end
   end
 
   @doc "Checks that `owner` is an org, a user (`org/@name`) or `deployment`."
-  @spec named(String.t()) :: :ok | {:error, Error.t()}
-  def named(owner) do
+  @spec check_owner_name(String.t()) :: :ok | {:error, Error.t()}
+  def check_owner_name(owner) do
     if Owners.valid?(owner),
       do: :ok,
       else:
@@ -52,21 +52,21 @@ defmodule WardrikDaemon.Allowed do
   end
 
   @doc "Checks that the daemon runs `owner`'s org."
-  @spec kept(String.t(), map()) :: :ok | {:error, Error.t()}
-  def kept("deployment", _orgs), do: :ok
+  @spec check_kept(String.t(), map()) :: :ok | {:error, Error.t()}
+  def check_kept("deployment", _orgs), do: :ok
 
-  def kept(owner, orgs) do
+  def check_kept(owner, orgs) do
     owner
     |> Owners.org()
-    |> WardrikDaemon.Orgs.known(orgs)
+    |> WardrikDaemon.Orgs.check_known(orgs)
   end
 
-  defp described({:agents, owner}), do: "agents of #{owner}"
-  defp described({:secret, owner}), do: "secrets of #{owner}"
-  defp described({:ceiling, owner}), do: "ceilings of #{owner}"
-  defp described({:mcp_server, owner}), do: "MCP servers of #{owner}"
-  defp described({:notify_target, owner}), do: "notify targets of #{owner}"
-  defp described({:provider, owner}), do: "OAuth apps of #{owner}"
-  defp described({:connection, id}), do: "connections of #{id}"
-  defp described({:token, _id}), do: "token"
+  defp describe({:agents, owner}), do: "agents of #{owner}"
+  defp describe({:secret, owner}), do: "secrets of #{owner}"
+  defp describe({:ceiling, owner}), do: "ceilings of #{owner}"
+  defp describe({:mcp_server, owner}), do: "MCP servers of #{owner}"
+  defp describe({:notify_target, owner}), do: "notify targets of #{owner}"
+  defp describe({:provider, owner}), do: "OAuth apps of #{owner}"
+  defp describe({:connection, id}), do: "connections of #{id}"
+  defp describe({:token, _id}), do: "token"
 end

@@ -51,8 +51,8 @@ defmodule WardrikDaemon.CLI.Context do
   end
 
   @doc "Writes `said` once a change is done, or the answer as JSON if the command was given `--json`."
-  @spec done(t(), term(), Owl.Data.t()) :: :ok
-  def done(cx, answer, said),
+  @spec report_done(t(), term(), Owl.Data.t()) :: :ok
+  def report_done(cx, answer, said),
     do: show(cx, answer || %{"ok" => true}, fn _answer -> puts(cx, said) end)
 
   @doc "Writes `data` to the command's terminal."
@@ -62,13 +62,13 @@ defmodule WardrikDaemon.CLI.Context do
   @doc "Runs the operation `id` on the daemon. Returns its answer, or the reason it failed."
   @spec call(t(), String.t(), map()) :: {:ok, map() | nil} | {:error, String.t()}
   def call(cx, id, input) do
-    with {:ok, client} <- client(cx), do: called(Client.run(client, id, input))
+    with {:ok, client} <- client(cx), do: format_result(Client.run(client, id, input))
   end
 
   @doc "Returns an operation's answer, with its error as a message."
-  @spec called({:ok, term()} | Client.error()) :: {:ok, term()} | {:error, String.t()}
-  def called({:ok, answer}), do: {:ok, answer}
-  def called({:error, _type, message}), do: {:error, message}
+  @spec format_result({:ok, term()} | Client.error()) :: {:ok, term()} | {:error, String.t()}
+  def format_result({:ok, answer}), do: {:ok, answer}
+  def format_result({:error, _type, message}), do: {:error, message}
 
   @doc "Returns the client that reaches the daemon: from `WARDRIK_URL` and `WARDRIK_TOKEN` if both are set, or from `cli_token`."
   @spec client(t()) :: {:ok, Client.t()} | {:error, String.t()}
@@ -122,11 +122,11 @@ defmodule WardrikDaemon.CLI.Context do
         {:ok, %{"agents" => agents}} <- [call(cx, "agents.find", %{"owner" => org})],
         agent <- agents,
         into: %{},
-        do: {agent["id"], Map.put(agent, "shown", shown(cx, agent))}
+        do: {agent["id"], Map.put(agent, "shown", handle_show(cx, agent))}
   end
 
-  defp shown(%{org: org}, %{"org" => org, "name" => name}), do: name
-  defp shown(_cx, %{"org" => org, "name" => name}), do: org <> "/" <> name
+  defp handle_show(%{org: org}, %{"org" => org, "name" => name}), do: name
+  defp handle_show(_cx, %{"org" => org, "name" => name}), do: org <> "/" <> name
 
   @doc "Puts the `--conversation` of `flags` in `input`, if it's set."
   @spec conversation(map(), map()) :: map()

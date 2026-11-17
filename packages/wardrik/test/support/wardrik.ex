@@ -52,7 +52,7 @@ defmodule Wardrik.Test.Wardrik do
   end
 
   @doc "Returns `owner`'s secret `name`, unsealed."
-  def unsealed(wardrik, {owner, name}) do
+  def unseal_secret(wardrik, {owner, name}) do
     wardrik
     |> Wardrik.Instance.fetch!()
     |> Wardrik.vault()
@@ -74,7 +74,7 @@ defmodule Wardrik.Test.Wardrik do
   what `:owners` own, or with `:agents_of`, on those owners' agents alone, as a host's authorizer
   might. It's refused anything else they own, and finds nothing of anyone else's.
   """
-  def limited(wardrik, principal, opts) do
+  def build_limited_scope(wardrik, principal, opts) do
     roles = Keyword.fetch!(opts, :roles)
     actions = Enum.flat_map(roles, &Map.fetch!(@roles, &1))
     reach = Keyword.take(opts, [:owners, :agents_of])
@@ -90,15 +90,15 @@ defmodule Wardrik.Test.Wardrik do
   end
 
   defp reaches?([agents_of: owners], {:agent, _id} = resource),
-    do: owned_by(resource) in owners
+    do: find_owner(resource) in owners
 
   defp reaches?([agents_of: _owners], _resource), do: false
-  defp reaches?([owners: owners], resource), do: owned_by(resource) in owners
+  defp reaches?([owners: owners], resource), do: find_owner(resource) in owners
 
-  defp owned_by({:owner, owner}), do: owner
-  defp owned_by({:deployment, _name}), do: "deployment"
+  defp find_owner({:owner, owner}), do: owner
+  defp find_owner({:deployment, _name}), do: "deployment"
 
-  defp owned_by({:agent, id}), do: Wardrik.Test.Directory.owner(id)
+  defp find_owner({:agent, id}), do: Wardrik.Test.Directory.owner(id)
 
   @doc "Starts the agent `id`, or with `:conversation`, one of its conversations."
   def start_agent(wardrik, id, opts \\ []) do
@@ -131,7 +131,7 @@ defmodule Wardrik.Test.Wardrik do
     output
   end
 
-  def refused(scope, id, input) do
+  def assert_refused(scope, id, input) do
     assert {:error, %Wardrik.Error{type: type}} = Wardrik.run(scope, id, input)
     type
   end

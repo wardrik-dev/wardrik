@@ -222,7 +222,7 @@ defmodule WardrikDaemon.CLI.AgentsTest do
     direct = capture_io("y\n", run)
     assert_received {:status, 0}
 
-    live = Screen.written(written)
+    live = Screen.read_screen(written)
     assert direct <> live =~ "→ echo"
     assert live =~ "? waits on you after 0s"
     assert live =~ ~r/✔ \d+s · 1 tool call/

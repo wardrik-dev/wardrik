@@ -52,22 +52,22 @@ defmodule Wardrik.Policy.Default do
         %Call{annotations: annotations}
       ) do
     by_annotation
-    |> Map.take(held(annotations))
+    |> Map.take(hold(annotations))
     |> Map.values()
     |> strictest(fallback)
   end
 
-  defp held(annotations), do: for({annotation, true} <- annotations, do: to_string(annotation))
+  defp hold(annotations), do: for({annotation, true} <- annotations, do: to_string(annotation))
 
   defp strictest([], fallback), do: fallback
   defp strictest(effects, _fallback), do: Enum.min_by(effects, &Decision.strictness/1)
 
   defp effects(by_annotation) do
-    annotated = Enum.map(by_annotation, &annotated/1)
+    annotated = Enum.map(by_annotation, &annotate/1)
     with {:ok, pairs} <- Read.all(annotated), do: {:ok, Map.new(pairs)}
   end
 
-  defp annotated({annotation, effect}) do
+  defp annotate({annotation, effect}) do
     case effect(effect) do
       {:ok, effect} -> {:ok, {annotation, effect}}
       {:error, _message} -> {:error, not_an_effect(annotation, effect)}

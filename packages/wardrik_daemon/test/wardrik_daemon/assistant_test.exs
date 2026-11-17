@@ -75,7 +75,9 @@ defmodule WardrikDaemon.AssistantTest do
     aide = id(context, "acme", "assistant")
     create(context, aide, @worker)
 
-    assert {:ok, record} = AgentRecords.named(context.daemon_store, "acme", "rivals-watch")
+    assert {:ok, record} =
+             AgentRecords.fetch_by_name(context.daemon_store, "acme", "rivals-watch")
+
     assert %{org: "acme", owner: "acme"} = record
 
     assert {:ok, %Wardrik.Definition{description: "rivals-watch: watches rivals."}, _problems} =
@@ -107,8 +109,8 @@ defmodule WardrikDaemon.AssistantTest do
     aide = id(context, "growth", "aide")
     assert inspect(create(context, aide, @worker)) =~ "You may not make agents."
 
-    assert AgentRecords.named(context.daemon_store, "growth", "rivals-watch") == :error
-    assert AgentRecords.named(context.daemon_store, "acme", "rivals-watch") == :error
+    assert AgentRecords.fetch_by_name(context.daemon_store, "growth", "rivals-watch") == :error
+    assert AgentRecords.fetch_by_name(context.daemon_store, "acme", "rivals-watch") == :error
 
     # Nor can acme's put one elsewhere: its name can't name an org, and its owner is its own.
     acme = id(context, "acme", "assistant")
@@ -116,7 +118,7 @@ defmodule WardrikDaemon.AssistantTest do
     assert inspect(create(context, acme, %{@worker | "name" => "growth/rivals-watch"})) =~
              "name"
 
-    assert AgentRecords.named(context.daemon_store, "growth", "rivals-watch") == :error
+    assert AgentRecords.fetch_by_name(context.daemon_store, "growth", "rivals-watch") == :error
     records = AgentRecords.in_org(context.daemon_store, "growth")
     assert Enum.map(records, & &1.name) == ["aide"]
   end

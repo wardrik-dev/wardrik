@@ -85,7 +85,7 @@ defmodule Wardrik.Store do
     if Regex.match?(@scope_name, name),
       do: %{
         store
-        | scope: nested(store.scope, name),
+        | scope: join_scope(store.scope, name),
           format: Keyword.get(opts, :format, Format.JSON)
       },
       else: raise(ArgumentError, not_a_scope_name(name))
@@ -171,7 +171,7 @@ defmodule Wardrik.Store do
     root = path(store, "")
 
     store
-    |> listed(root <> prefix)
+    |> list(root <> prefix)
     |> Enum.map(fn {path, text, vsn} ->
       key = String.replace_prefix(path, root, "")
       {key, read(store, key, text), vsn}
@@ -205,7 +205,7 @@ defmodule Wardrik.Store do
       else: one_by_one(adapter, config, paths)
   end
 
-  defp listed(%__MODULE__{adapter: adapter, config: config}, prefix) do
+  defp list(%__MODULE__{adapter: adapter, config: config}, prefix) do
     if Code.ensure_loaded?(adapter) and function_exported?(adapter, :entries, 2),
       do: adapter.entries(config, prefix),
       else: one_by_one(adapter, config, adapter.keys(config, prefix))
@@ -222,8 +222,8 @@ defmodule Wardrik.Store do
     end
   end
 
-  defp nested("", name), do: name
-  defp nested(scope, name), do: scope <> "/" <> name
+  defp join_scope("", name), do: name
+  defp join_scope(scope, name), do: scope <> "/" <> name
 
   defp path(%__MODULE__{scope: scope}, key), do: scope <> ":" <> key
 

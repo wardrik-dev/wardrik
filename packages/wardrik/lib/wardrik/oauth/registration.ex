@@ -25,18 +25,19 @@ defmodule Wardrik.OAuth.Registration do
   def client(settings, provider, metadata) do
     case Wardrik.Store.get(settings.store, key(provider)) do
       nil -> register(settings, provider, metadata)
-      registered -> {:ok, applied(settings, provider, registered)}
+      registered -> {:ok, apply_client(settings, provider, registered)}
     end
   end
 
   @doc "Returns `provider` with the client kept for it, if there is one."
-  @spec registered(map(), Provider.t()) :: Provider.t()
-  def registered(_settings, %Provider{client_id: id} = provider) when is_binary(id), do: provider
+  @spec put_registered_client(map(), Provider.t()) :: Provider.t()
+  def put_registered_client(_settings, %Provider{client_id: id} = provider) when is_binary(id),
+    do: provider
 
-  def registered(settings, provider) do
+  def put_registered_client(settings, provider) do
     case Wardrik.Store.get(settings.store, key(provider)) do
       nil -> provider
-      registered -> applied(settings, provider, registered)
+      registered -> apply_client(settings, provider, registered)
     end
   end
 
@@ -57,7 +58,7 @@ defmodule Wardrik.OAuth.Registration do
 
   defp register(settings, provider, metadata) do
     if metadata.documents_supported? and public?(settings.page),
-      do: kept(settings, provider, %{"client_id" => document_url(settings)}),
+      do: keep(settings, provider, %{"client_id" => document_url(settings)}),
       else: dynamic(settings, provider, metadata.registration_endpoint)
   end
 
@@ -66,7 +67,7 @@ defmodule Wardrik.OAuth.Registration do
   defp dynamic(settings, provider, endpoint) do
     case Request.post_json(endpoint, request(settings, provider), settings.req_options) do
       {:ok, status, %{"client_id" => _id} = answer} when status in [200, 201] ->
-        kept(settings, provider, Map.take(answer, ["client_id", "client_secret"]))
+        keep(settings, provider, Map.take(answer, ["client_id", "client_secret"]))
 
       {:ok, status, body} ->
         {:error, Request.refusal(status, body)}
@@ -76,19 +77,19 @@ defmodule Wardrik.OAuth.Registration do
     end
   end
 
-  defp kept(settings, provider, registered) do
+  defp keep(settings, provider, registered) do
     {secret, client} = Map.pop(registered, "client_secret")
 
     case Wardrik.Store.put(settings.store, key(provider), client, if_vsn: nil) do
-      {:ok, _vsn} -> sealed(settings, provider, client["client_id"], secret)
-      {:error, :conflict} -> {:ok, registered(settings, provider)}
+      {:ok, _vsn} -> seal(settings, provider, client["client_id"], secret)
+      {:error, :conflict} -> {:ok, put_registered_client(settings, provider)}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp sealed(settings, provider, id, secret) do
+  defp seal(settings, provider, id, secret) do
     with :ok <- ClientSecrets.seal(settings, name: key(provider), secret: secret),
-         do: {:ok, applied(provider, id, secret)}
+         do: {:ok, apply_client(provider, id, secret)}
   end
 
   defp request(settings, provider), do: fields(settings, grant_types(provider.flow))
@@ -106,10 +107,10 @@ defmodule Wardrik.OAuth.Registration do
   defp grant_types(:device), do: [@device, "refresh_token"]
   defp grant_types(:browser), do: ["authorization_code", "refresh_token"]
 
-  defp applied(settings, provider, %{"client_id" => id}),
-    do: applied(provider, id, ClientSecrets.unseal(settings, key(provider)))
+  defp apply_client(settings, provider, %{"client_id" => id}),
+    do: apply_client(provider, id, ClientSecrets.unseal(settings, key(provider)))
 
-  defp applied(provider, id, secret), do: %{provider | client_id: id, client_secret: secret}
+  defp apply_client(provider, id, secret), do: %{provider | client_id: id, client_secret: secret}
 
   defp document_url(settings), do: settings.page <> "/client"
 

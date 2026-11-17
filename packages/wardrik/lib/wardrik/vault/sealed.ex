@@ -76,8 +76,8 @@ defmodule Wardrik.Vault.Sealed do
     aad = aad(path, sealed.kind)
 
     keys
-    |> Enum.find_value(fn key -> opened(key, sealed, aad) end)
-    |> unsealed()
+    |> Enum.find_value(fn key -> open(key, sealed, aad) end)
+    |> wrap_unsealed()
   end
 
   @doc "Decodes base64 keys. Drops any that don't hold #{@key_bytes} bytes."
@@ -92,7 +92,7 @@ defmodule Wardrik.Vault.Sealed do
     |> Base.encode64()
   end
 
-  defp opened(key, sealed, aad) do
+  defp open(key, sealed, aad) do
     case :crypto.crypto_one_time_aead(
            :aes_256_gcm,
            key,
@@ -107,8 +107,8 @@ defmodule Wardrik.Vault.Sealed do
     end
   end
 
-  defp unsealed(nil), do: {:error, :undecipherable}
-  defp unsealed(value), do: {:ok, value}
+  defp wrap_unsealed(nil), do: {:error, :undecipherable}
+  defp wrap_unsealed(value), do: {:ok, value}
 
   defp aad(path, kind), do: "wardrik_vault/#{kind}/" <> path
 

@@ -84,7 +84,7 @@ defmodule Wardrik.OAuth.Apps do
 
       app ->
         if Owned.usable?(wardrik, principal, app, @use),
-          do: resolved(wardrik, reference, app),
+          do: resolve(wardrik, reference, app),
           else: {:error, :not_found}
     end
   end
@@ -94,7 +94,7 @@ defmodule Wardrik.OAuth.Apps do
   def find(wardrik, reference) do
     Owned.get(wardrik, __MODULE__, reference) ||
       wardrik
-      |> declared()
+      |> declare()
       |> Enum.find(&(reference(&1) == reference))
   end
 
@@ -106,54 +106,54 @@ defmodule Wardrik.OAuth.Apps do
   Returns the app named `name` that `principal` signs in with: its own, another owner's it may
   use, or the deployment's. `nil` if there's none it may use.
   """
-  @spec chosen(Wardrik.t(), Principal.t(), String.t()) :: map() | nil | {:error, [String.t()]}
-  def chosen(wardrik, principal, name) do
+  @spec choose(Wardrik.t(), Principal.t(), String.t()) :: map() | nil | {:error, [String.t()]}
+  def choose(wardrik, principal, name) do
     candidates =
-      Enum.filter(Owned.all(wardrik, __MODULE__) ++ declared(wardrik), &(&1.name == name))
+      Enum.filter(Owned.all(wardrik, __MODULE__) ++ declare(wardrik), &(&1.name == name))
 
-    Owned.chosen(wardrik, principal, candidates, @use)
+    Owned.choose(wardrik, principal, candidates, @use)
   end
 
   @doc """
-  Returns the apps `principal` may connect an account with, one per name, as `chosen/3` picks
+  Returns the apps `principal` may connect an account with, one per name, as `choose/3` picks
   them. A server's own sign-in is offered by the server's name.
   """
-  @spec offered(Wardrik.t(), Principal.t()) :: [map()]
-  def offered(wardrik, principal) do
+  @spec list_offered(Wardrik.t(), Principal.t()) :: [map()]
+  def list_offered(wardrik, principal) do
     for name <- names(wardrik),
-        %{} = app <- [chosen(wardrik, principal, name)],
+        %{} = app <- [choose(wardrik, principal, name)],
         do: app
   end
 
   defp names(wardrik),
     do:
-      (Owned.all(wardrik, __MODULE__) ++ declared(wardrik))
+      (Owned.all(wardrik, __MODULE__) ++ declare(wardrik))
       |> Enum.map(& &1.name)
       |> Enum.uniq()
       |> Enum.sort()
 
   @doc "Returns the name a person knows `app` by: its own, or its server's."
-  @spec shown(map()) :: String.t()
-  def shown(%{name: @server <> server}), do: server
-  def shown(%{name: name}), do: name
+  @spec get_display_name(map()) :: String.t()
+  def get_display_name(%{name: @server <> server}), do: server
+  def get_display_name(%{name: name}), do: name
 
   @doc "Lists `owner`'s apps. The deployment's include those its options declare."
   @spec list(Wardrik.t(), String.t()) :: [map()]
   def list(wardrik, owner) do
-    declared = if owner == Owned.deployment(), do: declared(wardrik), else: []
+    declared = if owner == Owned.deployment(), do: declare(wardrik), else: []
 
     for app <- declared ++ Owned.own(wardrik, __MODULE__, owner),
         not String.starts_with?(app.name, @server),
-        do: listed(app)
+        do: handle_list(app)
   end
 
   @doc "Adds the app `input` describes for `owner`, and records it in the audit."
   @spec add(Wardrik.Scope.t(), String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def add(scope, owner, %{"name" => name} = input) do
-    with :ok <- unused(scope.wardrik, owner, name),
+    with :ok <- check_unused(scope.wardrik, owner, name),
          {:ok, app} <- keep(scope.wardrik, owner, input) do
-      changed(scope, "provider.added", {owner, name})
-      {:ok, listed(app)}
+      change(scope, "provider.added", {owner, name})
+      {:ok, handle_list(app)}
     end
   end
 
@@ -185,8 +185,8 @@ defmodule Wardrik.OAuth.Apps do
   def remove(scope, owner, name) do
     case forget(scope.wardrik, owner, name) do
       {:ok, app} ->
-        changed(scope, "provider.removed", {owner, name})
-        {:ok, listed(app)}
+        change(scope, "provider.removed", {owner, name})
+        {:ok, handle_list(app)}
 
       :error ->
         not_removed(scope.wardrik, owner, name)
@@ -216,16 +216,16 @@ defmodule Wardrik.OAuth.Apps do
   def key(%{id: id} = app), do: reference(app) <> "/" <> id
   def key(app), do: reference(app)
 
-  defp declared(%Wardrik{oauth: nil}), do: []
+  defp declare(%Wardrik{oauth: nil}), do: []
 
-  defp declared(%Wardrik{oauth: oauth}) do
+  defp declare(%Wardrik{oauth: oauth}) do
     for {name, opts} <- Keyword.get(oauth, :providers, []) do
       {secret, opts} = Keyword.pop(opts, :client_secret)
       %{owner: Owned.deployment(), name: to_string(name), opts: opts, client_secret: secret}
     end
   end
 
-  defp resolved(wardrik, reference, app) do
+  defp resolve(wardrik, reference, app) do
     with {:ok, secret} <- read_secret(wardrik, app),
          do: {:ok, Provider.new(reference, [key: key(app), client_secret: secret] ++ app.opts)}
   end
@@ -242,7 +242,7 @@ defmodule Wardrik.OAuth.Apps do
     end
   end
 
-  defp unused(wardrik, owner, name) do
+  defp check_unused(wardrik, owner, name) do
     if Owned.get(wardrik, __MODULE__, Owned.reference(owner, name)) == nil and
          not declared?(wardrik, owner, name),
        do: :ok,
@@ -259,7 +259,7 @@ defmodule Wardrik.OAuth.Apps do
   defp declared?(wardrik, owner, name) do
     owner == Owned.deployment() and
       wardrik
-      |> declared()
+      |> declare()
       |> Enum.any?(&(&1.name == name))
   end
 
@@ -317,7 +317,7 @@ defmodule Wardrik.OAuth.Apps do
     Base.encode32(bytes, case: :lower, padding: false)
   end
 
-  defp listed(app) do
+  defp handle_list(app) do
     opts = app.opts
     flow = Keyword.get(opts, :flow, :browser)
     client_auth = Keyword.get(opts, :client_auth, :post)
@@ -348,7 +348,7 @@ defmodule Wardrik.OAuth.Apps do
   defp put(map, _key, nil), do: map
   defp put(map, key, value), do: Map.put(map, key, value)
 
-  defp changed(scope, type, {owner, name}),
+  defp change(scope, type, {owner, name}),
     do:
       Changes.record_deployment(scope,
         type: type,

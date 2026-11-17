@@ -46,7 +46,7 @@ defmodule Wardrik.Operations.Snapshot do
   @doc "Returns the agent `key`'s summary, as lists show it."
   @spec summary(Wardrik.t(), Running.key()) :: map()
   def summary(wardrik, {agent, _conversation} = key),
-    do: summarized(wardrik, key, next_run(wardrik, agent), Wardrik.Spending.today(wardrik, agent))
+    do: summarize(wardrik, key, next_run(wardrik, agent), Wardrik.Spending.today(wardrik, agent))
 
   @doc "Returns the summaries of `keys`, reading their triggers and spending once for all."
   @spec summaries(Wardrik.t(), [Running.key()]) :: [map()]
@@ -61,21 +61,21 @@ defmodule Wardrik.Operations.Snapshot do
     spent = Wardrik.Spending.by_agent(wardrik, agents)
 
     for {agent, _conversation} = key <- keys,
-        do: summarized(wardrik, key, iso8601(next_runs[agent]), Map.fetch!(spent, agent))
+        do: summarize(wardrik, key, iso8601(next_runs[agent]), Map.fetch!(spent, agent))
   end
 
-  defp summarized(wardrik, {agent, conversation} = key, next_run, spent) do
+  defp summarize(wardrik, {agent, conversation} = key, next_run, spent) do
     events = Wardrik.events(wardrik)
     activity = Wardrik.EventLog.activity(events, key)
 
     %{
       "id" => agent,
-      "node" => placed(wardrik, key),
+      "node" => find_node(wardrik, key),
       "pending" => activity["pending"],
       "next_run" => next_run,
       "spent_today" => spent
     }
-    |> Map.merge(described(wardrik, agent))
+    |> Map.merge(describe(wardrik, agent))
     |> Map.merge(standing(wardrik, key, activity))
     |> conversation(conversation)
   end
@@ -84,8 +84,8 @@ defmodule Wardrik.Operations.Snapshot do
   Returns the agent's `"description"` and `"model"`, from its definition, where it has them. The
   model falls back to the deployment's.
   """
-  @spec described(Wardrik.t(), String.t()) :: map()
-  def described(wardrik, agent) do
+  @spec describe(Wardrik.t(), String.t()) :: map()
+  def describe(wardrik, agent) do
     definition =
       case Wardrik.Definitions.fetch(wardrik, agent) do
         {:ok, definition} -> Map.merge(wardrik.defaults, definition)
@@ -128,8 +128,8 @@ defmodule Wardrik.Operations.Snapshot do
   defp iso8601(at), do: DateTime.to_iso8601(at)
 
   @doc "Returns the node the agent `key` runs on, or `nil` if it's asleep."
-  @spec placed(Wardrik.t(), Running.key()) :: String.t() | nil
-  def placed(wardrik, key) do
+  @spec find_node(Wardrik.t(), Running.key()) :: String.t() | nil
+  def find_node(wardrik, key) do
     case Running.whereis(wardrik, key) do
       nil -> nil
       pid -> to_string(node(pid))
@@ -137,8 +137,8 @@ defmodule Wardrik.Operations.Snapshot do
   end
 
   @doc "Returns `:ok` if the agent `key` exists, or a `not_found` error."
-  @spec known(Wardrik.t(), Running.key()) :: :ok | {:error, Error.t()}
-  def known(wardrik, key) do
+  @spec check_known(Wardrik.t(), Running.key()) :: :ok | {:error, Error.t()}
+  def check_known(wardrik, key) do
     if Running.known?(wardrik, key),
       do: :ok,
       else: {:error, Error.new(:not_found, "There's no agent #{Running.describe(key)}.")}
@@ -147,7 +147,7 @@ defmodule Wardrik.Operations.Snapshot do
   @doc "Returns the running agent `key`, or a `not_found` error if it's asleep."
   @spec running(Wardrik.t(), Running.key()) :: {:ok, pid()} | {:error, Error.t()}
   def running(wardrik, key) do
-    with :ok <- known(wardrik, key) do
+    with :ok <- check_known(wardrik, key) do
       case Running.whereis(wardrik, key) do
         nil -> {:error, Error.new(:not_found, "#{Running.describe(key)} sleeps.")}
         pid -> {:ok, pid}

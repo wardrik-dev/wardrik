@@ -39,11 +39,11 @@ defmodule Wardrik.HTTP.Routes do
     @routes
     |> Map.get(method, [])
     |> Enum.find_value(:error, fn {pattern, operation} ->
-      matched(pattern, segments, operation)
+      handle_match(pattern, segments, operation)
     end)
   end
 
-  defp matched(pattern, segments, operation) do
+  defp handle_match(pattern, segments, operation) do
     case params(pattern, segments, %{}) do
       {:ok, params} -> {:ok, operation, params}
       :error -> nil

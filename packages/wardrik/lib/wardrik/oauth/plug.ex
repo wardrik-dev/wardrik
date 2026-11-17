@@ -37,8 +37,11 @@ defmodule Wardrik.OAuth.Plug do
     conn = fetch_query_params(conn)
 
     case principal(conn, opts) do
-      nil -> page(conn, 401, "Sign-in didn't finish", unknown())
-      principal -> finished(conn, Wardrik.OAuth.finish(oauth, conn.query_params, as: principal))
+      nil ->
+        page(conn, 401, "Sign-in didn't finish", build_unknown_message())
+
+      principal ->
+        render_outcome(conn, Wardrik.OAuth.finish(oauth, conn.query_params, as: principal))
     end
   end
 
@@ -52,7 +55,7 @@ defmodule Wardrik.OAuth.Plug do
         """)
 
       :error ->
-        page(conn, 404, "Sign-in not found", ended())
+        page(conn, 404, "Sign-in not found", build_ended_message())
     end
   end
 
@@ -70,7 +73,7 @@ defmodule Wardrik.OAuth.Plug do
   defp principal(conn, %{principal: {module, function, args}}),
     do: apply(module, function, [conn | args])
 
-  defp finished(conn, outcome) do
+  defp render_outcome(conn, outcome) do
     case outcome do
       {:ok, %{provider: provider}} ->
         page(
@@ -81,22 +84,23 @@ defmodule Wardrik.OAuth.Plug do
         )
 
       {:error, reason} ->
-        page(conn, 400, "Sign-in didn't finish", failed(reason))
+        page(conn, 400, "Sign-in didn't finish", fail(reason))
     end
   end
 
-  defp failed({:refused, _error}), do: "The sign-in was declined."
-  defp failed(:no_such_flow), do: ended()
+  defp fail({:refused, _error}), do: "The sign-in was declined."
+  defp fail(:no_such_flow), do: build_ended_message()
 
-  defp failed(:wrong_principal),
+  defp fail(:wrong_principal),
     do: "Someone else started this sign-in, so it can't connect your account."
 
-  defp failed(_reason), do: "The sign-in couldn't be finished. Ask again to start a new one."
+  defp fail(_reason), do: "The sign-in couldn't be finished. Ask again to start a new one."
 
-  defp unknown,
+  defp build_unknown_message,
     do: "This page can't tell who you are. Sign in to the app that sent you here, and ask again."
 
-  defp ended, do: "This sign-in has ended, or was already used. Ask again to start a new one."
+  defp build_ended_message,
+    do: "This sign-in has ended, or was already used. Ask again to start a new one."
 
   defp page(conn, status, title, body) do
     conn

@@ -86,7 +86,7 @@ defmodule Wardrik.Policy.Budget do
   @doc "Reads a budget from a map with string keys, such as one parsed from YAML."
   @spec decode(map()) :: {:ok, t()} | {:error, String.t()}
   def decode(fields) when is_map(fields) do
-    with :ok <- Read.known(fields, @fields, "a budget"),
+    with :ok <- Read.check_known(fields, @fields, "a budget"),
          {:ok, per} <- Read.choice(fields, "per", @periods, :day),
          {:ok, on_exhausted} <- Read.choice(fields, "on_exhausted", @exhausted, :ask),
          {:ok, grant} <- Read.keywords(fields["grant"], @amounts, "grant"),
@@ -114,8 +114,8 @@ defmodule Wardrik.Policy.Budget do
       "tokens" => budget.tokens,
       "per" => Atom.to_string(budget.per),
       "timezone" => budget.timezone,
-      "grant" => Read.written(budget.grant),
-      "price" => budget.price && Read.written(budget.price),
+      "grant" => Read.stringify_keys(budget.grant),
+      "price" => budget.price && Read.stringify_keys(budget.price),
       "on_exhausted" => Atom.to_string(budget.on_exhausted)
     })
   end
@@ -163,7 +163,11 @@ defmodule Wardrik.Policy.Budget do
       @kinds
       |> Enum.filter(&exhausted?(budget, spent, &1))
       |> Enum.reduce(Map.get(spent, :granted, %{}), fn kind, granted ->
-        Map.put(granted, kind, used(spent, kind) - Map.fetch!(budget, kind) + more(budget, kind))
+        Map.put(
+          granted,
+          kind,
+          get_used(spent, kind) - Map.fetch!(budget, kind) + more(budget, kind)
+        )
       end)
 
     Map.put(spent, :granted, granted)
@@ -193,11 +197,11 @@ defmodule Wardrik.Policy.Budget do
   defp exhausted?(budget, spent, kind) do
     case Map.fetch!(budget, kind) do
       nil -> false
-      _limit -> used(spent, kind) >= limit(budget, spent, kind)
+      _limit -> get_used(spent, kind) >= limit(budget, spent, kind)
     end
   end
 
-  defp used(spent, kind), do: Map.get(spent, kind, 0)
+  defp get_used(spent, kind), do: Map.get(spent, kind, 0)
 
   defp limit(budget, spent, kind) do
     granted =
@@ -211,17 +215,17 @@ defmodule Wardrik.Policy.Budget do
   defp more(budget, kind), do: budget.grant[kind] || Map.fetch!(budget, kind)
 
   defp message(budget, spent, kind, spender) do
-    reached = reached(kind, spender, used(spent, kind), limit(budget, spent, kind), budget.per)
+    reached = reach(kind, spender, get_used(spent, kind), limit(budget, spent, kind), budget.per)
 
     if budget.on_exhausted == :ask,
       do: "#{reached} #{offer(kind, more(budget, kind))}",
       else: reached
   end
 
-  defp reached(:usd, spender, used, limit, per),
+  defp reach(:usd, spender, used, limit, per),
     do: "#{spender} spent #{dollars(used)} of #{dollars(limit)}#{during(per)}."
 
-  defp reached(:tokens, spender, used, limit, per),
+  defp reach(:tokens, spender, used, limit, per),
     do: "#{spender} used #{count(used)} of #{count(limit)} tokens#{during(per)}."
 
   defp offer(:usd, amount), do: "Approve to allow #{dollars(amount)} more."

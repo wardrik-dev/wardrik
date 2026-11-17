@@ -34,25 +34,25 @@ defmodule Wardrik.Compaction do
 
   @impl Wardrik.Middleware
   def call(%Context{step: :turn, resume: nil} = context, next, opts) do
-    compacted = compacted(context, opts)
+    compacted = compact(context, opts)
     next.(compacted)
   end
 
   def call(context, next, _opts), do: next.(context)
 
-  defp compacted(context, opts) do
+  defp compact(context, opts) do
     spec = Context.spec(context, context.model)
     window = opts[:window] || WardrikCore.context_window(spec) || @window
 
     if tokens(context.messages) > Keyword.get(opts, :at, @at) * window,
-      do: summarized(context, Keyword.get(opts, :keep, @keep) * window),
+      do: handle_summarize(context, Keyword.get(opts, :keep, @keep) * window),
       else: context
   end
 
-  defp summarized(context, keep) do
+  defp handle_summarize(context, keep) do
     with {[_ | _] = older, kept} <- split(context.messages, keep),
          {:ok, summarized} <- summarize(context, older) do
-      replaced(context, summarized, [summary(summarized.response, older) | kept])
+      replace(context, summarized, [summary(summarized.response, older) | kept])
     else
       _unchanged -> context
     end
@@ -72,7 +72,7 @@ defmodule Wardrik.Compaction do
   defp turn_starts(messages),
     do: for({%{role: :user}, index} <- Enum.with_index(messages), index > 0, do: index)
 
-  defp replaced(context, summarized, messages) do
+  defp replace(context, summarized, messages) do
     emit(context, messages)
 
     %{

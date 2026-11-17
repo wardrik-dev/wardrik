@@ -35,7 +35,7 @@ defmodule WardrikDaemon.Listener do
 
   def handle_info({:EXIT, server, reason}, %{server: server} = state) do
     Logger.warning("The HTTP API stopped listening: #{inspect(reason)}")
-    {:noreply, retried(%{state | server: nil})}
+    {:noreply, retry(%{state | server: nil})}
   end
 
   def handle_info({:EXIT, _other, _reason}, state), do: {:noreply, state}
@@ -46,7 +46,7 @@ defmodule WardrikDaemon.Listener do
 
   defp listen(state, attempt) do
     with :ok <- free(state.bandit),
-         {:ok, server} <- Bandit.start_link([startup_log: false] ++ drained(state.bandit)) do
+         {:ok, server} <- Bandit.start_link([startup_log: false] ++ drain(state.bandit)) do
       Logger.info("The HTTP API listens on port #{state.bandit[:port]}")
       %{state | server: server}
     else
@@ -58,11 +58,11 @@ defmodule WardrikDaemon.Listener do
                 "This one takes it over when that one stops."
             )
 
-        retried(state)
+        retry(state)
     end
   end
 
-  defp drained(bandit) do
+  defp drain(bandit) do
     Keyword.update(
       bandit,
       :thousand_island_options,
@@ -81,7 +81,7 @@ defmodule WardrikDaemon.Listener do
          do: :gen_tcp.close(socket)
   end
 
-  defp retried(state) do
+  defp retry(state) do
     Process.send_after(self(), :listen, state.retry)
     state
   end

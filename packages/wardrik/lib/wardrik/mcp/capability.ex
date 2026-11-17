@@ -6,10 +6,10 @@ defmodule Wardrik.MCP.Capability do
   @impl Wardrik.Capability
   def tools(%Wardrik.Context{agent_id: id} = context, opts) do
     mcp = Keyword.fetch!(opts, :mcp)
-    Wardrik.MCP.tools(context, name: mcp, servers: picked(mcp, resolved(id, opts), opts))
+    Wardrik.MCP.tools(context, name: mcp, servers: pick_servers(mcp, resolve(id, opts), opts))
   end
 
-  defp resolved(id, opts) do
+  defp resolve(id, opts) do
     instance = Keyword.fetch!(opts, :wardrik)
     wardrik = Wardrik.Instance.fetch!(instance)
 
@@ -25,18 +25,20 @@ defmodule Wardrik.MCP.Capability do
   @doc """
   Returns the `Wardrik.MCP` names of the servers `opts` reach that are up.
   """
-  @spec picked(atom(), %{String.t() => String.t()}, keyword()) :: [String.t()]
-  def picked(mcp, servers, opts) do
+  @spec pick_servers(atom(), %{String.t() => String.t()}, keyword()) :: [String.t()]
+  def pick_servers(mcp, servers, opts) do
     available =
       mcp
       |> Wardrik.MCP.servers()
       |> MapSet.new()
 
-    keys = if Keyword.get(opts, :all, false), do: Map.values(servers), else: named(servers, opts)
+    keys =
+      if Keyword.get(opts, :all, false), do: Map.values(servers), else: pick_named(servers, opts)
+
     for key <- Enum.uniq(keys), MapSet.member?(available, key), do: key
   end
 
-  defp named(servers, opts) do
+  defp pick_named(servers, opts) do
     for name <- Keyword.get(opts, :names, []), {:ok, key} <- [Map.fetch(servers, name)], do: key
   end
 end

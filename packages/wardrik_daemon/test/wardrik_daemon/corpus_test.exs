@@ -28,14 +28,14 @@ defmodule WardrikDaemon.CorpusTest do
   end
 
   test "reads what this release keeps" do
-    for row <- kept(), do: read!(row, "this release")
+    for row <- keep(), do: read!(row, "this release")
   end
 
   @tag :corpus
   test "writes this release's corpus" do
     version = Mix.Project.config()[:version]
     File.mkdir_p!(@corpus)
-    rows = JSON.encode!(kept())
+    rows = JSON.encode!(keep())
     path = Path.join(@corpus, version <> ".json")
     File.write!(path, rows)
   end
@@ -65,7 +65,7 @@ defmodule WardrikDaemon.CorpusTest do
   end
 
   # One of each kind of value the daemon keeps, written through the store as it writes them.
-  defp kept do
+  defp keep do
     store = Wardrik.Store.ETS.new(name: :"daemon corpus #{System.unique_integer([:positive])}")
     start_supervised!({Wardrik.Store, store})
     daemon = Wardrik.Store.scope(store, "wardrik_daemon")

@@ -7,12 +7,12 @@ defmodule Wardrik.Slack.PackageTest do
   setup :set_mimic_global
   setup :start_wardrik
 
-  defp joined(context) do
+  defp join(context) do
     event(context, %{type: "member_joined_channel", user: "UBOT", channel: "C1", inviter: "U1"})
     assert_receive {:slack, "chat.postMessage", %{"text" => ":wave:" <> _rest}}, 1_000
   end
 
-  defp pressed(action, value, user, opts \\ []) do
+  defp build_press(action, value, user, opts \\ []) do
     %{
       type: "block_actions",
       user: %{id: user, username: Keyword.get(opts, :name)},
@@ -84,7 +84,7 @@ defmodule Wardrik.Slack.PackageTest do
       event(context, joined_none)
       assert_receive {:slack, "chat.postMessage", %{"text" => "Which agent" <> _}}, 1_000
 
-      press(context, pressed("wardrik_room_agent", %{value: "acme/two"}, "U1", name: "maria"))
+      press(context, build_press("wardrik_room_agent", %{value: "acme/two"}, "U1", name: "maria"))
 
       assert_receive {:slack, {:respond, _path},
                       %{
@@ -96,22 +96,26 @@ defmodule Wardrik.Slack.PackageTest do
 
     test "has the agent answer every message, and stops it answering", context do
       define(context.owner, "acme/triage", channels: ["slack"])
-      joined(context)
+      join(context)
 
-      press(context, pressed("wardrik_room_answers", %{value: "everything"}, "U1"))
+      press(context, build_press("wardrik_room_answers", %{value: "everything"}, "U1"))
       assert_receive {:slack, {:respond, _path}, %{"blocks" => blocks}}, 1_000
       assert JSON.encode!(blocks) =~ "every message here"
 
-      press(context, pressed("wardrik_room_more", %{selected_option: %{value: "stop"}}, "U1"))
+      press(context, build_press("wardrik_room_more", %{selected_option: %{value: "stop"}}, "U1"))
       assert_receive {:slack, {:respond, _path}, %{"text" => "No agent answers here now."}}, 1_000
 
-      press(context, pressed("wardrik_room_more", %{selected_option: %{value: "choose"}}, "U1"))
+      press(
+        context,
+        build_press("wardrik_room_more", %{selected_option: %{value: "choose"}}, "U1")
+      )
+
       assert_receive {:slack, {:respond, _path}, %{"text" => "Which agent" <> _}}, 1_000
     end
 
     test "unbinds a Slack channel the bot leaves", context do
       define(context.owner, "acme/triage", channels: ["slack"])
-      joined(context)
+      join(context)
 
       event(context, %{type: "channel_left", channel: "C1", actor_id: "U1"})
       event(context, message("<@UBOT> hi", "1.1"))
@@ -128,7 +132,7 @@ defmodule Wardrik.Slack.PackageTest do
         policy: "careful"
       )
 
-      joined(context)
+      join(context)
       :ok
     end
 
@@ -181,7 +185,7 @@ defmodule Wardrik.Slack.PackageTest do
 
       press(
         context,
-        pressed("wardrik_approve", %{value: approve["value"]}, "U1",
+        build_press("wardrik_approve", %{value: approve["value"]}, "U1",
           name: "maria",
           state: state,
           blocks: blocks
@@ -210,13 +214,13 @@ defmodule Wardrik.Slack.PackageTest do
       [%{"elements" => [_approve, deny]}] =
         for %{"type" => "actions"} = block <- blocks, do: block
 
-      press(context, pressed("wardrik_deny", %{value: deny["value"]}, "U9", name: "stranger"))
+      press(context, build_press("wardrik_deny", %{value: deny["value"]}, "U9", name: "stranger"))
 
       assert_receive {:slack, {:respond, _path},
                       %{"response_type" => "ephemeral", "text" => "Nobody here knows you yet."}},
                      1_000
 
-      press(context, pressed("wardrik_deny", %{value: deny["value"]}, "U2", name: "jon"))
+      press(context, build_press("wardrik_deny", %{value: deny["value"]}, "U2", name: "jon"))
 
       assert_receive {:slack, {:respond, _path},
                       %{
@@ -225,7 +229,7 @@ defmodule Wardrik.Slack.PackageTest do
                       }},
                      1_000
 
-      press(context, pressed("wardrik_deny", %{value: deny["value"]}, "U3", name: "ana"))
+      press(context, build_press("wardrik_deny", %{value: deny["value"]}, "U3", name: "ana"))
       assert_receive {:slack, "chat.postMessage", %{"text" => "Denied by ana: Rejected."}}, 1_000
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
@@ -274,11 +278,11 @@ defmodule Wardrik.Slack.PackageTest do
 
     test "tells whoever presses Show link where to sign in, or why not", context do
       value = JSON.encode!(%{g: "acme/triage", c: "slack.T1.C1.1.1", i: "call_1", n: "inbox"})
-      press(context, pressed("wardrik_link", %{value: value}, "U3"))
+      press(context, build_press("wardrik_link", %{value: value}, "U3"))
 
       assert_receive {:slack, {:respond, _path}, %{"response_type" => "ephemeral"}}, 1_000
 
-      press(context, pressed("wardrik_approve", %{value: "not json"}, "U3"))
+      press(context, build_press("wardrik_approve", %{value: "not json"}, "U3"))
       refute_receive {:slack, {:respond, _path}, _reply}, 200
     end
   end
@@ -320,7 +324,7 @@ defmodule Wardrik.Slack.PackageTest do
 
       press(
         context,
-        pressed("wardrik_approve", %{value: approve["value"]}, "U1",
+        build_press("wardrik_approve", %{value: approve["value"]}, "U1",
           name: "maria",
           blocks: blocks
         )

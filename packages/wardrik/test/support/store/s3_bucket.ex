@@ -80,11 +80,11 @@ defmodule Wardrik.Store.Test.S3Bucket do
 
     case {Process.get({__MODULE__, :refuse}), Process.delete({__MODULE__, :drop})} do
       {status, _drop} when is_integer(status) -> send_resp(conn, status, error("Refused"))
-      {nil, drop} -> dropped(conn, opts, drop)
+      {nil, drop} -> handle_drop(conn, opts, drop)
     end
   end
 
-  defp dropped(conn, opts, drop) do
+  defp handle_drop(conn, opts, drop) do
     case drop do
       :before ->
         Req.Test.transport_error(conn, :timeout)

@@ -16,14 +16,14 @@ defmodule Wardrik.Operations.Agent do
   def read(scope, input) do
     {agent, conversation} = key = Running.key(input)
 
-    with :ok <- Snapshot.known(scope.wardrik, key) do
+    with :ok <- Snapshot.check_known(scope.wardrik, key) do
       events = Wardrik.events(scope.wardrik)
       activity = Wardrik.EventLog.activity(events, key)
 
       {:ok,
        %{
          "agent" => %{"id" => agent},
-         "node" => Snapshot.placed(scope.wardrik, key),
+         "node" => Snapshot.find_node(scope.wardrik, key),
          "pending" => activity["pending"],
          "next_run" => Snapshot.next_run(scope.wardrik, agent),
          "spent_today" => Wardrik.Spending.today(scope.wardrik, agent),
@@ -31,7 +31,7 @@ defmodule Wardrik.Operations.Agent do
          "interrupts" => Snapshot.interrupts(activity),
          "cursor" => Wardrik.EventLog.head(events, [key])
        }
-       |> Map.merge(Snapshot.described(scope.wardrik, agent))
+       |> Map.merge(Snapshot.describe(scope.wardrik, agent))
        |> Map.merge(Snapshot.standing(scope.wardrik, key, activity))
        |> Snapshot.conversation(conversation)}
     end
@@ -56,11 +56,11 @@ defmodule Wardrik.Operations.Agent do
   def decide(scope, %{"decisions" => decisions} = input) do
     key = Running.key(input)
 
-    with :ok <- Snapshot.known(scope.wardrik, key),
+    with :ok <- Snapshot.check_known(scope.wardrik, key),
          {:ok, pid} <- Running.awake(scope.wardrik, key),
          :ok <- waiting_on(pid, key, decisions),
          :ok <- resume(pid, decisions, scope) do
-      {:ok, %{"decisions" => Enum.map(decisions, &decided/1)}}
+      {:ok, %{"decisions" => Enum.map(decisions, &handle_decide/1)}}
     end
   end
 
@@ -68,17 +68,17 @@ defmodule Wardrik.Operations.Agent do
   @spec approve(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def approve(scope, %{"interrupt" => interrupt} = input) do
     decision = %{"id" => interrupt, "decision" => "approve", "note" => input["note"]}
-    decide(scope, decided_input(input, decision))
+    decide(scope, decide_input(input, decision))
   end
 
   @doc "Rejects one call the agent waits on."
   @spec deny(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def deny(scope, %{"interrupt" => interrupt} = input) do
     decision = %{"id" => interrupt, "decision" => "reject", "reason" => input["reason"]}
-    decide(scope, decided_input(input, decision))
+    decide(scope, decide_input(input, decision))
   end
 
-  defp decided_input(input, decision) do
+  defp decide_input(input, decision) do
     input
     |> Map.take(["agent", "conversation"])
     |> Map.put("decisions", [decision])
@@ -90,7 +90,7 @@ defmodule Wardrik.Operations.Agent do
     key = Running.key(input)
 
     with {:ok, pid} <- Running.awake(scope.wardrik, key) do
-      case sign_in(WardrikCore.parked(pid), interrupt) do
+      case sign_in(WardrikCore.get_parked(pid), interrupt) do
         %Authorization{url: url} ->
           {:ok, %{"url" => url}}
 
@@ -106,17 +106,17 @@ defmodule Wardrik.Operations.Agent do
   def cancel(scope, input) do
     key = Running.key(input)
 
-    with :ok <- Snapshot.known(scope.wardrik, key) do
-      cancelled(scope, key, Running.whereis(scope.wardrik, key))
+    with :ok <- Snapshot.check_known(scope.wardrik, key) do
+      cancel_current(scope, key, Running.whereis(scope.wardrik, key))
       {:ok, nil}
     end
   end
 
   @doc "Cancels what the agent `key` is doing. Returns whether there was anything."
-  @spec cancelled(Wardrik.Scope.t(), Running.key(), pid() | nil) :: boolean()
-  def cancelled(_scope, _key, nil), do: false
+  @spec cancel_current(Wardrik.Scope.t(), Running.key(), pid() | nil) :: boolean()
+  def cancel_current(_scope, _key, nil), do: false
 
-  def cancelled(scope, key, pid) do
+  def cancel_current(scope, key, pid) do
     case WardrikCore.interrupt(pid) do
       :ok ->
         Changes.record(scope, type: "agent.cancelled", agent: key)
@@ -189,7 +189,7 @@ defmodule Wardrik.Operations.Agent do
   defp waiting_on(pid, key, decisions) do
     waiting =
       pid
-      |> WardrikCore.parked()
+      |> WardrikCore.get_parked()
       |> waiting()
 
     case Enum.reject(decisions, &Map.has_key?(waiting, &1["id"])) do
@@ -225,10 +225,11 @@ defmodule Wardrik.Operations.Agent do
   defp answer(%{"decision" => "reject"} = decision),
     do: {:deny, decision["reason"] || "Rejected."}
 
-  defp decided(%{"id" => id, "decision" => "approve"}),
+  defp handle_decide(%{"id" => id, "decision" => "approve"}),
     do: %{"id" => id, "decision" => "approved"}
 
-  defp decided(%{"id" => id, "decision" => "reject"}), do: %{"id" => id, "decision" => "rejected"}
+  defp handle_decide(%{"id" => id, "decision" => "reject"}),
+    do: %{"id" => id, "decision" => "rejected"}
 
   defp sign_in({:tool_calls, parked}, interrupt) do
     Enum.find_value(parked, fn

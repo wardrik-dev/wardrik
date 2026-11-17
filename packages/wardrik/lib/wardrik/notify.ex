@@ -89,15 +89,15 @@ defmodule Wardrik.Notify do
   def settings(opts) do
     opts = NimbleOptions.validate!(opts, @schema)
 
-    %{targets: Map.new(opts[:targets], &checked/1), retries: opts[:retries]}
+    %{targets: Map.new(opts[:targets], &handle_check/1), retries: opts[:retries]}
   end
 
-  defp checked({name, {module, opts}}) do
+  defp handle_check({name, {module, opts}}) do
     name = to_string(name)
-    {name, {module, checked(name, module, opts)}}
+    {name, {module, handle_check(name, module, opts)}}
   end
 
-  defp checked(name, module, opts) do
+  defp handle_check(name, module, opts) do
     with true <- Code.ensure_loaded?(module) and function_exported?(module, :schema, 0),
          {:error, error} <- NimbleOptions.validate(opts, module.schema() ++ @passed) do
       raise ArgumentError,
@@ -111,10 +111,10 @@ defmodule Wardrik.Notify do
   @doc """
   Checks a `{module, opts}` target against its `c:schema/0`. Returns it with defaults, or why not.
   """
-  @spec given(term()) :: {:ok, {module(), keyword()}} | {:error, String.t()}
-  def given({module, opts}) when is_atom(module) and is_list(opts) do
+  @spec validate_target(term()) :: {:ok, {module(), keyword()}} | {:error, String.t()}
+  def validate_target({module, opts}) when is_atom(module) and is_list(opts) do
     with true <- Code.ensure_loaded?(module) and function_exported?(module, :deliver, 2),
-         :ok <- unsealed(opts),
+         :ok <- find_unsealed(opts),
          {:ok, opts} <- options(module, opts) do
       {:ok, {module, opts}}
     else
@@ -124,9 +124,10 @@ defmodule Wardrik.Notify do
     end
   end
 
-  def given(other), do: {:error, "#{inspect(other)} isn't a target's name or {module, opts}"}
+  def validate_target(other),
+    do: {:error, "#{inspect(other)} isn't a target's name or {module, opts}"}
 
-  defp unsealed(opts) do
+  defp find_unsealed(opts) do
     case Enum.find(opts, &match?({_key, {:secret, _name}}, &1)) do
       nil -> :ok
       {key, _secret} -> {:error, "its #{key} names a secret, which isn't read: give the secret"}
@@ -167,11 +168,11 @@ defmodule Wardrik.Notify do
   def check(wardrik, notify, definition) do
     case route(definition) do
       nil -> :ok
-      %{to: to} -> Enum.find_value(to, :ok, &refused(wardrik, notify, &1))
+      %{to: to} -> Enum.find_value(to, :ok, &refuse(wardrik, notify, &1))
     end
   end
 
-  defp refused(wardrik, notify, name) do
+  defp refuse(wardrik, notify, name) do
     case place(wardrik, notify, name) do
       :error ->
         {:error,
@@ -191,38 +192,38 @@ defmodule Wardrik.Notify do
   @spec deliver(Wardrik.t(), String.t(), Notice.t()) ::
           :ok | {:skip, String.t()} | {:error, term()}
   def deliver(wardrik, name, notice) do
-    with {:ok, resolved} <- Wardrik.Resolver.defined(wardrik, notice.agent) do
-      sent(wardrik, place(wardrik, resolved.notify, name), notice)
+    with {:ok, resolved} <- Wardrik.Resolver.resolve_current(wardrik, notice.agent) do
+      deliver_to_target(wardrik, place(wardrik, resolved.notify, name), notice)
     end
   end
 
-  defp sent(wardrik, {:room, channel, room}, notice),
+  defp deliver_to_target(wardrik, {:room, channel, room}, notice),
     do: Room.deliver(notice, wardrik: wardrik.name, channel: channel, room: room)
 
-  defp sent(wardrik, {:configured, name, {module, opts}}, notice),
+  defp deliver_to_target(wardrik, {:configured, name, {module, opts}}, notice),
     do:
       module.deliver(
         notice,
         [wardrik: wardrik.name, target: name] ++
-          Wardrik.Vault.Lookup.resolved(wardrik, "the target #{name}", opts)
+          Wardrik.Vault.Lookup.resolve_secrets(wardrik, "the target #{name}", opts)
       )
 
   # Your app's own target holds its secrets itself: the deployment's aren't read for it.
-  defp sent(wardrik, {:given, name, {module, opts}}, notice),
+  defp deliver_to_target(wardrik, {:given, name, {module, opts}}, notice),
     do: module.deliver(notice, [wardrik: wardrik.name, target: name] ++ opts)
 
-  defp sent(_wardrik, :error, _notice),
+  defp deliver_to_target(_wardrik, :error, _notice),
     do: {:skip, "which isn't a target or a channel's room here"}
 
   defp place(wardrik, notify, name) do
     case Map.fetch(notify, name) do
       {:ok, {_module, _opts} = target} -> {:given, name, target}
-      {:ok, key} -> configured(wardrik, key, name)
+      {:ok, key} -> configure(wardrik, key, name)
       :error -> room(wardrik, name)
     end
   end
 
-  defp configured(wardrik, key, name) do
+  defp configure(wardrik, key, name) do
     case Map.fetch(wardrik.notify.targets, key) do
       {:ok, target} -> {:configured, key, target}
       :error -> room(wardrik, name)

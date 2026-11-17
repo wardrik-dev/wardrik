@@ -12,7 +12,7 @@ defmodule Wardrik.Channels do
 
       # 2. When the chat app sends them back
       {:ok, installation, next} =
-        Wardrik.Channels.installed(MyApp.AgentRuntime,
+        Wardrik.Channels.complete_install(MyApp.AgentRuntime,
           channel: "slack",
           owner: "acme",
           query: params
@@ -26,7 +26,7 @@ defmodule Wardrik.Channels do
         )
 
       # The workspaces an owner added, for your resolver's `:channels`
-      Wardrik.Channels.owned(MyApp.AgentRuntime, channel: "slack", owner: "acme")
+      Wardrik.Channels.list_installations(MyApp.AgentRuntime, channel: "slack", owner: "acme")
 
   `:owner` is whatever your app calls who installs it. The adapter, such as `WardrikSlack`, does
   the work, and returns an error if it can't.
@@ -34,7 +34,7 @@ defmodule Wardrik.Channels do
 
   alias Wardrik.Channel.Installation
 
-  @arities %{install_url: 2, installed: 2, uninstall: 2}
+  @arities %{install_url: 2, complete_install: 2, uninstall: 2}
 
   @doc """
   Returns the URL that installs `:channel`'s chat app for `:owner`.
@@ -50,21 +50,21 @@ defmodule Wardrik.Channels do
       return_to: args[:return_to]
     }
 
-    adapted(instance, Keyword.fetch!(args, :channel), :install_url, [install])
+    adapt(instance, Keyword.fetch!(args, :channel), :install_url, [install])
   end
 
   @doc """
   Completes an install from its callback `:query`. Returns the installation and where to go next.
   """
-  @spec installed(atom(), channel: String.t(), owner: String.t(), query: map()) ::
+  @spec complete_install(atom(), channel: String.t(), owner: String.t(), query: map()) ::
           {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
-  def installed(instance, args) do
+  def complete_install(instance, args) do
     install = %Wardrik.Chat.Install{
       owner: Keyword.fetch!(args, :owner),
       query: Keyword.fetch!(args, :query)
     }
 
-    adapted(instance, Keyword.fetch!(args, :channel), :installed, [install])
+    adapt(instance, Keyword.fetch!(args, :channel), :complete_install, [install])
   end
 
   @doc "Uninstalls `:channel`'s chat app from `:workspace`."
@@ -72,33 +72,33 @@ defmodule Wardrik.Channels do
           :ok | {:error, String.t()}
   def uninstall(instance, args),
     do:
-      adapted(instance, Keyword.fetch!(args, :channel), :uninstall, [
+      adapt(instance, Keyword.fetch!(args, :channel), :uninstall, [
         Keyword.fetch!(args, :workspace)
       ])
 
   @doc """
   Returns `:channel`'s installations for `:owner`, or `[]`.
   """
-  @spec owned(atom(), channel: String.t(), owner: String.t()) :: [Installation.t()]
-  def owned(instance, args) do
-    case fetched(instance, Keyword.fetch!(args, :channel)) do
+  @spec list_installations(atom(), channel: String.t(), owner: String.t()) :: [Installation.t()]
+  def list_installations(instance, args) do
+    case fetch(instance, Keyword.fetch!(args, :channel)) do
       {:ok, {adapter, opts}} ->
         channel = Wardrik.Chat.channel(adapter, opts)
-        Wardrik.Chat.Channel.owned(channel, Keyword.fetch!(args, :owner))
+        Wardrik.Chat.Channel.list_installations(channel, Keyword.fetch!(args, :owner))
 
       {:error, _why} ->
         []
     end
   end
 
-  defp adapted(instance, name, callback, arguments) do
-    with {:ok, {adapter, opts}} <- fetched(instance, name),
+  defp adapt(instance, name, callback, arguments) do
+    with {:ok, {adapter, opts}} <- fetch(instance, name),
          :ok <- supports(adapter, callback, name) do
       apply(adapter, callback, arguments ++ [Wardrik.Chat.channel(adapter, opts)])
     end
   end
 
-  defp fetched(instance, name) do
+  defp fetch(instance, name) do
     case Wardrik.Operations.Channels.fetch(instance, name) do
       {:ok, channel} -> {:ok, channel}
       :error -> {:error, "There's no channel #{name} here."}

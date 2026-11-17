@@ -4,7 +4,7 @@ defmodule WardrikWeb.MixProject do
   def project do
     [
       app: :wardrik_web,
-      version: "0.1.0-rc.5",
+      version: "0.1.0-rc.6",
       elixir: "~> 1.20",
       description: "A web dashboard for Wardrik's operators, mounted in a Phoenix router.",
       package: package(),

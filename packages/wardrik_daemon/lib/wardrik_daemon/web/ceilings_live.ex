@@ -43,7 +43,7 @@ defmodule WardrikDaemon.Web.CeilingsLive do
   defp load(socket) do
     %{daemon: daemon, owner: owner, scope: scope} = socket.assigns
 
-    with :ok <- Allowed.owned(daemon, scope, owner, {"ceiling.read", :ceiling}),
+    with :ok <- Allowed.check_owned(daemon, scope, owner, {"ceiling.read", :ceiling}),
          {:ok, ceilings} <- Ceiling.list(daemon, owner) do
       assign(socket, ceilings: ceilings, error: nil)
     else
@@ -63,9 +63,9 @@ defmodule WardrikDaemon.Web.CeilingsLive do
   defp period("total"), do: "In total"
   defp period(per), do: "Per #{per}"
 
-  defp exhausted("ask"), do: "Ask for approval"
-  defp exhausted("deny"), do: "Refuse model calls"
-  defp exhausted("continue"), do: "Keep running"
+  defp exhaust("ask"), do: "Ask for approval"
+  defp exhaust("deny"), do: "Refuse model calls"
+  defp exhaust("continue"), do: "Keep running"
 
   @impl true
   def render(assigns) do
@@ -99,7 +99,7 @@ defmodule WardrikDaemon.Web.CeilingsLive do
           />
         </div>
         <dl class="facts" style="margin-top: 14px">
-          <dt>At the limit</dt><dd>{exhausted(ceiling["on_exhausted"])}</dd>
+          <dt>At the limit</dt><dd>{exhaust(ceiling["on_exhausted"])}</dd>
           <dt :if={ceiling["granted"] != %{}}>Granted</dt>
           <dd :if={ceiling["granted"] != %{}}>
             {Enum.map_join(ceiling["granted"], ", ", fn {unit, value} -> amount(unit, value) end)} more, approved this period

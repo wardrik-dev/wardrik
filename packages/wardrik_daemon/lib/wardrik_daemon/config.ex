@@ -369,8 +369,8 @@ defmodule WardrikDaemon.Config do
     path = Dirs.config(dirs, "config.yaml")
 
     with {:ok, yaml} <- yaml(path, env),
-         {:ok, early} <- interpolated(Map.take(yaml, @bootstrap), env, nil),
-         {:ok, late} <- interpolated(Map.drop(yaml, @bootstrap ++ @later), env, vault),
+         {:ok, early} <- interpolate(Map.take(yaml, @bootstrap), env, nil),
+         {:ok, late} <- interpolate(Map.drop(yaml, @bootstrap ++ @later), env, vault),
          {:ok, opts} <-
            early
            |> Map.merge(late)
@@ -397,8 +397,8 @@ defmodule WardrikDaemon.Config do
     path = Dirs.config(dirs, "config.yaml")
 
     with {:ok, yaml} <- yaml(path, env),
-         {:ok, early} <- interpolated(Map.take(yaml, @bootstrap), env, nil),
-         {:ok, opts} <- validated(yaml, early),
+         {:ok, early} <- interpolate(Map.take(yaml, @bootstrap), env, nil),
+         {:ok, opts} <- validate(yaml, early),
          {:ok, cluster} <- Cluster.new(opts[:cluster]),
          {:ok, storage} <- storage(opts[:storage]) do
       {:ok,
@@ -503,7 +503,7 @@ defmodule WardrikDaemon.Config do
          {:ok, orgs} <-
            Orgs.read(
              opts[:orgs],
-             defined(
+             define(
                mcp: mcp,
                harnesses: harnesses,
                rest: rest,
@@ -511,8 +511,8 @@ defmodule WardrikDaemon.Config do
                notify: notify[:targets]
              )
            ),
-         {:ok, access} <- Access.read(opts[:roles], opts[:bindings], declared(orgs, org), org),
-         {:ok, channels} <- owned(channels, orgs, org),
+         {:ok, access} <- Access.read(opts[:roles], opts[:bindings], declare(orgs, org), org),
+         {:ok, channels} <- check_owned_channels(channels, orgs, org),
          {:ok, workspace} <- workspace(opts[:workspace]),
          {:ok, prices} <- prices(opts[:models][:prices]),
          {:ok, model_options} <- model_options(opts[:models][:options]),
@@ -556,7 +556,7 @@ defmodule WardrikDaemon.Config do
     end
   end
 
-  defp declared(orgs, org), do: [org | Map.keys(orgs) -- ["*"]]
+  defp declare(orgs, org), do: [org | Map.keys(orgs) -- ["*"]]
 
   defp storage(nil), do: {:ok, nil}
   defp storage(postgres: [url: url]), do: {:ok, {:postgres, url}}
@@ -568,13 +568,13 @@ defmodule WardrikDaemon.Config do
 
   defp storage(_both_or_neither), do: {:error, "storage: give one of postgres and s3"}
 
-  defp defined(sections) do
+  defp define(sections) do
     Map.new(sections, fn {kind, entries} ->
       {Atom.to_string(kind), Enum.map(entries, &to_string(elem(&1, 0)))}
     end)
   end
 
-  defp owned(channels, orgs, org) do
+  defp check_owned_channels(channels, orgs, org) do
     Options.each(channels, fn name, {adapter, opts} ->
       with {:ok, owner} <- owner(orgs, name, org),
            do: {:ok, {adapter, Keyword.replace!(opts, :owner, owner)}}
@@ -596,7 +596,7 @@ defmodule WardrikDaemon.Config do
   end
 
   defp prices(models) do
-    Options.loaded([Wardrik.Setup])
+    Options.load_modules([Wardrik.Setup])
     with {:ok, prices} <- Options.each(models, &price/2), do: {:ok, Map.new(prices)}
   end
 
@@ -604,7 +604,7 @@ defmodule WardrikDaemon.Config do
     path = "models.prices.#{spec}"
 
     with {:ok, price} <- Options.convert(price, [], path),
-         {:ok, _priced} <- Options.built(fn -> Wardrik.Setup.price(spec, price) end, path),
+         {:ok, _priced} <- Options.call_builder(fn -> Wardrik.Setup.price(spec, price) end, path),
          do: {:ok, price}
   end
 
@@ -627,11 +627,11 @@ defmodule WardrikDaemon.Config do
     path = "models.endpoints.#{name}"
 
     with {:ok, endpoint} <- Options.validate(yaml, @endpoint, path),
-         :ok <- modelled(endpoint[:model], path),
+         :ok <- parse_model(endpoint[:model], path),
          do: {:ok, endpoint}
   end
 
-  defp modelled(spec, path) do
+  defp parse_model(spec, path) do
     case ReqLLM.model(spec) do
       {:ok, _model} -> :ok
       {:error, _reason} -> {:error, Options.at(path, "#{spec} isn't a model")}
@@ -643,7 +643,7 @@ defmodule WardrikDaemon.Config do
     schema = ReqLLM.Provider.Options.generation_schema().schema
 
     with {:ok, options} <- Options.convert(yaml, schema, "models.options"),
-         {:ok, _checked} <- Options.checked(options, schema, "models.options"),
+         {:ok, _checked} <- Options.validate_schema(options, schema, "models.options"),
          do: {:ok, options}
   end
 
@@ -674,7 +674,7 @@ defmodule WardrikDaemon.Config do
         |> Keyword.put(:breaker, Enum.map(breaker, &breaker_setting/1))
         |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
-      with {:ok, _checked} <- Options.checked(opts, schema, @gateway), do: {:ok, opts}
+      with {:ok, _checked} <- Options.validate_schema(opts, schema, @gateway), do: {:ok, opts}
     end
   end
 
@@ -732,7 +732,7 @@ defmodule WardrikDaemon.Config do
     |> Enum.map(&name/1)
   end
 
-  defp validated(yaml, early) do
+  defp validate(yaml, early) do
     settings =
       yaml
       |> Map.drop(@later)
@@ -741,7 +741,7 @@ defmodule WardrikDaemon.Config do
     Options.validate(settings, @schema, nil)
   end
 
-  defp interpolated(term, env, vault) do
+  defp interpolate(term, env, vault) do
     values =
       term
       |> names()
@@ -749,7 +749,7 @@ defmodule WardrikDaemon.Config do
       |> Map.new(&{&1, value(&1, env, vault)})
 
     case for {name, :error} <- values, do: name do
-      [] -> {:ok, replaced(term, values)}
+      [] -> {:ok, replace(term, values)}
       [name | _rest] -> {:error, "names ${#{name}}, which #{unset(vault)}"}
     end
   end
@@ -772,16 +772,16 @@ defmodule WardrikDaemon.Config do
   defp names(list) when is_list(list), do: Enum.flat_map(list, &names/1)
   defp names(_other), do: []
 
-  defp replaced(text, values) when is_binary(text) do
+  defp replace(text, values) when is_binary(text) do
     Regex.replace(~r/\$\{(\w+)\}/, text, fn _whole, name ->
       {:ok, value} = Map.fetch!(values, name)
       value
     end)
   end
 
-  defp replaced(map, values) when is_map(map),
-    do: Map.new(map, fn {key, value} -> {key, replaced(value, values)} end)
+  defp replace(map, values) when is_map(map),
+    do: Map.new(map, fn {key, value} -> {key, replace(value, values)} end)
 
-  defp replaced(list, values) when is_list(list), do: Enum.map(list, &replaced(&1, values))
-  defp replaced(other, _values), do: other
+  defp replace(list, values) when is_list(list), do: Enum.map(list, &replace(&1, values))
+  defp replace(other, _values), do: other
 end

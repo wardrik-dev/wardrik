@@ -33,7 +33,7 @@ defmodule WardrikDaemon.CLI.Servers do
           "for each --scope, or with nothing. --only names the tools they take, with commas.",
           "Agents reach it as NAME/* in their tools."
         ],
-        run: &added/3
+        run: &add_server/3
       },
       %Command{
         name: "server rm",
@@ -42,7 +42,7 @@ defmodule WardrikDaemon.CLI.Servers do
         switches: @owner,
         count: 1,
         summary: "remove an MCP server an owner added",
-        run: &removed/3
+        run: &remove/3
       },
       %Command{
         name: "notify ls",
@@ -129,7 +129,7 @@ defmodule WardrikDaemon.CLI.Servers do
           "A device sign-in shows a code to enter at the provider. It waits until the sign-in is",
           "granted, declined or expired. A browser sign-in asks for the code its page shows."
         ],
-        run: &connected/3
+        run: &connect/3
       },
       %Command{
         name: "connection pair",
@@ -137,7 +137,7 @@ defmodule WardrikDaemon.CLI.Servers do
         arguments: "PROVIDER CODE",
         count: 2,
         summary: "finish signing in with the code the sign-in page showed",
-        run: &paired/3
+        run: &pair/3
       },
       %Command{
         name: "connection disconnect",
@@ -145,7 +145,7 @@ defmodule WardrikDaemon.CLI.Servers do
         arguments: "PROVIDER",
         count: 1,
         summary: "forget your account",
-        run: &disconnected/3
+        run: &disconnect/3
       }
     ]
   end
@@ -163,15 +163,15 @@ defmodule WardrikDaemon.CLI.Servers do
     end
   end
 
-  defp added([name], %{url: url} = flags, cx) do
+  defp add_server([name], %{url: url} = flags, cx) do
     server = %{"owner" => owner(cx, flags), "name" => name, "url" => url, "auth" => auth(flags)}
     input = Context.put(server, "only", only(flags[:only]))
 
     with {:ok, answer} <- Context.call(cx, "servers.add", input),
-         do: Context.done(cx, answer, "Added #{name}. Agents reach it as #{name}/*.")
+         do: Context.report_done(cx, answer, "Added #{name}. Agents reach it as #{name}/*.")
   end
 
-  defp added([_name], _flags, _cx), do: {:error, "Give the server's --url."}
+  defp add_server([_name], _flags, _cx), do: {:error, "Give the server's --url."}
 
   defp auth(%{secret: secret}), do: %{"secret" => %{"name" => secret}}
   defp auth(%{oauth: true} = flags), do: %{"oauth" => %{"scopes" => List.wrap(flags[:scope])}}
@@ -180,11 +180,11 @@ defmodule WardrikDaemon.CLI.Servers do
   defp only(nil), do: nil
   defp only(tools), do: String.split(tools, ",", trim: true)
 
-  defp removed([name], flags, cx) do
+  defp remove([name], flags, cx) do
     input = %{"owner" => owner(cx, flags), "name" => name}
 
     with {:ok, answer} <- Context.call(cx, "servers.remove", input),
-         do: Context.done(cx, answer, "Removed #{name}.")
+         do: Context.report_done(cx, answer, "Removed #{name}.")
   end
 
   defp targets([], flags, cx) do
@@ -203,7 +203,12 @@ defmodule WardrikDaemon.CLI.Servers do
     input = Context.put(target, "secret", flags[:secret] && %{"name" => flags[:secret]})
 
     with {:ok, answer} <- Context.call(cx, "notify_targets.add", input),
-         do: Context.done(cx, answer, "Added #{name}. Agents route to it with notify: #{name}.")
+         do:
+           Context.report_done(
+             cx,
+             answer,
+             "Added #{name}. Agents route to it with notify: #{name}."
+           )
   end
 
   defp target_added([_name], _flags, _cx), do: {:error, "Give the webhook's --url."}
@@ -212,7 +217,7 @@ defmodule WardrikDaemon.CLI.Servers do
     input = %{"owner" => owner(cx, flags), "name" => name}
 
     with {:ok, answer} <- Context.call(cx, "notify_targets.remove", input),
-         do: Context.done(cx, answer, "Removed #{name}.")
+         do: Context.report_done(cx, answer, "Removed #{name}.")
   end
 
   defp providers([], flags, cx) do
@@ -248,14 +253,14 @@ defmodule WardrikDaemon.CLI.Servers do
       |> Context.put("client_secret", flags[:secret] && %{"name" => flags[:secret]})
 
     with {:ok, answer} <- Context.call(cx, "providers.add", input),
-         do: Context.done(cx, answer, "Added #{name}. People sign in to #{name} with it.")
+         do: Context.report_done(cx, answer, "Added #{name}. People sign in to #{name} with it.")
   end
 
   defp provider_removed([name], flags, cx) do
     input = %{"owner" => owner(cx, flags), "name" => name}
 
     with {:ok, answer} <- Context.call(cx, "providers.remove", input),
-         do: Context.done(cx, answer, "Removed #{name}.")
+         do: Context.report_done(cx, answer, "Removed #{name}.")
   end
 
   defp connections([], _flags, cx) do
@@ -266,17 +271,17 @@ defmodule WardrikDaemon.CLI.Servers do
         rows:
           for(
             connection <- connections,
-            do: [connection["provider"], held(connection["connected"])]
+            do: [connection["provider"], hold(connection["connected"])]
           ),
         empty: "No accounts are offered."
       )
     end
   end
 
-  defp held(true), do: "yes"
-  defp held(_connected), do: "no"
+  defp hold(true), do: "yes"
+  defp hold(_connected), do: "no"
 
-  defp connected([provider], _flags, cx) do
+  defp connect([provider], _flags, cx) do
     with {:ok, answer} <- Context.call(cx, "connections.connect", %{"provider" => provider}) do
       if cx.json?, do: Context.show(cx, answer, & &1), else: signing_in(cx, provider, answer)
     end
@@ -295,7 +300,7 @@ defmodule WardrikDaemon.CLI.Servers do
     ])
 
     signed_in =
-      Terminal.spinning(cx.terminal, "Waiting for you to sign in", fn -> granted(cx, provider) end)
+      Terminal.spinning(cx.terminal, "Waiting for you to sign in", fn -> grant(cx, provider) end)
 
     with :ok <- signed_in, do: Context.puts(cx, "Connected #{provider}.")
   end
@@ -313,7 +318,7 @@ defmodule WardrikDaemon.CLI.Servers do
   end
 
   # Waits while the sign-in is under way. It ends once granted, refused or expired.
-  defp granted(cx, provider) do
+  defp grant(cx, provider) do
     with {:ok, %{"connections" => connections}} <- Context.call(cx, "connections.list", %{}) do
       case Enum.find(connections, &(&1["provider"] == provider)) do
         %{"connected" => true} ->
@@ -321,7 +326,7 @@ defmodule WardrikDaemon.CLI.Servers do
 
         %{"signing_in" => true} ->
           Process.sleep(@poll)
-          granted(cx, provider)
+          grant(cx, provider)
 
         _ended ->
           {:error, "The sign-in to #{provider} ended without connecting it. Connect again."}
@@ -336,13 +341,13 @@ defmodule WardrikDaemon.CLI.Servers do
         {:error, "No code given. Finish with: #{cx.program} connection pair #{provider} CODE"}
 
       code ->
-        retried(paired_with(cx, provider, code), cx, provider)
+        retry(pair_with(cx, provider, code), cx, provider)
     end
   end
 
-  defp paired_with(cx, provider, code), do: paired([provider, code], %{}, cx)
+  defp pair_with(cx, provider, code), do: pair([provider, code], %{}, cx)
 
-  defp retried({:error, why}, cx, provider) do
+  defp retry({:error, why}, cx, provider) do
     if why =~ "has ended" do
       {:error, why}
     else
@@ -351,17 +356,17 @@ defmodule WardrikDaemon.CLI.Servers do
     end
   end
 
-  defp retried(done, _cx, _provider), do: done
+  defp retry(done, _cx, _provider), do: done
 
-  defp paired([provider, code], _flags, cx) do
+  defp pair([provider, code], _flags, cx) do
     input = %{"provider" => provider, "code" => code}
 
     with {:ok, answer} <- Context.call(cx, "connections.pair", input),
-         do: Context.done(cx, answer, "Connected #{provider}.")
+         do: Context.report_done(cx, answer, "Connected #{provider}.")
   end
 
-  defp disconnected([provider], _flags, cx) do
+  defp disconnect([provider], _flags, cx) do
     with {:ok, answer} <- Context.call(cx, "connections.disconnect", %{"provider" => provider}),
-         do: Context.done(cx, answer, "Disconnected #{provider}.")
+         do: Context.report_done(cx, answer, "Disconnected #{provider}.")
   end
 end

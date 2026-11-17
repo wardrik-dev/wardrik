@@ -27,9 +27,14 @@ defmodule WardrikDaemon.Connections do
       pairings = Pairings.name(wardrik)
 
       case Pairings.pair(pairings, {principal, credential}, code) do
-        {:ok, params} -> finished(wardrik, params, principal, provider)
-        {:error, :mismatch} -> {:error, unpaired(provider)}
-        {:error, {:ended, sign_in, state}} -> ended(wardrik, sign_in, state, provider)
+        {:ok, params} ->
+          finish_pairing(wardrik, params, principal, provider)
+
+        {:error, :mismatch} ->
+          {:error, describe_unpaired(provider)}
+
+        {:error, {:ended, sign_in, state}} ->
+          handle_ended_sign_in(wardrik, sign_in, state, provider)
       end
     end
   end
@@ -37,14 +42,14 @@ defmodule WardrikDaemon.Connections do
   @doc """
   Takes a browser sign-in's callback `params`. Returns the code to show, or `{:error, reason}`.
   """
-  @spec called_back(WardrikDaemon.Settings.daemon(), map()) ::
+  @spec take_callback(WardrikDaemon.Settings.daemon(), map()) ::
           {:ok, %{provider: String.t(), code: String.t()}} | {:error, :declined | :unknown}
-  def called_back(daemon, params), do: called_back(daemon, params, :adopt)
+  def take_callback(daemon, params), do: take_callback(daemon, params, :adopt)
 
-  defp called_back(%{wardrik: wardrik} = daemon, params, adopt) do
+  defp take_callback(%{wardrik: wardrik} = daemon, params, adopt) do
     pairings = Pairings.name(wardrik)
 
-    case {Pairings.called_back(pairings, params), adopt} do
+    case {Pairings.take_callback(pairings, params), adopt} do
       {{:ok, code, sign_in}, _adopt} ->
         {:ok, %{provider: sign_in.provider, code: code}}
 
@@ -54,7 +59,7 @@ defmodule WardrikDaemon.Connections do
 
       {:error, :adopt} ->
         if adopted?(daemon, params),
-          do: called_back(daemon, params, :adopted),
+          do: take_callback(daemon, params, :adopted),
           else: {:error, :unknown}
 
       {:error, :adopted} ->
@@ -65,12 +70,12 @@ defmodule WardrikDaemon.Connections do
   # An agent waiting on a sign-in started it, not `wardrik connection connect`, so it's paired
   # when its callback comes, with the person it's for.
   defp adopted?(%{wardrik: wardrik} = daemon, %{"state" => state}) when is_binary(state) do
-    case Wardrik.started_sign_in(wardrik, state) do
+    case Wardrik.fetch_sign_in(wardrik, state) do
       {:ok, %{provider: credential, principal: principal}} ->
         sign_in = %{principal: principal, provider: provider(daemon, principal, credential)}
 
         pairings = Pairings.name(wardrik)
-        :ok = Pairings.started(pairings, state, Map.put(sign_in, :credential, credential))
+        :ok = Pairings.note_sign_in(pairings, state, Map.put(sign_in, :credential, credential))
 
         true
 
@@ -81,7 +86,7 @@ defmodule WardrikDaemon.Connections do
 
   defp adopted?(_daemon, _params), do: false
 
-  defp finished(wardrik, params, principal, provider) do
+  defp finish_pairing(wardrik, params, principal, provider) do
     case Wardrik.finish_sign_in(wardrik, params, as: principal) do
       {:ok, _granted} ->
         {:ok, %{"provider" => provider, "connected" => true}}
@@ -96,9 +101,11 @@ defmodule WardrikDaemon.Connections do
   end
 
   # An abandoned or expired sign-in is ended as the principal who started it, so its link is dead.
-  defp ended(wardrik, sign_in, state, provider) do
+  defp handle_ended_sign_in(wardrik, sign_in, state, provider) do
     _ended = end_flow(wardrik, sign_in.principal, %{"state" => state})
-    {:error, Error.new(:invalid_request, "#{unpaired(provider).message} This sign-in has ended.")}
+
+    {:error,
+     Error.new(:invalid_request, "#{describe_unpaired(provider).message} This sign-in has ended.")}
   end
 
   defp end_flow(wardrik, principal, %{"state" => state}),
@@ -107,7 +114,7 @@ defmodule WardrikDaemon.Connections do
         as: principal
       )
 
-  defp unpaired(provider),
+  defp describe_unpaired(provider),
     do:
       Error.new(
         :invalid_request,

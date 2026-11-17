@@ -59,14 +59,14 @@ defmodule WardrikDaemon.Setup.ClaudeCode do
 
   @impl WardrikDaemon.Setup.Step
   def plan(found, %{"coding.claude" => true}) do
-    Harness.added("claude", """
+    Harness.build_add_changes("claude", """
     command: #{found.adapter || @adapter}
     env:
       PATH: #{inspect(found.path)}#{key(found)}
     meta: {claudeCode: {options: {settingSources: []}}}
     options: {mode: default}
     context: [CLAUDE.md, AGENTS.md]
-    """) ++ installed(found)
+    """) ++ install(found)
   end
 
   def plan(_found, _answers), do: []
@@ -74,11 +74,11 @@ defmodule WardrikDaemon.Setup.ClaudeCode do
   defp key(%{key?: true}), do: "\n  #{@key}: ${#{@key}}"
   defp key(_found), do: ""
 
-  defp installed(%{adapter: nil}),
+  defp install(%{adapter: nil}),
     do: [
       {:command, "npm install -g @agentclientprotocol/claude-agent-acp",
        "Claude Code works with Wardrik through its ACP adapter."}
     ]
 
-  defp installed(_found), do: []
+  defp install(_found), do: []
 end

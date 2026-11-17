@@ -1,7 +1,7 @@
 defmodule WardrikDaemon.Doctor.Agents do
   @moduledoc false
 
-  import WardrikDaemon.Doctor, only: [counted: 2]
+  import WardrikDaemon.Doctor, only: [pluralize: 2]
 
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.AgentRecords
@@ -42,7 +42,7 @@ defmodule WardrikDaemon.Doctor.Agents do
       |> JSV.build!()
 
     records = Wardrik.Store.scope(store, "wardrik_daemon")
-    read = for path <- files, do: {path, recorded(records, AgentFile.read(path, config))}
+    read = for path <- files, do: {path, record(records, AgentFile.read(path, config))}
     failures = Enum.flat_map(read, &unread(&1, records, wardrik, schema))
     :ok = Supervisor.stop(running)
 
@@ -50,7 +50,7 @@ defmodule WardrikDaemon.Doctor.Agents do
       [] ->
         [
           {:ok, "agents",
-           "#{counted(length(files), "agent file")} and #{counted(map_size(policies), "policy")} read"}
+           "#{pluralize(length(files), "agent file")} and #{pluralize(map_size(policies), "policy")} read"}
         ]
 
       failures ->
@@ -59,18 +59,18 @@ defmodule WardrikDaemon.Doctor.Agents do
   end
 
   # Each file has a name of its own, so none is taken.
-  defp recorded(records, {:ok, agent, definition}) do
+  defp record(records, {:ok, agent, definition}) do
     {:ok, record} =
       AgentRecords.create(records, owner: agent.owner, name: agent.name, source: :file)
 
     {:ok, record, definition}
   end
 
-  defp recorded(_records, {:error, why}), do: {:error, why}
+  defp record(_records, {:error, why}), do: {:error, why}
 
   defp unread({path, read}, records, wardrik, schema) do
     with {:ok, record, definition} <- read,
-         {:ok, definition} <- AgentRecords.identified(records, record.org, definition),
+         {:ok, definition} <- AgentRecords.replace_shared_names(records, record.org, definition),
          {:ok, _valid} <- valid(definition, schema),
          {:ok, _opts} <- Wardrik.Resolution.resolve(wardrik, record.id, definition) do
       []

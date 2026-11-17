@@ -24,23 +24,23 @@ defmodule WardrikDaemon.CLI.StatusTest do
   test "says what the turn does, and for how long" do
     assert text(status(), 4_200) == "⠋ thinking · 4s"
 
-    writing = Status.seen(status(), event("message.delta", %{"delta" => "Hi"}), 0)
+    writing = Status.apply_event(status(), event("message.delta", %{"delta" => "Hi"}), 0)
     assert text(writing, 0) =~ "writing"
 
     running =
       status()
-      |> Status.seen(event("tool_call.started", tool("c1", "web_search")), 0)
-      |> Status.seen(event("tool_call.started", tool("c2", "fetch")), 0)
+      |> Status.apply_event(event("tool_call.started", tool("c1", "web_search")), 0)
+      |> Status.apply_event(event("tool_call.started", tool("c2", "fetch")), 0)
 
     assert text(running, 0) =~ "fetch and 1 more"
 
-    one = Status.seen(running, event("tool_call.completed", tool("c2", "fetch")), 0)
+    one = Status.apply_event(running, event("tool_call.completed", tool("c2", "fetch")), 0)
     assert text(one, 0) =~ "web_search"
 
-    done = Status.seen(one, event("tool_call.completed", tool("c1", "web_search")), 0)
+    done = Status.apply_event(one, event("tool_call.completed", tool("c1", "web_search")), 0)
     assert text(done, 0) =~ "thinking"
 
-    retrying = Status.seen(done, event("message.retrying", %{}), 0)
+    retrying = Status.apply_event(done, event("message.retrying", %{}), 0)
     assert text(retrying, 0) =~ "trying the model again"
   end
 
@@ -48,14 +48,18 @@ defmodule WardrikDaemon.CLI.StatusTest do
     waiting = status(0, doing: "waiting for triage to start")
     assert text(waiting, 12_000) == "⠋ waiting for triage to start · 12s"
 
-    started = Status.seen(waiting, event("run.started", %{"run" => %{}}), 12_000)
+    started = Status.apply_event(waiting, event("run.started", %{"run" => %{}}), 12_000)
     assert text(started, 13_000) == "⠋ thinking · 1s"
 
     many =
       Enum.reduce(
         1..30,
         started,
-        &Status.seen(&2, event("tool_call.started", tool("c#{&1}", "a_long_tool_name")), 13_000)
+        &Status.apply_event(
+          &2,
+          event("tool_call.started", tool("c#{&1}", "a_long_tool_name")),
+          13_000
+        )
       )
 
     line = text(many, 13_000)
@@ -66,10 +70,10 @@ defmodule WardrikDaemon.CLI.StatusTest do
     idle = status(nil, idle: "Following triage. Ctrl-C stops.")
     assert text(idle, 9_000) == "· Following triage. Ctrl-C stops."
 
-    started = Status.seen(idle, event("run.started", %{"run" => %{}}), 1_000)
+    started = Status.apply_event(idle, event("run.started", %{"run" => %{}}), 1_000)
     assert text(started, 3_000) == "⠋ thinking · 2s"
 
-    ended = Status.seen(started, event("run.completed", %{}), 3_000)
+    ended = Status.apply_event(started, event("run.completed", %{}), 3_000)
     assert text(ended, 4_000) == "· Following triage. Ctrl-C stops."
   end
 end

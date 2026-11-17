@@ -41,7 +41,7 @@ defmodule WardrikDaemon.CLI.Access do
         switches: @owner,
         count: 1,
         summary: "remove a secret",
-        run: &removed/3
+        run: &remove/3
       }
     ]
   end
@@ -101,7 +101,7 @@ defmodule WardrikDaemon.CLI.Access do
     }
 
     with {:ok, answer} <- Context.call(cx, "secrets.put", input),
-         do: Context.done(cx, answer, "Sealed #{name}.")
+         do: Context.report_done(cx, answer, "Sealed #{name}.")
   end
 
   defp secrets([], flags, cx) do
@@ -115,10 +115,10 @@ defmodule WardrikDaemon.CLI.Access do
     end
   end
 
-  defp removed([name], flags, cx) do
+  defp remove([name], flags, cx) do
     input = %{"owner" => Context.owner(cx, flags), "name" => name}
 
     with {:ok, answer} <- Context.call(cx, "secrets.delete", input),
-         do: Context.done(cx, answer, "Removed #{name}.")
+         do: Context.report_done(cx, answer, "Removed #{name}.")
   end
 end

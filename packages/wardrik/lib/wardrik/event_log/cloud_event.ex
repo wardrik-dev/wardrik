@@ -47,12 +47,12 @@ defmodule Wardrik.EventLog.CloudEvent do
       "data" => Keyword.fetch!(opts, :data)
     }
     |> put_present("parentspanid", span.parent)
-    |> logged(opts[:log])
+    |> log(opts[:log])
   end
 
   @doc "Puts the event's `sequence`, padded to 12 digits."
-  @spec sequenced(t(), pos_integer()) :: t()
-  def sequenced(event, sequence) do
+  @spec put_sequence(t(), pos_integer()) :: t()
+  def put_sequence(event, sequence) do
     padded =
       sequence
       |> Integer.to_string()
@@ -79,9 +79,9 @@ defmodule Wardrik.EventLog.CloudEvent do
     source(Keyword.fetch!(opts, :deployment), agent)
   end
 
-  defp logged(event, nil), do: event
+  defp log(event, nil), do: event
 
-  defp logged(event, {agent, conversation}) do
+  defp log(event, {agent, conversation}) do
     event
     |> Map.put("agent", agent)
     |> put_present("conversation", conversation)
@@ -109,10 +109,10 @@ defmodule Wardrik.EventLog.CloudEvent do
 
     <<milliseconds::48, 7::4, a::12, 2::2, b::62>>
     |> Base.encode16(case: :lower)
-    |> hyphenated()
+    |> hyphenate()
   end
 
-  defp hyphenated(<<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>>),
+  defp hyphenate(<<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>>),
     do: Enum.join([a, b, c, d, e], "-")
 
   defp put_present(map, _key, nil), do: map

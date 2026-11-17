@@ -147,7 +147,7 @@ defmodule WardrikCore.EventTest do
         {:ok, _answers, used} =
           WardrikCore.evaluate(inner, model: "typesafe:jev-latest", state: "x", questions: %{})
 
-        judged = Context.reported(inner, used)
+        judged = Context.add_reported(inner, used)
         {:ok, Context.measure(judged, :usd, 0.5)}
       end
 

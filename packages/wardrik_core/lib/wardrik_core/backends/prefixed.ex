@@ -53,41 +53,42 @@ defmodule WardrikCore.Backends.Prefixed do
   defp inner({adapter, opts}), do: StorageBackend.init_backend(adapter, opts)
 
   @doc "Returns the key `key` is stored under."
-  @spec stored(map(), String.t()) :: String.t()
-  def stored(%{from: from, to: to}, key), do: to <> unprefixed(key, from)
+  @spec prefix_key(map(), String.t()) :: String.t()
+  def prefix_key(%{from: from, to: to}, key), do: to <> strip_prefix(key, from)
 
   @impl StorageBackend
   def ensure_ready(state), do: StorageBackend.ensure_ready(state.inner)
 
   @impl StorageBackend
   def get_object(state, key, opts),
-    do: StorageBackend.get_object(state.inner, stored(state, key), opts)
+    do: StorageBackend.get_object(state.inner, prefix_key(state, key), opts)
 
   @impl StorageBackend
   def list_all_objects_stream(state, prefix, opts) do
     state.inner
-    |> StorageBackend.list_all_objects_stream(stored(state, prefix), opts)
+    |> StorageBackend.list_all_objects_stream(prefix_key(state, prefix), opts)
     |> Stream.map(fn %{key: key} = object -> %{object | key: own(state, key)} end)
   end
 
   @impl StorageBackend
   def put_object(state, key, data, opts),
-    do: StorageBackend.put_object(state.inner, stored(state, key), data, opts)
+    do: StorageBackend.put_object(state.inner, prefix_key(state, key), data, opts)
 
   @impl StorageBackend
-  def delete_object(state, key), do: StorageBackend.delete_object(state.inner, stored(state, key))
+  def delete_object(state, key),
+    do: StorageBackend.delete_object(state.inner, prefix_key(state, key))
 
   @impl StorageBackend
   def delete_object(state, key, opts),
-    do: StorageBackend.delete_object(state.inner, stored(state, key), opts)
+    do: StorageBackend.delete_object(state.inner, prefix_key(state, key), opts)
 
   @impl StorageBackend
   def try_claim(state, key, body),
-    do: StorageBackend.try_claim(state.inner, stored(state, key), body)
+    do: StorageBackend.try_claim(state.inner, prefix_key(state, key), body)
 
   @impl StorageBackend
   def update_object(state, key, update, opts),
-    do: StorageBackend.update_object(state.inner, stored(state, key), update, opts)
+    do: StorageBackend.update_object(state.inner, prefix_key(state, key), update, opts)
 
   @impl StorageBackend
   def encode(state, data), do: state.inner.adapter.encode(state.inner.state, data)
@@ -95,9 +96,9 @@ defmodule WardrikCore.Backends.Prefixed do
   @impl StorageBackend
   def decode(state, data), do: state.inner.adapter.decode(state.inner.state, data)
 
-  defp own(%{from: from, to: to}, key), do: from <> unprefixed(key, to)
+  defp own(%{from: from, to: to}, key), do: from <> strip_prefix(key, to)
 
-  defp unprefixed(key, prefix) do
+  defp strip_prefix(key, prefix) do
     size = byte_size(prefix)
     <<^prefix::binary-size(^size), rest::binary>> = key
     rest

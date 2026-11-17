@@ -31,7 +31,7 @@ defmodule WardrikBrave.Client do
 
     case Req.post(settings.base_url <> @path, options) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        {:ok, summarized(body)}
+        {:ok, summarize(body)}
 
       {:ok, %Req.Response{status: 429}} ->
         raise WardrikBrave.Unavailable, "Brave is limiting searches just now."
@@ -52,14 +52,14 @@ defmodule WardrikBrave.Client do
   Returns `%{"results" => [...], "count" => n}`. Each result has `"url"`, `"title"`, `"snippets"`
   and, where known, `"age"`.
   """
-  @spec summarized(term()) :: map()
-  def summarized(%{} = body) do
+  @spec summarize(term()) :: map()
+  def summarize(%{} = body) do
     sources = Map.get(body, "sources", %{})
     results = for %{} = entry <- generic(body["grounding"]), do: result(entry, sources)
     %{"results" => results, "count" => length(results)}
   end
 
-  def summarized(_body), do: %{"results" => [], "count" => 0}
+  def summarize(_body), do: %{"results" => [], "count" => 0}
 
   defp generic(%{"generic" => generic}) when is_list(generic), do: generic
   defp generic(_grounding), do: []

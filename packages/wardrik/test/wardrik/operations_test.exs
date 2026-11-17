@@ -88,9 +88,10 @@ defmodule Wardrik.OperationsTest do
 
       assert latest == List.last(all)
 
-      assert refused(scope, "agent.events", Map.put(newest, "after", "x")) == :invalid_request
+      assert assert_refused(scope, "agent.events", Map.put(newest, "after", "x")) ==
+               :invalid_request
 
-      assert refused(scope, "agent.events", %{"agent" => "acme/triage", "before" => "x"}) ==
+      assert assert_refused(scope, "agent.events", %{"agent" => "acme/triage", "before" => "x"}) ==
                :invalid_request
     end
 
@@ -160,7 +161,10 @@ defmodule Wardrik.OperationsTest do
     assert %{"status" => "parked", "interrupts" => [%{"id" => "call_1"}]} =
              run!(scope, "agent.read", %{"agent" => "acme/triage"})
 
-    assert refused(scope, "agent.deny", %{"agent" => "acme/triage", "interrupt" => "call_2"}) ==
+    assert assert_refused(scope, "agent.deny", %{
+             "agent" => "acme/triage",
+             "interrupt" => "call_2"
+           }) ==
              :conflict
 
     run!(scope, "agent.approve", %{"agent" => "acme/triage", "interrupt" => "call_1"})
@@ -241,14 +245,20 @@ defmodule Wardrik.OperationsTest do
     test "refuses a call it doesn't wait on", %{scope: scope} do
       decisions = [%{"id" => "call_9", "decision" => "approve"}]
 
-      assert refused(scope, "agent.decide", %{"agent" => "acme/triage", "decisions" => decisions}) ==
+      assert assert_refused(scope, "agent.decide", %{
+               "agent" => "acme/triage",
+               "decisions" => decisions
+             }) ==
                :conflict
 
       decisions = [%{"id" => "call_1", "decision" => "reject", "reason" => "No."}]
       run!(scope, "agent.decide", %{"agent" => "acme/triage", "decisions" => decisions})
       until("wardrik.run.completed")
 
-      assert refused(scope, "agent.decide", %{"agent" => "acme/triage", "decisions" => decisions}) ==
+      assert assert_refused(scope, "agent.decide", %{
+               "agent" => "acme/triage",
+               "decisions" => decisions
+             }) ==
                :conflict
     end
   end
@@ -265,7 +275,7 @@ defmodule Wardrik.OperationsTest do
                "interrupt" => "call_1"
              })
 
-    assert refused(scope, "agent.authorization", %{
+    assert assert_refused(scope, "agent.authorization", %{
              "agent" => "acme/triage",
              "interrupt" => "call_2"
            }) ==
@@ -274,7 +284,7 @@ defmodule Wardrik.OperationsTest do
     :ok = WardrikCore.interrupt(agent)
     until("wardrik.run.cancelled")
 
-    assert refused(scope, "agent.authorization", %{
+    assert assert_refused(scope, "agent.authorization", %{
              "agent" => "acme/triage",
              "interrupt" => "call_1"
            }) ==
@@ -291,7 +301,7 @@ defmodule Wardrik.OperationsTest do
         until("wardrik.run.completed")
       end
 
-      %{reader: limited(wardrik, maria(), roles: [:reader], agents_of: ["acme"])}
+      %{reader: build_limited_scope(wardrik, maria(), roles: [:reader], agents_of: ["acme"])}
     end
 
     test "lists only those", %{scope: scope, reader: reader} do
@@ -312,7 +322,8 @@ defmodule Wardrik.OperationsTest do
       ids = for %{"id" => id} <- run!(reader, "agents.list", named)["agents"], do: id
       assert ids == ["acme/triage"]
 
-      assert refused(scope, "agents.list", %{"resources" => ["acme/*"]}) == :invalid_request
+      assert assert_refused(scope, "agents.list", %{"resources" => ["acme/*"]}) ==
+               :invalid_request
 
       assert run!(scope, "agents.list", %{"agents" => ["acme/*"]}) == %{
                "agents" => [],
@@ -376,13 +387,13 @@ defmodule Wardrik.OperationsTest do
     end
 
     test "hides the others, and refuses what it may not do", %{reader: reader} do
-      assert refused(reader, "agent.read", %{"agent" => "globex/triage"}) == :not_found
-      assert refused(reader, "agent.read", %{"agent" => "acme/@jon/books"}) == :not_found
+      assert assert_refused(reader, "agent.read", %{"agent" => "globex/triage"}) == :not_found
+      assert assert_refused(reader, "agent.read", %{"agent" => "acme/@jon/books"}) == :not_found
 
-      assert refused(reader, "agent.ask", %{"agent" => "acme/triage", "content" => "Hi"}) ==
+      assert assert_refused(reader, "agent.ask", %{"agent" => "acme/triage", "content" => "Hi"}) ==
                :forbidden
 
-      assert refused(reader, "audit.list", %{}) == :not_found
+      assert assert_refused(reader, "audit.list", %{}) == :not_found
     end
   end
 
@@ -398,7 +409,7 @@ defmodule Wardrik.OperationsTest do
       end
 
       roles = [:reader, :messenger, :approver]
-      %{reader: limited(wardrik, maria(), roles: roles, agents_of: ["acme"])}
+      %{reader: build_limited_scope(wardrik, maria(), roles: roles, agents_of: ["acme"])}
     end
 
     test "is reached only through its agent's authorization", %{reader: reader} do
@@ -428,7 +439,7 @@ defmodule Wardrik.OperationsTest do
       for operation <- routed do
         input = Map.take(sample, Map.keys(operation.input["properties"]))
         hidden = Map.merge(input, %{"agent" => "globex/triage", "conversation" => "C1"})
-        assert refused(reader, operation.id, hidden) == :not_found, operation.id
+        assert assert_refused(reader, operation.id, hidden) == :not_found, operation.id
       end
 
       seen = %{"agent" => "acme/triage", "conversation" => "C1"}
@@ -509,18 +520,22 @@ defmodule Wardrik.OperationsTest do
 
   describe "what the runner refuses" do
     test "input its schema doesn't take", %{scope: scope} do
-      assert refused(scope, "agent.ask", %{"agent" => "acme/triage"}) == :invalid_request
+      assert assert_refused(scope, "agent.ask", %{"agent" => "acme/triage"}) == :invalid_request
 
       for id <- ["", "acme\ntriage", String.duplicate("a", 256)] do
-        assert refused(scope, "agent.read", %{"agent" => id}) == :invalid_request
+        assert assert_refused(scope, "agent.read", %{"agent" => id}) == :invalid_request
 
-        assert refused(scope, "agent.read", %{"agent" => "acme/triage", "conversation" => id}) ==
+        assert assert_refused(scope, "agent.read", %{
+                 "agent" => "acme/triage",
+                 "conversation" => id
+               }) ==
                  :invalid_request
       end
 
-      assert refused(scope, "events.list", %{"after" => "not a cursor"}) == :invalid_request
+      assert assert_refused(scope, "events.list", %{"after" => "not a cursor"}) ==
+               :invalid_request
 
-      assert refused(scope, "agent.events", %{"agent" => "acme/triage", "after" => "nope"}) ==
+      assert assert_refused(scope, "agent.events", %{"agent" => "acme/triage", "after" => "nope"}) ==
                :invalid_request
     end
 
@@ -530,10 +545,10 @@ defmodule Wardrik.OperationsTest do
       for id <- ~w(agent.read agent.ask agent.cancel agent.authorization) do
         input = %{"agent" => "acme/nobody", "content" => "Hi", "interrupt" => "call_1"}
         input = Map.take(input, Map.keys(WardrikProtocol.operation(id).input["properties"]))
-        assert refused(scope, id, input) == :not_found
+        assert assert_refused(scope, id, input) == :not_found
       end
 
-      assert refused(scope, "agent.unknown", %{}) == :not_found
+      assert assert_refused(scope, "agent.unknown", %{}) == :not_found
 
       assert {:error, %Wardrik.Error{type: :not_supported}} =
                Wardrik.stream(scope, "agent.read", %{"agent" => "acme/triage"})

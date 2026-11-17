@@ -169,11 +169,11 @@ defmodule WardrikDaemon.HelpTools do
 
     case :persistent_term.get({__MODULE__, url}, nil) do
       {at, pages} when now - at < @kept -> {:ok, pages}
-      kept -> fetched(docs, now, kept)
+      kept -> fetch(docs, now, kept)
     end
   end
 
-  defp fetched(%{url: url, req: req}, now, kept) do
+  defp fetch(%{url: url, req: req}, now, kept) do
     case Req.get(url, [retry: false] ++ req) do
       {:ok, %Req.Response{status: 200, body: %{"pages" => pages}}} ->
         :persistent_term.put({__MODULE__, url}, {now, pages})

@@ -20,14 +20,14 @@ defmodule WardrikACP.WorktreesTest do
     {:ok, output, _context} = call(acp, [%{"commit" => "Two"}])
 
     assert [%{"subject" => "One"}, %{"subject" => "Two"}] = output["commits"]
-    assert [_session] = sent(log, "session/new")
+    assert [_session] = find_sent(log, "session/new")
   end
 
   test "puts the instructions and context files before the first prompt", %{acp: acp, log: log} do
     {:ok, _output, _context} = call(acp, [])
     {:ok, _output, _context} = call(acp, [])
 
-    assert [first, second] = sent(log, "session/prompt")
+    assert [first, second] = find_sent(log, "session/prompt")
     assert [%{"text" => "Be brief.\n\nAGENTS.md:\n\nRun mix test."}, _task] = first["prompt"]
     assert [_task] = second["prompt"]
   end
@@ -37,10 +37,10 @@ defmodule WardrikACP.WorktreesTest do
     {:ok, _output, _context} = call(acp, [])
 
     assert [%{"systemPrompt" => %{"mode" => "append", "content" => [%{"text" => text}]}}] =
-             sent(log, "session/new")
+             find_sent(log, "session/new")
 
     assert text =~ "Be brief."
-    assert [%{"prompt" => [_task]}] = sent(log, "session/prompt")
+    assert [%{"prompt" => [_task]}] = find_sent(log, "session/prompt")
   end
 
   test "re-adds a removed worktree on its branch", %{acp: acp, repo: repo} do

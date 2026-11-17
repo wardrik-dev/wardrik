@@ -7,7 +7,7 @@ defmodule WardrikDaemon.CLIToken do
   @doc "Revokes the token at `path`, makes a new one in `store`, and writes it to `path` with `url`."
   @spec issue(Wardrik.Store.t(), Path.t(), String.t()) :: :ok
   def issue(store, path, url) do
-    revoked(store, path)
+    revoke(store, path)
 
     {:ok, %{token: token, secret: secret}} =
       Tokens.create(store,
@@ -35,7 +35,7 @@ defmodule WardrikDaemon.CLIToken do
     end
   end
 
-  defp revoked(store, path) do
+  defp revoke(store, path) do
     with {:ok, text} <- File.read(path),
          {:ok, %{"id" => id}} <- JSON.decode(text),
          do: Tokens.revoke(store, id)

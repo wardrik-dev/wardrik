@@ -62,8 +62,8 @@ defmodule Wardrik.Definition do
   @doc """
   Names each unnamed trigger by position, `trigger-1` and so on, in a JSON definition.
   """
-  @spec named(map()) :: map()
-  def named(%{"triggers" => triggers} = definition) do
+  @spec name_triggers(map()) :: map()
+  def name_triggers(%{"triggers" => triggers} = definition) do
     named =
       triggers
       |> Enum.with_index(1)
@@ -72,5 +72,5 @@ defmodule Wardrik.Definition do
     %{definition | "triggers" => named}
   end
 
-  def named(definition), do: definition
+  def name_triggers(definition), do: definition
 end

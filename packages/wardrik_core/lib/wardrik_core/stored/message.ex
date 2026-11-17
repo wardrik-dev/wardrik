@@ -29,8 +29,8 @@ defmodule WardrikCore.Stored.Message do
   def dump(messages) when is_list(messages), do: Enum.map(messages, &message/1)
 
   @doc "Reads messages back. Throws `{:unreadable, reason}`, as `WardrikCore.Stored.Term` does."
-  @spec loaded([Wardrik.Format.json()]) :: [Message.t()]
-  def loaded(messages) when is_list(messages), do: Enum.map(messages, &read_message/1)
+  @spec load_messages([Wardrik.Format.json()]) :: [Message.t()]
+  def load_messages(messages) when is_list(messages), do: Enum.map(messages, &read_message/1)
 
   @spec principal(Principal.t()) :: Wardrik.Format.json()
   def principal(%Principal{id: id, attributes: attributes}),
@@ -38,7 +38,7 @@ defmodule WardrikCore.Stored.Message do
 
   @spec read_principal(Wardrik.Format.json()) :: Principal.t()
   def read_principal(%{"id" => id, "attributes" => attributes}),
-    do: %Principal{id: id, attributes: Term.loaded(attributes)}
+    do: %Principal{id: id, attributes: Term.load_or_throw(attributes)}
 
   @spec part(ContentPart.t()) :: Wardrik.Format.json()
   def part(%ContentPart{} = part) do
@@ -63,11 +63,11 @@ defmodule WardrikCore.Stored.Message do
       type: part_type(type, part["modality"]),
       text: part["content"],
       url: part["uri"],
-      data: part["data"] && Term.loaded(part["data"]),
+      data: part["data"] && Term.load_or_throw(part["data"]),
       file_id: part["file_id"],
       media_type: part["mime_type"],
       filename: part["filename"],
-      metadata: Term.loaded(metadata)
+      metadata: Term.load_or_throw(metadata)
     }
   end
 
@@ -107,7 +107,7 @@ defmodule WardrikCore.Stored.Message do
     do: %{"id" => id, "type" => type, "function" => Term.dump(function)}
 
   defp read_tool_call(%{"id" => id, "type" => type, "function" => function}),
-    do: %ReqLLM.ToolCall{id: id, type: type, function: Term.loaded(function)}
+    do: %ReqLLM.ToolCall{id: id, type: type, function: Term.load_or_throw(function)}
 
   defp reasoning(%ReasoningDetails{} = details) do
     %{
@@ -123,7 +123,7 @@ defmodule WardrikCore.Stored.Message do
 
   defp reasoning(details), do: %{"value" => Term.dump(details)}
 
-  defp read_reasoning(%{"value" => details}), do: Term.loaded(details)
+  defp read_reasoning(%{"value" => details}), do: Term.load_or_throw(details)
 
   defp read_reasoning(details) do
     %ReasoningDetails{
@@ -133,7 +133,7 @@ defmodule WardrikCore.Stored.Message do
       provider: details["provider"] && Term.atom!(details["provider"]),
       format: details["format"],
       index: details["index"],
-      provider_data: Term.loaded(details["provider_data"])
+      provider_data: Term.load_or_throw(details["provider_data"])
     }
   end
 
@@ -167,7 +167,7 @@ defmodule WardrikCore.Stored.Message do
 
     metadata
     |> Map.get("other", %{})
-    |> Term.loaded()
+    |> Term.load_or_throw()
     |> Map.merge(known)
   end
 

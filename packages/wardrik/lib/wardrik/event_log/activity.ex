@@ -36,7 +36,7 @@ defmodule Wardrik.EventLog.Activity do
 
   @impl Wardrik.EventLog.View
   def handle_event(%{"type" => type, "data" => data, "time" => time}, activity) do
-    activity = %{activity | "pending" => max(activity["pending"] + queued(type, data), 0)}
+    activity = %{activity | "pending" => max(activity["pending"] + queue(type, data), 0)}
     current = activity["doing"]
 
     case doing(current, type, data, time) do
@@ -47,20 +47,20 @@ defmodule Wardrik.EventLog.Activity do
 
   def handle_event(_event, activity), do: activity
 
-  defp queued("wardrik.message.created", _data), do: 1
+  defp queue("wardrik.message.created", _data), do: 1
 
-  defp queued("wardrik.run.started", %{"run" => run}),
+  defp queue("wardrik.run.started", %{"run" => run}),
     do: -length(Map.get(run, "message_ids", []))
 
-  defp queued("wardrik.run.cancelled", %{"dropped" => dropped}), do: -dropped
-  defp queued(_type, _data), do: 0
+  defp queue("wardrik.run.cancelled", %{"dropped" => dropped}), do: -dropped
+  defp queue(_type, _data), do: 0
 
   defp doing(_doing, type, _data, _time) when type in @ended, do: []
 
   defp doing(doing, type, data, time) when type in @running do
     call =
       type
-      |> described(data)
+      |> describe(data)
       |> Map.put("since", time)
 
     if calls?(doing),
@@ -73,11 +73,11 @@ defmodule Wardrik.EventLog.Activity do
          [_running | _rest] = running <- Enum.reject(doing, &same_call?(&1, data)) do
       running
     else
-      _settled -> [described(type, data)]
+      _settled -> [describe(type, data)]
     end
   end
 
-  defp doing(_doing, type, data, _time) when type in @salient, do: [described(type, data)]
+  defp doing(_doing, type, data, _time) when type in @salient, do: [describe(type, data)]
   defp doing(doing, _type, _data, _time), do: doing
 
   defp calls?([_call | _calls] = doing),
@@ -88,13 +88,13 @@ defmodule Wardrik.EventLog.Activity do
   defp same_call?(running, %{"tool" => %{"call" => %{"id" => id}}}),
     do: running["tool"]["call"]["id"] == id
 
-  defp described(type, %{"tool" => tool} = data) do
+  defp describe(type, %{"tool" => tool} = data) do
     type
-    |> described(Map.delete(data, "tool"))
+    |> describe(Map.delete(data, "tool"))
     |> Map.put("tool", tool_ref(tool))
   end
 
-  defp described(type, data) do
+  defp describe(type, data) do
     data
     |> Map.take(@described)
     |> Map.put("type", type)

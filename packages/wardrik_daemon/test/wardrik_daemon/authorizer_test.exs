@@ -71,8 +71,8 @@ defmodule WardrikDaemon.AuthorizerTest do
 
     fields =
       fields
-      |> Keyword.update(:resource, nil, &minted(&1, ids))
-      |> Keyword.update(:actor, nil, &minted(&1, ids))
+      |> Keyword.update(:resource, nil, &mint(&1, ids))
+      |> Keyword.update(:actor, nil, &mint(&1, ids))
 
     request =
       struct!(
@@ -83,8 +83,8 @@ defmodule WardrikDaemon.AuthorizerTest do
     Authorizer.authorize(request, Map.take(opts, [:access, :store]))
   end
 
-  defp minted({:agent, agent}, ids), do: {:agent, Map.get(ids, agent, agent)}
-  defp minted(other, _ids), do: other
+  defp mint({:agent, agent}, ids), do: {:agent, Map.get(ids, agent, agent)}
+  defp mint(other, _ids), do: other
 
   test "an agent gets its own bindings, never its owner's", %{access: access} do
     owner = [principal: "payments/@ana"]

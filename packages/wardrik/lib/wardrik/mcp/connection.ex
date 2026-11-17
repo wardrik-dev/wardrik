@@ -66,7 +66,7 @@ defmodule Wardrik.MCP.Connection do
   @doc "Reports the principal's credential refused and closes their connection."
   @spec refuse(Server.t(), Wardrik.Context.t()) :: :ok
   def refuse(server, context) do
-    :ok = Wardrik.Credentials.refused(context, server.credential_name)
+    :ok = Wardrik.Credentials.report_refusal(context, server.credential_name)
 
     registry = registry(server.mcp)
     supervisor = supervisor(server.mcp)
@@ -95,8 +95,8 @@ defmodule Wardrik.MCP.Connection do
     case Wardrik.Credentials.fetch(context, server.credential_name) do
       {:ok, token} ->
         server
-        |> opened(who(context), token)
-        |> retried(server, context, attempt)
+        |> handle_open(who(context), token)
+        |> retry(server, context, attempt)
 
       {:park, authorization} ->
         {:park, authorization}
@@ -106,7 +106,7 @@ defmodule Wardrik.MCP.Connection do
     end
   end
 
-  defp retried({:error, reason} = refusal, server, context, :first) do
+  defp retry({:error, reason} = refusal, server, context, :first) do
     if refused?(refusal) do
       refuse(server, context)
       open(server, context, :again)
@@ -115,7 +115,7 @@ defmodule Wardrik.MCP.Connection do
     end
   end
 
-  defp retried(opened, _server, _context, _attempt), do: opened
+  defp retry(opened, _server, _context, _attempt), do: opened
 
   @doc "Stops every connection to the server `name`."
   @spec close(atom(), String.t()) :: :ok
@@ -173,17 +173,17 @@ defmodule Wardrik.MCP.Connection do
   @impl GenServer
   def handle_continue(:connect, state) do
     listen_for_changes(state)
-    {:noreply, connect(claimed(state))}
+    {:noreply, connect(claim(state))}
   end
 
   @impl GenServer
-  def handle_call(:ready, _from, %{failure: nil} = state), do: {:reply, :ok, used(state)}
+  def handle_call(:ready, _from, %{failure: nil} = state), do: {:reply, :ok, record_use(state)}
 
   def handle_call(:ready, _from, %{failure: reason} = state),
     do: {:stop, :normal, {:error, reason}, state}
 
   @impl GenServer
-  def handle_cast(:used, state), do: {:noreply, used(state)}
+  def handle_cast(:used, state), do: {:noreply, record_use(state)}
 
   @impl GenServer
   def handle_info(:connect, state), do: {:noreply, connect(state)}
@@ -211,27 +211,27 @@ defmodule Wardrik.MCP.Connection do
     :telemetry.detach(handler)
   end
 
-  defp opened(server, who, token) do
+  defp handle_open(server, who, token) do
     registry = registry(server.mcp)
 
     case Registry.lookup(registry, {:connection, server.name, who}) do
-      [{pid, hashed}] -> reopened(server, who, token, pid, hashed == hash(token))
-      [] -> started(server, who, token)
+      [{pid, hashed}] -> reopen(server, who, token, pid, hashed == hash(token))
+      [] -> start(server, who, token)
     end
   end
 
-  defp reopened(server, who, _token, pid, true) do
+  defp reopen(server, who, _token, pid, true) do
     GenServer.cast(pid, :used)
     {:ok, client(server, who)}
   end
 
-  defp reopened(server, who, token, pid, false) do
+  defp reopen(server, who, token, pid, false) do
     supervisor = supervisor(server.mcp)
     DynamicSupervisor.terminate_child(supervisor, pid)
-    started(server, who, token)
+    start(server, who, token)
   end
 
-  defp started(server, who, token) do
+  defp start(server, who, token) do
     supervisor = supervisor(server.mcp)
 
     case DynamicSupervisor.start_child(supervisor, {__MODULE__, {server, who, token}}) do
@@ -250,7 +250,7 @@ defmodule Wardrik.MCP.Connection do
     :exit, reason -> {:error, reason}
   end
 
-  defp claimed(%{server: server} = state) do
+  defp claim(%{server: server} = state) do
     registry = registry(server.mcp)
 
     if state.who == nil,
@@ -268,28 +268,28 @@ defmodule Wardrik.MCP.Connection do
 
   defp connect(state) do
     with :ok <- Server.reachable(state.server),
-         {:ok, server} <- Server.resolved(state.server),
+         {:ok, server} <- Server.resolve_headers(state.server),
          {:ok, client} <- start_client(state, server) do
       refresh(%{state | client: client})
     else
-      {:error, reason} -> failed(state, reason)
+      {:error, reason} -> fail(state, reason)
     end
   end
 
   defp refresh(state) do
-    case listed(state) do
+    case list(state) do
       {:ok, definitions} ->
         %{offer(state, definitions) | retry: @first_retry, failure: nil}
 
       {:error, reason} ->
         state
         |> disconnect()
-        |> failed(reason)
+        |> fail(reason)
     end
   end
 
-  defp failed(%{who: nil} = state, reason), do: retry_later(state, reason)
-  defp failed(state, reason), do: %{state | failure: reason}
+  defp fail(%{who: nil} = state, reason), do: retry_later(state, reason)
+  defp fail(state, reason), do: %{state | failure: reason}
 
   # The server comes with its secrets read, which are never kept in the state.
   defp start_client(%{who: who, token: token, slot: slot}, server) do
@@ -305,7 +305,7 @@ defmodule Wardrik.MCP.Connection do
     )
   end
 
-  defp listed(%{server: server, who: who}) do
+  defp list(%{server: server, who: who}) do
     client = client(server, who)
 
     with :ok <- Anubis.Client.await_ready(client, timeout: @ready) do
@@ -327,29 +327,29 @@ defmodule Wardrik.MCP.Connection do
   defp next_page(_client, _result, listed), do: {:ok, listed}
 
   defp offer(%{server: server, who: nil} = state, definitions) do
-    tools = Tool.offered(server, definitions)
+    tools = Tool.build_offered(server, definitions)
     registry = registry(server.mcp)
     Registry.update_value(registry, {:tools, server.name}, fn _offered -> tools end)
-    told(server, length(tools))
+    tell(server, length(tools))
     state
   end
 
   defp offer(%{server: server} = state, definitions) do
-    Servers.listed(server.mcp, server.name, definitions)
-    told(server, length(Tool.offered(server, definitions)))
+    Servers.store_listed_tools(server.mcp, server.name, definitions)
+    tell(server, length(Tool.build_offered(server, definitions)))
     state
   end
 
-  defp told(server, count),
+  defp tell(server, count),
     do:
       :telemetry.execute([:wardrik_mcp, :tools], %{count: count}, %{
         mcp: server.mcp,
         server: server.name
       })
 
-  defp used(%{who: nil} = state), do: state
+  defp record_use(%{who: nil} = state), do: state
 
-  defp used(state) do
+  defp record_use(state) do
     used = state.used + 1
     Process.send_after(self(), {:idle, used}, @idle)
     %{state | used: used}
@@ -366,7 +366,7 @@ defmodule Wardrik.MCP.Connection do
 
   defp retry_later(%{server: server, retry: retry} = state, reason) do
     Logger.warning(
-      "#{shown(server)} is down: #{inspect(reason)}. " <>
+      "#{show(server)} is down: #{inspect(reason)}. " <>
         "Trying again in #{div(retry, 1000)}s."
     )
 
@@ -374,10 +374,10 @@ defmodule Wardrik.MCP.Connection do
     %{state | retry: min(retry * 2, @last_retry)}
   end
 
-  defp shown(%Server{owner: owner} = server) when owner in [nil, "deployment"],
+  defp show(%Server{owner: owner} = server) when owner in [nil, "deployment"],
     do: "The MCP server #{server.name}"
 
-  defp shown(%Server{owner: owner} = server), do: "#{owner}'s MCP server #{Server.prefix(server)}"
+  defp show(%Server{owner: owner} = server), do: "#{owner}'s MCP server #{Server.prefix(server)}"
 
   defp listen_for_changes(state) do
     handler = handler(state)

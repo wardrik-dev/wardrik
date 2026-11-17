@@ -39,7 +39,7 @@ defmodule Wardrik.Chat.Replies.Server do
   def handle_call({:follow, conversation}, _from, state) do
     if conversation in state.conversations,
       do: {:reply, :ok, state},
-      else: {:reply, :ok, followed(state, conversation), sync: true}
+      else: {:reply, :ok, follow(state, conversation), sync: true}
   end
 
   def handle_call({:event, event, cursor}, from, state),
@@ -47,7 +47,7 @@ defmodule Wardrik.Chat.Replies.Server do
 
   @impl DurableServer
   def handle_cast({:remind, conversation}, state) do
-    post = {:waiting, :all, State.asked_by(state, conversation)}
+    post = {:waiting, :all, State.find_asker(state, conversation)}
 
     with {:error, reason} <- post(state, conversation, post) do
       Logger.warning("#{state.channel.name} couldn't remind #{state.room}: #{inspect(reason)}")
@@ -68,7 +68,7 @@ defmodule Wardrik.Chat.Replies.Server do
   def terminate(_reason, state), do: stop(state.follower)
 
   # Reads the new conversation from its end now, then follows it with the rest.
-  defp followed(state, conversation) do
+  defp follow(state, conversation) do
     {:ok, read} = Cursor.decode(state.cursor || Cursor.encode(%{}))
 
     {:ok, head} =
@@ -124,17 +124,17 @@ defmodule Wardrik.Chat.Replies.Server do
 
     case post(next, conversation, post) do
       :ok ->
-        posted(shown(next, conversation, post), cursor, from)
+        handle_posted(show(next, conversation, post), cursor, from)
 
       {:skip, _why} ->
-        posted(next, cursor, from)
+        handle_posted(next, cursor, from)
 
       {:error, reason} when attempt >= @attempts ->
         Logger.warning(
           "#{state.channel.name} gave up posting in #{state.room}: #{inspect(reason)}"
         )
 
-        posted(next, cursor, from)
+        handle_posted(next, cursor, from)
 
       {:error, _reason} ->
         Process.send_after(self(), {:retry, held, attempt + 1}, backoff(attempt))
@@ -142,7 +142,7 @@ defmodule Wardrik.Chat.Replies.Server do
     end
   end
 
-  defp posted(state, cursor, from) do
+  defp handle_posted(state, cursor, from) do
     GenServer.reply(from, :ok)
     {:noreply, %{state | cursor: cursor}, sync: true}
   end
@@ -198,13 +198,13 @@ defmodule Wardrik.Chat.Replies.Server do
     end
   end
 
-  defp shown(state, conversation, {:status, _label}) do
+  defp show(state, conversation, {:status, _label}) do
     if due?(state, conversation),
       do: put_in(state.shown[conversation], System.monotonic_time(:millisecond)),
       else: state
   end
 
-  defp shown(state, conversation, _posted),
+  defp show(state, conversation, _posted),
     do: %{state | shown: Map.delete(state.shown, conversation)}
 
   defp deliver(state, {_agent, conversation}, body) do

@@ -25,10 +25,10 @@ defmodule WardrikWeb.SettingsLive do
         error: nil
       )
 
-    {:ok, if(source, do: described(socket), else: socket)}
+    {:ok, if(source, do: describe(socket), else: socket)}
   end
 
-  defp described(%{assigns: %{source: {module, opts}, scope: scope}} = socket) do
+  defp describe(%{assigns: %{source: {module, opts}, scope: scope}} = socket) do
     schema = module.schema(opts)
 
     common =

@@ -14,7 +14,7 @@ defmodule Wardrik.Channel.Installations do
   @callback fetch(Request.t(), opts :: term()) :: {:ok, Installation.t()} | :error
 
   @doc "Returns the channel's installations whose `owner` is the request's."
-  @callback owned(Request.t(), opts :: term()) :: [Installation.t()]
+  @callback list_installations(Request.t(), opts :: term()) :: [Installation.t()]
 
   @doc "Stores `installation`, replacing any with the same channel and workspace."
   @callback put(Installation.t(), opts :: term()) :: :ok | {:error, String.t()}

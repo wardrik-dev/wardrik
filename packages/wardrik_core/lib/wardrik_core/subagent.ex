@@ -34,8 +34,8 @@ defmodule WardrikCore.Subagent do
     outcome =
       context
       |> within(prompt, span, metered, opts)
-      |> turned(opts[:timeout])
-      |> answered()
+      |> turn(opts[:timeout])
+      |> answer()
 
     measured = Meter.total(meter)
     tool_calls = Meter.tool_calls(meter)
@@ -46,7 +46,7 @@ defmodule WardrikCore.Subagent do
       |> outcome_data(opts[:name])
       |> Map.merge(%{duration_ms: ms(began), tool_calls: tool_calls, measurements: measured})
 
-    emit(context, span, ended(outcome), ended)
+    emit(context, span, finish(outcome), ended)
 
     with_measured(outcome, measured)
   end
@@ -77,7 +77,7 @@ defmodule WardrikCore.Subagent do
     }
   end
 
-  defp turned(context, timeout) do
+  defp turn(context, timeout) do
     {:ok, supervisor} = Task.Supervisor.start_link()
 
     try do
@@ -102,18 +102,18 @@ defmodule WardrikCore.Subagent do
     end
   end
 
-  defp answered({:ok, context}),
+  defp answer({:ok, context}),
     do:
       {:ok,
        %{text: ReqLLM.Response.text(context.response) || "", labels: Context.labels(context)}}
 
-  defp answered({:park, _reason, _context}),
+  defp answer({:park, _reason, _context}),
     do: {:error, "It came to a call that waits on a person, which a subagent can't wait on."}
 
-  defp answered({:error, reason}), do: {:error, reason}
+  defp answer({:error, reason}), do: {:error, reason}
 
-  defp ended({:ok, _answer}), do: :completed
-  defp ended({:error, _reason}), do: :failed
+  defp finish({:ok, _answer}), do: :completed
+  defp finish({:error, _reason}), do: :failed
 
   defp outcome_data({:ok, answer}, name),
     do: %{agent: %{name: name}, message: ReqLLM.Context.assistant(answer.text)}

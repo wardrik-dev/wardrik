@@ -11,8 +11,10 @@ defmodule Wardrik.EventLog.Reader do
   @type entry() :: {Wardrik.EventLog.log(), non_neg_integer(), CloudEvent.t()}
 
   @doc "Returns the kept logs `resources` cover."
-  @spec covered(Wardrik.Store.t(), Wardrik.EventLog.resources()) :: [Wardrik.EventLog.log()]
-  def covered(store, resources) do
+  @spec list_covered_logs(Wardrik.Store.t(), Wardrik.EventLog.resources()) :: [
+          Wardrik.EventLog.log()
+        ]
+  def list_covered_logs(store, resources) do
     resources
     |> Enum.flat_map(&logs(store, &1))
     |> Enum.uniq()
@@ -30,7 +32,7 @@ defmodule Wardrik.EventLog.Reader do
   @spec head(Wardrik.Store.t(), Wardrik.EventLog.resources()) :: Cursor.t()
   def head(store, resources) do
     store
-    |> covered(resources)
+    |> list_covered_logs(resources)
     |> Map.new(fn log -> {log, Log.last(store, log)} end)
   end
 
@@ -48,11 +50,11 @@ defmodule Wardrik.EventLog.Reader do
 
     read =
       settings.store
-      |> covered(resources)
+      |> list_covered_logs(resources)
       |> Enum.map(&entries(settings, &1, after: Map.get(cursor, &1, 0), limit: limit))
-      |> merged(limit)
+      |> merge(limit)
 
-    {read, advanced(cursor, read)}
+    {read, advance_cursor(cursor, read)}
   end
 
   @doc """
@@ -69,7 +71,7 @@ defmodule Wardrik.EventLog.Reader do
         ) :: {[entry()], Cursor.t()}
   def page_back(settings, resources, args) do
     limit = Keyword.fetch!(args, :limit)
-    logs = covered(settings.store, resources)
+    logs = list_covered_logs(settings.store, resources)
 
     tops =
       case Keyword.fetch!(args, :before) do
@@ -87,7 +89,7 @@ defmodule Wardrik.EventLog.Reader do
       |> Stream.unfold(&next_newest/1)
       |> Enum.take(limit)
 
-    {read, receded(tops, read)}
+    {read, move_tops_back(tops, read)}
   end
 
   defp before(_store, _log, top, _limit) when top < 1, do: []
@@ -96,7 +98,7 @@ defmodule Wardrik.EventLog.Reader do
     from = max(top - limit, 0)
 
     case Log.read(store, log, after: from, limit: top - from) do
-      {:ok, events} -> numbered(log, events)
+      {:ok, events} -> number_events(log, events)
       {:dropped, oldest} when oldest <= top -> before(store, log, top, top - oldest + 1)
       {:dropped, _oldest} -> []
     end
@@ -115,7 +117,7 @@ defmodule Wardrik.EventLog.Reader do
     end
   end
 
-  defp receded(tops, entries) do
+  defp move_tops_back(tops, entries) do
     Enum.reduce(entries, tops, fn {log, sequence, _event}, cursor ->
       Map.update!(cursor, log, &min(&1, sequence - 1))
     end)
@@ -136,11 +138,11 @@ defmodule Wardrik.EventLog.Reader do
 
     case Log.read(settings.store, log, after: at, limit: limit) do
       {:ok, events} ->
-        numbered(log, events)
+        number_events(log, events)
 
       {:dropped, oldest} ->
         {:ok, events} = Log.read(settings.store, log, after: oldest - 1, limit: limit - 1)
-        [{log, oldest - 1, dropped(settings, log, at, oldest, events)} | numbered(log, events)]
+        [{log, oldest - 1, drop(settings, log, at, oldest, events)} | number_events(log, events)]
     end
   end
 
@@ -154,8 +156,8 @@ defmodule Wardrik.EventLog.Reader do
   end
 
   @doc "Returns `cursor` moved past each of `entries`."
-  @spec advanced(Cursor.t(), [entry()]) :: Cursor.t()
-  def advanced(cursor, entries) do
+  @spec advance_cursor(Cursor.t(), [entry()]) :: Cursor.t()
+  def advance_cursor(cursor, entries) do
     Enum.reduce(entries, cursor, fn {log, sequence, _event}, cursor ->
       Map.put(cursor, log, sequence)
     end)
@@ -173,10 +175,10 @@ defmodule Wardrik.EventLog.Reader do
     sequence
   end
 
-  defp numbered(log, events),
+  defp number_events(log, events),
     do: for(event <- events, do: {log, String.to_integer(event["sequence"]), event})
 
-  defp dropped(settings, {agent, _conversation} = log, at, oldest, events) do
+  defp drop(settings, {agent, _conversation} = log, at, oldest, events) do
     about =
       case settings do
         %{source: source, subject: subject} -> [source: source, subject: subject]
@@ -188,19 +190,19 @@ defmodule Wardrik.EventLog.Reader do
       [
         data: %{"after" => at, "oldest" => oldest},
         deployment: settings.deployment,
-        time: resumed_at(events)
+        time: resume_at(events)
       ] ++ about
     )
   end
 
-  defp resumed_at([]), do: DateTime.utc_now()
+  defp resume_at([]), do: DateTime.utc_now()
 
-  defp resumed_at([%{"time" => time} | _events]) do
+  defp resume_at([%{"time" => time} | _events]) do
     {:ok, at, _offset} = DateTime.from_iso8601(time)
     at
   end
 
-  defp merged(reads, limit) do
+  defp merge(reads, limit) do
     reads
     |> Stream.unfold(&next_oldest/1)
     |> Enum.take(limit)

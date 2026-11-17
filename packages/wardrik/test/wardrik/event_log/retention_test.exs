@@ -11,13 +11,13 @@ defmodule Wardrik.EventLog.RetentionTest do
   setup :start_events
 
   setup %{events: events} do
-    stopped(events, "agt_1", ~U[2000-01-01 00:00:00Z])
-    stopped(events, "agt_1", ~U[2000-01-02 00:00:00Z])
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1", ~U[2000-01-01 00:00:00Z])
+    emit_stop(events, "agt_1", ~U[2000-01-02 00:00:00Z])
+    emit_stop(events, "agt_1")
     :ok
   end
 
-  defp dropped(events, cursor) do
+  defp drop(events, cursor) do
     {:ok, %{events: [%{"type" => "wardrik.events.dropped"} = dropped | _rest]}} =
       Wardrik.EventLog.page(events, ["agt_1"], after: Cursor.encode(cursor))
 
@@ -30,8 +30,8 @@ defmodule Wardrik.EventLog.RetentionTest do
     :ok = Wardrik.EventLog.trim(events, ~U[2000-01-03 00:00:00Z])
 
     assert sequences(events, ["agt_1"]) == ["wardrik.events.dropped", "000000000003"]
-    assert dropped(events, %{}) == %{"after" => 0, "oldest" => 3}
-    assert dropped(events, %{{"agt_1", nil} => 1}) == %{"after" => 1, "oldest" => 3}
+    assert drop(events, %{}) == %{"after" => 0, "oldest" => 3}
+    assert drop(events, %{{"agt_1", nil} => 1}) == %{"after" => 1, "oldest" => 3}
 
     assert sequences(events, ["agt_1"], after: Cursor.encode(%{{"agt_1", nil} => 2})) ==
              ["000000000003"]
@@ -54,7 +54,7 @@ defmodule Wardrik.EventLog.RetentionTest do
     :ok = Wardrik.EventLog.trim(events, ~U[2000-01-02 00:00:00Z])
     :ok = Wardrik.EventLog.trim(events, ~U[2000-01-03 00:00:00Z])
 
-    assert dropped(events, %{}) == %{"after" => 0, "oldest" => 3}
+    assert drop(events, %{}) == %{"after" => 0, "oldest" => 3}
   end
 
   test "carries on numbering after every event is dropped and the events restart", %{
@@ -67,8 +67,8 @@ defmodule Wardrik.EventLog.RetentionTest do
 
     stop_supervised!(Wardrik.EventLog)
     start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
-    trimmed(events)
-    stopped(events, "agt_1")
+    trim_events(events)
+    emit_stop(events, "agt_1")
 
     assert sequences(events, ["agt_1"]) == ["wardrik.events.dropped", "000000000004"]
   end
@@ -82,7 +82,7 @@ defmodule Wardrik.EventLog.RetentionTest do
       |> List.keyfind(Retention, 0)
 
     send(retention, :trim)
-    trimmed(events)
+    trim_events(events)
 
     assert sequences(events, ["agt_1"]) == ["wardrik.events.dropped", "000000000003"]
   end

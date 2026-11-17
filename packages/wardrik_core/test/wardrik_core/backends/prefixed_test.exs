@@ -24,7 +24,7 @@ defmodule WardrikCore.Backends.PrefixedTest do
 
     assert WardrikCore.list(one.instance) == [{"a", nil}]
     assert WardrikCore.list(two.instance) == []
-    assert WardrikCore.saved_key(one.instance, "a") == "wardrik/agents/a"
+    assert WardrikCore.build_state_key(one.instance, "a") == "wardrik/agents/a"
     assert {:ok, _object} = MemoryStore.get_object(one.store, "wardrik/agents/a", [])
   end
 end

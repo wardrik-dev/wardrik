@@ -33,13 +33,13 @@ defmodule Wardrik.HTTP.Input do
   def read_json(%Plug.Conn{body_params: %Unfetched{}} = conn) do
     conn
     |> raw()
-    |> decoded()
+    |> decode()
   end
 
   def read_json(conn) do
-    case BodyReader.kept(conn) do
+    case BodyReader.get_kept_body(conn) do
       nil -> {:ok, conn.body_params, conn}
-      raw -> decoded({:ok, raw, conn})
+      raw -> decode({:ok, raw, conn})
     end
   end
 
@@ -57,7 +57,7 @@ defmodule Wardrik.HTTP.Input do
   end
 
   defp raw(conn) do
-    case BodyReader.kept(conn) do
+    case BodyReader.get_kept_body(conn) do
       nil -> {:error, Error.new(:internal, unkept())}
       raw -> {:ok, raw, conn}
     end
@@ -68,35 +68,35 @@ defmodule Wardrik.HTTP.Input do
       "The body was parsed before Wardrik.HTTP.Endpoint saw it. " <>
         "Give Plug.Parsers body_reader: {Wardrik.HTTP.BodyReader, :read_body, []}."
 
-  defp decoded({:ok, "", conn}), do: {:ok, %{}, conn}
+  defp decode({:ok, "", conn}), do: {:ok, %{}, conn}
 
-  defp decoded({:ok, raw, conn}) do
+  defp decode({:ok, raw, conn}) do
     case JSON.decode(raw) do
       {:ok, %{} = body} -> {:ok, body, conn}
       _not_an_object -> {:error, Error.new(:invalid_request, "The body isn't a JSON object.")}
     end
   end
 
-  defp decoded({:error, error}), do: {:error, error}
+  defp decode({:error, error}), do: {:error, error}
 
   defp query(conn, operation) do
     conn.query_string
     |> URI.query_decoder()
     |> Enum.group_by(fn {name, _value} -> name end, fn {_name, value} -> value end)
-    |> Map.new(fn {name, values} -> {name, typed(values, property(operation, name))} end)
+    |> Map.new(fn {name, values} -> {name, cast_values(values, property(operation, name))} end)
   end
 
   defp property(%{input: input}, name), do: get_in(input, ["properties", name]) || %{}
 
-  defp typed(values, %{"type" => "array"}), do: values
+  defp cast_values(values, %{"type" => "array"}), do: values
 
-  defp typed(values, %{"type" => "integer"}) do
+  defp cast_values(values, %{"type" => "integer"}) do
     values
     |> List.last()
     |> integer()
   end
 
-  defp typed(values, _property), do: List.last(values)
+  defp cast_values(values, _property), do: List.last(values)
 
   defp integer(text) do
     case Integer.parse(text) do

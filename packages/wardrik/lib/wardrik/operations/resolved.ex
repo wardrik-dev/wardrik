@@ -11,8 +11,8 @@ defmodule Wardrik.Operations.Resolved do
   @doc "Returns what the app gives the agent."
   @spec agent(Wardrik.Scope.t(), map()) :: {:ok, map()} | {:error, Wardrik.Error.t()}
   def agent(%Wardrik.Scope{wardrik: wardrik}, %{"agent" => id}) do
-    with :ok <- Snapshot.known(wardrik, {id, nil}),
-         {:ok, resolved} <- Resolver.defined(wardrik, id) do
+    with :ok <- Snapshot.check_known(wardrik, {id, nil}),
+         {:ok, resolved} <- Resolver.resolve_current(wardrik, id) do
       {:ok, view(wardrik, id, resolved)}
     end
   end
@@ -41,16 +41,16 @@ defmodule Wardrik.Operations.Resolved do
     started = Wardrik.MCP.Servers.all(mcp)
 
     for {name, key} <- Enum.sort(servers) do
-      picked = Wardrik.MCP.Capability.picked(mcp, servers, names: [name])
+      picked = Wardrik.MCP.Capability.pick_servers(mcp, servers, names: [name])
       tools = Wardrik.MCP.tools(nil, name: mcp, servers: picked)
-      Map.merge(%{"name" => name, "tools" => Enum.map(tools, & &1.name)}, kept(started[key], key))
+      Map.merge(%{"name" => name, "tools" => Enum.map(tools, & &1.name)}, keep(started[key], key))
     end
   end
 
-  defp kept(%Wardrik.MCP.Server{owner: owner} = server, _key) when owner != nil,
+  defp keep(%Wardrik.MCP.Server{owner: owner} = server, _key) when owner != nil,
     do: %{"server" => Wardrik.MCP.Server.prefix(server), "owner" => owner}
 
-  defp kept(_server, key), do: %{"server" => key}
+  defp keep(_server, key), do: %{"server" => key}
 
   defp target({name, key}) when is_binary(key), do: %{"name" => name, "target" => key}
   defp target({name, _given}), do: %{"name" => name}

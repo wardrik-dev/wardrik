@@ -9,11 +9,11 @@ defmodule WardrikDaemon.CLI.BrowserTest do
     browser = browser()
     url = "http://127.0.0.1:4747/web/sign-in?code=a&b=$(touch nope)"
 
-    opened = opened(browser)
+    opened = start_reading(browser)
     assert Browser.open(%{"BROWSER" => browser.script, "SSH_TTY" => "/dev/pts/1"}, url) == :ok
     assert opened.() == url
 
-    opened = opened(browser)
+    opened = start_reading(browser)
     assert Browser.open(%{"BROWSER" => "#{browser.script} --new %s:other"}, url) == :ok
     assert opened.() == "--new " <> url
   end

@@ -82,7 +82,7 @@ defmodule Wardrik.EventLog.EncoderTest do
         [:agent, :stop]
         |> core(%{reason: :normal})
         |> one()
-        |> Wardrik.EventLog.CloudEvent.sequenced(42)
+        |> Wardrik.EventLog.CloudEvent.put_sequence(42)
 
       assert event["sequence"] == "000000000042"
     end

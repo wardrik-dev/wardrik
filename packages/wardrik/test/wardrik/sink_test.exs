@@ -23,7 +23,7 @@ defmodule Wardrik.SinkTest do
   end
 
   test "hands each kept event over with its sequence, agents' and the audit's", %{events: events} do
-    stopped(events, {"agt_1", "C1"})
+    emit_stop(events, {"agt_1", "C1"})
 
     assert_received {:sunk,
                      %Wardrik.Event{

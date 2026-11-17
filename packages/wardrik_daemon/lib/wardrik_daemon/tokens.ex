@@ -118,7 +118,7 @@ defmodule WardrikDaemon.Tokens do
   @doc "Returns the token `secret` is, unless it's unknown, revoked or expired."
   @spec verify(Wardrik.Store.t(), String.t()) :: {:ok, Token.t()} | :error
   def verify(store, secret) do
-    case found(tokens(store), secret) do
+    case find_token(tokens(store), secret) do
       {:ok, token, _kept} -> {:ok, token}
       :error -> :error
     end
@@ -134,7 +134,7 @@ defmodule WardrikDaemon.Tokens do
   def spend(store, secret) do
     kept = tokens(store)
 
-    with {:ok, token, {value, vsn}} <- found(kept, secret),
+    with {:ok, token, {value, vsn}} <- find_token(kept, secret),
          spent = %{value | token: %{token | expires: DateTime.utc_now()}},
          {:ok, _vsn} <- Wardrik.Store.put(kept, token.id, spent, if_vsn: vsn) do
       :ok = Wardrik.Store.delete(kept, token.id)
@@ -152,7 +152,7 @@ defmodule WardrikDaemon.Tokens do
   def renew(store, secret, before, expires) do
     kept = tokens(store)
 
-    with {:ok, token, {value, vsn}} <- found(kept, secret),
+    with {:ok, token, {value, vsn}} <- find_token(kept, secret),
          :lt <- DateTime.compare(token.expires, before) do
       renewed = %{value | token: %{token | expires: expires}}
       # A revoke or another renewal since the read wins.
@@ -162,7 +162,7 @@ defmodule WardrikDaemon.Tokens do
     :ok
   end
 
-  defp found(kept, secret) do
+  defp find_token(kept, secret) do
     with ["wdk", id, _random] <- String.split(secret, "_", parts: 3),
          {%{token: token, hash: hash}, _vsn} = found <- Wardrik.Store.lookup(kept, id),
          true <-
@@ -180,13 +180,13 @@ defmodule WardrikDaemon.Tokens do
   @doc false
   @spec subject(term()) :: {:ok, String.t()} | {:error, String.t()}
   def subject("user:" <> id = subject) do
-    if id == Access.admin() or Owners.user?(id), do: {:ok, subject}, else: refused(subject)
+    if id == Access.admin() or Owners.user?(id), do: {:ok, subject}, else: refuse(subject)
   end
 
   def subject("agent:" <> id = subject) when id != "", do: {:ok, subject}
-  def subject(other), do: refused(other)
+  def subject(other), do: refuse(other)
 
-  defp refused(subject),
+  defp refuse(subject),
     do: {:error, "expected a user, as user:acme/@ana, or agent:ID, got: #{inspect(subject)}"}
 
   defp hash(secret), do: :crypto.hash(:sha256, secret)

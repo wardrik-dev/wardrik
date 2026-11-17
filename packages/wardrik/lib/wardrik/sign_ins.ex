@@ -5,8 +5,8 @@ defmodule Wardrik.SignIns do
   alias Wardrik.Principal
 
   @doc "Resumes each agent that waits on `principal` signing in to `provider`."
-  @spec granted(atom() | String.t(), Principal.t(), atom()) :: :ok
-  def granted(provider, %Principal{} = principal, agents) do
+  @spec resume_waiting(atom() | String.t(), Principal.t(), atom()) :: :ok
+  def resume_waiting(provider, %Principal{} = principal, agents) do
     credential = to_string(provider)
 
     agents
@@ -19,7 +19,7 @@ defmodule Wardrik.SignIns do
   defp waits_on?(nil, _credential, _principal), do: false
 
   defp waits_on?(agent, credential, principal) do
-    case WardrikCore.parked(agent) do
+    case WardrikCore.get_parked(agent) do
       {:tool_calls, results} -> Enum.any?(results, &signs_in?(&1, credential, principal))
       _reason -> false
     end

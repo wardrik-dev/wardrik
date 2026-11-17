@@ -143,10 +143,10 @@ defmodule WardrikACP.Case do
     task
   end
 
-  def decided_paths do
+  def list_decided_paths do
     receive do
       {:decided, %ToolCall{arguments: %{"path" => path}}, _labels, _annotations} ->
-        [path | decided_paths()]
+        [path | list_decided_paths()]
     after
       0 -> []
     end
@@ -170,7 +170,7 @@ defmodule WardrikACP.Case do
     end
   end
 
-  def sent(log, method) do
+  def find_sent(log, method) do
     lines =
       log
       |> File.read!()

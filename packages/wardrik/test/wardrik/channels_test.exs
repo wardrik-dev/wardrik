@@ -4,7 +4,7 @@ defmodule Wardrik.Test.Echo do
 
   @impl Wardrik.Channel
   def child_spec(opts),
-    do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> started(opts) end]}}
+    do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> start(opts) end]}}
 
   @impl Wardrik.Channel
   def request(%{path: path, body: body, headers: headers}, opts) do
@@ -15,7 +15,7 @@ defmodule Wardrik.Test.Echo do
     }
   end
 
-  defp started(opts) do
+  defp start(opts) do
     send(opts[:test], {:started, opts[:wardrik], opts[:channel]})
   end
 end
@@ -70,7 +70,8 @@ defmodule Wardrik.ChannelsTest do
              "body" => "events: {} (v0=abc)"
            }
 
-    assert refused(scope, "channel.deliver", %{request | "channel" => "teams"}) == :not_found
+    assert assert_refused(scope, "channel.deliver", %{request | "channel" => "teams"}) ==
+             :not_found
   end
 
   test "takes a definition that names it", %{name: name} do

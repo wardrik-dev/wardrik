@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.5 (2026-11-16)
+
+- **Upgrading:** `WardrikBrave.Client.summarized/1` is `summarize/1`.
+
 ## 0.1.0-rc.4 (2026-11-14)
 
 - Requires `wardrik_core` 0.1.0-rc.8, whose modules tools and middleware are written with are

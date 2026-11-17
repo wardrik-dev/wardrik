@@ -106,7 +106,7 @@ defmodule WardrikWeb.Test.Server do
     ]
   }
 
-  def asked, do: Agent.get(__MODULE__, &Enum.reverse/1)
+  def list_asks, do: Agent.get(__MODULE__, &Enum.reverse/1)
   def start, do: Agent.start_link(fn -> [] end, name: __MODULE__)
 
   @impl true

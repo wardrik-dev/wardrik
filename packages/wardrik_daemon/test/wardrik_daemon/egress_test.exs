@@ -95,7 +95,7 @@ defmodule WardrikDaemon.EgressTest do
     assert [] = Enum.filter(servers, &(&1 =~ "growth"))
 
     # config.yaml's own server is trusted where it is.
-    request = %Request{agent: recorded(context, "payments/x")}
+    request = %Request{agent: ensure_record(context, "payments/x")}
     {:ok, resolved} = Wardrik.Resolver.resolve(context.running, request)
     assert resolved.servers["local"] == "local"
   end
@@ -123,7 +123,7 @@ defmodule WardrikDaemon.EgressTest do
     stub(Wardrik.Egress, :public, fn url -> call_original(Wardrik.Egress, :public, [url]) end)
 
     notice = %Notice{
-      agent: recorded(context, "growth/leads"),
+      agent: ensure_record(context, "growth/leads"),
       kind: :failed,
       at: DateTime.utc_now(),
       reason: "x"

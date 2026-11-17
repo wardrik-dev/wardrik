@@ -47,8 +47,8 @@ defmodule Wardrik.Operations.Running do
   end
 
   @doc "Returns the keys of the saved agent `agent` and its conversations."
-  @spec saved(Wardrik.t(), String.t()) :: [key()]
-  def saved(wardrik, agent) do
+  @spec list_saved_keys(Wardrik.t(), String.t()) :: [key()]
+  def list_saved_keys(wardrik, agent) do
     agents = Wardrik.agents(wardrik)
     for {^agent, _conversation} = key <- WardrikCore.list(agents), do: key
   end
@@ -72,16 +72,16 @@ defmodule Wardrik.Operations.Running do
 
     case whereis(wardrik, key) do
       nil -> start(wardrik, key, opts)
-      pid -> configured(wardrik, key, pid, opts)
+      pid -> handle_configure(wardrik, key, pid, opts)
     end
   rescue
     error in ArgumentError -> {:error, Error.new(:invalid_request, Exception.message(error))}
   end
 
   @doc "Returns `opts` for the agent's conversation `conversation`."
-  @spec held(keyword(), String.t() | nil) :: keyword()
-  def held(opts, nil), do: opts
-  def held(opts, conversation), do: Keyword.put(opts, :conversation, conversation)
+  @spec put_conversation(keyword(), String.t() | nil) :: keyword()
+  def put_conversation(opts, nil), do: opts
+  def put_conversation(opts, conversation), do: Keyword.put(opts, :conversation, conversation)
 
   @doc """
   Gives an agent that loads by itself, as after a crash, its settings from its definition, as
@@ -93,7 +93,7 @@ defmodule Wardrik.Operations.Running do
 
     with {:ok, definition} <- definition(wardrik, agent),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, agent, definition) do
-      opts = Setup.agent(wardrik, held(opts, conversation))
+      opts = Setup.agent(wardrik, put_conversation(opts, conversation))
       {:ok, Keyword.drop(opts, [:agent_id, :conversation])}
     else
       {:error, _reason} -> :none
@@ -103,7 +103,7 @@ defmodule Wardrik.Operations.Running do
   defp wake(wardrik, {agent, conversation}) do
     with {:ok, definition} <- definition(wardrik, agent),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, agent, definition),
-         do: bring(wardrik, held(opts, conversation))
+         do: bring(wardrik, put_conversation(opts, conversation))
   end
 
   defp start(wardrik, key, opts) do
@@ -114,11 +114,11 @@ defmodule Wardrik.Operations.Running do
         {:ok, pid}
 
       {:error, {:already_started, {pid, _meta}}} ->
-        configured(wardrik, key, pid, opts)
+        handle_configure(wardrik, key, pid, opts)
 
       # Another node started it first, and answered from there.
       {:error, {:already_started, pid}} when is_pid(pid) ->
-        configured(wardrik, key, pid, opts)
+        handle_configure(wardrik, key, pid, opts)
 
       {:error, {:unreadable, reason}} ->
         unreadable(wardrik, key, reason)
@@ -133,7 +133,8 @@ defmodule Wardrik.Operations.Running do
   `:error`.
   """
   @spec unreadable(Wardrik.t(), key()) :: {:ok, String.t()} | :error
-  def unreadable(wardrik, key), do: Durable.noted(wardrik.store, saved_key(wardrik, key))
+  def unreadable(wardrik, key),
+    do: Durable.fetch_unreadable_reason(wardrik.store, save_key(wardrik, key))
 
   @doc """
   Starts over each of the agent `agent`'s saved states that can't be read, its own and its
@@ -141,21 +142,21 @@ defmodule Wardrik.Operations.Running do
   """
   @spec reset_unreadable(Wardrik.t(), String.t()) :: [String.t()]
   def reset_unreadable(wardrik, agent) do
-    for key <- saved(wardrik, agent),
-        saved = saved_key(wardrik, key),
+    for key <- list_saved_keys(wardrik, agent),
+        saved = save_key(wardrik, key),
         {:error, reason} <- [Durable.check(wardrik.store, saved)] do
       :ok = Durable.discard(wardrik.store, saved)
       "#{describe(key)} started over, as its saved state couldn't be read: #{reason}."
     end
   end
 
-  defp saved_key(wardrik, key) do
+  defp save_key(wardrik, key) do
     wardrik
     |> Wardrik.agents()
-    |> WardrikCore.saved_key(key)
+    |> WardrikCore.build_state_key(key)
   end
 
-  defp configured(wardrik, key, pid, opts) do
+  defp handle_configure(wardrik, key, pid, opts) do
     case WardrikCore.configure(pid, Keyword.drop(opts, [:agent_id, :conversation])) do
       :ok -> {:ok, pid}
       {:error, {:unreadable, reason}} -> unreadable(wardrik, key, reason)
@@ -164,7 +165,7 @@ defmodule Wardrik.Operations.Running do
 
   # Noted, so `unreadable/2` answers and defining the agent again starts it over.
   defp unreadable(wardrik, key, reason) do
-    :ok = Durable.note(wardrik.store, saved_key(wardrik, key), reason)
+    :ok = Durable.note(wardrik.store, save_key(wardrik, key), reason)
 
     {:error,
      Error.new(

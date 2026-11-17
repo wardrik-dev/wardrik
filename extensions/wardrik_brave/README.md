@@ -6,7 +6,7 @@ each page, not just links.
 ```elixir
 def deps do
   [
-    {:wardrik_brave, "~> 0.1.0-rc.4"}
+    {:wardrik_brave, "~> 0.1.0-rc.5"}
   ]
 end
 ```
@@ -16,7 +16,7 @@ end
 Set `BRAVE_API_KEY` and `ANTHROPIC_API_KEY` before starting a fresh IEx session.
 
 ```elixir
-Mix.install([{:wardrik_brave, "~> 0.1.0-rc.4"}])
+Mix.install([{:wardrik_brave, "~> 0.1.0-rc.5"}])
 
 children = [
   {WardrikCore.Backends.MemoryStore, name: :agents},

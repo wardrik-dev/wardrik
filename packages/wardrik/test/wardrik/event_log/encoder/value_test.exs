@@ -9,7 +9,7 @@ defmodule Wardrik.EventLog.Encoder.ValueTest do
            |> get_in(["$defs", "message"])
            |> JSV.build!()
 
-  defp encoded(message) do
+  defp encode(message) do
     encoded = Value.message(message)
     assert {:ok, _} = JSV.validate(encoded, @message)
     encoded
@@ -41,7 +41,7 @@ defmodule Wardrik.EventLog.Encoder.ValueTest do
                %{"type" => "file", "file_id" => "file_1", "mime_type" => "application/pdf"},
                %{"type" => "blob", "modality" => "image", "mime_type" => "image/png"}
              ]
-           } = encoded(message)
+           } = encode(message)
   end
 
   test "encodes a tool's answer under the call it answers, named for its tool" do
@@ -56,7 +56,7 @@ defmodule Wardrik.EventLog.Encoder.ValueTest do
              "role" => "tool",
              "name" => "echo",
              "parts" => [%{"type" => "tool_call_response", "id" => "c1", "response" => "hi"}]
-           } = encoded(answer)
+           } = encode(answer)
   end
 
   test "encodes failures by a short type" do

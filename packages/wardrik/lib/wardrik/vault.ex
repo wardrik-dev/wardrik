@@ -187,7 +187,7 @@ defmodule Wardrik.Vault do
 
     with :ok <- has_keys(keys),
          {%Sealed{} = sealed, vsn} <- Wardrik.Store.lookup(store, path) do
-      unsealed(Sealed.unseal(sealed, keys, path), sealed.kind, vsn)
+      tag_unsealed(Sealed.unseal(sealed, keys, path), sealed.kind, vsn)
     else
       nil -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
@@ -206,7 +206,7 @@ defmodule Wardrik.Vault do
     keys = Keyword.fetch!(args, :keys)
     path = path(principal, name)
 
-    scoped = scoped(store)
+    scoped = scope_store(store)
 
     case Wardrik.Store.lookup(scoped, path) do
       {%Sealed{} = sealed, _vsn} -> Sealed.unseal(sealed, Sealed.decode_keys(keys), path)
@@ -284,7 +284,7 @@ defmodule Wardrik.Vault do
 
     store
     |> Wardrik.Store.keys()
-    |> Enum.flat_map(fn path -> listed(store, path) end)
+    |> Enum.flat_map(fn path -> handle_list(store, path) end)
   end
 
   @doc "Returns a new key, base64-encoded, for `:keys`."
@@ -319,12 +319,12 @@ defmodule Wardrik.Vault do
   end
 
   @impl Wardrik.Credentials
-  def refused(%Credentials.Request{principal: nil}, _vault), do: :ok
+  def report_refusal(%Credentials.Request{principal: nil}, _vault), do: :ok
 
-  def refused(%Credentials.Request{name: name, principal: principal}, vault) do
+  def report_refusal(%Credentials.Request{name: name, principal: principal}, vault) do
     case lookup(vault, principal, name) do
       {:ok, :grant, _value, _vsn} ->
-        grants(:refused, %Grants.Request{vault: vault, name: name, principal: principal})
+        grants(:report_refusal, %Grants.Request{vault: vault, name: name, principal: principal})
 
       _secret_or_none ->
         :ok
@@ -340,7 +340,7 @@ defmodule Wardrik.Vault do
     store = Keyword.fetch!(opts, :store)
 
     settings = %{
-      store: scoped(store),
+      store: scope_store(store),
       keys: decoded,
       grants: Keyword.fetch!(opts, :grants)
     }
@@ -368,8 +368,8 @@ defmodule Wardrik.Vault do
   defp has_keys([]), do: {:error, :no_key}
   defp has_keys(_keys), do: :ok
 
-  defp unsealed({:ok, value}, kind, vsn), do: {:ok, kind, value, vsn}
-  defp unsealed({:error, reason}, kind, _vsn), do: {:error, kind, reason}
+  defp tag_unsealed({:ok, value}, kind, vsn), do: {:ok, kind, value, vsn}
+  defp tag_unsealed({:error, reason}, kind, _vsn), do: {:error, kind, reason}
 
   defp ask_again(%Grants.Request{name: name, principal: principal} = request, reason) do
     Logger.warning(
@@ -386,17 +386,17 @@ defmodule Wardrik.Vault do
     end
   end
 
-  defp nothing_granted(:refused), do: :ok
+  defp nothing_granted(:report_refusal), do: :ok
   defp nothing_granted(_renew_or_ask), do: {:error, :not_found}
 
-  defp listed(store, path) do
+  defp handle_list(store, path) do
     case {String.split(path, "/"), Wardrik.Store.lookup(store, path)} do
       {[id, name], {%Sealed{kind: kind}, _vsn}} -> [{decode(id), decode(name), kind}]
       _other -> []
     end
   end
 
-  defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_vault", format: Sealed)
+  defp scope_store(store), do: Wardrik.Store.scope(store, "wardrik_vault", format: Sealed)
 
   defp path(%Principal{id: id}, name) when is_binary(name), do: encode(id) <> "/" <> encode(name)
 

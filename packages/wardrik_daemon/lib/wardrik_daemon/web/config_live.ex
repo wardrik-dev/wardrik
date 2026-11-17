@@ -23,7 +23,7 @@ defmodule WardrikDaemon.Web.ConfigLive do
         reference: "${NAME}"
       )
 
-    case Allowed.authorized(socket.assigns.scope, "config.read", {:deployment, "config"}) do
+    case Allowed.check_authorized(socket.assigns.scope, "config.read", {:deployment, "config"}) do
       :ok -> {:ok, assign(socket, files: files(daemon.dirs))}
       {:error, error} -> {:ok, assign(socket, error: error.message)}
     end
@@ -40,10 +40,10 @@ defmodule WardrikDaemon.Web.ConfigLive do
 
     for path <- [config | policies],
         File.exists?(path),
-        do: {path, hidden(File.read!(path))}
+        do: {path, hide(File.read!(path))}
   end
 
-  defp hidden(text),
+  defp hide(text),
     do:
       text
       |> String.split("\n")

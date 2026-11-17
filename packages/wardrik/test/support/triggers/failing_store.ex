@@ -19,11 +19,11 @@ defmodule Wardrik.Triggers.Test.FailingStore do
 
   @impl true
   def put(config, path, value, opts),
-    do: written(config, fn -> ETS.put(config.name, path, value, opts) end)
+    do: write(config, fn -> ETS.put(config.name, path, value, opts) end)
 
   @impl true
   def delete(config, path, opts),
-    do: written(config, fn -> ETS.delete(config.name, path, opts) end)
+    do: write(config, fn -> ETS.delete(config.name, path, opts) end)
 
   @impl true
   def lookup(config, path), do: ETS.lookup(config.name, path)
@@ -31,7 +31,7 @@ defmodule Wardrik.Triggers.Test.FailingStore do
   @impl true
   def keys(config, prefix), do: ETS.keys(config.name, prefix)
 
-  defp written(%{writes: writes}, write) do
+  defp write(%{writes: writes}, write) do
     if :atomics.add_get(writes, 1, 1) == :atomics.get(writes, 2),
       do: {:error, :unavailable},
       else: write.()

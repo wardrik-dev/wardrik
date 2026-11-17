@@ -4,7 +4,7 @@ defmodule WardrikDaemon.Console.PrinterTest do
   alias WardrikDaemon.Console.Ansi
   alias WardrikDaemon.Console.Printer
 
-  defp printed(events, width \\ 80) do
+  defp print_events(events, width \\ 80) do
     {lines, _printer} =
       Enum.flat_map_reduce(events, Printer.new(width: width), fn event, printer ->
         Printer.event(printer, event)
@@ -17,16 +17,16 @@ defmodule WardrikDaemon.Console.PrinterTest do
   defp delta(type, text), do: event(type, %{"delta" => text})
 
   test "shows reasoning faint behind a bar, set off by a line each side, a line once it's whole" do
-    assert printed([
+    assert print_events([
              delta("reasoning.delta", "Look at "),
              delta("reasoning.delta", "the queue.\n"),
              delta("reasoning.delta", "Then count.\n")
            ]) ==
              ["", "┊ Look at the queue.", "┊ Then count."]
 
-    assert printed([delta("message.delta", "**Two** cases")]) == []
+    assert print_events([delta("message.delta", "**Two** cases")]) == []
 
-    assert printed([
+    assert print_events([
              delta("reasoning.delta", "Count them"),
              delta("message.delta", "Two cases.\n- one\n"),
              event("run.completed", %{})
@@ -34,7 +34,7 @@ defmodule WardrikDaemon.Console.PrinterTest do
 
     tool = %{"name" => "echo", "call" => %{"id" => "c1", "arguments" => %{}}}
 
-    assert printed([
+    assert print_events([
              delta("reasoning.delta", "Echo it.\n"),
              event("tool_call.started", %{"tool" => tool})
            ]) == ["", "┊ Echo it.", "", "  → echo"]
@@ -51,7 +51,7 @@ defmodule WardrikDaemon.Console.PrinterTest do
   test "says each tool call as it starts and ends, cut to the width" do
     tool = %{"name" => "web_search", "call" => %{"id" => "c1", "arguments" => %{"q" => "elixir"}}}
 
-    assert printed([
+    assert print_events([
              event("tool_call.started", %{"tool" => tool}),
              event("tool_call.completed", %{"tool" => tool, "status" => "ok"}),
              event("tool_call.completed", %{
@@ -67,12 +67,12 @@ defmodule WardrikDaemon.Console.PrinterTest do
              "  ✗ web_search was refused: No."
            ]
 
-    assert [cut] = printed([event("tool_call.started", %{"tool" => tool})], 12)
+    assert [cut] = print_events([event("tool_call.started", %{"tool" => tool})], 12)
     assert String.length(cut) <= 12
   end
 
   test "lays a markdown table out, and says what a turn waits on and how it ended" do
-    lines = printed([delta("message.delta", "| a | b |\n|---|---|\n| 1 | 2 |\nafter\n")])
+    lines = print_events([delta("message.delta", "| a | b |\n|---|---|\n| 1 | 2 |\nafter\n")])
     assert Enum.any?(lines, &(&1 =~ "│ 1"))
     assert List.last(lines) == "after"
 
@@ -81,22 +81,22 @@ defmodule WardrikDaemon.Console.PrinterTest do
       %{"id" => "c2", "message" => "Over budget.", "labels" => ["outside"]}
     ]
 
-    assert printed([event("run.interrupted", %{"interrupts" => interrupts})]) == [
+    assert print_events([event("run.interrupted", %{"interrupts" => interrupts})]) == [
              "Waiting on a person for 2 calls:",
              "  ? echo  c1  Echo?",
              "  ? the model  c2  Over budget.  (after content from outside)"
            ]
 
-    assert printed([event("run.failed", %{"error" => %{"message" => "boom"}})]) ==
+    assert print_events([event("run.failed", %{"error" => %{"message" => "boom"}})]) ==
              ["✗ the turn failed: boom"]
 
-    assert printed([event("run.cancelled", %{})]) == ["■ stopped"]
+    assert print_events([event("run.cancelled", %{})]) == ["■ stopped"]
 
-    assert printed([event("run.deadline_exceeded", %{})]) == [
+    assert print_events([event("run.deadline_exceeded", %{})]) == [
              "■ stopped: it ran past its timeout"
            ]
 
-    assert printed([
+    assert print_events([
              event("conversation.compacted", %{"messages_before" => 9, "messages_after" => 3})
            ]) ==
              ["  · compacted the history, 9 messages to 3"]
@@ -108,7 +108,7 @@ defmodule WardrikDaemon.Console.PrinterTest do
       "error" => %{"message" => "429"}
     }
 
-    assert printed([event("message.retrying", retry)]) == [
+    assert print_events([event("message.retrying", retry)]) == [
              "  ↻ model failed: 429, again in 2s (1 of 3)"
            ]
 
@@ -117,7 +117,7 @@ defmodule WardrikDaemon.Console.PrinterTest do
       "sender" => %{"id" => "acme/@jon"}
     }
 
-    assert printed([event("message.created", message)]) == ["› acme/@jon: Hi"]
-    assert printed([event("run.started", %{}), %{"type" => "other"}]) == []
+    assert print_events([event("message.created", message)]) == ["› acme/@jon: Hi"]
+    assert print_events([event("run.started", %{}), %{"type" => "other"}]) == []
   end
 end

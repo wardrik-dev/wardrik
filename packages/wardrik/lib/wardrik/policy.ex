@@ -141,14 +141,14 @@ defmodule Wardrik.Policy do
   def decode(fields, opts) when is_map(fields) do
     opts = Keyword.validate!(opts, [:name])
 
-    with :ok <- Read.known(fields, @keys, "a policy"),
+    with :ok <- Read.check_known(fields, @keys, "a policy"),
          {:ok, rules} <- Rules.decode(fields),
          {:ok, {default, by_annotation}} <-
            fields
            |> Map.get("default", :allow)
            |> Default.decode(),
-         {:ok, budget} <- decoded(Budget, fields["budget"]),
-         {:ok, judge} <- decoded(Judge, fields["judge"]) do
+         {:ok, budget} <- handle_decode(Budget, fields["budget"]),
+         {:ok, judge} <- handle_decode(Judge, fields["judge"]) do
       {:ok,
        %__MODULE__{
          name: opts[:name],
@@ -221,8 +221,8 @@ defmodule Wardrik.Policy do
     |> Judge.weigh(policy.judge, call)
   end
 
-  defp decoded(_module, nil), do: {:ok, nil}
-  defp decoded(module, fields), do: module.decode(fields)
+  defp handle_decode(_module, nil), do: {:ok, nil}
+  defp handle_decode(module, fields), do: module.decode(fields)
 
   defp budget(budget) do
     budget

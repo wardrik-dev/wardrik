@@ -39,16 +39,16 @@ defmodule WardrikDaemon.Pairings do
   @doc """
   Notes a browser sign-in by its `state`. Replaces the person's earlier sign-in to the same credential.
   """
-  @spec started(GenServer.server(), String.t(), sign_in()) :: :ok
-  def started(pairings, state, %{principal: %Principal{}} = sign_in),
+  @spec note_sign_in(GenServer.server(), String.t(), sign_in()) :: :ok
+  def note_sign_in(pairings, state, %{principal: %Principal{}} = sign_in),
     do: GenServer.call(pairings, {:started, state, sign_in})
 
   @doc """
   Takes a callback's params. Returns the code to show and its sign-in, `{:declined, sign_in}`, or `:error`.
   """
-  @spec called_back(GenServer.server(), map()) ::
+  @spec take_callback(GenServer.server(), map()) ::
           {:ok, String.t(), sign_in()} | {:declined, sign_in()} | :error
-  def called_back(pairings, params), do: GenServer.call(pairings, {:called_back, params})
+  def take_callback(pairings, params), do: GenServer.call(pairings, {:called_back, params})
 
   @doc """
   Pairs `code` with `principal`'s sign-in to `credential`. Returns the callback's params, once.
@@ -62,8 +62,8 @@ defmodule WardrikDaemon.Pairings do
     do: GenServer.call(pairings, {:pair, {principal.id, credential}, normal(code)})
 
   @doc "Returns `code` as it's shown, as `BCDF-GHJK`."
-  @spec shown(String.t()) :: String.t()
-  def shown(<<first::binary-size(4), last::binary-size(4)>>), do: first <> "-" <> last
+  @spec format_code(String.t()) :: String.t()
+  def format_code(<<first::binary-size(4), last::binary-size(4)>>), do: first <> "-" <> last
 
   @impl GenServer
   def init(nil), do: {:ok, %{}}
@@ -94,7 +94,7 @@ defmodule WardrikDaemon.Pairings do
         code = code()
         held = %{sign_ins[state] | code: code, until: now() + @lifetime}
         sign_ins = %{sign_ins | state => Map.put(held, :params, params)}
-        {:reply, {:ok, shown(code), sign_in(held)}, sign_ins}
+        {:reply, {:ok, format_code(code), sign_in(held)}, sign_ins}
 
       %{"state" => state} when is_map_key(sign_ins, state) ->
         {held, sign_ins} = Map.pop!(sign_ins, state)
@@ -111,13 +111,13 @@ defmodule WardrikDaemon.Pairings do
     expired = Enum.find(ended, fn {_state, held} -> key(held) == key end)
 
     case {waiting, expired} do
-      {{state, held}, _expired} -> paired(state, held, code, sign_ins)
+      {{state, held}, _expired} -> handle_pair(state, held, code, sign_ins)
       {nil, {state, held}} -> {:reply, {:error, {:ended, sign_in(held), state}}, sign_ins}
       {nil, nil} -> {:reply, {:error, :mismatch}, sign_ins}
     end
   end
 
-  defp paired(state, held, code, sign_ins) do
+  defp handle_pair(state, held, code, sign_ins) do
     attempts = held.attempts + 1
 
     cond do

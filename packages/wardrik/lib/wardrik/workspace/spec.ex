@@ -24,19 +24,19 @@ defmodule Wardrik.Workspace.Spec do
   @doc "Returns the mount `path` is in and the path within its tree, or `{:error, reason}`."
   @spec resolve(t(), term()) :: {:ok, Mount.t(), String.t()} | {:error, String.t()}
   def resolve(spec, path) do
-    with {:ok, path} <- Path.normalize(path), do: mounted(spec, path)
+    with {:ok, path} <- Path.normalize(path), do: mount(spec, path)
   end
 
   @doc "Returns `path` as the agent sees it, prefixed with `shared/<name>/` for a shared mount."
-  @spec shown(Mount.t(), String.t()) :: String.t()
-  def shown(%Mount{name: nil}, path), do: path
-  def shown(%Mount{name: name}, path), do: "shared/#{name}/#{path}"
+  @spec format_path(Mount.t(), String.t()) :: String.t()
+  def format_path(%Mount{name: nil}, path), do: path
+  def format_path(%Mount{name: name}, path), do: "shared/#{name}/#{path}"
 
   @doc "Returns every mount the spec reaches, its own first."
   @spec mounts(t()) :: [Mount.t()]
   def mounts(%__MODULE__{own: own, shared: shared}), do: [own | shared]
 
-  defp mounted(spec, "shared/" <> rest) do
+  defp mount(spec, "shared/" <> rest) do
     [name | path] = String.split(rest, "/", parts: 2)
 
     case {Enum.find(spec.shared, &(&1.name == name)), path} do
@@ -45,5 +45,5 @@ defmodule Wardrik.Workspace.Spec do
     end
   end
 
-  defp mounted(spec, path), do: {:ok, spec.own, path}
+  defp mount(spec, path), do: {:ok, spec.own, path}
 end

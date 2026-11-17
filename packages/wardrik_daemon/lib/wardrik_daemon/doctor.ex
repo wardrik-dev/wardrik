@@ -40,9 +40,9 @@ defmodule WardrikDaemon.Doctor do
     dirs = Dirs.new(env)
     env = EnvFile.load(dirs.env_file, env)
 
-    case Config.read(dirs, env, &unchecked/1) do
+    case Config.read(dirs, env, &skip_check/1) do
       {:ok, config} ->
-        [env(dirs), configured(dirs, env, config) | checks(config, dirs, env, opts)]
+        [env(dirs), configure(dirs, env, config) | checks(config, dirs, env, opts)]
 
       {:error, why} ->
         [env(dirs), {:fail, "config", why}]
@@ -57,7 +57,7 @@ defmodule WardrikDaemon.Doctor do
     |> Enum.map(&Owl.Data.untag/1)
     |> Enum.each(&IO.puts/1)
 
-    failed(checks)
+    count_failed(checks)
   end
 
   @doc "Returns `checks` as lines, each labelled in colour by how it went."
@@ -73,20 +73,20 @@ defmodule WardrikDaemon.Doctor do
   end
 
   @doc "Returns how many of `checks` failed."
-  @spec failed([check()]) :: non_neg_integer()
-  def failed(checks), do: Enum.count(checks, &match?({:fail, _name, _found}, &1))
+  @spec count_failed([check()]) :: non_neg_integer()
+  def count_failed(checks), do: Enum.count(checks, &match?({:fail, _name, _found}, &1))
 
   defp label(:ok), do: Owl.Data.tag("ok  ", :green)
   defp label(:warn), do: Owl.Data.tag("warn", :yellow)
   defp label(:fail), do: Owl.Data.tag("FAIL", :red)
 
-  defp unchecked(name), do: {:ok, "${#{name}}"}
+  defp skip_check(name), do: {:ok, "${#{name}}"}
 
   @doc "Returns `count` of `thing`, as `1 key` or `2 keys`."
-  @spec counted(non_neg_integer(), String.t()) :: String.t()
-  def counted(1, thing), do: "1 #{thing}"
-  def counted(count, "policy"), do: "#{count} policies"
-  def counted(count, thing), do: "#{count} #{thing}s"
+  @spec pluralize(non_neg_integer(), String.t()) :: String.t()
+  def pluralize(1, thing), do: "1 #{thing}"
+  def pluralize(count, "policy"), do: "#{count} policies"
+  def pluralize(count, thing), do: "#{count} #{thing}s"
 
   defp checks(config, dirs, env, opts) do
     [storage(config, dirs), vault(config, dirs, env), brave(config)] ++
@@ -98,18 +98,18 @@ defmodule WardrikDaemon.Doctor do
       oauth(config) ++
       Enum.map(config.warnings, &{:warn, "config", &1}) ++
       WardrikDaemon.Doctor.Agents.check(config, dirs) ++
-      saved(dirs, req_options(opts)) ++
+      save(dirs, req_options(opts)) ++
       assistant(config, dirs)
   end
 
   defp req_options(opts), do: Keyword.get(opts, :req_options, [])
 
   # Saved states are the running daemon's to read; with none running, the other checks say so.
-  defp saved(dirs, req_options) do
+  defp save(dirs, req_options) do
     path = Dirs.data_home(dirs, "cli_token")
 
     with {:ok, %{url: url, secret: secret}} <- CLIToken.read(path),
-         {:ok, agents} <- listed(%Client{url: url, secret: secret, req_options: req_options}, %{}) do
+         {:ok, agents} <- list(%Client{url: url, secret: secret, req_options: req_options}, %{}) do
       agents
       |> Enum.filter(&(&1["status"] == "unreadable"))
       |> unreadable_checks()
@@ -121,7 +121,7 @@ defmodule WardrikDaemon.Doctor do
   defp unreadable_checks([]), do: [{:ok, "saved", "every agent's saved state reads"}]
   defp unreadable_checks(agents), do: Enum.map(agents, &unreadable/1)
 
-  defp listed(client, input) do
+  defp list(client, input) do
     with {:ok, %{"agents" => agents} = page} <- Client.run(client, "agents.list", input),
          do: more(client, agents, page["next"])
   end
@@ -129,16 +129,16 @@ defmodule WardrikDaemon.Doctor do
   defp more(_client, agents, nil), do: {:ok, agents}
 
   defp more(client, agents, next) do
-    with {:ok, rest} <- listed(client, %{"after" => next}), do: {:ok, agents ++ rest}
+    with {:ok, rest} <- list(client, %{"after" => next}), do: {:ok, agents ++ rest}
   end
 
   defp unreadable(%{"id" => id, "problem" => problem} = agent) do
     {:fail, "saved",
-     "#{named(id, agent["conversation"])} can't start, as its saved state can't be read: #{problem}. Define it again to start it over: `wardrik reload` does for agents in agents/."}
+     "#{describe_agent(id, agent["conversation"])} can't start, as its saved state can't be read: #{problem}. Define it again to start it over: `wardrik reload` does for agents in agents/."}
   end
 
-  defp named(id, nil), do: id
-  defp named(id, conversation), do: "#{id}'s conversation #{conversation}"
+  defp describe_agent(id, nil), do: id
+  defp describe_agent(id, conversation), do: "#{id}'s conversation #{conversation}"
 
   # An assistant.md from an older init lacks tools init gives now. A file that doesn't read is
   # the agents check's to report.
@@ -178,7 +178,7 @@ defmodule WardrikDaemon.Doctor do
     end
   end
 
-  defp configured(dirs, env, _config) do
+  defp configure(dirs, env, _config) do
     path = Dirs.config(dirs, "config.yaml")
 
     sealable = Config.sealable(dirs)
@@ -214,7 +214,7 @@ defmodule WardrikDaemon.Doctor do
 
   defp sealing(from, keys) do
     if length(Wardrik.Vault.Sealed.decode_keys(keys)) == length(keys),
-      do: {:ok, "vault", "#{counted(length(keys), "key")} from #{from}, which seals"},
+      do: {:ok, "vault", "#{pluralize(length(keys), "key")} from #{from}, which seals"},
       else: {:fail, "vault", "a key from #{from} isn't 32 bytes of base64"}
   end
 
@@ -294,7 +294,7 @@ defmodule WardrikDaemon.Doctor do
 
   defp channel({name, {adapter, opts}}, req_options) do
     with how when is_binary(how) <- taking(opts),
-         {:ok, reached} <- reached(adapter, opts, req_options) do
+         {:ok, reached} <- reach(adapter, opts, req_options) do
       {:ok, "channel #{name}", Enum.join([how, reached, members(opts[:identities])], "; ")}
     else
       nil ->
@@ -306,7 +306,7 @@ defmodule WardrikDaemon.Doctor do
     end
   end
 
-  defp reached(adapter, opts, req_options) do
+  defp reach(adapter, opts, req_options) do
     cond do
       Enum.any?([opts[:token], opts[:app_token]], &sealed?/1) ->
         {:ok, "its tokens are checked as the daemon starts, since the vault holds them"}
@@ -332,7 +332,7 @@ defmodule WardrikDaemon.Doctor do
   end
 
   defp members({_module, opts}) do
-    mapped = "#{counted(map_size(opts[:members]), "member")} mapped to users"
+    mapped = "#{pluralize(map_size(opts[:members]), "member")} mapped to users"
     domains = for {domain, org} <- opts[:domains], do: "#{domain} members to #{org}"
     Enum.join([mapped | domains] ++ ["others refused"], ", ")
   end

@@ -1,7 +1,7 @@
 defmodule Wardrik.Test.Allow do
   @moduledoc """
   Allows everything, for tests that only need access to work, unless the scope's context holds
-  `:decide`, a function of the request that decides it. See `Wardrik.Test.Wardrik.limited/3`.
+  `:decide`, a function of the request that decides it. See `Wardrik.Test.Wardrik.build_limited_scope/3`.
   """
 
   @behaviour Wardrik.Authorizer

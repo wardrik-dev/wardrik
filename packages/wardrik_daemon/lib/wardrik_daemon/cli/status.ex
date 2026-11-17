@@ -60,11 +60,11 @@ defmodule WardrikDaemon.CLI.Status do
   end
 
   @doc "Returns the status once `event` is seen at `now`."
-  @spec seen(t(), map(), integer()) :: t()
-  def seen(status, %{"type" => "wardrik." <> type} = event, now),
+  @spec apply_event(t(), map(), integer()) :: t()
+  def apply_event(status, %{"type" => "wardrik." <> type} = event, now),
     do: did(status, type, event["data"] || %{}, now)
 
-  def seen(status, _event, _now), do: status
+  def apply_event(status, _event, _now), do: status
 
   # Time spent waiting to start isn't the turn's.
   defp did(status, "run.started", _data, now), do: %{status | doing: "thinking", since: now}

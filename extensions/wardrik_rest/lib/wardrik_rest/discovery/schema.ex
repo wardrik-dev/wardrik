@@ -39,11 +39,11 @@ defmodule WardrikRest.Discovery.Schema do
   defp short(name, prefixes) do
     case split(name) do
       [_prefix, rest] -> rest
-      [name] -> Enum.find_value(prefixes, name, &trimmed(name, &1 <> "_"))
+      [name] -> Enum.find_value(prefixes, name, &trim(name, &1 <> "_"))
     end
   end
 
-  defp trimmed(name, prefix) do
+  defp trim(name, prefix) do
     if String.starts_with?(name, prefix), do: String.replace_prefix(name, prefix, "")
   end
 
@@ -56,7 +56,7 @@ defmodule WardrikRest.Discovery.Schema do
       |> enum()
 
     schema = if param["repeated"], do: %{"type" => "array", "items" => one}, else: one
-    described(schema, param["description"])
+    describe(schema, param["description"])
   end
 
   @doc """
@@ -73,7 +73,7 @@ defmodule WardrikRest.Discovery.Schema do
   end
 
   defp json(%{"$ref" => ref} = node, names),
-    do: described(%{"$ref" => Map.get(names, ref, ref)}, node["description"])
+    do: describe(%{"$ref" => Map.get(names, ref, ref)}, node["description"])
 
   defp json(node, names) do
     node
@@ -81,8 +81,8 @@ defmodule WardrikRest.Discovery.Schema do
     |> Map.reject(fn {key, value} -> key == "type" and value == "any" end)
     |> enum()
     |> put("properties", properties(node["properties"], names))
-    |> put("items", nested(node["items"], names))
-    |> put("additionalProperties", nested(node["additionalProperties"], names))
+    |> put("items", resolve_nested(node["items"], names))
+    |> put("additionalProperties", resolve_nested(node["additionalProperties"], names))
   end
 
   defp properties(nil, _names), do: nil
@@ -93,13 +93,13 @@ defmodule WardrikRest.Discovery.Schema do
     end
   end
 
-  defp nested(%{} = node, names) do
+  defp resolve_nested(%{} = node, names) do
     node
     |> json(names)
     |> Map.delete("description")
   end
 
-  defp nested(_none, _names), do: nil
+  defp resolve_nested(_none, _names), do: nil
 
   defp enum(%{"enum" => values} = schema) do
     case values -- @placeholders do
@@ -113,6 +113,6 @@ defmodule WardrikRest.Discovery.Schema do
   defp put(schema, _key, nil), do: schema
   defp put(schema, key, value), do: Map.put(schema, key, value)
 
-  defp described(schema, nil), do: schema
-  defp described(schema, description), do: Map.put(schema, "description", description)
+  defp describe(schema, nil), do: schema
+  defp describe(schema, description), do: Map.put(schema, "description", description)
 end

@@ -18,7 +18,7 @@ defmodule WardrikACP.TestGate do
         {:ok, %{context | response: {:error, "Denied."}}}
 
       call.name in Keyword.get(opts, :ask, []) ->
-        asked(context, call, next)
+        ask(context, call, next)
 
       true ->
         next.(context)
@@ -27,7 +27,7 @@ defmodule WardrikACP.TestGate do
 
   def call(context, next, _opts), do: next.(context)
 
-  defp asked(%Context{resume: %Resume{input: %{} = input}} = context, call, next) do
+  defp ask(%Context{resume: %Resume{input: %{} = input}} = context, call, next) do
     case Map.get(input, call.id) do
       :approve -> next.(context)
       {:deny, reason} -> {:ok, %{context | response: {:error, reason}}}
@@ -35,5 +35,5 @@ defmodule WardrikACP.TestGate do
     end
   end
 
-  defp asked(context, _call, _next), do: {:park, :ask, context}
+  defp ask(context, _call, _next), do: {:park, :ask, context}
 end

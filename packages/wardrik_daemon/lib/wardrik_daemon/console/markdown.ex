@@ -133,8 +133,8 @@ defmodule WardrikDaemon.Console.Markdown do
       match = Regex.run(@heading, text) -> heading(match)
       Regex.match?(@rule, text) -> Owl.Data.tag("───────", @faint)
       match = Regex.run(@bullet, text) -> bullet(match)
-      match = Regex.run(@ordered, text) -> ordered(match)
-      match = Regex.run(@quoted, text) -> quoted(match)
+      match = Regex.run(@ordered, text) -> order(match)
+      match = Regex.run(@quoted, text) -> render_quote(match)
       true -> inline(text)
     end
   end
@@ -154,11 +154,11 @@ defmodule WardrikDaemon.Console.Markdown do
     [indent, Owl.Data.tag("• ", :cyan), inline(text)]
   end
 
-  defp ordered([_whole, indent, number, text]) do
+  defp order([_whole, indent, number, text]) do
     [indent, Owl.Data.tag("#{number}. ", :cyan), inline(text)]
   end
 
-  defp quoted([_whole, text]) do
+  defp render_quote([_whole, text]) do
     fragments = inline(text)
     [Owl.Data.tag("│ ", :cyan), Owl.Data.tag(fragments, @faint)]
   end
@@ -213,15 +213,15 @@ defmodule WardrikDaemon.Console.Markdown do
 
   defp fragment(fragment) do
     cond do
-      match = Regex.run(~r/^`(.+)`$/s, fragment) -> tagged(match, :cyan)
-      match = Regex.run(~r/^\*\*(.+)\*\*$/s, fragment) -> tagged(match, :bright)
-      match = Regex.run(~r/^[*_](.+)[*_]$/s, fragment) -> tagged(match, :italic)
+      match = Regex.run(~r/^`(.+)`$/s, fragment) -> tag_text(match, :cyan)
+      match = Regex.run(~r/^\*\*(.+)\*\*$/s, fragment) -> tag_text(match, :bright)
+      match = Regex.run(~r/^[*_](.+)[*_]$/s, fragment) -> tag_text(match, :italic)
       match = Regex.run(~r/^\[(.*)\]\((.+)\)$/s, fragment) -> link(match)
       true -> fragment
     end
   end
 
-  defp tagged([_whole, text], sequence), do: Owl.Data.tag(text, sequence)
+  defp tag_text([_whole, text], sequence), do: Owl.Data.tag(text, sequence)
 
   defp link([_whole, "", url]), do: link([nil, url, url])
   defp link([_whole, text, url]), do: Owl.Data.tag(text, [{:hyperlink, url}, :underline])

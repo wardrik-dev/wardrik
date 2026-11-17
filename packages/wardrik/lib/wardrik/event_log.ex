@@ -116,7 +116,7 @@ defmodule Wardrik.EventLog do
 
     for cloud_event <- Encoder.encode(event, settings.deployment) do
       published = publish(settings, log, cloud_event)
-      changed(settings, log, published, event.time, event.metadata[:span])
+      change(settings, log, published, event.time, event.metadata[:span])
       sunk(settings, published)
     end
 
@@ -149,7 +149,7 @@ defmodule Wardrik.EventLog do
   """
   @spec append(atom(), agent(), {String.t(), String.t(), map()}, keyword()) :: :ok
   def append(events, agent, {type, subject, data}, opts \\ []) do
-    log = logged(agent)
+    log = log(agent)
     settings = settings(events)
     time = DateTime.utc_now()
     span = Keyword.get(opts, :span)
@@ -165,7 +165,7 @@ defmodule Wardrik.EventLog do
       )
 
     published = publish(settings, log, cloud_event)
-    changed(settings, log, published, time, span)
+    change(settings, log, published, time, span)
     sunk(settings, published)
   end
 
@@ -291,7 +291,7 @@ defmodule Wardrik.EventLog do
   def activity(events, agent) do
     events
     |> settings()
-    |> loaded(logged(agent))
+    |> load(log(agent))
   end
 
   @doc """
@@ -303,12 +303,12 @@ defmodule Wardrik.EventLog do
   """
   @spec view(atom(), agent(), module(), keyword()) :: {term(), Cursor.t()}
   def view(events, agent, view, opts \\ []) do
-    log = logged(agent)
+    log = log(agent)
 
     events
     |> settings()
     |> Reader.all(log)
-    |> Enum.reduce({view.init(opts), %{log => 0}}, &folded(view, &1, &2))
+    |> Enum.reduce({view.init(opts), %{log => 0}}, &fold(view, &1, &2))
   end
 
   @doc """
@@ -394,21 +394,21 @@ defmodule Wardrik.EventLog do
   defp publish(settings, log, cloud_event) do
     if WardrikProtocol.live?(cloud_event["type"]),
       do: Subscribers.publish(settings.group, log, cloud_event),
-      else: kept(settings, log, cloud_event)
+      else: keep(settings, log, cloud_event)
   end
 
   # Sinks come last, once what the event changed is in place for whoever they tell.
   defp sunk(settings, {:kept, event}), do: Wardrik.Sink.deliver(settings.sinks, event)
   defp sunk(_settings, _not_kept), do: :ok
 
-  defp folded(view, {_log, _sequence, event} = entry, {state, cursor}),
-    do: {view.handle_event(event, state), Reader.advanced(cursor, [entry])}
+  defp fold(view, {_log, _sequence, event} = entry, {state, cursor}),
+    do: {view.handle_event(event, state), Reader.advance_cursor(cursor, [entry])}
 
   # Only kept events change what an agent is doing, so activity is a fold of the log.
-  defp changed(settings, log, {:kept, event}, time, span) do
+  defp change(settings, log, {:kept, event}, time, span) do
     case Heads.update(settings.heads, {:activity, log},
            initial: {0, Activity.init([])},
-           with: &advanced(settings, log, event, &1)
+           with: &advance(settings, log, event, &1)
          ) do
       {{_before, same}, {_after, same}} ->
         :ok
@@ -422,49 +422,49 @@ defmodule Wardrik.EventLog do
     end
   end
 
-  defp changed(_settings, _log, _not_kept, _time, _span), do: :ok
+  defp change(_settings, _log, _not_kept, _time, _span), do: :ok
 
   # The cache holds the activity with the last sequence it folded. Another node can write to the
   # log too, as when an agent moves, so a gap is read from the log.
-  defp advanced(settings, log, event, {sequence, activity} = cached) do
+  defp advance(settings, log, event, {sequence, activity} = cached) do
     if Log.sequence(event) == sequence + 1,
       do: {sequence + 1, Activity.handle_event(event, activity)},
-      else: caught_up(settings, log, cached)
+      else: catch_up(settings, log, cached)
   end
 
-  defp loaded(settings, log) do
+  defp load(settings, log) do
     {_before, {_sequence, activity}} =
       Heads.update(settings.heads, {:activity, log},
         initial: {0, Activity.init([])},
-        with: &caught_up(settings, log, &1)
+        with: &catch_up(settings, log, &1)
       )
 
     activity
   end
 
-  defp caught_up(settings, log, {sequence, _activity} = cached) do
+  defp catch_up(settings, log, {sequence, _activity} = cached) do
     case Reader.entries(settings, log, after: sequence, limit: 1) do
       [] ->
         cached
 
       [{_log, _sequence, %{"type" => "wardrik.events.dropped"}}] ->
-        refolded(settings, log)
+        refold(settings, log)
 
       [_newer] ->
         settings
         |> Reader.all(log, after: sequence)
-        |> Enum.reduce(cached, &taken/2)
+        |> Enum.reduce(cached, &take/2)
     end
   end
 
   # Retention dropped events this node never folded, so fold what's left, as after a restart.
-  defp refolded(settings, log) do
+  defp refold(settings, log) do
     settings
     |> Reader.all(log)
-    |> Enum.reduce({0, Activity.init([])}, &taken/2)
+    |> Enum.reduce({0, Activity.init([])}, &take/2)
   end
 
-  defp taken({_log, sequence, event}, {_sequence, activity}),
+  defp take({_log, sequence, event}, {_sequence, activity}),
     do: {sequence, Activity.handle_event(event, activity)}
 
   defp activity_changed(settings, {agent, _conversation} = log, activity, time, span) do
@@ -478,7 +478,7 @@ defmodule Wardrik.EventLog do
     )
   end
 
-  defp kept(settings, log, cloud_event) do
+  defp keep(settings, log, cloud_event) do
     case Log.append(settings.store, log, cloud_event, heads: settings.heads) do
       {:ok, sequenced} ->
         Subscribers.publish(settings.group, log, sequenced)
@@ -504,8 +504,8 @@ defmodule Wardrik.EventLog do
   defp after_cursor(nil), do: {:ok, %{}}
   defp after_cursor(text), do: Cursor.decode(text)
 
-  defp logged(agent) when is_binary(agent), do: {agent, nil}
-  defp logged({_agent, _conversation} = log), do: log
+  defp log(agent) when is_binary(agent), do: {agent, nil}
+  defp log({_agent, _conversation} = log), do: log
 
   defp stream_cursor(nil), do: {:ok, nil}
   defp stream_cursor(text), do: Cursor.decode(text)

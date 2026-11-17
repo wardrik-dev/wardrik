@@ -27,7 +27,7 @@ defmodule WardrikDaemon.Config.MCP do
   @doc "Returns the servers `section` names, as `Wardrik.MCP` takes them, or the key that doesn't read."
   @spec read(map()) :: {:ok, keyword()} | {:error, String.t()}
   def read(section) do
-    Options.loaded([Wardrik.MCP.Server])
+    Options.load_modules([Wardrik.MCP.Server])
     Options.each(section, &server/2)
   end
 
@@ -35,14 +35,15 @@ defmodule WardrikDaemon.Config.MCP do
     path = "mcp.#{name}"
     {transport, own} = Map.split(server, @transport)
 
-    with :ok <- managed(own, path),
+    with :ok <- manage(own, path),
          {:ok, transport} <- transport(transport, path),
          {:ok, own} <-
            own
-           |> renamed()
+           |> rename()
            |> Options.convert([], path),
          opts = [transport: transport] ++ Enum.map(own, &option/1),
-         {:ok, _server} <- Options.built(fn -> Wardrik.MCP.Server.new!(name, opts) end, path) do
+         {:ok, _server} <-
+           Options.call_builder(fn -> Wardrik.MCP.Server.new!(name, opts) end, path) do
       {:ok, opts}
     end
   end
@@ -50,7 +51,7 @@ defmodule WardrikDaemon.Config.MCP do
   defp server(name, _server),
     do: {:error, "mcp.#{name}: is a server's keys, with a command or a url"}
 
-  defp managed(own, path) do
+  defp manage(own, path) do
     case Enum.find(@managed, &Map.has_key?(own, &1)) do
       nil -> :ok
       "credential_name" -> {:error, "#{path}.credential_name: is written credential"}
@@ -58,13 +59,13 @@ defmodule WardrikDaemon.Config.MCP do
     end
   end
 
-  defp renamed(%{"credential" => name} = own) do
+  defp rename(%{"credential" => name} = own) do
     own
     |> Map.delete("credential")
     |> Map.put("credential_name", name)
   end
 
-  defp renamed(own), do: own
+  defp rename(own), do: own
 
   defp transport(%{"url" => _url, "command" => _command}, path),
     do: {:error, "#{path}: has a url or a command, not both"}

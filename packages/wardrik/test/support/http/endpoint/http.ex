@@ -20,7 +20,7 @@ defmodule Wardrik.HTTP.Test do
 
   def request(context, method, path, body \\ nil, headers \\ []) do
     method
-    |> conn(path, encoded(body))
+    |> conn(path, encode(body))
     |> put_req_header("authorization", "Bearer " <> context.secret)
     |> put_req_header("content-type", "application/json")
     |> merge_req_headers(headers)
@@ -29,7 +29,7 @@ defmodule Wardrik.HTTP.Test do
 
   def body(conn), do: JSON.decode!(conn.resp_body)
 
-  defp encoded(nil), do: ""
-  defp encoded(body) when is_binary(body), do: body
-  defp encoded(body), do: JSON.encode!(body)
+  defp encode(nil), do: ""
+  defp encode(body) when is_binary(body), do: body
+  defp encode(body), do: JSON.encode!(body)
 end

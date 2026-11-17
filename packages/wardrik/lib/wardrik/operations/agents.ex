@@ -24,7 +24,7 @@ defmodule Wardrik.Operations.Agents do
   def cancel(scope, input) do
     cancelled =
       for {agent, _conversation} = key <- Visible.keys(scope, input),
-          Agent.cancelled(scope, key, Running.whereis(scope.wardrik, key)),
+          Agent.cancel_current(scope, key, Running.whereis(scope.wardrik, key)),
           uniq: true,
           do: agent
 
@@ -43,7 +43,7 @@ defmodule Wardrik.Operations.Agents do
 
     {forgotten, failed} =
       covered
-      |> Enum.map(&{&1, Lifecycle.forgotten(scope.wardrik, &1)})
+      |> Enum.map(&{&1, Lifecycle.forget_agent(scope.wardrik, &1)})
       |> Enum.split_with(fn {_id, outcome} -> outcome == :ok end)
 
     Enum.each(forgotten, fn {id, :ok} ->
@@ -115,16 +115,16 @@ defmodule Wardrik.Operations.Agents do
          agent = Visible.agent_id(event)
          visible?.(agent)
        end)
-       |> Stream.map(fn {event, cursor} -> {event, encoded(cursor, visible?)} end)}
+       |> Stream.map(fn {event, cursor} -> {event, encode(cursor, visible?)} end)}
     end
   end
 
   defp visible_cursor(scope, input, text) do
     {:ok, cursor} = Cursor.decode(text)
-    encoded(cursor, &Visible.visible?(scope, input, &1))
+    encode(cursor, &Visible.visible?(scope, input, &1))
   end
 
-  defp encoded(cursor, visible?),
+  defp encode(cursor, visible?),
     do:
       cursor
       |> Map.filter(fn {{agent, _conversation}, _sequence} -> visible?.(agent) end)

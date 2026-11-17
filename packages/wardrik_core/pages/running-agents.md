@@ -116,7 +116,7 @@ children = [
   `:in_doubt`:
 
 ```elixir
-{:tool_calls, [{call, {:park, :in_doubt}}]} = WardrikCore.parked(agent)
+{:tool_calls, [{call, {:park, :in_doubt}}]} = WardrikCore.get_parked(agent)
 
 # Run it again
 WardrikCore.resume(agent, %{call.id => :approve})

@@ -19,7 +19,7 @@ defmodule WardrikDaemon.CLI.Triggers do
         arguments: "AGENT",
         count: 1,
         summary: "an agent's triggers, and when each runs",
-        run: &listed/3
+        run: &list/3
       },
       %Command{
         name: "trigger set",
@@ -42,12 +42,12 @@ defmodule WardrikDaemon.CLI.Triggers do
         arguments: "AGENT NAME",
         count: 2,
         summary: "remove one of an agent's triggers",
-        run: &removed/3
+        run: &remove/3
       }
     ]
   end
 
-  defp listed([agent], _flags, cx) do
+  defp list([agent], _flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, %{"definition" => definition} = read} <-
            Context.call(cx, "agent.definition", %{"agent" => id}) do
@@ -93,16 +93,16 @@ defmodule WardrikDaemon.CLI.Triggers do
     with {:ok, id} <- Context.agent(cx, agent),
          input = Map.merge(fields, %{"agent" => id, "trigger" => name}),
          {:ok, answer} <- Context.call(cx, "agent.trigger_set", input),
-         do: Context.done(cx, answer, "Set #{name}." <> next(answer))
+         do: Context.report_done(cx, answer, "Set #{name}." <> next(answer))
   end
 
   defp next(%{"next_at" => next_at}), do: " It runs next at #{next_at}."
   defp next(_answer), do: ""
 
-  defp removed([agent, name], _flags, cx) do
+  defp remove([agent, name], _flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, answer} <-
            Context.call(cx, "agent.trigger_remove", %{"agent" => id, "trigger" => name}),
-         do: Context.done(cx, answer, "Removed #{name}.")
+         do: Context.report_done(cx, answer, "Removed #{name}.")
   end
 end

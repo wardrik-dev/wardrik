@@ -52,7 +52,7 @@ defmodule WardrikDaemon.Console.Table do
 
   def lines(%__MODULE__{} = table, width) when is_integer(width) and width > 0 do
     columns = Enum.to_list(0..(length(table.header) - 1))
-    header = keyed(columns, table.header)
+    header = key_cells(columns, table.header)
 
     heading = fn column ->
       header
@@ -61,7 +61,7 @@ defmodule WardrikDaemon.Console.Table do
     end
 
     table.rows
-    |> Enum.map(&keyed(columns, &1))
+    |> Enum.map(&key_cells(columns, &1))
     |> Owl.Table.new(
       render_cell: [header: heading, body: & &1],
       border_style: :solid_rounded,
@@ -73,7 +73,7 @@ defmodule WardrikDaemon.Console.Table do
     |> Enum.map(&[indent(table), &1])
   end
 
-  defp keyed(columns, cells) do
+  defp key_cells(columns, cells) do
     columns
     |> Enum.zip(cells)
     |> Map.new()

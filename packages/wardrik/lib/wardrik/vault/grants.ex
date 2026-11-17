@@ -9,7 +9,7 @@ defmodule Wardrik.Vault.Grants do
 
     * `c:renew/2` if the principal holds it as a grant.
     * `c:ask/2` if nobody holds it, or the grant won't unseal.
-    * `c:refused/2` when a service refuses the grant.
+    * `c:report_refusal/2` when a service refuses the grant.
 
   Write new tokens with `Wardrik.Vault.put/3`, `kind: :grant` and `:if_vsn`, so two renewals never
   write over each other.
@@ -28,5 +28,5 @@ defmodule Wardrik.Vault.Grants do
   @callback ask(Request.t(), opts :: term()) :: {:authorize, String.t()} | {:error, term()}
 
   @doc "Called when a service refuses the grant the request names."
-  @callback refused(Request.t(), opts :: term()) :: :ok
+  @callback report_refusal(Request.t(), opts :: term()) :: :ok
 end

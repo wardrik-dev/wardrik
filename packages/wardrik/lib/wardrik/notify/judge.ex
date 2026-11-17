@@ -37,24 +37,24 @@ defmodule Wardrik.Notify.Judge do
   def decide(wardrik, %Notice{} = notice, judge) do
     with pid when is_pid(pid) <- Running.whereis(wardrik, {notice.agent, notice.conversation}),
          context = WardrikCore.context(pid),
-         {:ok, probability} <- judged(wardrik, context, notice, judge) do
+         {:ok, probability} <- judge(wardrik, context, notice, judge) do
       if probability >= judge.send,
         do: :send,
         else:
-          held(wardrik, context, notice, %{"probability" => probability, "send" => judge.send})
+          hold(wardrik, context, notice, %{"probability" => probability, "send" => judge.send})
     else
-      nil -> unjudged(notice, :not_running)
-      {:park, reason, _context} -> unjudged(notice, {:parked, reason})
-      {:error, reason} -> unjudged(notice, reason)
+      nil -> log_unjudged(notice, :not_running)
+      {:park, reason, _context} -> log_unjudged(notice, {:parked, reason})
+      {:error, reason} -> log_unjudged(notice, reason)
     end
   end
 
-  defp judged(wardrik, context, notice, judge) do
+  defp judge(wardrik, context, notice, judge) do
     questions = %{"send" => %{type: :boolean, instructions: judge.question}}
     state = state(wardrik, notice)
 
     with {:ok, after_step} <-
-           Context.run(context, {:step, "notify"}, &evaluated(&1, judge.model, state, questions)) do
+           Context.run(context, {:step, "notify"}, &evaluate(&1, judge.model, state, questions)) do
       Wardrik.Spending.count(
         wardrik,
         context.agent_id,
@@ -66,10 +66,10 @@ defmodule Wardrik.Notify.Judge do
     end
   end
 
-  defp evaluated(context, model, state, questions) do
+  defp evaluate(context, model, state, questions) do
     with {:ok, answers, measurements} <-
            WardrikCore.evaluate(context, model: model, state: state, questions: questions),
-         do: {:ok, %{Context.reported(context, measurements) | response: {:ok, answers}}}
+         do: {:ok, %{Context.add_reported(context, measurements) | response: {:ok, answers}}}
   end
 
   defp probability({:ok, %{"send" => %{"probability" => probability}}})
@@ -93,7 +93,7 @@ defmodule Wardrik.Notify.Judge do
     end
   end
 
-  defp held(wardrik, context, notice, data) do
+  defp hold(wardrik, context, notice, data) do
     scope = Wardrik.as(wardrik, context.principal, actor: {:agent, context.agent_id})
 
     :ok =
@@ -106,7 +106,7 @@ defmodule Wardrik.Notify.Judge do
     :hold
   end
 
-  defp unjudged(notice, reason) do
+  defp log_unjudged(notice, reason) do
     Logger.warning(
       "#{Running.describe({notice.agent, notice.conversation})}'s notice is sent unjudged: " <>
         inspect(reason)

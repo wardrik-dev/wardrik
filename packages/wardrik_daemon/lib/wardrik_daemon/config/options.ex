@@ -2,15 +2,15 @@ defmodule WardrikDaemon.Config.Options do
   @moduledoc false
 
   @doc "Loads `modules`, so the options they name exist as atoms. `Req.Steps` names `Req`'s."
-  @spec loaded([module()]) :: :ok
-  def loaded(modules), do: Enum.each(modules, &Code.ensure_loaded!/1)
+  @spec load_modules([module()]) :: :ok
+  def load_modules(modules), do: Enum.each(modules, &Code.ensure_loaded!/1)
 
   @doc """
   Returns `yaml` as `schema`'s options. `path` names the section, or is `nil` for the top level.
   """
   @spec convert(term(), keyword(), String.t() | nil) :: {:ok, keyword()} | {:error, String.t()}
   def convert(yaml, schema, path) when is_map(yaml) do
-    collected(yaml, fn {key, value} ->
+    collect(yaml, fn {key, value} ->
       with {:ok, option} <- option(key, schema, path),
            {:ok, value} <- value(schema[option], value, join(path, key)),
            do: {:ok, {option, value}}
@@ -22,13 +22,13 @@ defmodule WardrikDaemon.Config.Options do
   @doc "Converts `yaml` and checks it against `schema`. Returns the checked options, with their defaults."
   @spec validate(term(), keyword(), String.t() | nil) :: {:ok, keyword()} | {:error, String.t()}
   def validate(yaml, schema, path) do
-    with {:ok, opts} <- convert(yaml, schema, path), do: checked(opts, schema, path)
+    with {:ok, opts} <- convert(yaml, schema, path), do: validate_schema(opts, schema, path)
   end
 
   @doc "Checks `opts` against `schema`, naming `path` in the error."
-  @spec checked(keyword(), keyword() | NimbleOptions.t(), String.t() | nil) ::
+  @spec validate_schema(keyword(), keyword() | NimbleOptions.t(), String.t() | nil) ::
           {:ok, keyword()} | {:error, String.t()}
-  def checked(opts, schema, path) do
+  def validate_schema(opts, schema, path) do
     case NimbleOptions.validate(opts, schema) do
       {:ok, opts} -> {:ok, opts}
       {:error, error} -> {:error, message(error, path)}
@@ -36,8 +36,9 @@ defmodule WardrikDaemon.Config.Options do
   end
 
   @doc "Calls `build`, a library's constructor. Returns its error, naming `path`, if it raises one."
-  @spec built((-> result), String.t()) :: {:ok, result} | {:error, String.t()} when result: term()
-  def built(build, path) do
+  @spec call_builder((-> result), String.t()) :: {:ok, result} | {:error, String.t()}
+        when result: term()
+  def call_builder(build, path) do
     {:ok, build.()}
   rescue
     error in NimbleOptions.ValidationError -> {:error, message(error, path)}
@@ -49,12 +50,12 @@ defmodule WardrikDaemon.Config.Options do
           {:ok, [{term(), result}]} | {:error, String.t()}
         when result: term()
   def each(entries, read) do
-    collected(entries, fn {name, value} ->
+    collect(entries, fn {name, value} ->
       with {:ok, result} <- read.(name, value), do: {:ok, {name, result}}
     end)
   end
 
-  defp collected(enumerable, read) do
+  defp collect(enumerable, read) do
     result =
       Enum.reduce_while(enumerable, {:ok, []}, fn entry, {:ok, done} ->
         case read.(entry) do
@@ -106,12 +107,13 @@ defmodule WardrikDaemon.Config.Options do
         |> Enum.find(&(Atom.to_string(&1) == to_string(key)))
       end
 
-    if is_atom(found) and found != nil, do: {:ok, found}, else: unknown(key, schema, path)
+    if is_atom(found) and found != nil, do: {:ok, found}, else: reject_unknown(key, schema, path)
   end
 
-  defp unknown(key, [], path), do: {:error, at(join(path, to_string(key)), "isn't an option")}
+  defp reject_unknown(key, [], path),
+    do: {:error, at(join(path, to_string(key)), "isn't an option")}
 
-  defp unknown(key, schema, path),
+  defp reject_unknown(key, schema, path),
     do:
       {:error,
        at(path, "unknown options [:#{key}], valid options are: #{inspect(Keyword.keys(schema))}")}
@@ -126,22 +128,22 @@ defmodule WardrikDaemon.Config.Options do
     end
   end
 
-  defp value(spec, text, _path) when is_binary(text), do: {:ok, chosen(spec[:type], text)}
-  defp value(spec, list, _path) when is_list(list), do: {:ok, listed(spec[:type], list)}
+  defp value(spec, text, _path) when is_binary(text), do: {:ok, choose(spec[:type], text)}
+  defp value(spec, list, _path) when is_list(list), do: {:ok, list(spec[:type], list)}
   defp value(_spec, value, _path), do: {:ok, value}
 
   defp keyword?(type) when type in [:keyword_list, :non_empty_keyword_list], do: true
   defp keyword?({:or, types}), do: Enum.any?(types, &keyword?/1)
   defp keyword?(_type), do: false
 
-  defp listed({:list, type}, list),
-    do: Enum.map(list, fn item -> if is_binary(item), do: chosen(type, item), else: item end)
+  defp list({:list, type}, list),
+    do: Enum.map(list, fn item -> if is_binary(item), do: choose(type, item), else: item end)
 
-  defp listed(_type, list), do: list
+  defp list(_type, list), do: list
 
-  defp chosen({:in, choices}, text),
+  defp choose({:in, choices}, text),
     do: Enum.find(choices, text, &(is_atom(&1) and Atom.to_string(&1) == text))
 
-  defp chosen({:or, types}, text), do: Enum.reduce(types, text, &chosen/2)
-  defp chosen(_type, text), do: text
+  defp choose({:or, types}, text), do: Enum.reduce(types, text, &choose/2)
+  defp choose(_type, text), do: text
 end

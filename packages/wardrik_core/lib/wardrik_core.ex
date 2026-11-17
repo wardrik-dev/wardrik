@@ -227,7 +227,7 @@ defmodule WardrikCore do
   def list(instance \\ __MODULE__) do
     instance
     |> agents()
-    |> saved_keys()
+    |> save_keys()
     |> Enum.flat_map(&key/1)
   end
 
@@ -308,7 +308,7 @@ defmodule WardrikCore do
     |> DurableServer.Supervisor.stream_all_server_info()
     |> Enum.flat_map(fn info ->
       keys = key(info.key)
-      Enum.map(keys, &{&1, placed(info)})
+      Enum.map(keys, &{&1, place(info)})
     end)
     |> Map.new()
   end
@@ -342,7 +342,7 @@ defmodule WardrikCore do
   @spec move(atom(), agent(), to: String.t()) :: {:ok, pid()} | {:error, term()}
   def move(instance \\ __MODULE__, agent, args) do
     with {:ok, target} <- node(Keyword.fetch!(args, :to), nodes(instance)),
-         :ok <- saved(instance, keyed(agent)) do
+         :ok <- save(instance, to_key(agent)) do
       child = {WardrikCore.Agent, key: durable(agent), initial_state: %{}}
       supervisor = agents(instance)
 
@@ -378,8 +378,8 @@ defmodule WardrikCore do
 
   Parked tool calls return `{:tool_calls, [{call, outcome}]}`.
   """
-  @spec parked(GenServer.server()) :: term() | nil
-  def parked(agent), do: GenServer.call(agent, :parked)
+  @spec get_parked(GenServer.server()) :: term() | nil
+  def get_parked(agent), do: GenServer.call(agent, :parked)
 
   @doc """
   Resumes a parked turn, passing `input` to whatever parked it.
@@ -411,10 +411,10 @@ defmodule WardrikCore do
           questions: questions
         )
 
-      context = Wardrik.Context.reported(context, measurements)
+      context = Wardrik.Context.add_reported(context, measurements)
 
   Returns each answer by question name, and what the call used. Its span, the step
-  `{:evaluate, model}`, reports what it used, so add it with `Wardrik.Context.reported/2`.
+  `{:evaluate, model}`, reports what it used, so add it with `Wardrik.Context.add_reported/2`.
   """
   @spec evaluate(Context.t(),
           model: String.t(),
@@ -424,16 +424,20 @@ defmodule WardrikCore do
   def evaluate(%Context{} = context, args) do
     model = Keyword.fetch!(args, :model)
 
-    case WardrikCore.Telemetry.span(context, {:evaluate, model}, &evaluated(&1, model, args)) do
+    case WardrikCore.Telemetry.span(
+           context,
+           {:evaluate, model},
+           &handle_evaluate(&1, model, args)
+         ) do
       {:ok, %Context{response: {:ok, answers}} = evaluated} ->
-        {:ok, answers, measured(context, evaluated)}
+        {:ok, answers, measure(context, evaluated)}
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp evaluated(context, model, args) do
+  defp handle_evaluate(context, model, args) do
     spec = Context.spec(context, model)
     all = Context.model_options(context, model)
 
@@ -449,7 +453,7 @@ defmodule WardrikCore do
     end
   end
 
-  defp measured(%Context{measurements: before}, %Context{measurements: now}) do
+  defp measure(%Context{measurements: before}, %Context{measurements: now}) do
     now
     |> Map.new(fn {key, amount} -> {key, amount - Map.get(before, key, 0)} end)
     |> Map.reject(fn {_key, amount} -> amount == 0 end)
@@ -511,8 +515,8 @@ defmodule WardrikCore do
     end
   end
 
-  defp placed(%{running: true, node: node}), do: to_string(node)
-  defp placed(_info), do: nil
+  defp place(%{running: true, node: node}), do: to_string(node)
+  defp place(_info), do: nil
 
   defp node(node, nodes) do
     if node in nodes,
@@ -520,39 +524,39 @@ defmodule WardrikCore do
       else: {:error, :no_such_node}
   end
 
-  defp saved(instance, key) do
+  defp save(instance, key) do
     if key in list(instance), do: :ok, else: {:error, :not_found}
   end
 
-  defp keyed(agent_id) when is_binary(agent_id), do: {agent_id, nil}
-  defp keyed({_agent_id, _conversation} = key), do: key
+  defp to_key(agent_id) when is_binary(agent_id), do: {agent_id, nil}
+  defp to_key({_agent_id, _conversation} = key), do: key
 
   @doc """
   Returns the key the agent's state is saved under in the instance's backend.
 
-      WardrikCore.saved_key({"acme.drafts", nil})
+      WardrikCore.build_state_key({"acme.drafts", nil})
       #=> "wardrik/agents/acme.drafts"
   """
-  @spec saved_key(atom(), String.t() | {String.t(), String.t() | nil}) :: String.t()
-  def saved_key(instance \\ __MODULE__, agent) do
+  @spec build_state_key(atom(), String.t() | {String.t(), String.t() | nil}) :: String.t()
+  def build_state_key(instance \\ __MODULE__, agent) do
     %{prefix: prefix, storage_backend: %{state: backend}} =
       instance
       |> agents()
       |> DurableServer.Supervisor.__get_config__()
 
-    Prefixed.stored(backend, prefix <> durable(agent))
+    Prefixed.prefix_key(backend, prefix <> durable(agent))
   end
 
   # DurableServer keys are binaries: each id is encoded on its own, so no id is ever split.
   defp durable(agent) do
-    {agent_id, conversation} = keyed(agent)
+    {agent_id, conversation} = to_key(agent)
     ids = Enum.reject([agent_id, conversation], &is_nil/1)
     Enum.map_join(["agents" | Enum.map(ids, &URI.encode_www_form/1)], "/", & &1)
   end
 
   # DurableServer's public listing reads every server's state, one read per key. Its backend
   # lists keys alone, so read that listing until DurableServer offers one.
-  defp saved_keys(supervisor) do
+  defp save_keys(supervisor) do
     %{storage_backend: backend, prefix: prefix} =
       DurableServer.Supervisor.__get_config__(supervisor)
 

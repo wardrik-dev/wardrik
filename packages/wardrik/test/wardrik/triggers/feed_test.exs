@@ -40,9 +40,9 @@ defmodule Wardrik.Triggers.FeedTest do
   test "finds the entries not seen before, oldest first" do
     {:ok, entries} = Feed.parse(@rss)
 
-    assert {[%{id: "r-2"}], ["r-2", "r-1"]} = Feed.unseen(entries, ["r-1"])
-    assert {[%{id: "r-1"}, %{id: "r-2"}], ["r-2", "r-1"]} = Feed.unseen(entries, [])
-    assert {[], ["r-2", "r-1"]} = Feed.unseen(entries, ["r-2", "r-1"])
+    assert {[%{id: "r-2"}], ["r-2", "r-1"]} = Feed.filter_unseen(entries, ["r-1"])
+    assert {[%{id: "r-1"}, %{id: "r-2"}], ["r-2", "r-1"]} = Feed.filter_unseen(entries, [])
+    assert {[], ["r-2", "r-1"]} = Feed.filter_unseen(entries, ["r-2", "r-1"])
   end
 
   test "writes the entries under the prompt, twenty at most" do

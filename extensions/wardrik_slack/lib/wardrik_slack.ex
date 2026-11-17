@@ -137,10 +137,10 @@ defmodule WardrikSlack do
   def install_url(%Install{owner: owner, return_to: return_to}, channel),
     do: WardrikSlack.Install.url(channel, owner, return_to: return_to)
 
-  @doc "Adds the app to a workspace once Slack sends someone back. See `WardrikSlack.Install.installed/3`."
+  @doc "Adds the app to a workspace once Slack sends someone back. See `WardrikSlack.Install.complete_install/3`."
   @impl Wardrik.Chat
-  def installed(%Install{owner: owner, query: query}, channel),
-    do: WardrikSlack.Install.installed(channel, owner, query)
+  def complete_install(%Install{owner: owner, query: query}, channel),
+    do: WardrikSlack.Install.complete_install(channel, owner, query)
 
   @doc """
   Uninstalls the app from `workspace` and forgets the workspace.
@@ -172,7 +172,7 @@ defmodule WardrikSlack do
 
     if shown?(workspace, outbound),
       do: {:skip, "but its turn was in a Slack thread, which shows it"},
-      else: with({:ok, _posted} <- posted(workspace, outbound), do: :ok)
+      else: with({:ok, _posted} <- post_status(workspace, outbound), do: :ok)
   end
 
   # A turn in one of the workspace's threads is answered there; its notice would repeat it.
@@ -181,7 +181,7 @@ defmodule WardrikSlack do
 
   defp shown?(_workspace, _outbound), do: false
 
-  defp posted(workspace, %Outbound{room: room, thread: thread, body: {:status, label}}),
+  defp post_status(workspace, %Outbound{room: room, thread: thread, body: {:status, label}}),
     do:
       API.post_in(workspace, "assistant.threads.setStatus", %{
         channel_id: room,
@@ -189,28 +189,28 @@ defmodule WardrikSlack do
         status: label
       })
 
-  defp posted(workspace, %Outbound{room: room, body: {:stopped, answering}} = outbound) do
-    :ok = Messages.stopped(workspace, room, answering)
-    posted(workspace, %{outbound | body: {:status, ""}})
+  defp post_status(workspace, %Outbound{room: room, body: {:stopped, answering}} = outbound) do
+    :ok = Messages.mark_stopped(workspace, room, answering)
+    post_status(workspace, %{outbound | body: {:status, ""}})
   end
 
-  defp posted(workspace, %Outbound{room: room, body: {:reply, text, answering}} = outbound) do
+  defp post_status(workspace, %Outbound{room: room, body: {:reply, text, answering}} = outbound) do
     with {:ok, posted} <- message(workspace, outbound, reply(text)) do
-      :ok = Messages.answered(workspace, room, answering)
+      :ok = Messages.mark_answered(workspace, room, answering)
       {:ok, posted}
     end
   end
 
-  defp posted(workspace, %Outbound{body: {:waiting, calls}} = outbound),
+  defp post_status(workspace, %Outbound{body: {:waiting, calls}} = outbound),
     do: message(workspace, outbound, WardrikSlack.Waiting.message(calls))
 
-  defp posted(workspace, %Outbound{body: {:failed, reason}} = outbound),
+  defp post_status(workspace, %Outbound{body: {:failed, reason}} = outbound),
     do: message(workspace, outbound, %{text: ":warning: It stopped with an error: #{reason}"})
 
-  defp posted(workspace, %Outbound{body: {:notice, notice}} = outbound),
+  defp post_status(workspace, %Outbound{body: {:notice, notice}} = outbound),
     do: message(workspace, outbound, WardrikSlack.Notices.message(notice))
 
-  defp posted(workspace, %Outbound{body: {:said, text}} = outbound),
+  defp post_status(workspace, %Outbound{body: {:said, text}} = outbound),
     do: message(workspace, outbound, %{text: text, blocks: [Blocks.context(text)]})
 
   defp reply(""), do: %{text: "_It answered nothing._"}

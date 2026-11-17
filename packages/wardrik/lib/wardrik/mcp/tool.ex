@@ -16,8 +16,8 @@ defmodule Wardrik.MCP.Tool do
   @margin :timer.seconds(1)
   @server_error -32_000
 
-  @spec offered(Server.t(), [map()]) :: [Wardrik.Tool.t()]
-  def offered(server, definitions) do
+  @spec build_offered(Server.t(), [map()]) :: [Wardrik.Tool.t()]
+  def build_offered(server, definitions) do
     definitions
     |> Enum.filter(fn definition -> Server.offers?(server, definition["name"]) end)
     |> Enum.map(&new(server, &1))
@@ -42,7 +42,7 @@ defmodule Wardrik.MCP.Tool do
       description:
         "Connects to #{server.name} as whoever you act for, signing in first if they must. Its tools come with the next turn.",
       schema: %{"type" => "object", "properties" => %{}},
-      run: fn _arguments, context -> connected(server, context) end,
+      run: fn _arguments, context -> handle_connect(server, context) end,
       annotations: [read_only: true, idempotent: true]
     )
   end
@@ -83,8 +83,8 @@ defmodule Wardrik.MCP.Tool do
     case client(server, context) do
       {:ok, client} ->
         server
-        |> called(client, name, arguments)
-        |> refused(server, name, arguments, context, attempt)
+        |> handle_call(client, name, arguments)
+        |> refuse(server, name, arguments, context, attempt)
 
       {:park, authorization} ->
         {:park, authorization}
@@ -95,20 +95,20 @@ defmodule Wardrik.MCP.Tool do
     end
   end
 
-  defp refused(called, %Server{credential_name: name} = server, tool, arguments, context, :first)
+  defp refuse(called, %Server{credential_name: name} = server, tool, arguments, context, :first)
        when is_binary(name) do
     if Connection.refused?(called) do
       Connection.refuse(server, context)
       call(server, tool, arguments, context, :again)
     else
-      answered(server, called, context)
+      handle_answer(server, called, context)
     end
   end
 
-  defp refused(called, server, _tool, _arguments, context, _attempt),
-    do: answered(server, called, context)
+  defp refuse(called, server, _tool, _arguments, context, _attempt),
+    do: handle_answer(server, called, context)
 
-  defp connected(server, context) do
+  defp handle_connect(server, context) do
     case Connection.open(server, context) do
       {:ok, _client} -> {:ok, "Connected to #{server.name}. Its tools come with the next turn."}
       {:park, authorization} -> {:park, authorization}
@@ -121,7 +121,7 @@ defmodule Wardrik.MCP.Tool do
 
   defp client(server, context), do: Connection.open(server, context)
 
-  defp answered(
+  defp handle_answer(
          server,
          {:error, %Anubis.MCP.Error{code: @server_error} = error} = called,
          context
@@ -135,14 +135,14 @@ defmodule Wardrik.MCP.Tool do
       else: answer(server, called, context)
   end
 
-  defp answered(server, called, context), do: answer(server, called, context)
+  defp handle_answer(server, called, context), do: answer(server, called, context)
 
   defp answer(server, called, context) do
     {tag, output} = Result.answer(called, server.max_result_bytes)
     {tag, output, Context.measure(context, cost(server.cost, called))}
   end
 
-  defp called(server, client, name, arguments) do
+  defp handle_call(server, client, name, arguments) do
     Anubis.Client.call_tool(client, name, arguments, timeout: server.timeout)
   catch
     :exit, _reason ->

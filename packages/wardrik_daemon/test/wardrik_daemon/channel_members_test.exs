@@ -78,6 +78,6 @@ defmodule WardrikDaemon.ChannelMembersTest do
 
     assert {:error, why} = Workspace.member_scope(slack, @stranger)
     assert why =~ "Ask an admin"
-    assert Wardrik.Chat.Workspace.offered(slack, @stranger) == []
+    assert Wardrik.Chat.Workspace.list_offered_agents(slack, @stranger) == []
   end
 end

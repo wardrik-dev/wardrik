@@ -91,7 +91,7 @@ defmodule Wardrik.MCP.ServerTest do
         owner: "acme"
     }
 
-    assert {:ok, %Server{transport: {:streamable_http, opts}}} = Server.resolved(server)
+    assert {:ok, %Server{transport: {:streamable_http, opts}}} = Server.resolve_headers(server)
     assert opts[:headers] == %{"authorization" => "Bearer key", "x-team" => "team"}
 
     assert Server.names?(server, "KEY")

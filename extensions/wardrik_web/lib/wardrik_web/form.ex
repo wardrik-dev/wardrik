@@ -62,7 +62,7 @@ defmodule WardrikWeb.Form do
   def kind(%{"enum" => [_ | _]}, _name), do: :choice
 
   def kind(%{"type" => [_ | _] = types} = schema, name),
-    do: kind(%{schema | "type" => typed(types)}, name)
+    do: kind(%{schema | "type" => pick_type(types)}, name)
 
   def kind(%{"type" => "string"}, name) when name in @long, do: :long
   def kind(%{"type" => "string"}, _name), do: :text
@@ -75,7 +75,7 @@ defmodule WardrikWeb.Form do
 
   def kind(_schema, _name), do: :json
 
-  defp typed(types), do: Enum.find(types, "string", &(&1 != "null"))
+  defp pick_type(types), do: Enum.find(types, "string", &(&1 != "null"))
 
   ## Values to params
 

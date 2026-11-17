@@ -20,7 +20,7 @@ defmodule WardrikCore.Telemetry do
     * `[:wardrik_core, :step, :start]` - `step`, `span`, and `model` for `:generate`.
     * `[:wardrik_core, :step, :stop]` - `step`, `span`, `status`, `attributes`, and `response` or
       `reason`. Measures `duration` and what the step measured, less what its own steps' events
-      report (`Wardrik.Context.reported/2`). A `WardrikCore.evaluate/2` call is the step
+      report (`Wardrik.Context.add_reported/2`). A `WardrikCore.evaluate/2` call is the step
       `{:evaluate, model}`, with its answers as `response`.
     * `[:wardrik_core, :step, :exception]` - `step`, `span`, `kind`, `reason`, `stacktrace`.
     * `[:wardrik_core, :subagent, :started]` - `span`, `agent`, `prompt`.
@@ -40,7 +40,7 @@ defmodule WardrikCore.Telemetry do
           Wardrik.Middleware.result()
   def span(%Context{} = context, step, fun) do
     inner = %{context | step: step, span: child(context, step), attributes: principals(context)}
-    start = started(inner, step)
+    start = start(inner, step)
 
     began = System.monotonic_time()
 
@@ -56,14 +56,14 @@ defmodule WardrikCore.Telemetry do
 
       measured =
         result
-        |> measured(context)
+        |> measure(context)
         |> Map.put(:duration, System.monotonic_time() - began)
 
       Event.emit(
         context,
         [:wardrik_core, :step, :stop],
         measured,
-        Map.merge(start, ended(result))
+        Map.merge(start, finish(result))
       )
 
       result
@@ -76,10 +76,10 @@ defmodule WardrikCore.Telemetry do
     end
   end
 
-  defp started(context, :generate),
+  defp start(context, :generate),
     do: %{agent_id: context.agent_id, span: context.span, step: :generate, model: context.model}
 
-  defp started(context, step), do: %{agent_id: context.agent_id, span: context.span, step: step}
+  defp start(context, step), do: %{agent_id: context.agent_id, span: context.span, step: step}
 
   defp principals(context) do
     %{}
@@ -99,10 +99,10 @@ defmodule WardrikCore.Telemetry do
 
   defp child(context, _step), do: Span.child(context.span)
 
-  defp ended({:ok, context}),
+  defp finish({:ok, context}),
     do: %{status: :ok, response: context.response, attributes: context.attributes}
 
-  defp ended({:park, reason, context}),
+  defp finish({:park, reason, context}),
     do: %{
       status: :park,
       reason: reason,
@@ -110,16 +110,16 @@ defmodule WardrikCore.Telemetry do
       attributes: context.attributes
     }
 
-  defp ended({:error, reason}), do: %{status: :error, reason: reason, attributes: %{}}
+  defp finish({:error, reason}), do: %{status: :error, reason: reason, attributes: %{}}
 
-  defp measured({:ok, after_step}, before), do: gained(after_step, before)
-  defp measured({:park, _reason, after_step}, before), do: gained(after_step, before)
-  defp measured({:error, _reason}, _before), do: %{}
+  defp measure({:ok, after_step}, before), do: compute_gain(after_step, before)
+  defp measure({:park, _reason, after_step}, before), do: compute_gain(after_step, before)
+  defp measure({:error, _reason}, _before), do: %{}
 
-  defp gained(%Context{measurements: now}, %Context{measurements: before}) do
+  defp compute_gain(%Context{measurements: now}, %Context{measurements: before}) do
     now
     |> Map.new(fn {key, amount} -> {key, amount - Map.get(before, key, 0)} end)
-    |> Context.unreported()
+    |> Context.drop_reported()
     |> Map.reject(fn {_key, amount} -> amount == 0 end)
   end
 end

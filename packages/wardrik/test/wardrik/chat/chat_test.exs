@@ -29,7 +29,7 @@ defmodule Wardrik.ChatTest do
   defp reply(text, thread, id, sender \\ @ana),
     do: %Inbound{room: "C1", thread: thread, id: id, sender: sender, text: text}
 
-  defp audited(context) do
+  defp audit(context) do
     %{events: events} = Wardrik.EventLog.audit(context.events)
     for %{"type" => "wardrik.room." <> _rest} = event <- events, do: event
   end
@@ -41,18 +41,18 @@ defmodule Wardrik.ChatTest do
     test "binds a room to the one agent offered, and records who did", context do
       assert {:bound, %Binding{agent: "agt_triage", answers: :mentions},
               %Offer{agent: "agt_triage", description: "Answers agt_triage."}} =
-               Rooms.joined(context.workspace, "C1", @maria)
+               Rooms.join(context.workspace, "C1", @maria)
 
       assert %Binding{agent: "agt_triage"} = Rooms.get(context.workspace, "C1")
 
-      assert [%{"type" => "wardrik.room.bound", "data" => data}] = audited(context)
+      assert [%{"type" => "wardrik.room.bound", "data" => data}] = audit(context)
       assert %{"room" => "C1", "agent" => %{"id" => "agt_triage"}, "actor" => actor} = data
       assert actor["id"] == "maria"
     end
 
     @tag offered: []
     test "offers nothing where no agent answers in it", context do
-      assert Rooms.joined(context.workspace, "C1") == :none
+      assert Rooms.join(context.workspace, "C1") == :none
       assert Rooms.choices(context.workspace) == :none
     end
 
@@ -66,7 +66,7 @@ defmodule Wardrik.ChatTest do
       :ok = Wardrik.Testing.Server.offer_agents(context.name, offered)
 
       assert {:choose, [%Offer{agent: "agt_one"}, %Offer{agent: "agt_two"}]} =
-               Rooms.joined(context.workspace, "C1")
+               Rooms.join(context.workspace, "C1")
 
       assert {:ok, %Binding{agent: "agt_two"}, %Offer{}} =
                Rooms.chose(context.workspace, room: "C1", agent: "agt_two")
@@ -76,16 +76,16 @@ defmodule Wardrik.ChatTest do
     end
 
     test "unbinds a room the bot leaves", context do
-      Rooms.joined(context.workspace, "C1")
+      Rooms.join(context.workspace, "C1")
 
-      assert Rooms.left(context.workspace, "C1", @maria) == :ok
+      assert Rooms.leave(context.workspace, "C1", @maria) == :ok
       assert Rooms.get(context.workspace, "C1") == nil
-      assert Wardrik.Chat.received(context.workspace, mention("Hi", "1.1")) == :ignored
-      assert Rooms.left(context.workspace, "C1") == :ok
+      assert Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1")) == :ignored
+      assert Rooms.leave(context.workspace, "C1") == :ok
 
       types =
         context
-        |> audited()
+        |> audit()
         |> Enum.map(& &1["type"])
 
       assert ["wardrik.room.bound", "wardrik.room.unbound"] = types
@@ -93,13 +93,13 @@ defmodule Wardrik.ChatTest do
 
     test "has the agent answer every message, or only mentions", context do
       assert Rooms.answers(context.workspace, "C1", :everything) == {:error, :not_bound}
-      Rooms.joined(context.workspace, "C1")
+      Rooms.join(context.workspace, "C1")
 
       assert {:ok, %Binding{answers: :everything}} =
                Rooms.answers(context.workspace, "C1", :everything)
 
       assert {:asked, _conversation} =
-               Wardrik.Chat.received(context.workspace, %{
+               Wardrik.Chat.answer_inbound(context.workspace, %{
                  mention("Hi", "1.1")
                  | mentioned?: false
                })
@@ -108,7 +108,7 @@ defmodule Wardrik.ChatTest do
 
   describe "threads" do
     setup context do
-      Rooms.joined(context.workspace, "C1")
+      Rooms.join(context.workspace, "C1")
       :ok
     end
 
@@ -117,7 +117,7 @@ defmodule Wardrik.ChatTest do
       conversation = conversation(context, "1.1")
 
       assert {:asked, ^conversation} =
-               Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
+               Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
 
       assert_receive {:asked, ^conversation, "Hi", sender}
       assert sender == "ana"
@@ -126,7 +126,7 @@ defmodule Wardrik.ChatTest do
                       %Outbound{thread: "1.1", body: {:reply, "Answered: Hi", ["1.1"]}}}
 
       assert {:asked, ^conversation} =
-               Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
+               Wardrik.Chat.answer_inbound(context.workspace, reply("More", "1.1", "1.2"))
 
       assert_receive {:delivered,
                       %Outbound{thread: "1.1", body: {:reply, "Answered: More", ["1.2"]}}}
@@ -134,7 +134,7 @@ defmodule Wardrik.ChatTest do
 
     test "follows each thread's own conversation, and no other log", context do
       {agent, conversation} = conversation(context, "1.1")
-      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
 
       look_alikes = [
@@ -150,25 +150,25 @@ defmodule Wardrik.ChatTest do
         :ok = Wardrik.EventLog.append(context.events, log, {"run.completed", "runs/r9", data})
       end
 
-      Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
+      Wardrik.Chat.answer_inbound(context.workspace, reply("More", "1.1", "1.2"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: More", ["1.2"]}}}
       refute_received {:delivered, %Outbound{body: {:reply, "Not here", _answering}}}
     end
 
     test "follows a new thread from its end, and keeps following the others", context do
-      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Answered: Hi", _}}}
 
-      Wardrik.Chat.received(context.workspace, mention("Hey", "2.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hey", "2.1"))
       assert_receive {:delivered, %Outbound{thread: "2.1", body: {:reply, "Answered: Hey", _}}}
 
-      Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
+      Wardrik.Chat.answer_inbound(context.workspace, reply("More", "1.1", "1.2"))
       assert_receive {:delivered, %Outbound{thread: "1.1", body: {:reply, "Answered: More", _}}}
       refute_received {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
     end
 
     test "posts nothing a replaced follower hands it", context do
-      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
 
       replies = Module.concat([context.name, "Channels", context.channel.name, "Replies"])
@@ -180,39 +180,39 @@ defmodule Wardrik.ChatTest do
     end
 
     test "shows what the agent is doing while it works", context do
-      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:status, "is thinking…"}}}
     end
 
     test "tries a post again that the chat app refused", context do
       :counters.put(context.refusals, 1, 1)
-      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
 
       assert_receive {:refused, %Outbound{}}
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", ["1.1"]}}}, 3_000
     end
 
     test "moves on from a post the adapter declines", context do
-      Wardrik.Chat.received(context.workspace, mention("skip", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("skip", "1.1"))
       assert_receive {:skipped, %Outbound{}}
 
-      Wardrik.Chat.received(context.workspace, reply("Hi", "1.1", "1.2"))
+      Wardrik.Chat.answer_inbound(context.workspace, reply("Hi", "1.1", "1.2"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
       refute_received {:skipped, _outbound}
     end
 
     test "says why a run failed", context do
-      Wardrik.Chat.received(context.workspace, mention("fail now", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("fail now", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:failed, "It broke."}}}
     end
 
     test "carries on from where it posted after the room's process stops", context do
-      Wardrik.Chat.received(context.workspace, mention("Hi", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
 
       replies = Module.concat([context.name, "Channels", context.channel.name, "Replies"])
       :ok = DurableServer.Supervisor.terminate_child(replies, "T1/C1")
-      Wardrik.Chat.received(context.workspace, reply("More", "1.1", "1.2"))
+      Wardrik.Chat.answer_inbound(context.workspace, reply("More", "1.1", "1.2"))
 
       assert_receive {:delivered, %Outbound{body: {:reply, "Answered: More", _answering}}}
       refute_received {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
@@ -227,23 +227,24 @@ defmodule Wardrik.ChatTest do
     end
 
     test "leaves alone what isn't for it", context do
-      assert Wardrik.Chat.received(context.workspace, %{
+      assert Wardrik.Chat.answer_inbound(context.workspace, %{
                mention("Hi", "1.1")
                | mentioned?: false
              }) ==
                :ignored
 
-      assert Wardrik.Chat.received(context.workspace, reply("Hi", "9.9", "9.10")) == :ignored
+      assert Wardrik.Chat.answer_inbound(context.workspace, reply("Hi", "9.9", "9.10")) ==
+               :ignored
 
-      assert Wardrik.Chat.received(context.workspace, %{mention("Hi", "1.1") | room: "C2"}) ==
+      assert Wardrik.Chat.answer_inbound(context.workspace, %{mention("Hi", "1.1") | room: "C2"}) ==
                :ignored
     end
   end
 
   describe "deciding" do
     setup context do
-      Rooms.joined(context.workspace, "C1")
-      Wardrik.Chat.received(context.workspace, mention("echo hi", "1.1"))
+      Rooms.join(context.workspace, "C1")
+      Wardrik.Chat.answer_inbound(context.workspace, mention("echo hi", "1.1"))
 
       assert_receive {:delivered, %Outbound{body: {:waiting, [%Waiting{} = waiting]}}}
 
@@ -344,7 +345,7 @@ defmodule Wardrik.ChatTest do
 
     test "posts the waiting call again for a message behind it", context do
       assert {:asked, _conversation} =
-               Wardrik.Chat.received(context.workspace, reply("Well?", "1.1", "1.2"))
+               Wardrik.Chat.answer_inbound(context.workspace, reply("Well?", "1.1", "1.2"))
 
       assert_receive {:delivered,
                       %Outbound{body: {:waiting, [%Waiting{interrupt: %{id: "call_1"}}]}}}
@@ -368,22 +369,22 @@ defmodule Wardrik.ChatTest do
 
   describe "members your app doesn't know" do
     setup context do
-      Rooms.joined(context.workspace, "C1")
+      Rooms.join(context.workspace, "C1")
       :ok
     end
 
     test "can't ask, and are told why", context do
       stranger = %Member{id: "U9", name: "stranger"}
 
-      assert Wardrik.Chat.received(context.workspace, mention("Hi", "1.1", stranger)) ==
+      assert Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1", stranger)) ==
                {:error, "Nobody here knows you yet."}
 
       refute_received {:asked, _conversation, _text, _sender}
-      assert Workspace.offered(context.workspace, stranger) == []
+      assert Workspace.list_offered_agents(context.workspace, stranger) == []
     end
 
     test "can't decide, and are told why", context do
-      Wardrik.Chat.received(context.workspace, mention("echo hi", "1.1"))
+      Wardrik.Chat.answer_inbound(context.workspace, mention("echo hi", "1.1"))
       assert_receive {:delivered, %Outbound{body: {:waiting, [%Waiting{} = waiting]}}}
 
       answer = %Answer{
@@ -574,13 +575,13 @@ defmodule Wardrik.ChatTest do
         installation
       end
 
-      assert Channel.owned(channel, "acme") == []
+      assert Channel.list_installations(channel, "acme") == []
 
       acme = installed.("T1", "acme")
       installed.("T2", "acme-jon")
 
-      assert Channel.owned(channel, "acme") == [acme]
-      assert Channel.owned(channel, "acme-maria") == []
+      assert Channel.list_installations(channel, "acme") == [acme]
+      assert Channel.list_installations(channel, "acme-maria") == []
     end
 
     test "post a notice only in the workspace it names, and skip one not added", context do

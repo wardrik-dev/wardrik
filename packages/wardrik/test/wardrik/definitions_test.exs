@@ -121,32 +121,36 @@ defmodule Wardrik.DefinitionsTest do
     test "refuses what it doesn't know", %{scope: scope} do
       base = %{"agent" => "acme/triage", "model" => @model}
 
-      assert refused(scope, "agent.define", Map.put(base, "tools", ["nope"])) == :invalid_request
-      assert refused(scope, "agent.define", Map.put(base, "policy", "lax")) == :invalid_request
-
-      assert refused(scope, "agent.define", Map.put(base, "policy", %{"maybe" => []})) ==
+      assert assert_refused(scope, "agent.define", Map.put(base, "tools", ["nope"])) ==
                :invalid_request
 
-      assert refused(scope, "agent.define", Map.put(base, "model", "nope:nope")) ==
+      assert assert_refused(scope, "agent.define", Map.put(base, "policy", "lax")) ==
                :invalid_request
 
-      assert refused(scope, "agent.define", Map.delete(base, "model")) == :invalid_request
+      assert assert_refused(scope, "agent.define", Map.put(base, "policy", %{"maybe" => []})) ==
+               :invalid_request
 
-      assert refused(scope, "agent.define", Map.put(base, "notify", "ops")) == :invalid_request
+      assert assert_refused(scope, "agent.define", Map.put(base, "model", "nope:nope")) ==
+               :invalid_request
 
-      assert refused(scope, "agent.define", Map.put(base, "channels", ["slack"])) ==
+      assert assert_refused(scope, "agent.define", Map.delete(base, "model")) == :invalid_request
+
+      assert assert_refused(scope, "agent.define", Map.put(base, "notify", "ops")) ==
+               :invalid_request
+
+      assert assert_refused(scope, "agent.define", Map.put(base, "channels", ["slack"])) ==
                :invalid_request
 
       from_file = [%{"every" => "30m", "prompt_file" => "HEARTBEAT.md"}]
 
-      assert refused(scope, "agent.define", Map.put(base, "triggers", from_file)) ==
+      assert assert_refused(scope, "agent.define", Map.put(base, "triggers", from_file)) ==
                :invalid_request
 
       for trigger <- [
             %{"every" => "30m", "prompt_file" => "/etc/passwd"},
             %{"every" => "30m", "prompt_file" => "H.md", "prompt" => "Go."}
           ] do
-        assert refused(
+        assert assert_refused(
                  scope,
                  "agent.define",
                  Map.merge(base, %{"tools" => ["files"], "triggers" => [trigger]})
@@ -154,9 +158,11 @@ defmodule Wardrik.DefinitionsTest do
       end
 
       unread = [%{"every" => "often", "prompt" => "Go."}]
-      assert refused(scope, "agent.define", Map.put(base, "triggers", unread)) == :invalid_request
 
-      assert refused(scope, "agent.definition", %{"agent" => "acme/triage"}) == :not_found
+      assert assert_refused(scope, "agent.define", Map.put(base, "triggers", unread)) ==
+               :invalid_request
+
+      assert assert_refused(scope, "agent.definition", %{"agent" => "acme/triage"}) == :not_found
     end
 
     test "says everything wrong with a definition at once", %{scope: scope} do
@@ -346,7 +352,7 @@ defmodule Wardrik.DefinitionsTest do
                run!(scope, "agents.list", %{"limit" => 2, "after" => next})
 
       assert %{"agents" => [_a, _b, _c], "next" => nil} = run!(scope, "agents.list", %{})
-      assert refused(scope, "agents.list", %{"after" => "nope"}) == :invalid_request
+      assert assert_refused(scope, "agents.list", %{"after" => "nope"}) == :invalid_request
     end
   end
 
@@ -362,7 +368,7 @@ defmodule Wardrik.DefinitionsTest do
 
       assert %{"status" => "asleep"} = run!(scope, "agent.read", %{"agent" => "acme/triage"})
       assert %{"agents" => [%{"status" => "asleep"}]} = run!(scope, "agents.list", %{})
-      assert refused(scope, "agent.calls", %{"agent" => "acme/triage"}) == :not_found
+      assert assert_refused(scope, "agent.calls", %{"agent" => "acme/triage"}) == :not_found
 
       run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Hi"})
       until("wardrik.run.completed")
@@ -455,16 +461,16 @@ defmodule Wardrik.DefinitionsTest do
       define(scope, "acme/triage", %{"model" => @model})
       conversation = %{"agent" => "acme/triage", "conversation" => "C1-1696.1234"}
 
-      assert refused(scope, "agent.define", Map.put(conversation, "model", @model)) ==
+      assert assert_refused(scope, "agent.define", Map.put(conversation, "model", @model)) ==
                :invalid_request
 
-      assert refused(
+      assert assert_refused(
                scope,
                "agent.trigger_set",
                Map.merge(conversation, %{"trigger" => "daily", "every" => "1d", "prompt" => "Go."})
              ) == :invalid_request
 
-      assert refused(scope, "agent.ask", %{
+      assert assert_refused(scope, "agent.ask", %{
                "agent" => "acme/other",
                "conversation" => "C1",
                "content" => "Hi"
@@ -490,7 +496,7 @@ defmodule Wardrik.DefinitionsTest do
         Wardrik.as(wardrik, "acme/@jon", context: %{decide: decide})
       end
 
-      assert refused(only.("acme/other"), "agent.ask", input) == :not_found
+      assert assert_refused(only.("acme/other"), "agent.ask", input) == :not_found
 
       run!(only.("acme/triage"), "agent.ask", input)
 
@@ -517,7 +523,7 @@ defmodule Wardrik.DefinitionsTest do
       run!(scope, "agent.forget", %{"agent" => "acme/triage"})
 
       assert WardrikCore.list(agents) == []
-      assert refused(scope, "agent.read", conversation) == :not_found
+      assert assert_refused(scope, "agent.read", conversation) == :not_found
       assert run!(scope, "agents.list", %{})["agents"] == []
     end
 
@@ -572,8 +578,8 @@ defmodule Wardrik.DefinitionsTest do
 
       assert run!(scope, "agent.forget", %{"agent" => "acme/triage"}) == nil
 
-      assert refused(scope, "agent.read", %{"agent" => "acme/triage"}) == :not_found
-      assert refused(scope, "agent.forget", %{"agent" => "acme/triage"}) == :not_found
+      assert assert_refused(scope, "agent.read", %{"agent" => "acme/triage"}) == :not_found
+      assert assert_refused(scope, "agent.forget", %{"agent" => "acme/triage"}) == :not_found
 
       assert %{"events" => changes} = run!(scope, "audit.list", %{})
 
@@ -612,7 +618,7 @@ defmodule Wardrik.DefinitionsTest do
       run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Echo"})
       until("wardrik.run.interrupted")
 
-      assert refused(scope, "agent.clear", %{"agent" => "acme/triage"}) == :conflict
+      assert assert_refused(scope, "agent.clear", %{"agent" => "acme/triage"}) == :conflict
     end
   end
 
@@ -666,7 +672,7 @@ defmodule Wardrik.DefinitionsTest do
             %{"req_http_options" => %{"finch" => "Other"}},
             %{"provider_options" => %{"endpoint" => "https://example.com"}}
           ] do
-        assert refused(scope, "agent.define", %{
+        assert assert_refused(scope, "agent.define", %{
                  "agent" => "acme/tuned",
                  "model" => @model,
                  "model_options" => options
@@ -813,11 +819,11 @@ defmodule Wardrik.DefinitionsTest do
       })
 
       trigger_due(wardrik, "acme/digest", "weekly")
-      fired("asked")
+      fire("asked")
       assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.interrupted"}}
 
       trigger_due(wardrik, "acme/digest", "weekly")
-      fired("asked")
+      fire("asked")
       until("wardrik.run.completed")
 
       assert %{"interrupts" => []} = run!(scope, "agent.read", %{"agent" => "acme/digest"})
@@ -846,14 +852,14 @@ defmodule Wardrik.DefinitionsTest do
       })
 
       trigger_due(wardrik, "acme/digest", "weekly")
-      fired("asked")
+      fire("asked")
       assert_receive {Wardrik.EventLog, _log, %{"type" => "wardrik.run.interrupted"}}
 
       trigger_due(wardrik, "acme/digest", "weekly")
-      fired("busy")
+      fire("busy")
     end
 
-    defp fired(status) do
+    defp fire(status) do
       assert_receive {Wardrik.EventLog, _log,
                       %{"type" => "wardrik.trigger.fired", "data" => %{"status" => ^status}}}
     end
@@ -887,7 +893,7 @@ defmodule Wardrik.DefinitionsTest do
       assert next_at == DateTime.to_iso8601(local)
 
       trigger_due(wardrik, "acme/digest", "launch")
-      fired("asked")
+      fire("asked")
 
       assert_receive {:prompted, messages}
 
@@ -920,7 +926,7 @@ defmodule Wardrik.DefinitionsTest do
       assert text =~ "Read HEARTBEAT.md"
       until("wardrik.run.completed")
 
-      assert refused(scope, "agent.trigger_set", %{
+      assert assert_refused(scope, "agent.trigger_set", %{
                "agent" => "acme/digest",
                "trigger" => "x",
                "every" => "1d",
@@ -951,13 +957,13 @@ defmodule Wardrik.DefinitionsTest do
       triggers = Wardrik.triggers(wardrik)
       assert Wardrik.Triggers.list(triggers, "acme/digest") == []
 
-      assert refused(scope, "agent.trigger_remove", %{
+      assert assert_refused(scope, "agent.trigger_remove", %{
                "agent" => "acme/digest",
                "trigger" => "daily"
              }) ==
                :not_found
 
-      assert refused(scope, "agent.trigger_set", %{
+      assert assert_refused(scope, "agent.trigger_set", %{
                "agent" => "acme/other",
                "trigger" => "x",
                "every" => "1d",
@@ -965,7 +971,7 @@ defmodule Wardrik.DefinitionsTest do
              }) ==
                :not_found
 
-      assert refused(scope, "agent.trigger_set", %{
+      assert assert_refused(scope, "agent.trigger_set", %{
                "agent" => "acme/digest",
                "trigger" => "x",
                "every" => "often",
@@ -1005,12 +1011,13 @@ defmodule Wardrik.DefinitionsTest do
         "headers" => %{}
       }
 
-      assert refused(scope, "hook.deliver", request) == :not_found
+      assert assert_refused(scope, "hook.deliver", request) == :not_found
 
-      assert refused(scope, "hook.deliver_with_secret", Map.put(request, "secret", "nope")) ==
+      assert assert_refused(scope, "hook.deliver_with_secret", Map.put(request, "secret", "nope")) ==
                :not_found
 
-      assert refused(scope, "hook.deliver", %{request | "trigger" => "missing"}) == :not_found
+      assert assert_refused(scope, "hook.deliver", %{request | "trigger" => "missing"}) ==
+               :not_found
     end
   end
 
@@ -1037,7 +1044,7 @@ defmodule Wardrik.DefinitionsTest do
       assert %{"data" => %{"status" => "error"}} = until("wardrik.tool_call.completed")
       until("wardrik.run.completed")
 
-      assert refused(scope, "agent.kill", %{"agent" => "acme/triage", "call" => "call_1"}) ==
+      assert assert_refused(scope, "agent.kill", %{"agent" => "acme/triage", "call" => "call_1"}) ==
                :not_found
     end
 

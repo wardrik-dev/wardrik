@@ -15,15 +15,16 @@ defmodule Wardrik.HTTP.BodyReader do
           {:ok, binary(), Plug.Conn.t()} | {:more, binary(), Plug.Conn.t()} | {:error, term()}
   def read_body(conn, opts) do
     case Plug.Conn.read_body(conn, opts) do
-      {:ok, body, conn} -> {:ok, body, kept(conn, body)}
-      {:more, body, conn} -> {:more, body, kept(conn, body)}
+      {:ok, body, conn} -> {:ok, body, get_kept_body(conn, body)}
+      {:more, body, conn} -> {:more, body, get_kept_body(conn, body)}
       {:error, reason} -> {:error, reason}
     end
   end
 
   @doc "Returns the kept raw body, or `nil` if none was kept."
-  @spec kept(Plug.Conn.t()) :: binary() | nil
-  def kept(conn), do: conn.private[:wardrik_http_body]
+  @spec get_kept_body(Plug.Conn.t()) :: binary() | nil
+  def get_kept_body(conn), do: conn.private[:wardrik_http_body]
 
-  defp kept(conn, body), do: put_private(conn, :wardrik_http_body, (kept(conn) || "") <> body)
+  defp get_kept_body(conn, body),
+    do: put_private(conn, :wardrik_http_body, (get_kept_body(conn) || "") <> body)
 end

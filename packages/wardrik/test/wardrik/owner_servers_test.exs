@@ -8,7 +8,7 @@ defmodule Wardrik.OwnerServersTest do
   alias Wardrik.Operations.Servers
   alias Wardrik.Principal
 
-  # Gives each agent of Ana the servers `Servers.reached/2` picks for her, or what the test says.
+  # Gives each agent of Ana the servers `Servers.list_reached/2` picks for her, or what the test says.
   defmodule Reach do
     @behaviour Wardrik.Resolver
 
@@ -16,7 +16,7 @@ defmodule Wardrik.OwnerServersTest do
     def resolve(_request, %{name: name, servers: servers}) do
       wardrik = Wardrik.Instance.fetch!(name)
       ana = %Principal{id: "ana"}
-      given = servers || Servers.reached(wardrik, ana)
+      given = servers || Servers.list_reached(wardrik, ana)
       {:ok, %Wardrik.Resolved{principal: ana, servers: given}}
     end
   end
@@ -106,13 +106,13 @@ defmodule Wardrik.OwnerServersTest do
     for {owner, name} <- [{"ana", "crm"}, {"acme", "crm"}, {"acme", "docs"}, {"globex", "notes"}],
         do: {:ok, _added} = add(scope, owner, name)
 
-    assert Servers.reached(wardrik, %Principal{id: "ana"}) == %{
+    assert Servers.list_reached(wardrik, %Principal{id: "ana"}) == %{
              "crm" => "ana:crm",
              "docs" => "acme:docs",
              "wiki" => "wiki"
            }
 
-    assert Servers.reached(wardrik, %Principal{id: "bob"}) == %{"wiki" => "wiki"}
+    assert Servers.list_reached(wardrik, %Principal{id: "bob"}) == %{"wiki" => "wiki"}
 
     {:ok, _agent} =
       Wardrik.Agent.define(scope, "acme/triage", model: "anthropic:claude-haiku-4-5")
@@ -196,7 +196,7 @@ defmodule Wardrik.OwnerServersTest do
     assert {:ok, %{"connected" => false}} = run.(crm)
 
     assert %{owner: "acme"} =
-             Wardrik.OAuth.Apps.chosen(wardrik, %Principal{id: "acme"}, "server:crm")
+             Wardrik.OAuth.Apps.choose(wardrik, %Principal{id: "acme"}, "server:crm")
 
     bad = server.("bad", %{"oauth" => Map.put(endpoints, "flow", "nope")})
     assert {:error, %Wardrik.Error{type: :invalid_request}} = run.(bad)
@@ -204,7 +204,7 @@ defmodule Wardrik.OwnerServersTest do
     assert {:ok, _removed} =
              Wardrik.run(scope, "servers.remove", %{"owner" => "acme", "name" => "crm"})
 
-    assert nil == Wardrik.OAuth.Apps.chosen(wardrik, %Principal{id: "acme"}, "server:crm")
+    assert nil == Wardrik.OAuth.Apps.choose(wardrik, %Principal{id: "acme"}, "server:crm")
   end
 
   @tag servers: %{"notes" => "globex:notes"}

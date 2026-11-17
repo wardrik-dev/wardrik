@@ -86,14 +86,14 @@ defmodule Wardrik.Store.FormatsTest do
 
     for opts <- [http, stdio] do
       assert {:ok, loaded} = round_trip(Server, opts)
-      assert normalized(loaded) == normalized(opts)
+      assert normalize(loaded) == normalize(opts)
     end
 
     assert {:error, _reason} = Server.load(1, %{"unheard_of" => true})
     assert {:error, _reason} = Server.load(1, %{"transport" => %{"type" => "carrier_pigeon"}})
   end
 
-  defp normalized(opts) do
+  defp normalize(opts) do
     opts
     |> Enum.map(fn
       {:transport, {type, transport}} -> {:transport, {type, Enum.sort(transport)}}

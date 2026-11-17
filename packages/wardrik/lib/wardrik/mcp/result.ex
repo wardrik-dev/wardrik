@@ -23,7 +23,7 @@ defmodule Wardrik.MCP.Result do
   @doc "Returns the error's message, with the server's answer for an HTTP error."
   @spec message(Error.t()) :: String.t()
   def message(%Error{message: message, data: %{original_reason: {:http_error, status, body}}}),
-    do: "#{message}: HTTP #{status}: #{said(body)}"
+    do: "#{message}: HTTP #{status}: #{say(body)}"
 
   def message(%Error{message: message}), do: message
 
@@ -34,14 +34,14 @@ defmodule Wardrik.MCP.Result do
 
   def passing?(%Error{}), do: true
 
-  defp said(body) when is_binary(body) do
+  defp say(body) when is_binary(body) do
     case JSON.decode(body) do
       {:ok, %{"error" => %{"message" => message}}} when is_binary(message) -> message
       _other -> body
     end
   end
 
-  defp said(body), do: inspect(body)
+  defp say(body), do: inspect(body)
 
   defp text(result, limit) do
     result

@@ -10,8 +10,8 @@ defmodule Wardrik.Policy.Read do
     end
   end
 
-  @spec known(map(), [String.t()], String.t()) :: :ok | {:error, String.t()}
-  def known(fields, keys, what) do
+  @spec check_known(map(), [String.t()], String.t()) :: :ok | {:error, String.t()}
+  def check_known(fields, keys, what) do
     case Map.keys(fields) -- keys do
       [] ->
         :ok
@@ -30,7 +30,7 @@ defmodule Wardrik.Policy.Read do
   def choice(fields, key, choices, default) do
     case Map.fetch(fields, key) do
       :error -> {:ok, default}
-      {:ok, value} -> chosen(Map.fetch(choices, value), key, choices)
+      {:ok, value} -> choose(Map.fetch(choices, value), key, choices)
     end
   end
 
@@ -39,16 +39,16 @@ defmodule Wardrik.Policy.Read do
   def keywords(nil, _keys, _what), do: {:ok, nil}
 
   def keywords(fields, keys, what) when is_map(fields) do
-    with :ok <- known(fields, Map.keys(keys), what),
+    with :ok <- check_known(fields, Map.keys(keys), what),
          do: {:ok, Enum.map(fields, fn {key, value} -> {Map.fetch!(keys, key), value} end)}
   end
 
   def keywords(_fields, keys, what),
     do: {:error, "#{what} is a map of #{names(keys)}"}
 
-  defp chosen({:ok, atom}, _key, _choices), do: {:ok, atom}
+  defp choose({:ok, atom}, _key, _choices), do: {:ok, atom}
 
-  defp chosen(:error, key, choices),
+  defp choose(:error, key, choices),
     do: {:error, "#{key} is one of #{names(choices)}"}
 
   defp names(choices), do: Enum.map_join(choices, ", ", fn {name, _atom} -> name end)
@@ -56,6 +56,7 @@ defmodule Wardrik.Policy.Read do
   @spec present(map()) :: map()
   def present(fields), do: Map.reject(fields, fn {_key, value} -> value in [nil, [], %{}] end)
 
-  @spec written(keyword() | map()) :: %{String.t() => term()}
-  def written(fields), do: Map.new(fields, fn {key, value} -> {Atom.to_string(key), value} end)
+  @spec stringify_keys(keyword() | map()) :: %{String.t() => term()}
+  def stringify_keys(fields),
+    do: Map.new(fields, fn {key, value} -> {Atom.to_string(key), value} end)
 end

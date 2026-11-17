@@ -7,7 +7,7 @@ defmodule WardrikLua.Sandbox.RunnerTest do
   defp run(fun, opts \\ []), do: Runner.run(fun, Limits.new(opts))
 
   # Work that only ever ends when the runner stops it.
-  defp blocked, do: receive(do: (:never -> {:ok, :never}))
+  defp block, do: receive(do: (:never -> {:ok, :never}))
 
   test "hands back what the evaluation returned" do
     assert run(fn -> {:ok, 4} end) == {:ok, 4}
@@ -22,7 +22,7 @@ defmodule WardrikLua.Sandbox.RunnerTest do
   end
 
   test "stops an evaluation that runs past its deadline" do
-    assert run(&blocked/0, timeout_ms: 50) ==
+    assert run(&block/0, timeout_ms: 50) ==
              {:error, "the code ran for longer than 50ms and was stopped"}
   end
 
@@ -58,7 +58,7 @@ defmodule WardrikLua.Sandbox.RunnerTest do
       spawn(fn ->
         run(fn ->
           send(test, {:evaluating, self()})
-          blocked()
+          block()
         end)
       end)
 

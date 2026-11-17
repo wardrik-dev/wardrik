@@ -67,21 +67,21 @@ defmodule WardrikRest.OpenAPI do
 
   defp file(path) do
     case File.read(path) do
-      {:ok, text} -> decoded(text, path)
+      {:ok, text} -> decode(text, path)
       {:error, reason} -> {:error, "#{path} can't be read: #{:file.format_error(reason)}."}
     end
   end
 
   defp fetch(url, req_options) do
     case Req.get(url, [retry: false, decode_body: false] ++ req_options) do
-      {:ok, %Req.Response{status: 200, body: text}} -> decoded(text, url)
+      {:ok, %Req.Response{status: 200, body: text}} -> decode(text, url)
       {:ok, %Req.Response{status: status}} -> {:error, "#{url} answered #{status}."}
       {:error, reason} -> {:error, "#{url} didn't answer: #{Exception.message(reason)}"}
     end
   end
 
   # JSON is YAML, but the JSON decoder is the faster and stricter of the two.
-  defp decoded(text, where) do
+  defp decode(text, where) do
     with {:error, _json} <- JSON.decode(text),
          {:error, _yaml} <- YamlElixir.read_from_string(text) do
       {:error, "#{where} is neither JSON nor YAML."}
@@ -173,7 +173,7 @@ defmodule WardrikRest.OpenAPI do
       param
       |> param_schema()
       |> Schema.json(document)
-      |> described(param["description"])
+      |> describe(param["description"])
 
     %Parameter{
       name: param["name"],
@@ -249,7 +249,7 @@ defmodule WardrikRest.OpenAPI do
         whole =
           schema
           |> Schema.json(document)
-          |> described(object["description"])
+          |> describe(object["description"])
 
         [%Parameter{name: "body", in: :payload, schema: whole, required: required}]
     end
@@ -316,8 +316,8 @@ defmodule WardrikRest.OpenAPI do
       else: text
   end
 
-  defp described(schema, nil), do: schema
-  defp described(schema, description), do: Map.put(schema, "description", text(description))
+  defp describe(schema, nil), do: schema
+  defp describe(schema, description), do: Map.put(schema, "description", text(description))
 
   # YAML block scalars end in a newline, as Meta's `operationId: |` does.
   defp text(value) when is_binary(value), do: String.trim(value)

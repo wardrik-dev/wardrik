@@ -38,7 +38,7 @@ defmodule Wardrik.HTTP do
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     opts
-    |> served()
+    |> build_settings()
     |> Endpoint.child_spec()
   end
 
@@ -53,31 +53,32 @@ defmodule Wardrik.HTTP do
   @impl Plug
   def init(opts) do
     opts
-    |> served()
+    |> build_settings()
     |> Endpoint.init()
   end
 
   @impl Plug
   def call(conn, settings), do: Endpoint.call(conn, settings)
 
-  defp served(opts) do
+  defp build_settings(opts) do
     {principal, opts} = Keyword.pop(opts, :principal, {__MODULE__, :nobody, []})
 
     opts
     |> Keyword.pop(:wardrik)
-    |> served_as(principal)
+    |> build_settings_for(principal)
   end
 
   @doc false
   @spec nobody(Plug.Conn.t()) :: nil
   def nobody(_conn), do: nil
 
-  defp served_as({wardrik, opts}, principal) when is_atom(wardrik) and not is_nil(wardrik),
-    do:
-      [server: {Wardrik, wardrik}, sign_in: {Wardrik, :sign_in_pages, [wardrik, principal]}] ++
-        opts
+  defp build_settings_for({wardrik, opts}, principal)
+       when is_atom(wardrik) and not is_nil(wardrik),
+       do:
+         [server: {Wardrik, wardrik}, sign_in: {Wardrik, :sign_in_pages, [wardrik, principal]}] ++
+           opts
 
-  defp served_as(_none, _principal),
+  defp build_settings_for(_none, _principal),
     do:
       raise(ArgumentError, "Wardrik.HTTP serves a Wardrik. Give it wardrik: MyApp.AgentRuntime.")
 end

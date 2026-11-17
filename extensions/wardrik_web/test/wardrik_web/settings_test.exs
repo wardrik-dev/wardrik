@@ -148,7 +148,7 @@ defmodule WardrikWeb.SettingsTest do
     assert html =~ "ABCD-1234"
     assert html =~ "https://github.test/device"
 
-    Connections.connected("github")
+    Connections.handle_connect("github")
     send(view.pid, :refresh)
     refute render(view) =~ "ABCD-1234"
 

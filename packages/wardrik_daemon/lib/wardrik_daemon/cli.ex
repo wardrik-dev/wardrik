@@ -60,62 +60,62 @@ defmodule WardrikDaemon.CLI do
     cx = Context.new(env)
     cx = %{cx | terminal: Keyword.get(opts, :terminal, cx.terminal)}
 
-    case ran(routed(cx, argv), cx) do
+    case handle_run(route(cx, argv), cx) do
       :ok -> 0
-      {:error, why} -> failed(cx, why)
+      {:error, why} -> fail(cx, why)
     end
   end
 
-  defp failed(cx, why) do
+  defp fail(cx, why) do
     IO.puts(:stderr, "#{cx.program}: " <> why)
     1
   end
 
-  defp routed(_cx, []), do: :help
-  defp routed(_cx, ["help" | words]), do: {:help, words}
+  defp route(_cx, []), do: :help
+  defp route(_cx, ["help" | words]), do: {:help, words}
 
-  defp routed(_cx, argv) do
-    case found(argv) do
+  defp route(_cx, argv) do
+    case find_command(argv) do
       {command, rest} -> {:command, command, rest}
       nil -> {:help, argv}
     end
   end
 
-  defp found(argv) do
+  defp find_command(argv) do
     commands()
-    |> Enum.map(&matched(&1, argv))
+    |> Enum.map(&match(&1, argv))
     |> Enum.reject(&is_nil/1)
     |> Enum.max_by(fn {command, _rest} -> length(Command.words(command)) end, fn -> nil end)
   end
 
-  defp matched(%Command{shortcut: shortcut} = command, [shortcut | rest]) when shortcut != nil,
+  defp match(%Command{shortcut: shortcut} = command, [shortcut | rest]) when shortcut != nil,
     do: {command, rest}
 
-  defp matched(command, argv) do
+  defp match(command, argv) do
     words = Command.words(command)
     if Enum.take(argv, length(words)) == words, do: {command, Enum.drop(argv, length(words))}
   end
 
-  defp ran(:help, cx), do: Help.all(cx, commands())
-  defp ran({:help, []}, cx), do: Help.all(cx, commands())
+  defp handle_run(:help, cx), do: Help.all(cx, commands())
+  defp handle_run({:help, []}, cx), do: Help.all(cx, commands())
 
-  defp ran({:help, words}, cx) do
-    case {found(words), under(words)} do
+  defp handle_run({:help, words}, cx) do
+    case {find_command(words), under(words)} do
       {{command, []}, _namespace} -> Help.command(cx, command)
       {_found, [_ | _] = listed} -> Help.namespace(cx, Enum.join(words, " "), listed)
       _neither -> {:error, "#{Enum.join(words, " ")} isn't a command. See #{cx.program} help."}
     end
   end
 
-  defp ran({:command, command, rest}, cx) do
+  defp handle_run({:command, command, rest}, cx) do
     switches = command.switches ++ @always
     {flags, args, invalid} = OptionParser.parse(rest, strict: switches)
-    flags = flagged(flags, switches)
+    flags = flag(flags, switches)
     run(command, args, flags, invalid, %{cx | json?: Map.get(flags, :json, false)})
   end
 
   # A :keep switch gives each of its values, in order.
-  defp flagged(flags, switches) do
+  defp flag(flags, switches) do
     {kept, single} = Enum.split_with(flags, fn {name, _value} -> switches[name] == :keep end)
 
     kept

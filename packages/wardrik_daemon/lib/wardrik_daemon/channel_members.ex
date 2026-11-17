@@ -26,9 +26,9 @@ defmodule WardrikDaemon.ChannelMembers do
 
   @impl Wardrik.Chat.Identities
   def identify(%Request{} = request, opts) do
-    case mapped(request, Keyword.fetch!(opts, :members), Keyword.fetch!(opts, :domains)) do
+    case map(request, Keyword.fetch!(opts, :members), Keyword.fetch!(opts, :domains)) do
       {:ok, user} ->
-        {:ok, %Principal{id: user, attributes: named(request)}}
+        {:ok, %Principal{id: user, attributes: put_name(request)}}
 
       :error ->
         {:error,
@@ -36,7 +36,7 @@ defmodule WardrikDaemon.ChannelMembers do
     end
   end
 
-  defp mapped(%Request{member: member, email: email}, members, domains) do
+  defp map(%Request{member: member, email: email}, members, domains) do
     with :error <- Map.fetch(members, member), do: by_email(email, domains)
   end
 
@@ -55,8 +55,8 @@ defmodule WardrikDaemon.ChannelMembers do
     end
   end
 
-  defp named(%Request{name: nil}), do: %{}
-  defp named(%Request{name: name}), do: %{name: name}
+  defp put_name(%Request{name: nil}), do: %{}
+  defp put_name(%Request{name: name}), do: %{name: name}
 
   @doc false
   @spec user(term()) :: {:ok, String.t()} | {:error, String.t()}

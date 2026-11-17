@@ -17,13 +17,13 @@ defmodule Wardrik.Runner do
 
   @doc "Runs the operation `id` in `scope`, with its handler."
   @spec run(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, Error.t()}
-  def run(scope, id, input), do: ran(scope, id, input, :handlers)
+  def run(scope, id, input), do: handle_run(scope, id, input, :handlers)
 
   @doc "Streams the operation `id` in `scope`, or returns `not_supported`."
   @spec stream(Scope.t(), String.t(), map()) :: {:ok, Enumerable.t()} | {:error, Error.t()}
-  def stream(scope, id, input), do: ran(scope, id, input, :streams)
+  def stream(scope, id, input), do: handle_run(scope, id, input, :streams)
 
-  defp ran(%Scope{wardrik: instance} = scope, id, input, kind) do
+  defp handle_run(%Scope{wardrik: instance} = scope, id, input, kind) do
     catalog = Catalog.new()
     scope = %{scope | wardrik: Instance.fetch!(instance)}
 
@@ -62,7 +62,7 @@ defmodule Wardrik.Runner do
   defp authorize(scope, %{subject: "agent", action: action}, %{"agent" => id} = input) do
     context = if input["conversation"], do: %{conversation: input["conversation"]}, else: %{}
 
-    refused(
+    refuse(
       Authorizer.authorize(scope, action: action, resource: {:agent, id}, context: context),
       "agent #{id}"
     )
@@ -74,7 +74,7 @@ defmodule Wardrik.Runner do
          _input
        ),
        do:
-         refused(
+         refuse(
            Authorizer.authorize(scope,
              action: action,
              resource: {:deployment, wardrik.deployment}
@@ -88,7 +88,7 @@ defmodule Wardrik.Runner do
        when kind in @held do
     resource = {String.to_existing_atom(kind), owner}
 
-    refused(
+    refuse(
       Authorizer.authorize(scope, action: action, resource: resource),
       "#{Map.fetch!(@described, kind)} of #{owner}"
     )
@@ -97,18 +97,18 @@ defmodule Wardrik.Runner do
   # A principal's connections are their own.
   defp authorize(scope, %{subject: "connection", action: action}, _input) do
     resource = {:connection, scope.principal.id}
-    refused(Authorizer.authorize(scope, action: action, resource: resource), "connections")
+    refuse(Authorizer.authorize(scope, action: action, resource: resource), "connections")
   end
 
   defp authorize(_scope, %{subject: "agents"}, _input), do: :ok
   defp authorize(_scope, %{subject: "hook"}, _input), do: :ok
   defp authorize(_scope, %{subject: "channel"}, _input), do: :ok
 
-  defp refused(:ok, _what), do: :ok
+  defp refuse(:ok, _what), do: :ok
 
-  defp refused({:error, :not_found}, what),
+  defp refuse({:error, :not_found}, what),
     do: {:error, Error.new(:not_found, "There's no #{what}.")}
 
-  defp refused({:error, :forbidden}, what),
+  defp refuse({:error, :forbidden}, what),
     do: {:error, Error.new(:forbidden, "You may not do this to the #{what}.")}
 end

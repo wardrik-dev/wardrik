@@ -3,7 +3,7 @@ defmodule Wardrik.Chat.Rooms do
   Keeps which agent answers in each room, and the threads it has answered in.
 
       # The bot was invited into the room
-      Wardrik.Chat.Rooms.joined(workspace, room, member)
+      Wardrik.Chat.Rooms.join(workspace, room, member)
       #=> {:bound, binding, offer}  # one agent offered; it now answers when mentioned
       #=> {:choose, offers}         # several offered; show them to pick from
       #=> :none                     # none offered
@@ -16,11 +16,11 @@ defmodule Wardrik.Chat.Rooms do
       {:ok, binding} = Wardrik.Chat.Rooms.answers(workspace, room, :everything, member)
 
       # The bot left the room
-      :ok = Wardrik.Chat.Rooms.left(workspace, room, member)
+      :ok = Wardrik.Chat.Rooms.leave(workspace, room, member)
 
     * Each change is recorded in the audit as `wardrik.room.bound` or `wardrik.room.unbound`.
     * Pass the `member` who made it, or `nil` if the adapter doesn't know.
-    * A member is offered the agents they may read. See `Wardrik.Chat.Workspace.offered/2`.
+    * A member is offered the agents they may read. See `Wardrik.Chat.Workspace.list_offered_agents/2`.
   """
 
   alias Wardrik.Chat.Binding
@@ -53,9 +53,9 @@ defmodule Wardrik.Chat.Rooms do
   end
 
   @doc "Binds `room` to the one agent offered. With several, returns them to choose from."
-  @spec joined(Workspace.t(), String.t(), Member.t() | nil) :: shown()
-  def joined(workspace, room, by \\ nil) do
-    case Workspace.offered(workspace, by) do
+  @spec join(Workspace.t(), String.t(), Member.t() | nil) :: shown()
+  def join(workspace, room, by \\ nil) do
+    case Workspace.list_offered_agents(workspace, by) do
       [offer] -> {:bound, bind(workspace, room, offer.agent, :mentions, by), offer}
       [] -> :none
       offers -> {:choose, offers}
@@ -65,7 +65,7 @@ defmodule Wardrik.Chat.Rooms do
   @doc "Returns the agents `by` may switch a room to, or `:none`."
   @spec choices(Workspace.t(), Member.t() | nil) :: {:choose, [Offer.t()]} | :none
   def choices(workspace, by \\ nil) do
-    case Workspace.offered(workspace, by) do
+    case Workspace.list_offered_agents(workspace, by) do
       [] -> :none
       offers -> {:choose, offers}
     end
@@ -86,7 +86,7 @@ defmodule Wardrik.Chat.Rooms do
     agent = Keyword.fetch!(opts, :agent)
     by = Keyword.get(opts, :by)
 
-    offered = Workspace.offered(workspace, by)
+    offered = Workspace.list_offered_agents(workspace, by)
 
     case Enum.find(offered, &(&1.agent == agent)) do
       %Offer{} = offer -> {:ok, bind(workspace, room, agent, :mentions, by), offer}
@@ -105,8 +105,8 @@ defmodule Wardrik.Chat.Rooms do
   end
 
   @doc "Unbinds `room`. Nothing more is posted in its threads."
-  @spec left(Workspace.t(), String.t(), Member.t() | nil) :: :ok
-  def left(workspace, room, by \\ nil) do
+  @spec leave(Workspace.t(), String.t(), Member.t() | nil) :: :ok
+  def leave(workspace, room, by \\ nil) do
     case get(workspace, room) do
       %Binding{agent: agent} ->
         store = store(workspace)

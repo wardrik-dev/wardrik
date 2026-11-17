@@ -32,10 +32,10 @@ defmodule WardrikGatewayTest do
     {:ok, queue} = Agent.start_link(fn -> answers end)
     context = %{Context.new(agent_id: "acme/triage", model: @haiku) | step: :generate}
 
-    WardrikGateway.call(context, fn context -> answered(queue, context) end, gateway)
+    WardrikGateway.call(context, fn context -> answer(queue, context) end, gateway)
   end
 
-  defp answered(queue, context) do
+  defp answer(queue, context) do
     send(self(), {:called, context.model})
 
     case Agent.get_and_update(queue, fn [next | rest] -> {next, rest} end) do

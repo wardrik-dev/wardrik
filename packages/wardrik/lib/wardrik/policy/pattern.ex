@@ -46,8 +46,8 @@ defmodule Wardrik.Policy.Pattern do
   defp plain(source) do
     case {count(source, "("), count(source, ")")} do
       {0, 0} -> {:ok, new(source, source)}
-      {same, same} -> {:error, misplaced(source)}
-      {opened, closed} -> {:error, unbalanced(source, opened > closed)}
+      {same, same} -> {:error, misplace(source)}
+      {opened, closed} -> {:error, report_unbalanced(source, opened > closed)}
     end
   end
 
@@ -57,12 +57,12 @@ defmodule Wardrik.Policy.Pattern do
     |> length()
   end
 
-  defp misplaced(source),
+  defp misplace(source),
     do:
       "#{inspect(source)}, which is not a tool pattern; what a call acts on goes in " <>
         "parentheses after the tool, as shell(git status)"
 
-  defp unbalanced(source, opened?) do
+  defp report_unbalanced(source, opened?) do
     what =
       if opened?,
         do: "opens a parenthesis it never closes",
@@ -78,12 +78,12 @@ defmodule Wardrik.Policy.Pattern do
   @spec match?(t(), String.t()) :: boolean()
   def match?(%__MODULE__{} = pattern, name), do: not argument?(pattern) and names?(pattern, name)
 
-  @spec whole(t(), String.t(), map()) :: Condition.held()
+  @spec whole(t(), String.t(), map()) :: Condition.check_conditions()
   def whole(%__MODULE__{argument: nil, conditions: nil} = pattern, name, _arguments),
     do: names?(pattern, name)
 
   def whole(%__MODULE__{argument: nil, conditions: conditions} = pattern, name, arguments),
-    do: names?(pattern, name) and Condition.held(conditions, arguments)
+    do: names?(pattern, name) and Condition.check_conditions(conditions, arguments)
 
   def whole(%__MODULE__{}, _name, _arguments), do: false
 

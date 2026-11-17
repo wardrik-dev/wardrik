@@ -15,7 +15,7 @@ defmodule Wardrik.Vault.TestGrants do
   end
 
   @impl Wardrik.Vault.Grants
-  def refused(%{name: name}, test) do
+  def report_refusal(%{name: name}, test) do
     send(test, {:refused, name})
     :ok
   end

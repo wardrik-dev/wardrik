@@ -17,7 +17,7 @@ defmodule Wardrik.Test.Owned do
   end
 
   def resolve(%Wardrik.Resolver.Request{agent: id}, name) do
-    {mcp, targets} = started(name)
+    {mcp, targets} = start(name)
 
     {:ok,
      %Wardrik.Resolved{
@@ -28,7 +28,7 @@ defmodule Wardrik.Test.Owned do
   end
 
   # A Wardrik a test resolves through before it starts reaches nothing.
-  defp started(name) do
+  defp start(name) do
     wardrik = Wardrik.Instance.fetch!(name)
     {wardrik.mcp, wardrik.notify.targets}
   rescue

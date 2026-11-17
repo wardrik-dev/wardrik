@@ -116,7 +116,7 @@ defmodule Wardrik.NotifyTest do
   defp ask(scope, agent \\ "acme/triage"),
     do: run!(scope, "agent.ask", %{"agent" => agent, "content" => "Go"})
 
-  defp hooked do
+  defp start_hook do
     test = self()
 
     Req.Test.stub(__MODULE__, fn conn ->
@@ -128,7 +128,7 @@ defmodule Wardrik.NotifyTest do
 
   defp giving(wardrik, notify), do: %{wardrik | resolver: {Wardrik.Test.Gives, notify}}
 
-  defp failed(agent \\ "acme/triage"),
+  defp fail(agent \\ "acme/triage"),
     do: %Notice{agent: agent, kind: :failed, at: DateTime.utc_now(), reason: "x"}
 
   describe "routes" do
@@ -346,7 +346,7 @@ defmodule Wardrik.NotifyTest do
 
     @tag channels: %{"board" => "W2"}
     test "posts only in the workspace the resolver gives, never another", %{wardrik: wardrik} do
-      assert Wardrik.Notify.deliver(wardrik, "board:#updates", failed()) == :ok
+      assert Wardrik.Notify.deliver(wardrik, "board:#updates", fail()) == :ok
       assert_receive {:posted, "board", "W2", "#updates", %Notice{}}
       refute_received {:posted, "board", "W1", _room, _notice}
     end
@@ -355,9 +355,9 @@ defmodule Wardrik.NotifyTest do
     test "skips a channel's room when the agent's resolver gives it no workspace there", %{
       wardrik: wardrik
     } do
-      assert {:skip, why} = Wardrik.Notify.deliver(wardrik, "board:#updates", failed())
+      assert {:skip, why} = Wardrik.Notify.deliver(wardrik, "board:#updates", fail())
       assert why =~ "no workspace in board"
-      assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "ops", failed())
+      assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "ops", fail())
       refute_received {:posted, _channel, _workspace, _room, _notice}
     end
 
@@ -460,7 +460,7 @@ defmodule Wardrik.NotifyTest do
     test "sends to the target the agent is resolved with, by its own options", %{
       wardrik: wardrik
     } do
-      hooked()
+      start_hook()
 
       wardrik =
         giving(wardrik, %{
@@ -473,18 +473,18 @@ defmodule Wardrik.NotifyTest do
           "ops" => "ops"
         })
 
-      assert :ok = Wardrik.Notify.deliver(wardrik, "mine", failed())
+      assert :ok = Wardrik.Notify.deliver(wardrik, "mine", fail())
       assert_received {:told, "mine", %Notice{agent: "acme/triage"}}
 
-      assert :ok = Wardrik.Notify.deliver(wardrik, "hook", failed())
+      assert :ok = Wardrik.Notify.deliver(wardrik, "hook", fail())
       assert_received {:hooked, "hooks.acme.test", headers, body}
       assert headers["x-wardrik-signature"] == Wardrik.Notify.Webhook.sign("acme-shh", body)
 
-      assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "audit", failed())
+      assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "audit", fail())
       refute_received {:told, "audit", _notice}
 
       route = %{"notify" => ["mine", "ops"]}
-      {:ok, resolved} = Wardrik.Resolver.defined(wardrik, "acme/triage")
+      {:ok, resolved} = Wardrik.Resolver.resolve_current(wardrik, "acme/triage")
       assert Wardrik.Notify.check(wardrik, resolved.notify, route) == :ok
 
       assert {:error, %Wardrik.Error{}} =
@@ -504,7 +504,7 @@ defmodule Wardrik.NotifyTest do
         given = giving(wardrik, %{"hook" => target})
 
         assert {:error, %Wardrik.Error{type: :invalid_request, message: message}} =
-                 Wardrik.Resolver.defined(given, "acme/triage")
+                 Wardrik.Resolver.resolve_current(given, "acme/triage")
 
         assert message =~ why
       end

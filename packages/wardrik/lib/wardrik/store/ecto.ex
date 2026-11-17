@@ -95,7 +95,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       vsn = :rand.uniform(0x7FFFFFFFFFFFFFFF)
       condition = Keyword.fetch(opts, :if_vsn)
 
-      case written(repo, condition, [path, value, vsn]) do
+      case write(repo, condition, [path, value, vsn]) do
         {:ok, %{num_rows: 1}} -> {:ok, vsn}
         {:ok, %{num_rows: 0}} -> {:error, :conflict}
         {:error, reason} -> {:error, reason}
@@ -116,7 +116,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     def delete(%Own{}, path, opts), do: delete(Wardrik.Store.Ecto.Repo, path, opts)
 
     def delete(repo, path, opts) do
-      case removed(repo, Keyword.fetch(opts, :if_vsn), path) do
+      case remove(repo, Keyword.fetch(opts, :if_vsn), path) do
         {:ok, %{num_rows: 1}} -> :ok
         {:ok, %{num_rows: 0}} -> gone_or_conflict(repo, path)
         {:error, reason} -> {:error, reason}
@@ -177,7 +177,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       for [key, vsn] <- rows, do: {key, vsn}
     end
 
-    defp written(repo, :error, args) do
+    defp write(repo, :error, args) do
       SQL.query(
         repo,
         """
@@ -188,7 +188,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       )
     end
 
-    defp written(repo, {:ok, nil}, args) do
+    defp write(repo, {:ok, nil}, args) do
       SQL.query(
         repo,
         "INSERT INTO #{@table} (key, value, vsn) VALUES ($1, $2::text::jsonb, $3) ON CONFLICT (key) DO NOTHING",
@@ -196,7 +196,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       )
     end
 
-    defp written(repo, {:ok, vsn}, args) when is_integer(vsn) do
+    defp write(repo, {:ok, vsn}, args) when is_integer(vsn) do
       SQL.query(
         repo,
         "UPDATE #{@table} SET value = $2::text::jsonb, vsn = $3 WHERE key = $1 AND vsn = $4",
@@ -204,15 +204,15 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       )
     end
 
-    defp written(_repo, {:ok, _not_a_vsn}, _args), do: {:ok, %{num_rows: 0}}
+    defp write(_repo, {:ok, _not_a_vsn}, _args), do: {:ok, %{num_rows: 0}}
 
-    defp removed(repo, :error, path),
+    defp remove(repo, :error, path),
       do: SQL.query(repo, "DELETE FROM #{@table} WHERE key = $1", [path])
 
-    defp removed(repo, {:ok, vsn}, path) when is_integer(vsn),
+    defp remove(repo, {:ok, vsn}, path) when is_integer(vsn),
       do: SQL.query(repo, "DELETE FROM #{@table} WHERE key = $1 AND vsn = $2", [path, vsn])
 
-    defp removed(_repo, {:ok, _not_a_vsn}, _path), do: {:ok, %{num_rows: 0}}
+    defp remove(_repo, {:ok, _not_a_vsn}, _path), do: {:ok, %{num_rows: 0}}
 
     defp gone_or_conflict(repo, path) do
       if lookup(repo, path) == nil, do: :ok, else: {:error, :conflict}

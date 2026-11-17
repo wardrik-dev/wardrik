@@ -61,7 +61,7 @@ defmodule WardrikDaemon.PairingTest do
   end
 
   # Starts the client's browser sign-in, and returns the state the provider sends back.
-  defp started(client, provider) do
+  defp start(client, provider) do
     assert {:ok, %{"authorization" => %{"url" => url} = authorization}} =
              Client.run(client, "connections.connect", %{"provider" => provider})
 
@@ -93,8 +93,8 @@ defmodule WardrikDaemon.PairingTest do
     ana = client(context, "user:payments/@ana")
     bo = client(context, "user:payments/@bo")
 
-    state = started(ana, "crm")
-    _bo_state = started(bo, "crm")
+    state = start(ana, "crm")
+    _bo_state = start(bo, "crm")
     code = code(callback(context, %{"state" => state, "code" => "from-crm"}))
 
     assert {:error, "invalid_request", message} = pair(bo, "crm", code)
@@ -121,7 +121,7 @@ defmodule WardrikDaemon.PairingTest do
 
   test "a code is 8 letters of the alphabet, used once, and ends after 5 wrong tries", context do
     ana = client(context, "user:payments/@ana")
-    state = started(ana, "crm")
+    state = start(ana, "crm")
     code = code(callback(context, %{"state" => state, "code" => "from-crm"}))
 
     assert code =~ ~r/\A[BCDFGHJKLMNPQRSTVWXZ]{4}-[BCDFGHJKLMNPQRSTVWXZ]{4}\z/
@@ -136,7 +136,7 @@ defmodule WardrikDaemon.PairingTest do
 
     # Five wrong codes abandon it: the right one fails after, and the provider's link is dead.
     bo = client(context, "user:payments/@bo")
-    state = started(bo, "crm")
+    state = start(bo, "crm")
     params = %{"state" => state, "code" => "from-crm"}
     code = code(callback(context, params))
 
@@ -168,12 +168,12 @@ defmodule WardrikDaemon.PairingTest do
              pair(client(context, "user:payments/@ana"), "crm", code)
 
     assert connected?(context, "payments/@ana", "crm")
-    assert Wardrik.started_sign_in(context.running, state) == :error
+    assert Wardrik.fetch_sign_in(context.running, state) == :error
   end
 
   test "a code expires after 10 minutes", context do
     ana = client(context, "user:payments/@ana")
-    state = started(ana, "crm")
+    state = start(ana, "crm")
     code = code(callback(context, %{"state" => state, "code" => "from-crm"}))
 
     pairings = Pairings.name(context.wardrik)
@@ -191,7 +191,7 @@ defmodule WardrikDaemon.PairingTest do
 
   test "the callback alone never connects an account", context do
     ana = client(context, "user:payments/@ana")
-    state = started(ana, "crm")
+    state = start(ana, "crm")
 
     response = callback(context, %{"state" => state, "code" => "from-crm"})
     assert response.status == 200
@@ -277,7 +277,7 @@ defmodule WardrikDaemon.PairingTest do
 
   test "the wardrik command asks for the code the page shows", context do
     admin = client(context, "user:admin")
-    state = started(admin, "crm")
+    state = start(admin, "crm")
     code = code(callback(context, %{"state" => state, "code" => "from-crm"}))
     env = Map.put(context.env, "WARDRIK_INPUT", "1")
 

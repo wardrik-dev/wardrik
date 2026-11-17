@@ -74,20 +74,21 @@ defmodule WardrikDaemon.Config.Rest do
            opts
            |> Keyword.merge(auth: auth, headers: headers, schemes: schemes)
            |> Enum.map(&option/1),
-         {:ok, opts} <- Options.checked(opts, schema, path) do
+         {:ok, opts} <- Options.validate_schema(opts, schema, path) do
       {:ok, %__MODULE__{reader: reader, location: location, options: opts}}
     end
   end
 
   defp places(map, path) when is_map(map) do
-    with {:ok, read} <- Options.each(map, &placed(&1, place(&2), path)), do: {:ok, Map.new(read)}
+    with {:ok, read} <- Options.each(map, &handle_place(&1, place(&2), path)),
+         do: {:ok, Map.new(read)}
   end
 
   defp places(_other, path), do: {:error, "#{path}: is a place for each name"}
 
-  defp placed(_name, {:ok, place}, _path), do: {:ok, place}
+  defp handle_place(_name, {:ok, place}, _path), do: {:ok, place}
 
-  defp placed(name, :error, path),
+  defp handle_place(name, :error, path),
     do: {:error, "#{path}.#{name}: is bearer, {header: NAME} or {query: NAME}"}
 
   defp place("bearer"), do: {:ok, :bearer}
@@ -96,14 +97,15 @@ defmodule WardrikDaemon.Config.Rest do
   defp place(_other), do: :error
 
   defp sources(map, path, read) when is_map(map) do
-    with {:ok, read} <- Options.each(map, &sourced(&1, read.(&2), path)), do: {:ok, Map.new(read)}
+    with {:ok, read} <- Options.each(map, &read_source(&1, read.(&2), path)),
+         do: {:ok, Map.new(read)}
   end
 
   defp sources(_other, path, _read), do: {:error, "#{path}: is a source for each name"}
 
-  defp sourced(_name, {:ok, source}, _path), do: {:ok, source}
+  defp read_source(_name, {:ok, source}, _path), do: {:ok, source}
 
-  defp sourced(name, :error, path),
+  defp read_source(name, :error, path),
     do: {:error, "#{path}.#{name}: is {credential: NAME} or {key: NAME}"}
 
   defp source(%{"credential" => name}) when is_binary(name), do: {:ok, {:credential, name}}

@@ -20,7 +20,7 @@ defmodule WardrikProtocol.Operations do
         {method, %{"operationId" => _id} = operation} <- item,
         method in @methods do
       document
-      |> described(path, method, operation)
+      |> describe(path, method, operation)
       |> conversation(routes, document)
     end
   end
@@ -53,7 +53,7 @@ defmodule WardrikProtocol.Operations do
     end
   end
 
-  defp described(document, path, method, operation) do
+  defp describe(document, path, method, operation) do
     parameters = Enum.map(operation["parameters"] || [], &local(document, &1))
     {status, response} = success(document, operation["responses"])
 
@@ -105,7 +105,7 @@ defmodule WardrikProtocol.Operations do
         %{parameter["name"] => schema},
         &Map.put(&1, parameter["name"], schema)
       )
-      |> required(parameter)
+      |> handle_require(parameter)
     end)
   end
 
@@ -114,10 +114,10 @@ defmodule WardrikProtocol.Operations do
   defp property(parameter),
     do: Map.put_new(parameter["schema"], "description", parameter["description"])
 
-  defp required(input, %{"required" => true, "name" => name}),
+  defp handle_require(input, %{"required" => true, "name" => name}),
     do: Map.update(input, "required", [name], &[name | &1])
 
-  defp required(input, _parameter), do: input
+  defp handle_require(input, _parameter), do: input
 
   defp local(document, %{"$ref" => "#/" <> pointer}),
     do: get_in(document, String.split(pointer, "/"))

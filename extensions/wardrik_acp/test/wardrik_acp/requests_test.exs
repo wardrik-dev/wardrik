@@ -42,7 +42,7 @@ defmodule WardrikACP.RequestsTest do
     {:ok, output, _context} = call(acp, steps, Map.put(tags, :resume, approve()))
 
     assert output["message"] =~ "received: A person approved this: Run it."
-    assert [_load] = sent(log, "session/load")
+    assert [_load] = find_sent(log, "session/load")
   end
 
   @tag gate: [ask: ["peer__edit"]]

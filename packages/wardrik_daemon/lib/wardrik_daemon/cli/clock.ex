@@ -17,13 +17,13 @@ defmodule WardrikDaemon.CLI.Clock do
     at
     |> DateTime.diff(now, :minute)
     |> max(0)
-    |> waited()
+    |> format_wait()
   end
 
-  defp waited(minutes) when minutes < 1, do: "now"
-  defp waited(minutes) when minutes < 60, do: "in #{minutes}m"
-  defp waited(minutes) when minutes < 1_440, do: hours(div(minutes, 60), rem(minutes, 60))
-  defp waited(minutes), do: "in #{div(minutes, 1_440)}d #{div(rem(minutes, 1_440), 60)}h"
+  defp format_wait(minutes) when minutes < 1, do: "now"
+  defp format_wait(minutes) when minutes < 60, do: "in #{minutes}m"
+  defp format_wait(minutes) when minutes < 1_440, do: hours(div(minutes, 60), rem(minutes, 60))
+  defp format_wait(minutes), do: "in #{div(minutes, 1_440)}d #{div(rem(minutes, 1_440), 60)}h"
 
   defp hours(hours, 0), do: "in #{hours}h"
   defp hours(hours, minutes), do: "in #{hours}h #{minutes}m"
@@ -31,8 +31,8 @@ defmodule WardrikDaemon.CLI.Clock do
   @doc "Returns `count` in few characters, as `950`, `12.3k` or `1.2M`."
   @spec amount(non_neg_integer()) :: String.t()
   def amount(count) when count < 1_000, do: Integer.to_string(count)
-  def amount(count) when count < 1_000_000, do: shortened(count / 1_000, "k")
-  def amount(count), do: shortened(count / 1_000_000, "M")
+  def amount(count) when count < 1_000_000, do: shorten(count / 1_000, "k")
+  def amount(count), do: shorten(count / 1_000_000, "M")
 
-  defp shortened(value, unit), do: :erlang.float_to_binary(value, decimals: 1) <> unit
+  defp shorten(value, unit), do: :erlang.float_to_binary(value, decimals: 1) <> unit
 end

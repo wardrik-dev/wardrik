@@ -1,7 +1,7 @@
 defmodule WardrikDaemon.Doctor.MCP do
   @moduledoc false
 
-  import WardrikDaemon.Doctor, only: [counted: 2, reachable: 2]
+  import WardrikDaemon.Doctor, only: [pluralize: 2, reachable: 2]
 
   @version "2025-06-18"
   @timeout 10_000
@@ -31,9 +31,9 @@ defmodule WardrikDaemon.Doctor.MCP do
     at = "#{host}:#{port}"
 
     with :ok <- reachable(host, port),
-         nil <- unlisted(server, transport),
-         {:ok, names} <- listed(url, Keyword.get(transport, :headers, %{}), req_options) do
-      {:ok, label, "lists #{counted(length(names), "tool")} at #{at}#{offered(server, names)}"}
+         nil <- reach_without_listing(server, transport),
+         {:ok, names} <- list(url, Keyword.get(transport, :headers, %{}), req_options) do
+      {:ok, label, "lists #{pluralize(length(names), "tool")} at #{at}#{offer(server, names)}"}
     else
       {:error, why} -> {:fail, label, "doesn't answer at #{at}: #{why}"}
       {:refused, why} -> {:fail, label, "answers at #{at}, but #{why}"}
@@ -41,7 +41,7 @@ defmodule WardrikDaemon.Doctor.MCP do
     end
   end
 
-  defp unlisted(server, transport) do
+  defp reach_without_listing(server, transport) do
     headers = Keyword.get(transport, :headers, %{})
 
     cond do
@@ -56,7 +56,7 @@ defmodule WardrikDaemon.Doctor.MCP do
     end
   end
 
-  defp offered(server, names) do
+  defp offer(server, names) do
     case Enum.count(names, &Wardrik.MCP.Server.offers?(server, &1)) do
       count when count == length(names) -> ""
       count -> "; only and except keep #{count}"
@@ -65,7 +65,7 @@ defmodule WardrikDaemon.Doctor.MCP do
 
   defp sealed?(value), do: is_binary(value) and String.contains?(value, "${")
 
-  defp listed(url, headers, req_options) do
+  defp list(url, headers, req_options) do
     req =
       [
         url: url,
@@ -92,28 +92,29 @@ defmodule WardrikDaemon.Doctor.MCP do
 
   defp request(req, id, method, params, session) do
     with {:ok, response} <-
-           posted(req, %{jsonrpc: "2.0", id: id, method: method, params: params}, session),
-         do: answered(response, session)
+           post_request(req, %{jsonrpc: "2.0", id: id, method: method, params: params}, session),
+         do: answer(response, session)
   end
 
   defp notify(req, method, session) do
-    with {:ok, _response} <- posted(req, %{jsonrpc: "2.0", method: method}, session), do: :ok
+    with {:ok, _response} <- post_request(req, %{jsonrpc: "2.0", method: method}, session),
+         do: :ok
   end
 
-  defp posted(req, %{method: method} = body, session) do
+  defp post_request(req, %{method: method} = body, session) do
     case Req.post(req, json: body, headers: session) do
       {:ok, %Req.Response{status: status} = response} when status in 200..299 ->
         {:ok, response}
 
       {:ok, %Req.Response{status: status} = response} ->
-        {:refused, "#{method} gets #{status}#{said(response.body)}"}
+        {:refused, "#{method} gets #{status}#{say(response.body)}"}
 
       {:error, exception} ->
         {:error, Exception.message(exception)}
     end
   end
 
-  defp answered(response, session) do
+  defp answer(response, session) do
     session =
       case Req.Response.get_header(response, "mcp-session-id") do
         [id | _] -> Map.put(session, "mcp-session-id", id)
@@ -134,22 +135,22 @@ defmodule WardrikDaemon.Doctor.MCP do
     body
     |> String.split("\n")
     |> Enum.find_value(fn
-      "data:" <> data -> decoded(String.trim(data))
+      "data:" <> data -> decode(String.trim(data))
       _line -> nil
     end)
   end
 
   defp message(_body), do: nil
 
-  defp decoded(data) do
+  defp decode(data) do
     case JSON.decode(data) do
       {:ok, message} when is_map(message) -> message
       _other -> nil
     end
   end
 
-  defp said(%{"error" => %{"message" => message}}), do: ": #{message}"
-  defp said(%{"error" => message}) when is_binary(message), do: ": #{message}"
-  defp said(%{"message" => message}) when is_binary(message), do: ": #{message}"
-  defp said(_body), do: ""
+  defp say(%{"error" => %{"message" => message}}), do: ": #{message}"
+  defp say(%{"error" => message}) when is_binary(message), do: ": #{message}"
+  defp say(%{"message" => message}) when is_binary(message), do: ": #{message}"
+  defp say(_body), do: ""
 end

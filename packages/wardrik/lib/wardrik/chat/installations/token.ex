@@ -24,7 +24,7 @@ defmodule Wardrik.Chat.Installations.Token do
   end
 
   @impl Wardrik.Channel.Installations
-  def owned(%Request{channel: channel, owner: owner}, config) do
+  def list_installations(%Request{channel: channel, owner: owner}, config) do
     if Keyword.fetch!(config, :owner) == owner,
       do: [elem(fetch(%Request{channel: channel, workspace: "*"}, config), 1)],
       else: []

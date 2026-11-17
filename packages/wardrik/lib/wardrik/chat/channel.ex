@@ -104,7 +104,7 @@ defmodule Wardrik.Chat.Channel do
       vault: vault,
       adapter: adapter,
       store: store,
-      installations: stored(installations, vault, store),
+      installations: store(installations, vault, store),
       identities: own[:identities],
       offering: Keyword.get(own, :offering, offering(name)),
       deciding: Keyword.get(own, :deciding, deciding()),
@@ -124,12 +124,12 @@ defmodule Wardrik.Chat.Channel do
   @doc """
   Returns the channel's installations whose owner is exactly `owner`.
 
-      Wardrik.Chat.Channel.owned(channel, "acme")
+      Wardrik.Chat.Channel.list_installations(channel, "acme")
       #=> [%Wardrik.Channel.Installation{workspace: "T0123", owner: "acme", ...}]
   """
-  @spec owned(t(), String.t()) :: [Installation.t()]
-  def owned(%__MODULE__{name: name, installations: {module, config}}, owner),
-    do: module.owned(%Request{channel: name, owner: owner}, config)
+  @spec list_installations(t(), String.t()) :: [Installation.t()]
+  def list_installations(%__MODULE__{name: name, installations: {module, config}}, owner),
+    do: module.list_installations(%Request{channel: name, owner: owner}, config)
 
   @doc "Returns who `member` of `workspace` is in your app, or what to tell them if unknown."
   @spec identify(t(), String.t(), Wardrik.Chat.Member.t()) ::
@@ -187,8 +187,8 @@ defmodule Wardrik.Chat.Channel do
     end
   end
 
-  defp stored(:stored, vault, store), do: {Stored, vault: vault, store: store}
-  defp stored(installations, _vault, _store), do: installations
+  defp store(:stored, vault, store), do: {Stored, vault: vault, store: store}
+  defp store(installations, _vault, _store), do: installations
 
   defp offering(name),
     do: "An agent answers here once its definition lists #{name} among its channels."

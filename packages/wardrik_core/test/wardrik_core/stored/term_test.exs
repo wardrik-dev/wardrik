@@ -3,7 +3,7 @@ defmodule WardrikCore.Stored.TermTest do
 
   alias WardrikCore.Stored.Term
 
-  defp kept(value) do
+  defp keep(value) do
     value
     |> Term.dump()
     |> JSON.encode!()
@@ -28,7 +28,7 @@ defmodule WardrikCore.Stored.TermTest do
       %{:mixed => 1, "keys" => 2}
     ]
 
-    for value <- values, do: assert(kept(value) == {:ok, value})
+    for value <- values, do: assert(keep(value) == {:ok, value})
     assert Term.dump(%{"plain" => 1}) == %{"plain" => 1}
   end
 

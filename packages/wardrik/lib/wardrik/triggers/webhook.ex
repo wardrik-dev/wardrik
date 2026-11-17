@@ -28,7 +28,7 @@ defmodule Wardrik.Triggers.Webhook do
   @spec verify(request(), verify: :shared | :standard, secret: String.t(), now: DateTime.t()) ::
           :ok | {:error, String.t()}
   def verify(request, args) do
-    verified(
+    handle_verify(
       Keyword.fetch!(args, :verify),
       Keyword.fetch!(args, :secret),
       request,
@@ -36,7 +36,7 @@ defmodule Wardrik.Triggers.Webhook do
     )
   end
 
-  defp verified(:shared, secret, request, _now) do
+  defp handle_verify(:shared, secret, request, _now) do
     presented = bearer(request.headers["authorization"]) || Map.get(request, :path_secret)
 
     if same?(presented, secret),
@@ -44,7 +44,7 @@ defmodule Wardrik.Triggers.Webhook do
       else: {:error, "it doesn't present the secret"}
   end
 
-  defp verified(:standard, secret, %{headers: headers, body: body}, now) do
+  defp handle_verify(:standard, secret, %{headers: headers, body: body}, now) do
     with {:ok, id} <- header(headers, "webhook-id"),
          {:ok, timestamp} <- header(headers, "webhook-timestamp"),
          {:ok, signatures} <- header(headers, "webhook-signature"),

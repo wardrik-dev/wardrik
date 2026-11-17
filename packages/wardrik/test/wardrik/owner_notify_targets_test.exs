@@ -97,11 +97,11 @@ defmodule Wardrik.OwnerNotifyTargetsTest do
              "ops" => {OwnedWebhook, ops},
              "sales" => {OwnedWebhook, sales},
              "audit" => "audit"
-           } = reached = NotifyTargets.reached(wardrik, %Principal{id: "ana"})
+           } = reached = NotifyTargets.list_reached(wardrik, %Principal{id: "ana"})
 
     assert ops[:owner] == "ana" and sales[:owner] == "acme"
     refute Map.has_key?(reached, "pager")
-    assert NotifyTargets.reached(wardrik, %Principal{id: "bob"}) == %{"audit" => "audit"}
+    assert NotifyTargets.list_reached(wardrik, %Principal{id: "bob"}) == %{"audit" => "audit"}
   end
 
   @tag routes: %{"pager" => {OwnedWebhook, url: "https://hooks.test/pager", owner: "globex"}}

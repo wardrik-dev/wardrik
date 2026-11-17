@@ -125,7 +125,7 @@ end
 defmodule Wardrik.OAuth.TestHook do
   @moduledoc "What the tests' sign-ins call once granted, and the telemetry they watch."
 
-  def granted(name, principal, test), do: send(test, {:granted, name, principal.id})
+  def notify_granted(name, principal, test), do: send(test, {:granted, name, principal.id})
 
   def handle_event(_event, _measurements, metadata, test),
     do: send(test, {:done, metadata.outcome})

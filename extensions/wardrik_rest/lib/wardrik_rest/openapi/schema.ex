@@ -45,15 +45,15 @@ defmodule WardrikRest.OpenAPI.Schema do
 
       document
       |> get_in(keys)
-      |> found(document, [ref | seen])
+      |> resolve_found(document, [ref | seen])
     end
   end
 
   defp resolve(%{"$ref" => _elsewhere}, _document, _seen), do: %{}
   defp resolve(node, _document, _seen), do: node
 
-  defp found(%{} = node, document, seen), do: resolve(node, document, seen)
-  defp found(_none, _document, _seen), do: %{}
+  defp resolve_found(%{} = node, document, seen), do: resolve(node, document, seen)
+  defp resolve_found(_none, _document, _seen), do: %{}
 
   defp unescape(part) do
     part
@@ -77,24 +77,24 @@ defmodule WardrikRest.OpenAPI.Schema do
   defp json(%{} = node, document, seen) do
     node
     |> Map.take(@kept)
-    |> typed()
+    |> simplify_type()
     |> Map.merge(
       Map.reject(
         %{
           "properties" => properties(node["properties"], document, seen),
-          "items" => nested(node["items"], document, seen),
+          "items" => resolve_nested(node["items"], document, seen),
           "additionalProperties" => additional(node["additionalProperties"], document, seen)
         },
         fn {_key, value} -> is_nil(value) end
       )
     )
     |> choices(node, document, seen)
-    |> required(node)
+    |> handle_require(node)
   end
 
   defp json(_any, _document, _seen), do: %{}
 
-  defp typed(%{"type" => types} = schema) when is_list(types) do
+  defp simplify_type(%{"type" => types} = schema) when is_list(types) do
     case types -- ["null"] do
       [type] -> %{schema | "type" => type}
       [] -> Map.delete(schema, "type")
@@ -102,7 +102,7 @@ defmodule WardrikRest.OpenAPI.Schema do
     end
   end
 
-  defp typed(schema), do: schema
+  defp simplify_type(schema), do: schema
 
   defp properties(%{} = properties, document, seen) do
     for {name, field} <- properties, not read_only?(field, document), into: %{} do
@@ -114,28 +114,31 @@ defmodule WardrikRest.OpenAPI.Schema do
 
   defp read_only?(field, document), do: resolve(field, document)["readOnly"] == true
 
-  defp nested(%{} = node, document, seen) do
+  defp resolve_nested(%{} = node, document, seen) do
     node
     |> json(document, seen)
     |> Map.delete("description")
   end
 
-  defp nested(_none, _document, _seen), do: nil
+  defp resolve_nested(_none, _document, _seen), do: nil
 
-  defp additional(%{} = node, document, seen), do: nested(node, document, seen)
+  defp additional(%{} = node, document, seen), do: resolve_nested(node, document, seen)
   defp additional(false, _document, _seen), do: false
   defp additional(_any, _document, _seen), do: nil
 
   defp choices(schema, node, document, seen) do
     Enum.reduce(@choices, schema, fn key, schema ->
       case node[key] do
-        [_ | _] = choices -> Map.put(schema, key, Enum.map(choices, &nested(&1, document, seen)))
-        _none -> schema
+        [_ | _] = choices ->
+          Map.put(schema, key, Enum.map(choices, &resolve_nested(&1, document, seen)))
+
+        _none ->
+          schema
       end
     end)
   end
 
-  defp required(%{"required" => required, "properties" => properties} = schema, _node)
+  defp handle_require(%{"required" => required, "properties" => properties} = schema, _node)
        when is_list(required) do
     case Enum.filter(required, &Map.has_key?(properties, &1)) do
       [] -> Map.delete(schema, "required")
@@ -143,5 +146,5 @@ defmodule WardrikRest.OpenAPI.Schema do
     end
   end
 
-  defp required(schema, _node), do: Map.delete(schema, "required")
+  defp handle_require(schema, _node), do: Map.delete(schema, "required")
 end

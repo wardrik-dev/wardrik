@@ -10,7 +10,7 @@ defmodule Wardrik.Triggers.Target do
           do: MyApp.Agents.ask(id, prompt)
 
         @impl true
-        def fired(%Wardrik.Triggers.Target.Fired{}, _opts), do: :ok
+        def handle_fired(%Wardrik.Triggers.Target.Fired{}, _opts), do: :ok
 
         @impl true
         def resolve_secret(%Wardrik.Triggers.Target.Secret{agent: id, name: name}, _opts),
@@ -31,7 +31,7 @@ defmodule Wardrik.Triggers.Target do
   @callback ask(Ask.t(), opts :: term()) :: :asked | :busy | :no_agent | {:error, term()}
 
   @doc "Called after every run of a trigger, with how it went."
-  @callback fired(Fired.t(), opts :: term()) :: :ok
+  @callback handle_fired(Fired.t(), opts :: term()) :: :ok
 
   @doc "Returns the secret held for the agent by the name, or `:error`."
   @callback resolve_secret(Secret.t(), opts :: term()) :: {:ok, String.t()} | :error
