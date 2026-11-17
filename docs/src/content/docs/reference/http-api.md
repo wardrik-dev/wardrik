@@ -1065,6 +1065,22 @@ Forgets your account. The next call that needs it asks you to sign in again. Ret
 curl -X DELETE $WARDRIK_URL/v1/connections/github -H "Authorization: Bearer $WARDRIK_TOKEN"
 ```
 
+### Tell Wardrik about a change from the broker
+
+`POST /v1/broker`
+
+The [credential broker](/build/accounts/#a-credential-broker) sends this when a credential changes.
+Returns `202`.
+
+```json
+{"type": "granted", "credential": "gmail", "principal": "acme/@maria"}
+```
+
+- No token. The broker signs the request with its `secret`, as Standard Webhooks specifies.
+- `granted`: the calls waiting on the credential resume.
+- `revoked`: Wardrik forgets the credential's tokens and closes the MCP connections that use them.
+- `404` if the signature doesn't match, or the daemon has no broker.
+
 ## Notify targets
 
 The webhooks an owner keeps for their agents' notices. Your resolver gives each agent the

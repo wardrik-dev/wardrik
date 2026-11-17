@@ -99,6 +99,23 @@ defmodule Wardrik.MCP.CredentialsTest do
       assert {:error, _refused, _context} = ask(ada, "whoami")
     end
 
+    test "closes one principal's connections once their credential is revoked" do
+      ada = context("ada", %{"ada" => "ada-token"})
+      linus = context("linus", %{"linus" => "linus-token"})
+      assert {:ok, "Connected to own." <> _} = ask(ada, "connect")
+      assert {:ok, "linus-token", _context} = ask(linus, "whoami")
+
+      registry = Wardrik.MCP.Connection.registry(@mcp)
+      [{ada_connection, _hash}] = Registry.lookup(registry, {:connection, "own", "ada"})
+      [{linus_connection, _hash}] = Registry.lookup(registry, {:connection, "own", "linus"})
+
+      assert :ok = Wardrik.MCP.disconnect(@mcp, credential: "stub", principal: "ada")
+      assert :ok = Wardrik.MCP.disconnect(@mcp, credential: "other", principal: "linus")
+
+      refute Process.alive?(ada_connection)
+      assert Process.alive?(linus_connection)
+    end
+
     test "closes every connection to it when it's removed" do
       ada = context("ada", %{"ada" => "ada-token"})
       assert {:ok, "Connected to own." <> _} = ask(ada, "connect")

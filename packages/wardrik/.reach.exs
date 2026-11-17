@@ -45,6 +45,7 @@ layers = Keyword.keys(allowed) ++ [:app, :support]
       "Wardrik.Children.*",
       "Wardrik.Compaction",
       "Wardrik.Compaction.*",
+      "Wardrik.Credentials.Broker",
       "Wardrik.Declarations",
       "Wardrik.Declarations.*",
       "Wardrik.Definitions",

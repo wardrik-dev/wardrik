@@ -94,6 +94,56 @@ curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/conne
 - Apps added at runtime are at `/v1/owners/{owner}/providers`. See the
   [HTTP API reference](/reference/http-api/).
 
+## A credential broker
+
+A broker is a service you run that gives credentials in place of the vault. Use one to keep
+tokens in your own secret manager, to issue short-lived tokens, or to connect accounts through
+another service.
+
+```yaml title="~/.config/wardrik/config.yaml"
+broker:
+  url: https://broker.internal/credentials
+  secret: ${BROKER_SECRET}
+  credentials: [gmail]
+
+mcp:
+  gmail:
+    url: https://mail.example.com/mcp
+    credential: gmail
+```
+
+When a call needs `gmail`, the daemon posts a signed request to `url`:
+
+```json
+{"credential": "gmail", "principal": "acme/@maria", "agent": "acme/@maria/inbox",
+ "call": "call_1", "refused": false}
+```
+
+The broker answers `200` with one of:
+
+| Answer | What happens |
+| --- | --- |
+| `{"token": "...", "expires_in": 3600}` | The call goes ahead. The daemon keeps the token in memory for each agent until it expires. |
+| `{"authorize": "https://..."}` | The call waits on that link, as for a sign-in. |
+| `{"error": "..."}` | The call fails with that message. |
+
+When a credential changes, the broker posts a signed request to
+[`/v1/broker`](/reference/http-api/#tell-wardrik-about-a-change-from-the-broker):
+
+- `{"type": "granted", "credential": "gmail", "principal": "acme/@maria"}` resumes the calls
+  waiting on it.
+- `{"type": "revoked", ...}` makes the daemon forget the token and close MCP connections that use it.
+
+Notes:
+
+- Requests are signed in both directions with `secret`, as
+  [Standard Webhooks](https://www.standardwebhooks.com/) specifies. Check `webhook-signature`
+  on each request the daemon sends.
+- `refused` is `true` after a service refused the last token the broker gave.
+- Without `expires_in`, the daemon asks the broker on every call.
+- The broker can answer each agent differently. The daemon keeps tokens per agent.
+- `wardrik doctor` checks that the broker answers.
+
 ## Details
 
 - Browser sign-ins redirect to `{base_url}/oauth/callback`. Register that URL with the provider.

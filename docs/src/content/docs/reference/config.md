@@ -72,6 +72,7 @@ notify:
 | [`rest`](#rest) | `{}` | HTTP APIs, from their descriptions |
 | [`checkouts`](#checkouts) | `{}` | git repositories coding agents work in |
 | [`oauth`](#oauth) | none | OAuth providers |
+| [`broker`](#broker) | none | a service of your own that gives credentials |
 | [`channels`](#channels) | `{}` | chat apps |
 | [`notify`](#notify) | `{}` | notice targets |
 | [`workspace`](#workspace) | none | which agents can mount which workspaces |
@@ -342,6 +343,20 @@ oauth:
   `authorization_params`.
 - With `oauth` set, orgs and users can add their own OAuth apps, even without `providers`.
 - Browser sign-ins redirect to `{base_url}/oauth/callback`.
+
+## broker
+
+```yaml
+broker:
+  url: https://broker.internal/credentials
+  secret: ${BROKER_SECRET}
+  credentials: [gmail, github]
+```
+
+- `credentials` lists the credential names the broker gives. The vault gives the rest.
+- `secret` signs requests in both directions, as Standard Webhooks specifies. Use a `whsec_`
+  secret or any string.
+- See [A credential broker](/build/accounts/#a-credential-broker).
 
 ## channels
 

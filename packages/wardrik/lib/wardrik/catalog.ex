@@ -3,6 +3,7 @@ defmodule Wardrik.Catalog do
 
   alias Wardrik.Operations.Agent
   alias Wardrik.Operations.Agents
+  alias Wardrik.Operations.Broker
   alias Wardrik.Operations.Channels
   alias Wardrik.Operations.Connections
   alias Wardrik.Operations.Deployment
@@ -61,6 +62,7 @@ defmodule Wardrik.Catalog do
         "agent.trigger_set" => &Triggers.set/2,
         "agent.trigger_remove" => &Triggers.remove/2,
         "hook.deliver" => &Triggers.deliver/2,
+        "hook.broker" => &Broker.deliver/2,
         "deployment.reload" => &Deployment.reload/2,
         "deployment.nodes" => &Deployment.nodes/2,
         "deployment.runtime" => &Runtime.deployment/2,

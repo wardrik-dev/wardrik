@@ -32,7 +32,7 @@ defmodule Wardrik.OperationTools do
 
   # A person decides calls, and outside callers deliver hooks and chat messages. Agents reach
   # files through workspace mounts, which keep the labels these operations leave behind.
-  @never ~w(agent.decide agent.approve agent.deny hook.deliver hook.deliver_with_secret
+  @never ~w(agent.decide agent.approve agent.deny hook.broker hook.deliver hook.deliver_with_secret
             channel.deliver agent.files agent.file agent.file_put agent.file_delete)
 
   @doc "Returns whether `id` names an operation an agent may be given as `ops/ID`."

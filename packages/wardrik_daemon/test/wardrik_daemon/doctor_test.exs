@@ -209,6 +209,14 @@ defmodule WardrikDaemon.DoctorTest do
     assert github =~ "each user's account reaches it"
   end
 
+  test "says whether the credential broker answers", context do
+    write(context, "config.yaml", """
+    broker: {url: "http://127.0.0.1:#{listening()}/credentials", secret: s, credentials: [gmail]}
+    """)
+
+    assert [{:ok, "answers gmail at 127.0.0.1:" <> _port}] = found(run(context.env), "broker")
+  end
+
   test "says whether each harness runs and each checkout is a repository", context do
     repo =
       Path.join(

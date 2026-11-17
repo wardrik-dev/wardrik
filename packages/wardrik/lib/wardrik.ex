@@ -77,6 +77,14 @@ defmodule Wardrik do
               type: @entry,
               doc: "Where tools get credentials, a `Wardrik.Credentials`. The vault unless set."
             ],
+            broker: [
+              type: :keyword_list,
+              keys: Wardrik.Credentials.Broker.schema(),
+              doc: """
+              A service of your own that answers some credentials in place of the vault. See
+              `Wardrik.Credentials.Broker`.
+              """
+            ],
             key_source: [
               type: @entry,
               doc: "Where code gets API keys, a `Wardrik.Keys`. The environment unless set."
@@ -273,12 +281,13 @@ defmodule Wardrik do
             ]
           )
 
-  @derive {Inspect, except: [:vault_keys, :oauth, :mcp]}
+  @derive {Inspect, except: [:vault_keys, :oauth, :mcp, :broker]}
   @enforce_keys [
     :name,
     :store,
     :vault_keys,
     :credentials,
+    :broker,
     :key_source,
     :grants,
     :oauth,
@@ -314,6 +323,15 @@ defmodule Wardrik do
           store: Wardrik.Store.t(),
           vault_keys: [String.t()],
           credentials: Wardrik.Context.entry() | nil,
+          broker:
+            %{
+              url: String.t(),
+              secret: String.t() | {:secret, String.t()},
+              credentials: [String.t()],
+              req_options: keyword(),
+              fallback: Wardrik.Context.entry() | nil
+            }
+            | nil,
           key_source: Wardrik.Context.entry() | nil,
           grants: {module(), term()} | nil,
           oauth: keyword() | nil,

@@ -120,6 +120,23 @@ defmodule Wardrik.MCP do
   @spec reconnect(atom(), owner: String.t() | nil, secret: String.t()) :: :ok
   def reconnect(mcp, args), do: Servers.reconnect(mcp, args)
 
+  @doc """
+  Closes the connections that act for `:principal`, a principal's id, with the credential
+  `:credential`. Call it once the credential is revoked.
+
+      :ok = Wardrik.MCP.disconnect(MyApp.MCP, credential: "github", principal: "user:maria")
+  """
+  @spec disconnect(atom(), credential: String.t(), principal: String.t()) :: :ok
+  def disconnect(mcp, args) do
+    credential = Keyword.fetch!(args, :credential)
+    principal = Keyword.fetch!(args, :principal)
+
+    for {name, %Wardrik.MCP.Server{credential_name: ^credential}} <- Servers.all(mcp),
+        do: Connection.close(mcp, name, principal)
+
+    :ok
+  end
+
   @doc "Returns the names of all servers, sorted."
   @spec servers(atom()) :: [String.t()]
   def servers(mcp) do

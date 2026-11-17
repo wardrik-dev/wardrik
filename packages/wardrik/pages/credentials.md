@@ -144,6 +144,27 @@ Wardrik.signing_in?(MyApp.AgentRuntime, "github", Wardrik.principal("maria"))
 - An account is the person's who signed in. Only the OAuth app that issued it renews it.
 - When you delete an OAuth app, call `Wardrik.forget_client/2` with its key.
 
+## A credential broker
+
+A broker is a service you run that gives credentials in place of the vault:
+
+```elixir
+Wardrik.start_link(
+  name: MyApp.AgentRuntime,
+  broker: [
+    url: "https://broker.internal/credentials",
+    secret: {:secret, "BROKER_SECRET"},
+    credentials: ["gmail"]
+  ]
+)
+```
+
+- Wardrik asks the broker for each credential in `credentials`. The vault gives the rest.
+- The broker answers with a token, a link to sign in at, or an error.
+- The broker reports a credential granted or revoked with `Wardrik.Hook.broker/2`, or over HTTP at
+  `POST /v1/broker`.
+- See `Wardrik.Credentials.Broker` for the requests and answers.
+
 ## Sign-in pages
 
 Sign-ins come back to `page`. Mount the pages there, with a function that returns who is at the
