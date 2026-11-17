@@ -64,7 +64,7 @@ defmodule WardrikDaemon.Resolver do
     [owner, Owners.org(owner), "*"]
     |> Enum.uniq()
     |> Enum.find_value(fn holder ->
-      case Wardrik.Channels.owned(wardrik, channel: channel, owner: holder) do
+      case Wardrik.Channels.list_installations(wardrik, channel: channel, owner: holder) do
         [installation | _rest] -> installation.workspace
         [] -> nil
       end
@@ -76,7 +76,7 @@ defmodule WardrikDaemon.Resolver do
     for {sharer, access} <- Keyword.get(shared, :shared, %{}),
         mode = mode(access, name),
         mode != nil,
-        {:ok, %{id: tree}} <- [AgentRecords.named(store, org, sharer)],
+        {:ok, %{id: tree}} <- [AgentRecords.fetch_by_name(store, org, sharer)],
         into: %{},
         do: {tree, mode}
   end
@@ -94,7 +94,7 @@ defmodule WardrikDaemon.Resolver do
   defp servers(%{wardrik: wardrik, config: config}, owner, org) do
     reached =
       case Wardrik.Instance.fetch(wardrik) do
-        {:ok, running} -> Wardrik.Operations.Servers.reached(running, %Principal{id: owner})
+        {:ok, running} -> Wardrik.Operations.Servers.list_reached(running, %Principal{id: owner})
         :error -> Map.new(config.mcp, fn {name, _opts} -> {to_string(name), to_string(name)} end)
       end
 
@@ -109,7 +109,7 @@ defmodule WardrikDaemon.Resolver do
     reached =
       case Wardrik.Instance.fetch(wardrik) do
         {:ok, running} ->
-          Wardrik.Operations.NotifyTargets.reached(running, %Principal{id: owner})
+          Wardrik.Operations.NotifyTargets.list_reached(running, %Principal{id: owner})
 
         :error ->
           config.notify

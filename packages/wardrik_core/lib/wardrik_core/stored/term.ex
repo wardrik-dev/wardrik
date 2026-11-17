@@ -44,36 +44,38 @@ defmodule WardrikCore.Stored.Term do
 
   @spec load(Wardrik.Format.json()) :: {:ok, term()} | {:error, String.t()}
   def load(json) do
-    {:ok, loaded(json)}
+    {:ok, load_or_throw(json)}
   catch
     {:unreadable, reason} -> {:error, reason}
   end
 
   @doc "As `load/1`, but throws `{:unreadable, reason}`, for codecs that read many values."
-  @spec loaded(Wardrik.Format.json()) :: term()
-  def loaded(%{"$atom" => name}), do: atom!(name)
-  def loaded(%{"$bytes" => bytes}), do: Base.decode64!(bytes)
+  @spec load_or_throw(Wardrik.Format.json()) :: term()
+  def load_or_throw(%{"$atom" => name}), do: atom!(name)
+  def load_or_throw(%{"$bytes" => bytes}), do: Base.decode64!(bytes)
 
-  def loaded(%{"$tuple" => items}) do
+  def load_or_throw(%{"$tuple" => items}) do
     items
-    |> Enum.map(&loaded/1)
+    |> Enum.map(&load_or_throw/1)
     |> List.to_tuple()
   end
 
-  def loaded(%{"$datetime" => iso}) do
+  def load_or_throw(%{"$datetime" => iso}) do
     {:ok, value, _offset} = DateTime.from_iso8601(iso)
     value
   end
 
-  def loaded(%{"$atom_keys" => map}),
-    do: Map.new(map, fn {key, value} -> {atom!(key), loaded(value)} end)
+  def load_or_throw(%{"$atom_keys" => map}),
+    do: Map.new(map, fn {key, value} -> {atom!(key), load_or_throw(value)} end)
 
-  def loaded(%{"$map" => pairs}),
-    do: Map.new(pairs, fn [key, value] -> {loaded(key), loaded(value)} end)
+  def load_or_throw(%{"$map" => pairs}),
+    do: Map.new(pairs, fn [key, value] -> {load_or_throw(key), load_or_throw(value)} end)
 
-  def loaded(map) when is_map(map), do: Map.new(map, fn {key, value} -> {key, loaded(value)} end)
-  def loaded(list) when is_list(list), do: Enum.map(list, &loaded/1)
-  def loaded(value), do: value
+  def load_or_throw(map) when is_map(map),
+    do: Map.new(map, fn {key, value} -> {key, load_or_throw(value)} end)
+
+  def load_or_throw(list) when is_list(list), do: Enum.map(list, &load_or_throw/1)
+  def load_or_throw(value), do: value
 
   @doc "Returns the atom `name`, which this release must already have, or throws."
   @spec atom!(String.t()) :: atom()

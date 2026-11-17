@@ -51,6 +51,7 @@
         enabled:
           [
             {WardrikCore.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
+            {Wardrik.Credo.Check.VerbFunctionNames, []},
             #
             ## Consistency Checks
             #

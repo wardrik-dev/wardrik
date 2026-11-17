@@ -73,7 +73,7 @@ defmodule Wardrik.Credentials.BrokerTest do
 
   defp refuse(wardrik, name) do
     request = %Request{name: name, principal: maria(), agent: "acme/@maria/mail", call: nil}
-    Broker.refused(request, wardrik.name)
+    Broker.report_refusal(request, wardrik.name)
   end
 
   defp sign_change(change) do

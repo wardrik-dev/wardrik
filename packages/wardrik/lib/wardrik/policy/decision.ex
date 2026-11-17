@@ -36,7 +36,7 @@ defmodule Wardrik.Policy.Decision do
   def strictest([]), do: %__MODULE__{effect: :allow, cause: :no_rule}
 
   def strictest(decisions),
-    do: %{Enum.min_by(decisions, &rank/1) | measurements: measured(decisions)}
+    do: %{Enum.min_by(decisions, &rank/1) | measurements: measure(decisions)}
 
   @doc "Ranks an effect: `0` for `:deny`, `1` for `:ask`, `2` for `:allow`."
   @spec strictness(:allow | :ask | :deny) :: 0..2
@@ -49,7 +49,7 @@ defmodule Wardrik.Policy.Decision do
   def outcome(%__MODULE__{effect: :allow}), do: :allow
   def outcome(%__MODULE__{effect: effect, message: message}), do: {effect, message}
 
-  defp measured(decisions) do
+  defp measure(decisions) do
     Enum.reduce(decisions, %{}, fn decision, measured ->
       Map.merge(measured, decision.measurements, fn _key, one, other -> one + other end)
     end)

@@ -42,15 +42,15 @@ defmodule WardrikDaemon.Config.Channels do
   @doc "Returns the channels `section` names, as Wardrik's `:channels` option takes them, serving `org`'s agents."
   @spec read(map(), String.t()) :: {:ok, keyword()} | {:error, String.t()}
   def read(section, org) do
-    Options.loaded([Req.Steps])
+    Options.load_modules([Req.Steps])
     Options.each(section, &channel(&1, &2, org))
   end
 
   defp channel(name, %{"type" => type} = channel, org) do
     path = "channels.#{name}"
 
-    with :ok <- named(name, path),
-         {:ok, adapter} <- typed(type, path),
+    with :ok <- validate_name(name, path),
+         {:ok, adapter} <- resolve_type(type, path),
          {:ok, opts} <-
            channel
            |> Map.delete("type")
@@ -60,7 +60,7 @@ defmodule WardrikDaemon.Config.Channels do
       identities =
         {WardrikDaemon.ChannelMembers, members: members[:members], domains: members[:domains]}
 
-      {:ok, {adapter, added(opts) ++ [owner: org, identities: identities] ++ opts}}
+      {:ok, {adapter, build_installations(opts) ++ [owner: org, identities: identities] ++ opts}}
     end
   end
 
@@ -72,11 +72,11 @@ defmodule WardrikDaemon.Config.Channels do
       Options.public(Wardrik.Chat.Channel.schema(), @managed) ++
         Options.public(adapter.schema(), @managed) ++ @members
 
-  defp added(opts) do
+  defp build_installations(opts) do
     if is_binary(opts[:token]), do: [], else: [installations: :stored]
   end
 
-  defp named(name, path) do
+  defp validate_name(name, path) do
     if Regex.match?(~r/\A[a-z][a-z0-9-]*\z/, name) and name not in ~w(shell ssh terminal oauth),
       do: :ok,
       else:
@@ -84,7 +84,7 @@ defmodule WardrikDaemon.Config.Channels do
          "#{path}: isn't a channel's name: lower-case letters, digits and -, starting with a letter"}
   end
 
-  defp typed(type, path) do
+  defp resolve_type(type, path) do
     case Map.fetch(@types, type) do
       {:ok, adapter} -> {:ok, adapter}
       :error -> {:error, "#{path}.type: is the kind of channel: slack"}

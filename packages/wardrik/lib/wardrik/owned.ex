@@ -75,9 +75,9 @@ defmodule Wardrik.Owned do
 
   Using another owner's is `action` on `{resource, owner}`, as the authorizer decides.
   """
-  @spec chosen(Wardrik.t(), Principal.t(), [map()], {String.t(), atom()}) ::
+  @spec choose(Wardrik.t(), Principal.t(), [map()], {String.t(), atom()}) ::
           map() | nil | {:error, [String.t()]}
-  def chosen(wardrik, %Principal{id: id} = principal, candidates, use) do
+  def choose(wardrik, %Principal{id: id} = principal, candidates, use) do
     case Enum.find(candidates, &(&1.owner == id)) do
       nil -> others(wardrik, principal, candidates, use)
       own -> own

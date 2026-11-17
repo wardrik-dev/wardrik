@@ -7,7 +7,7 @@ defmodule Wardrik.EventLog.Subscribers do
   @spec subscribe(atom(), Wardrik.EventLog.resources() | :all) :: :ok
   def subscribe(group, resources) do
     for {topic, covered} <- by_topic(resources) do
-      :ok = Group.join(group, topic, %{covers: Enum.uniq(held(group, topic) ++ covered)})
+      :ok = Group.join(group, topic, %{covers: Enum.uniq(hold(group, topic) ++ covered)})
     end
 
     :ok
@@ -17,7 +17,7 @@ defmodule Wardrik.EventLog.Subscribers do
   @spec unsubscribe(atom(), Wardrik.EventLog.resources() | :all) :: :ok
   def unsubscribe(group, resources) do
     for {topic, covered} <- by_topic(resources) do
-      case held(group, topic) -- covered do
+      case hold(group, topic) -- covered do
         [] -> Group.leave(group, topic)
         held -> Group.join(group, topic, %{covers: held})
       end
@@ -47,7 +47,7 @@ defmodule Wardrik.EventLog.Subscribers do
   defp resource_topic({agent, _conversation}), do: topic(agent)
   defp resource_topic(agent), do: topic(agent)
 
-  defp held(group, topic) do
+  defp hold(group, topic) do
     Enum.concat(
       for {pid, %{covers: covers}} <- Group.local_members(group, topic),
           pid == self(),

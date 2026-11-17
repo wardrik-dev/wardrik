@@ -25,7 +25,7 @@ defmodule WardrikDaemon.Client do
     client
     |> request(operation.method, path, rest)
     |> Req.request()
-    |> answered(client)
+    |> answer(client)
   end
 
   @doc """
@@ -40,7 +40,7 @@ defmodule WardrikDaemon.Client do
     |> request("get", path, rest)
     |> Req.merge(headers: [accept: "text/event-stream"], into: :self, receive_timeout: :infinity)
     |> Req.request()
-    |> opened(client)
+    |> handle_open(client)
   end
 
   @doc "Returns the next events on an opened stream. Waits at most `timeout`. Returns `:done` once the stream ends."
@@ -49,7 +49,7 @@ defmodule WardrikDaemon.Client do
     receive do
       message ->
         case Req.parse_message(response, message) do
-          {:ok, chunks} -> chunked(response, chunks)
+          {:ok, chunks} -> chunk(response, chunks)
           :unknown -> next(response, timeout)
         end
     after
@@ -113,34 +113,34 @@ defmodule WardrikDaemon.Client do
     |> URI.encode(&URI.char_unreserved?/1)
   end
 
-  defp answered({:ok, %Req.Response{status: status, body: body}}, _client)
+  defp answer({:ok, %Req.Response{status: status, body: body}}, _client)
        when status in 200..299,
        do: {:ok, if(body == "", do: nil, else: body)}
 
-  defp answered(
+  defp answer(
          {:ok, %Req.Response{body: %{"error" => %{"type" => type, "message" => message}}}},
          _client
        ),
        do: {:error, type, message}
 
-  defp answered({:ok, %Req.Response{status: status}}, _client),
+  defp answer({:ok, %Req.Response{status: status}}, _client),
     do: {:error, "internal", "The daemon answered #{status}."}
 
-  defp answered({:error, _reason}, client), do: unreachable(client)
+  defp answer({:error, _reason}, client), do: unreachable(client)
 
-  defp opened({:ok, %Req.Response{status: 200} = response}, _client),
+  defp handle_open({:ok, %Req.Response{status: 200} = response}, _client),
     do: {:ok, Req.Response.put_private(response, :sse, "")}
 
-  defp opened({:ok, %Req.Response{} = response}, client) do
+  defp handle_open({:ok, %Req.Response{} = response}, client) do
     body =
       Enum.join(
         for {:data, data} <- elem(Req.parse_message(response, receive_body()), 1), do: data
       )
 
-    answered({:ok, %{response | body: decoded(body)}}, client)
+    answer({:ok, %{response | body: decode(body)}}, client)
   end
 
-  defp opened(other, client), do: answered(other, client)
+  defp handle_open(other, client), do: answer(other, client)
 
   defp receive_body do
     receive do
@@ -150,7 +150,7 @@ defmodule WardrikDaemon.Client do
     end
   end
 
-  defp decoded(body) do
+  defp decode(body) do
     case JSON.decode(body) do
       {:ok, decoded} -> decoded
       {:error, _not_json} -> body
@@ -162,7 +162,7 @@ defmodule WardrikDaemon.Client do
       {:error, "unavailable",
        "Nothing answers at #{client.url}. Start the daemon with `wardrik start`."}
 
-  defp chunked(response, chunks) do
+  defp chunk(response, chunks) do
     if :done in chunks do
       :done
     else

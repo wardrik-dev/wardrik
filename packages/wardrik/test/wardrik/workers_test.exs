@@ -24,7 +24,7 @@ defmodule Wardrik.WorkersTest do
 
   defp worker(wardrik, id, owners, tools, answer \\ fn _call -> nil end) do
     test = self()
-    scope = limited(wardrik, id, roles: [:worker], agents_of: owners)
+    scope = build_limited_scope(wardrik, id, roles: [:worker], agents_of: owners)
 
     worker =
       spawn_link(fn ->

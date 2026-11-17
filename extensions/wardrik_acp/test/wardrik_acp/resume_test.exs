@@ -10,7 +10,7 @@ defmodule WardrikACP.ResumeTest do
     assert {:park, :ask} = call(acp, steps, Map.put(tags, :resume, approve()))
 
     # "a" parks, is answered once restored, and is allowed when asked again. "b" parks.
-    assert decided_paths() == ["a", "a", "b"]
+    assert list_decided_paths() == ["a", "a", "b"]
   end
 
   @tag gate: [ask: ["peer__edit"]], peer: %{"PEER_RESUME" => "1"}
@@ -20,7 +20,7 @@ defmodule WardrikACP.ResumeTest do
     stop_connection(acp)
     {:ok, _output, _context} = call(acp, [], Map.put(tags, :resume, approve()))
 
-    assert [_resume] = sent(log, "session/resume")
+    assert [_resume] = find_sent(log, "session/resume")
   end
 
   @tag gate: [ask: ["peer__edit"]], peer: %{"PEER_LOAD" => "fail"}
@@ -31,7 +31,7 @@ defmodule WardrikACP.ResumeTest do
     {:ok, output, _context} = call(acp, [], Map.put(tags, :resume, approve()))
 
     assert output["message"] =~ "A person approved this"
-    assert [_first, _second] = sent(log, "session/new")
+    assert [_first, _second] = find_sent(log, "session/new")
   end
 
   @tag gate: [ask: ["peer__edit"]]

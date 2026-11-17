@@ -70,16 +70,19 @@ if Code.ensure_loaded?(Ecto.Migration) do
     defp change(1, :down), do: execute("DROP TABLE IF EXISTS wardrik_store")
 
     defp change(2, :up) do
-      typed("bytea", "ALTER COLUMN value TYPE jsonb USING convert_from(value, 'UTF8')::jsonb")
+      alter_type(
+        "bytea",
+        "ALTER COLUMN value TYPE jsonb USING convert_from(value, 'UTF8')::jsonb"
+      )
     end
 
     defp change(2, :down) do
-      typed("jsonb", "ALTER COLUMN value TYPE bytea USING convert_to(value::text, 'UTF8')")
+      alter_type("jsonb", "ALTER COLUMN value TYPE bytea USING convert_to(value::text, 'UTF8')")
     end
 
     # Alters the value column only where it has the type `from`, so a version runs once however
     # many repos run it over the table, as version 1's IF NOT EXISTS does.
-    defp typed(from, alteration) do
+    defp alter_type(from, alteration) do
       execute("""
       DO $$
       BEGIN

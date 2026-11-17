@@ -99,7 +99,7 @@ defmodule StubServer do
   end
 
   defp respond(%{"method" => "tools/call", "id" => id, "params" => params}, grown),
-    do: called(params["name"], params["arguments"] || %{}, id, grown)
+    do: call(params["name"], params["arguments"] || %{}, id, grown)
 
   defp respond(%{"method" => "ping", "id" => id}, grown) do
     reply(id, %{})
@@ -118,18 +118,18 @@ defmodule StubServer do
 
   defp respond(_notification, grown), do: grown
 
-  defp called("echo", arguments, id, grown), do: text(id, arguments["value"], grown)
+  defp call("echo", arguments, id, grown), do: text(id, arguments["value"], grown)
 
-  defp called("whoami", _arguments, id, grown),
+  defp call("whoami", _arguments, id, grown),
     do: text(id, System.get_env("STUB_TOKEN", "nobody"), grown)
 
-  defp called("env", _arguments, id, grown),
+  defp call("env", _arguments, id, grown),
     do: text(id, JSON.encode!(System.get_env()), grown)
 
-  defp called("big", _arguments, id, grown), do: text(id, String.duplicate("é", 1000), grown)
-  defp called("slow", _arguments, _id, grown), do: grown
+  defp call("big", _arguments, id, grown), do: text(id, String.duplicate("é", 1000), grown)
+  defp call("slow", _arguments, _id, grown), do: grown
 
-  defp called("boom", _arguments, id, grown) do
+  defp call("boom", _arguments, id, grown) do
     reply(id, %{
       "content" => [%{"type" => "text", "text" => "the tool refused"}],
       "isError" => true
@@ -138,7 +138,7 @@ defmodule StubServer do
     grown
   end
 
-  defp called("charge", _arguments, id, grown) do
+  defp call("charge", _arguments, id, grown) do
     reply(id, %{
       "content" => [%{"type" => "text", "text" => "charged"}],
       "_meta" => %{"usd" => 0.25}
@@ -147,7 +147,7 @@ defmodule StubServer do
     grown
   end
 
-  defp called("report", _arguments, id, grown) do
+  defp call("report", _arguments, id, grown) do
     reply(id, %{
       "content" => [%{"type" => "text", "text" => "{\"open\":3}"}],
       "structuredContent" => %{"open" => 3}
@@ -156,7 +156,7 @@ defmodule StubServer do
     grown
   end
 
-  defp called("grow", _arguments, id, _grown) do
+  defp call("grow", _arguments, id, _grown) do
     text(id, "grown", true)
     send_message(%{"jsonrpc" => "2.0", "method" => "notifications/tools/list_changed"})
     true

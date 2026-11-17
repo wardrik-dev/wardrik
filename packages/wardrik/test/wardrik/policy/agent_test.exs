@@ -27,14 +27,14 @@ defmodule Wardrik.Policy.AgentTest do
 
   setup do
     handler = "policy-agent-#{System.unique_integer([:positive])}"
-    :telemetry.attach(handler, [:wardrik_core, :turn, :stop], &__MODULE__.stopped/4, self())
+    :telemetry.attach(handler, [:wardrik_core, :turn, :stop], &__MODULE__.stop/4, self())
     on_exit(fn -> :telemetry.detach(handler) end)
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts -> {:ok, response} end)
     :ok
   end
 
-  def stopped(_event, _measurements, metadata, test), do: send(test, {:stopped, metadata})
+  def stop(_event, _measurements, metadata, test), do: send(test, {:stopped, metadata})
 
   test "a call the policy asks about waits for a person, then runs" do
     bill = ReqLLM.ToolCall.new("call_1", "books__create_bill", JSON.encode!(%{amount: 9400}))
@@ -62,7 +62,7 @@ defmodule Wardrik.Policy.AgentTest do
     refute_received {:billed, _amount}
 
     assert {:tool_calls, [{%{id: "call_1"}, {:park, %Ask{message: "Over $1,000."}}}]} =
-             WardrikCore.parked(agent)
+             WardrikCore.get_parked(agent)
 
     :ok = WardrikCore.resume(agent, %{"call_1" => :approve})
     assert_receive {:stopped, %{agent_id: ^id, outcome: :ok}}
@@ -93,7 +93,7 @@ defmodule Wardrik.Policy.AgentTest do
     assert_receive {:stopped, %{agent_id: ^id, outcome: :park}}
 
     assert %Ask{message: "This agent has used 1,200 of 1,000 tokens today." <> _rest} =
-             WardrikCore.parked(agent)
+             WardrikCore.get_parked(agent)
 
     :ok = WardrikCore.resume(agent, %{"model" => :approve})
     assert_receive {:stopped, %{agent_id: ^id, outcome: :ok}}

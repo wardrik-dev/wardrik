@@ -157,6 +157,7 @@ defmodule Wardrik.Workspace.Tools do
     do: {"Delete a file in your workspace. Says whether it was there.", [path: @path]}
 
   @doc "Returns a tool's failure answer, with `code` and `message`."
-  @spec failed(atom(), String.t()) :: {:ok, map()}
-  def failed(code, message), do: {:ok, %{ok: false, error: %{code: code, message: message}}}
+  @spec build_failure(atom(), String.t()) :: {:ok, map()}
+  def build_failure(code, message),
+    do: {:ok, %{ok: false, error: %{code: code, message: message}}}
 end

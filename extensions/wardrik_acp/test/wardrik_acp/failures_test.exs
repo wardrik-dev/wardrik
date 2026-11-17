@@ -20,7 +20,7 @@ defmodule WardrikACP.FailuresTest do
 
     {:ok, output, _context} = call(acp, [%{"say" => "Done."}])
     assert output["message"] == "Done."
-    assert [_cancel] = sent(log, "session/cancel")
+    assert [_cancel] = find_sent(log, "session/cancel")
   end
 
   test "passes input that isn't an object as input", %{acp: acp} do

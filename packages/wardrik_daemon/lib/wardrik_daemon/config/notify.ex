@@ -23,10 +23,10 @@ defmodule WardrikDaemon.Config.Notify do
   @doc "Returns Wardrik's `:notify` option from `section`. `channels` are the channels' names."
   @spec read(map(), [String.t()]) :: {:ok, keyword()} | {:error, String.t()}
   def read(section, channels) do
-    Options.loaded([Wardrik.Notify, WardrikCore.Retry, Req.Steps])
+    Options.load_modules([Wardrik.Notify, WardrikCore.Retry, Req.Steps])
     {targets, own} = Map.pop(section, "targets", %{})
 
-    with :ok <- untargeted(own),
+    with :ok <- check_targets(own),
          {:ok, own} <- Options.each(own, &keywords/2),
          {:ok, own} <-
            own
@@ -34,12 +34,13 @@ defmodule WardrikDaemon.Config.Notify do
            |> Options.convert([], "notify"),
          {:ok, targets} <- targets(targets, channels),
          notify = [targets: targets] ++ own,
-         {:ok, _settings} <- Options.built(fn -> Wardrik.Notify.settings(notify) end, "notify") do
+         {:ok, _settings} <-
+           Options.call_builder(fn -> Wardrik.Notify.settings(notify) end, "notify") do
       {:ok, notify}
     end
   end
 
-  defp untargeted(own) do
+  defp check_targets(own) do
     case Enum.find(own, fn {_name, value} -> is_map(value) and target?(value) end) do
       nil -> :ok
       {name, _target} -> {:error, "notify.#{name}: is a target, which goes in notify.targets"}
@@ -68,16 +69,17 @@ defmodule WardrikDaemon.Config.Notify do
         {:error, "#{path}: is a room, with channel and room, or a webhook, with url"}
 
       true ->
-        typed(target, channels, path)
+        build_target(target, channels, path)
     end
   end
 
-  defp typed(%{"webhook" => webhook} = target, _channels, path) when map_size(target) == 1 do
+  defp build_target(%{"webhook" => webhook} = target, _channels, path)
+       when map_size(target) == 1 do
     with {:ok, opts} <- Options.validate(webhook, Webhook.schema(), "#{path}.webhook"),
          do: {:ok, {Webhook, opts}}
   end
 
-  defp typed(%{"channel" => channel} = target, channels, path) do
+  defp build_target(%{"channel" => channel} = target, channels, path) do
     with {:ok, opts} <- Options.validate(target, Room.schema(), path) do
       if channel in channels,
         do: {:ok, {Room, opts}},
@@ -85,6 +87,6 @@ defmodule WardrikDaemon.Config.Notify do
     end
   end
 
-  defp typed(_target, _channels, path),
+  defp build_target(_target, _channels, path),
     do: {:error, "#{path}: is a room, with channel and room, or a webhook, with url"}
 end

@@ -15,14 +15,14 @@ defmodule Wardrik.DigestTest do
 
     @impl true
     def call(%Wardrik.Context{step: :turn, messages: messages} = context, next, _opts),
-      do: next.(%{context | messages: Enum.map(messages, &labelled/1)})
+      do: next.(%{context | messages: Enum.map(messages, &label/1)})
 
     def call(context, next, _opts), do: next.(context)
 
-    defp labelled(%{role: :user} = message),
+    defp label(%{role: :user} = message),
       do: %{message | metadata: Map.put(message.metadata, :labels, ["outside"])}
 
-    defp labelled(message), do: message
+    defp label(message), do: message
   end
 
   setup context do
@@ -52,7 +52,7 @@ defmodule Wardrik.DigestTest do
 
       if String.starts_with?(system, "Write a digest") do
         send(test, {:digesting, messages})
-        used(answer("Asked about tea."))
+        put_usage(answer("Asked about tea."))
       else
         answer("Tea.")
       end
@@ -61,7 +61,7 @@ defmodule Wardrik.DigestTest do
     %{wardrik: wardrik, scope: owner(wardrik), fake: fake}
   end
 
-  defp used(response), do: %{response | usage: %{input_tokens: 40, output_tokens: 10}}
+  defp put_usage(response), do: %{response | usage: %{input_tokens: 40, output_tokens: 10}}
 
   defp define(%{scope: scope} = cx, definition) do
     run!(scope, "agent.define", Map.merge(%{"agent" => @agent, "model" => @model}, definition))

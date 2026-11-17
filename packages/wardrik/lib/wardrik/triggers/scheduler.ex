@@ -78,12 +78,12 @@ defmodule Wardrik.Triggers.Scheduler do
         with :ok <- Records.put(settings.store, record, nil), do: {:ok, record}
 
       {record, vsn} ->
-        record = changed(record, trigger, now)
+        record = change(record, trigger, now)
         with :ok <- Records.put(settings.store, record, vsn), do: {:ok, record}
     end
   end
 
-  defp changed(record, trigger, now) do
+  defp change(record, trigger, now) do
     kept = Records.trigger(record)
 
     next_at =
@@ -155,13 +155,13 @@ defmodule Wardrik.Triggers.Scheduler do
 
       next ->
         next
-        |> DateTime.add(jittered(jitter))
+        |> DateTime.add(jitter(jitter))
         |> DateTime.to_iso8601()
     end
   end
 
-  defp jittered(0), do: 0
-  defp jittered(jitter), do: :rand.uniform(jitter + 1) - 1
+  defp jitter(0), do: 0
+  defp jitter(jitter), do: :rand.uniform(jitter + 1) - 1
 
   defp arm(state, key, nil), do: disarm(state, key)
 

@@ -10,11 +10,11 @@ if Code.ensure_loaded?(Wardrik.Context) do
 
     @spec start(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def start(context, policies) do
-      spent = spent(context)
+      spent = handle_spend(context)
 
       current =
         policies
-        |> budgeted()
+        |> collect_budgets()
         |> Map.new(fn {key, policy} ->
           {key, current(spent[key], period(policy.budget, context))}
         end)
@@ -24,10 +24,10 @@ if Code.ensure_loaded?(Wardrik.Context) do
 
     @spec explain(Context.t(), [Wardrik.Policy.t()]) :: Decision.t()
     def explain(context, policies) do
-      spent = spent(context)
+      spent = handle_spend(context)
 
       policies
-      |> budgeted()
+      |> collect_budgets()
       |> Enum.map(fn {key, policy} -> decision(policy, spent[key]) end)
       |> Enum.reject(&is_nil/1)
       |> Decision.strictest()
@@ -38,13 +38,13 @@ if Code.ensure_loaded?(Wardrik.Context) do
 
     @spec record(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def record(context, policies) do
-      gained = gained(context)
+      gained = compute_gain(context)
       count(context, policies, &spend(&1, &2, gained))
     end
 
     @spec catch_up(Context.t(), [Wardrik.Policy.t()]) :: Context.t()
     def catch_up(context, policies) do
-      gained = gained(context)
+      gained = compute_gain(context)
 
       count(context, policies, fn budget, spent ->
         %{spend(budget, spent, gained) | unpriced: spent.unpriced}
@@ -57,17 +57,17 @@ if Code.ensure_loaded?(Wardrik.Context) do
       |> Context.put_private(Counted, %{trace: trace(context), counted: context.measurements})
     end
 
-    defp budgeted(policies) do
+    defp collect_budgets(policies) do
       for {%Wardrik.Policy{budget: %Budget{}} = policy, index} <- Enum.with_index(policies),
           do: {policy.name || index, policy}
     end
 
-    defp spent(context), do: Context.get_private(context, Spent, %{})
+    defp handle_spend(context), do: Context.get_private(context, Spent, %{})
 
-    defp period(%Budget{per: :turn}, context), do: {:turn, asked(context.messages)}
+    defp period(%Budget{per: :turn}, context), do: {:turn, ask(context.messages)}
     defp period(budget, _context), do: Budget.period(budget, DateTime.utc_now())
 
-    defp asked(messages), do: Enum.count(messages, &(&1.role == :user))
+    defp ask(messages), do: Enum.count(messages, &(&1.role == :user))
 
     defp current(%{period: period} = spent, period), do: spent
 
@@ -86,23 +86,23 @@ if Code.ensure_loaded?(Wardrik.Context) do
       }
     end
 
-    defp decision(policy, spent), do: exhausted(policy, Budget.check(policy.budget, spent))
+    defp decision(policy, spent), do: exhaust(policy, Budget.check(policy.budget, spent))
 
-    defp exhausted(_policy, :allow), do: nil
+    defp exhaust(_policy, :allow), do: nil
 
-    defp exhausted(policy, {effect, message}),
+    defp exhaust(policy, {effect, message}),
       do: %Decision{effect: effect, message: message, policy: policy.name, cause: :budget}
 
-    defp gained(context) do
-      counted = counted(Context.get_private(context, Counted), trace(context))
+    defp compute_gain(context) do
+      counted = handle_count(Context.get_private(context, Counted), trace(context))
 
       context.measurements
       |> Map.new(fn {key, amount} -> {key, amount - Map.get(counted, key, 0)} end)
       |> Map.reject(fn {_key, amount} -> amount == 0 end)
     end
 
-    defp counted(%{trace: trace, counted: counted}, trace), do: counted
-    defp counted(_counted, _trace), do: %{}
+    defp handle_count(%{trace: trace, counted: counted}, trace), do: counted
+    defp handle_count(_counted, _trace), do: %{}
 
     defp trace(%Context{span: nil}), do: nil
     defp trace(%Context{span: span}), do: span.trace
@@ -129,8 +129,8 @@ if Code.ensure_loaded?(Wardrik.Context) do
     defp update(context, policies, fun) do
       spent =
         policies
-        |> budgeted()
-        |> Enum.reduce(spent(context), fn {key, policy}, spent ->
+        |> collect_budgets()
+        |> Enum.reduce(handle_spend(context), fn {key, policy}, spent ->
           Map.update!(spent, key, &fun.(policy.budget, &1))
         end)
 

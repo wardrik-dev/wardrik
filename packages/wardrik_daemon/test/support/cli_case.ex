@@ -112,13 +112,13 @@ defmodule WardrikDaemon.CLICase do
       |> Wardrik.events()
 
     :ok = Wardrik.EventLog.subscribe(events, :all)
-    idled(events, agent)
+    assert_idle(events, agent)
   end
 
-  def idled(events, agent) do
+  def assert_idle(events, agent) do
     unless Wardrik.EventLog.activity(events, agent)["doing"] == [] do
       assert_receive {Wardrik.EventLog, _log, _event}, 5_000
-      idled(events, agent)
+      assert_idle(events, agent)
     end
   end
 

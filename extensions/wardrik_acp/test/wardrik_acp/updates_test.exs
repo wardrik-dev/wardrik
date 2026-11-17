@@ -38,13 +38,15 @@ defmodule WardrikACP.UpdatesTest do
     {:ok, _output, _context} = call(acp, [])
 
     assert [%{"_meta" => %{"claudeCode" => %{"options" => %{"settingSources" => []}}}}] =
-             sent(log, "session/new")
+             find_sent(log, "session/new")
   end
 
   @tag harness: [options: %{"mode" => "ask"}]
   test "sets config options by category", %{acp: acp, log: log} do
     {:ok, _output, _context} = call(acp, [])
-    assert [%{"configId" => "mode", "value" => "ask"}] = sent(log, "session/set_config_option")
+
+    assert [%{"configId" => "mode", "value" => "ask"}] =
+             find_sent(log, "session/set_config_option")
   end
 
   @tag harness: [options: %{"model" => "opus"}]
@@ -60,6 +62,6 @@ defmodule WardrikACP.UpdatesTest do
   @tag harness: [options: %{"mode" => true}]
   test "sets a boolean config option", %{acp: acp, log: log} do
     {:ok, _output, _context} = call(acp, [])
-    assert [%{"type" => "boolean", "value" => true}] = sent(log, "session/set_config_option")
+    assert [%{"type" => "boolean", "value" => true}] = find_sent(log, "session/set_config_option")
   end
 end

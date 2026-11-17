@@ -44,7 +44,7 @@ defmodule Wardrik.Operations.Secrets do
       vault = Wardrik.vault(wardrik)
 
       case Wardrik.Vault.put(vault, secret, kind: kind) do
-        {:ok, _vsn} -> changed(scope, "secret.stored", {owner, name})
+        {:ok, _vsn} -> change(scope, "secret.stored", {owner, name})
         {:error, reason} -> unkept(reason)
       end
     end
@@ -57,7 +57,7 @@ defmodule Wardrik.Operations.Secrets do
       vault = Wardrik.vault(wardrik)
 
       case Wardrik.Vault.delete(vault, %Principal{id: owner}, name) do
-        :ok -> changed(scope, "secret.removed", {owner, name})
+        :ok -> change(scope, "secret.removed", {owner, name})
         {:error, reason} -> unkept(reason)
       end
     end
@@ -65,7 +65,7 @@ defmodule Wardrik.Operations.Secrets do
 
   # The owner's servers whose headers name the secret connect again, to read it as it is now:
   # here before answering, and on the cluster's other nodes as the message reaches them.
-  defp changed(%Scope{wardrik: wardrik} = scope, type, {owner, name}) do
+  defp change(%Scope{wardrik: wardrik} = scope, type, {owner, name}) do
     mcp = Wardrik.mcp(wardrik)
     reconnected = [owner: owner, secret: name]
     :ok = Wardrik.MCP.reconnect(mcp, reconnected)

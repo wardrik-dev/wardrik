@@ -55,8 +55,8 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
 
       context =
         context
-        |> decided(decision)
-        |> Context.reported(decision.measurements)
+        |> decide(decision)
+        |> Context.add_reported(decision.measurements)
 
       follow(decision, context, call, next, next)
     end
@@ -69,7 +69,7 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
         |> Spending.start(policies)
         |> Spending.catch_up(policies)
 
-      metered = &metered(&1, next, policies)
+      metered = &record_spending(&1, next, policies)
 
       case Spending.explain(context, policies) do
         %Decision{effect: :allow} ->
@@ -84,21 +84,21 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
             |> metered.()
           end
 
-          follow(decision, decided(context, decision), nil, metered, approved)
+          follow(decision, decide(context, decision), nil, metered, approved)
       end
     end
 
     def call(context, next, _policies), do: next.(context)
 
-    defp metered(context, next, policies) do
+    defp record_spending(context, next, policies) do
       with {:ok, context} <- next.(context), do: {:ok, Spending.record(context, policies)}
     end
 
     defp follow(%Decision{effect: :allow}, context, _call, run, _approved), do: run.(context)
 
     defp follow(%Decision{effect: :deny, message: message}, context, call, _run, _approved) do
-      denied(context, call, message, "hook")
-      refused(context, call, message)
+      deny(context, call, message, "hook")
+      refuse(context, call, message)
     end
 
     defp follow(%Decision{effect: :ask, message: message}, context, call, _run, approved) do
@@ -115,8 +115,8 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
 
         answer ->
           emit(:answer, context, call, %{answer: answer, metadata: context.resume.metadata})
-          resolved(context, call, answer)
-          answered(answer, context, call, approved)
+          resolve(context, call, answer)
+          handle_answer(answer, context, call, approved)
       end
     end
 
@@ -174,20 +174,20 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
     defp answer_id(nil), do: "model"
     defp answer_id(call), do: call.id
 
-    defp answered(:approve, context, _call, next), do: next.(context)
+    defp handle_answer(:approve, context, _call, next), do: next.(context)
 
-    defp answered({:approve, note}, context, _call, next),
-      do: with({:ok, context} <- next.(context), do: {:ok, noted(context, note)})
+    defp handle_answer({:approve, note}, context, _call, next),
+      do: with({:ok, context} <- next.(context), do: {:ok, note(context, note)})
 
-    defp answered({:deny, reason}, context, call, _next) do
-      denied(context, call, reason, "person")
-      refused(context, call, reason)
+    defp handle_answer({:deny, reason}, context, call, _next) do
+      deny(context, call, reason, "person")
+      refuse(context, call, reason)
     end
 
-    defp refused(_context, nil, message), do: {:error, message}
-    defp refused(context, _call, message), do: {:ok, %{context | response: {:error, message}}}
+    defp refuse(_context, nil, message), do: {:error, message}
+    defp refuse(context, _call, message), do: {:ok, %{context | response: {:error, message}}}
 
-    defp decided(context, decision),
+    defp decide(context, decision),
       do: Context.attribute(context, "wardrik.policy.decision", decision)
 
     defp emit(event, context, call, metadata) do
@@ -207,9 +207,9 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
       )
     end
 
-    defp denied(_context, nil, _reason, _by), do: :ok
+    defp deny(_context, nil, _reason, _by), do: :ok
 
-    defp denied(context, call, reason, by) do
+    defp deny(context, call, reason, by) do
       WardrikCore.Event.emit(context, [:wardrik, :tool_call, :denied], %{}, %{
         agent_id: context.agent_id,
         span: context.span,
@@ -219,7 +219,7 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
       })
     end
 
-    defp resolved(context, call, answer) do
+    defp resolve(context, call, answer) do
       WardrikCore.Event.emit(
         context,
         [:wardrik, :interrupt, :resolved],
@@ -244,9 +244,9 @@ if Code.ensure_loaded?(Wardrik.Middleware) do
     defp put_present(map, _key, nil), do: map
     defp put_present(map, key, value), do: Map.put(map, key, value)
 
-    defp noted(%Context{response: {:ok, result}} = context, note),
+    defp note(%Context{response: {:ok, result}} = context, note),
       do: %{context | response: {:ok, %{"result" => result, "note" => note}}}
 
-    defp noted(context, _note), do: context
+    defp note(context, _note), do: context
   end
 end

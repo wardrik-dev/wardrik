@@ -195,12 +195,12 @@ defmodule WardrikRest.API do
     opts = NimbleOptions.validate!(opts, @schema)
 
     with {:ok, spec} <- Reader.read(source),
-         {:ok, spec} <- added(spec, opts[:schemes]),
+         {:ok, spec} <- add_security(spec, opts[:schemes]),
          :ok <- opts[:egress].(opts[:base_url]),
          :ok <- schemes(spec, opts[:auth]),
-         {:ok, operations} <- offered(spec, opts) do
-      operations = Enum.map(operations, &headed(&1, opts[:argument_headers]))
-      fitted = Map.new(operations, &{&1.name, fitted(&1, spec, opts)})
+         {:ok, operations} <- offer(spec, opts) do
+      operations = Enum.map(operations, &add_headers(&1, opts[:argument_headers]))
+      fitted = Map.new(operations, &{&1.name, fit_operation(&1, spec, opts)})
 
       described =
         fitted
@@ -230,7 +230,7 @@ defmodule WardrikRest.API do
     end
   end
 
-  defp headed(operation, headers) do
+  defp add_headers(operation, headers) do
     taken = MapSet.new(operation.parameters, & &1.name)
 
     added =
@@ -241,7 +241,7 @@ defmodule WardrikRest.API do
     %{operation | parameters: operation.parameters ++ added}
   end
 
-  defp fitted(operation, spec, opts) do
+  defp fit_operation(operation, spec, opts) do
     {properties, cut} =
       Schema.fit(
         operation.parameters,
@@ -274,9 +274,9 @@ defmodule WardrikRest.API do
   `:error`.
   """
   @spec security(t(), Operation.t()) :: {:ok, [String.t()]} | :error
-  def security(%__MODULE__{auth: auth}, operation), do: signed(auth, operation)
+  def security(%__MODULE__{auth: auth}, operation), do: sign(auth, operation)
 
-  defp signed(auth, %Operation{security: alternatives}) do
+  defp sign(auth, %Operation{security: alternatives}) do
     case Enum.find(alternatives, fn schemes -> Enum.all?(schemes, &Map.has_key?(auth, &1)) end) do
       nil -> :error
       schemes -> {:ok, schemes}
@@ -291,9 +291,9 @@ defmodule WardrikRest.API do
     [read_only: read_only, idempotent: idempotent]
   end
 
-  defp added(spec, schemes) when map_size(schemes) == 0, do: {:ok, spec}
+  defp add_security(spec, schemes) when map_size(schemes) == 0, do: {:ok, spec}
 
-  defp added(spec, schemes) do
+  defp add_security(spec, schemes) do
     case Enum.reject(schemes, fn {_name, place} -> place?(place) end) do
       [] ->
         names =
@@ -322,21 +322,21 @@ defmodule WardrikRest.API do
 
       unknown ->
         {:error,
-         "auth names #{Enum.join(unknown, ", ")}, which the description doesn't. It has #{known(spec)}."}
+         "auth names #{Enum.join(unknown, ", ")}, which the description doesn't. It has #{know(spec)}."}
     end
   end
 
-  defp known(%Spec{schemes: schemes}) when map_size(schemes) == 0, do: "none"
+  defp know(%Spec{schemes: schemes}) when map_size(schemes) == 0, do: "none"
 
-  defp known(%Spec{schemes: schemes}) do
+  defp know(%Spec{schemes: schemes}) do
     schemes
     |> Map.keys()
     |> Enum.sort()
     |> Enum.join(", ")
   end
 
-  defp offered(spec, opts) do
-    signed = Enum.filter(spec.operations, &match?({:ok, _schemes}, signed(opts[:auth], &1)))
+  defp offer(spec, opts) do
+    signed = Enum.filter(spec.operations, &match?({:ok, _schemes}, sign(opts[:auth], &1)))
     exact = Enum.reject(opts[:only], &String.contains?(&1, "*"))
 
     # A glob leaves out what its names would be too long for; a name given exactly is an error.
@@ -346,7 +346,7 @@ defmodule WardrikRest.API do
           (listed?(opts[:only], operation.name) and fits?(opts[:name], operation))
       end)
 
-    with :ok <- named(opts[:only], spec, signed),
+    with :ok <- pick_named(opts[:only], spec, signed),
          :ok <- short(opts[:name], offered),
          do: {:ok, offered}
   end
@@ -356,7 +356,7 @@ defmodule WardrikRest.API do
     String.length(name) <= @name_limit
   end
 
-  defp named(only, spec, signed) do
+  defp pick_named(only, spec, signed) do
     exact = Enum.reject(only, &String.contains?(&1, "*"))
     missing = exact -- Enum.map(spec.operations, & &1.name)
     unsigned = (exact -- missing) -- Enum.map(signed, & &1.name)

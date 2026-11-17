@@ -16,7 +16,7 @@ defmodule Wardrik.Operations.Changes do
       |> Map.put("agent", %{"id" => agent})
       |> Wardrik.Operations.Snapshot.conversation(conversation)
 
-    recorded(
+    handle_record(
       scope,
       {Keyword.fetch!(args, :type), Wardrik.EventLog.CloudEvent.subject(agent), data}
     )
@@ -29,12 +29,12 @@ defmodule Wardrik.Operations.Changes do
   @spec record_deployment(Scope.t(), type: String.t(), subject: String.t(), data: map()) :: :ok
   def record_deployment(%Scope{} = scope, args),
     do:
-      recorded(
+      handle_record(
         scope,
         {Keyword.fetch!(args, :type), Keyword.fetch!(args, :subject), Keyword.fetch!(args, :data)}
       )
 
-  defp recorded(%Scope{wardrik: wardrik, principal: principal}, change) do
+  defp handle_record(%Scope{wardrik: wardrik, principal: principal}, change) do
     events = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.record(events, change, actor: principal)
   end

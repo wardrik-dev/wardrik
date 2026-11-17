@@ -105,7 +105,7 @@ defmodule WardrikDaemon.WebTest do
     context = daemon(context, true)
     browser = browser()
 
-    opened = opened(browser)
+    opened = start_reading(browser)
     output = web(context, [], %{"BROWSER" => browser.script})
     assert output =~ "Opened the chat in your browser"
     url = opened.()
@@ -117,7 +117,7 @@ defmodule WardrikDaemon.WebTest do
     assert printed =~ ~r"^http://127.0.0.1:\d+/web/sign-in\?code=\S+\n$"
     refute_receive {_port, {:data, _args}}, 100
 
-    opened = opened(browser)
+    opened = start_reading(browser)
     web(context, ["helper"], %{"BROWSER" => browser.script})
 
     chat =

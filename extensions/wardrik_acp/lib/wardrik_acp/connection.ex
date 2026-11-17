@@ -38,12 +38,12 @@ defmodule WardrikACP.Connection do
     acp
     |> supervisor()
     |> DynamicSupervisor.start_child({__MODULE__, {acp, spec}})
-    |> started()
+    |> start()
   end
 
-  defp started({:ok, pid}), do: {:ok, pid}
-  defp started({:error, {:already_started, pid}}), do: {:ok, pid}
-  defp started({:error, reason}), do: {:error, reason}
+  defp start({:ok, pid}), do: {:ok, pid}
+  defp start({:error, {:already_started, pid}}), do: {:ok, pid}
+  defp start({:error, reason}), do: {:error, reason}
 
   @doc """
   Makes the caller the reader once the session is ready. The reader receives each event as
@@ -87,7 +87,7 @@ defmodule WardrikACP.Connection do
   @impl GenServer
   def init(spec) do
     Process.flag(:trap_exit, true)
-    saved = saved(spec.file)
+    saved = handle_save(spec.file)
 
     state = %{
       spec: spec,
@@ -146,7 +146,7 @@ defmodule WardrikACP.Connection do
   end
 
   @impl GenServer
-  def handle_call(:attach, from, %{status: :ready} = state), do: attached(from, state)
+  def handle_call(:attach, from, %{status: :ready} = state), do: attach_reader(from, state)
 
   def handle_call(:attach, _from, %{status: {:failed, reason}} = state),
     do: {:stop, {:shutdown, reason}, {:error, reason}, state}
@@ -184,7 +184,7 @@ defmodule WardrikACP.Connection do
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state) do
     {messages, buffer} = RPC.split(state.buffer <> data)
-    Enum.reduce_while(messages, {:noreply, %{state | buffer: buffer}}, &handled/2)
+    Enum.reduce_while(messages, {:noreply, %{state | buffer: buffer}}, &handle/2)
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
@@ -194,7 +194,7 @@ defmodule WardrikACP.Connection do
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{monitor: ref} = state),
-    do: {:noreply, idle(released(%{state | monitor: nil}))}
+    do: {:noreply, idle(release(%{state | monitor: nil}))}
 
   def handle_info(:idle, %{reader: nil} = state), do: {:stop, :normal, state}
   def handle_info(_message, state), do: {:noreply, state}
@@ -205,8 +205,8 @@ defmodule WardrikACP.Connection do
   @impl GenServer
   def terminate(_reason, %{port: port}) when is_port(port) do
     with {:os_pid, pid} <- Port.info(port, :os_pid),
-         :timeout <- signalled(port, pid, "-TERM", 3_000),
-         :timeout <- signalled(port, pid, "-KILL", 1_000),
+         :timeout <- signal(port, pid, "-TERM", 3_000),
+         :timeout <- signal(port, pid, "-KILL", 1_000),
          do: Port.close(port)
 
     :ok
@@ -214,7 +214,7 @@ defmodule WardrikACP.Connection do
 
   def terminate(_reason, _state), do: :ok
 
-  defp signalled(port, pid, signal, wait) do
+  defp signal(port, pid, signal, wait) do
     System.cmd("kill", [signal, to_string(pid)], stderr_to_stdout: true)
 
     receive do
@@ -224,8 +224,8 @@ defmodule WardrikACP.Connection do
     end
   end
 
-  defp handled(message, {:noreply, state}), do: {:cont, message(message, state)}
-  defp handled(_message, stop), do: {:halt, stop}
+  defp handle(message, {:noreply, state}), do: {:cont, message(message, state)}
+  defp handle(_message, stop), do: {:halt, stop}
 
   defp message({:result, id, result}, state) do
     {tag, calls} = Map.pop(state.calls, id)
@@ -363,22 +363,22 @@ defmodule WardrikACP.Connection do
     state.waiting
     |> Enum.reverse()
     |> Enum.reduce({:noreply, %{state | waiting: []}}, fn from, {:noreply, state} ->
-      {:reply, reply, state} = attached(from, state)
+      {:reply, reply, state} = attach_reader(from, state)
       GenServer.reply(from, reply)
       {:noreply, state}
     end)
   end
 
-  defp attached({pid, _tag} = from, %{reader: reader} = state)
+  defp attach_reader({pid, _tag} = from, %{reader: reader} = state)
        when is_pid(reader) and reader != pid do
     if Process.alive?(reader),
       do:
         {:reply, {:error, "#{state.name} is already working on this. Use another work name."},
          state},
-      else: attached(from, released(unwatch(state)))
+      else: attach_reader(from, release(unwatch(state)))
   end
 
-  defp attached({pid, _tag}, state) do
+  defp attach_reader({pid, _tag}, state) do
     state = cancel_idle(%{state | reader: pid, monitor: Process.monitor(pid)})
 
     state.outbox
@@ -412,9 +412,9 @@ defmodule WardrikACP.Connection do
   end
 
   # The reader stopped without detaching, so its call was stopped. Its prompt is cancelled.
-  defp released(%{prompt: nil} = state), do: %{state | reader: nil, outbox: []}
+  defp release(%{prompt: nil} = state), do: %{state | reader: nil, outbox: []}
 
-  defp released(state) do
+  defp release(state) do
     write(state, RPC.notification("session/cancel", %{"sessionId" => state.session}))
 
     for {id, _params} <- state.pending,
@@ -440,10 +440,10 @@ defmodule WardrikACP.Connection do
 
   defp write(%{port: port}, line), do: Port.command(port, line)
 
-  defp outcome(:allow, options), do: selected(options, ["allow_once"])
-  defp outcome(:reject, options), do: selected(options, ["reject_once", "reject_always"])
+  defp outcome(:allow, options), do: select(options, ["allow_once"])
+  defp outcome(:reject, options), do: select(options, ["reject_once", "reject_always"])
 
-  defp selected(options, kinds) do
+  defp select(options, kinds) do
     case Enum.find(kinds, &Enum.find(options, fn option -> option["kind"] == &1 end)) do
       nil -> %{"outcome" => "cancelled"}
       kind -> %{"outcome" => "selected", "optionId" => option_id(options, kind)}
@@ -486,7 +486,7 @@ defmodule WardrikACP.Connection do
     state
   end
 
-  defp saved(file) do
+  defp handle_save(file) do
     with {:ok, body} <- File.read(file),
          {:ok, %{} = saved} <- JSON.decode(body) do
       saved

@@ -32,8 +32,8 @@ defmodule WardrikDaemon.Web.TokensLive do
     %{daemon: daemon, scope: scope, schema: schema} = socket.assigns
 
     with {:ok, input} <- read(schema, params),
-         {:ok, input} <- WardrikDaemon.HTTP.checked("token_input", input),
-         :ok <- Allowed.authorized(scope, "token.create", {:token, input["subject"]}),
+         {:ok, input} <- WardrikDaemon.HTTP.validate_input("token_input", input),
+         :ok <- Allowed.check_authorized(scope, "token.create", {:token, input["subject"]}),
          {:ok, created} <- Tokens.issue(daemon.store, input) do
       {:noreply, load(assign(socket, params: %{}, created: created))}
     else
@@ -45,7 +45,7 @@ defmodule WardrikDaemon.Web.TokensLive do
   def handle_event("revoke", %{"id" => id}, socket) do
     %{daemon: daemon, scope: scope} = socket.assigns
 
-    case Allowed.authorized(scope, "token.delete", {:token, id}) do
+    case Allowed.check_authorized(scope, "token.delete", {:token, id}) do
       :ok ->
         :ok = Tokens.revoke(daemon.store, id)
         {:noreply, load(put_flash(socket, :info, "Revoked the token."))}
@@ -70,7 +70,7 @@ defmodule WardrikDaemon.Web.TokensLive do
   defp load(socket) do
     %{daemon: daemon, scope: scope} = socket.assigns
 
-    case Allowed.authorized(scope, "token.read", {:token, "*"}) do
+    case Allowed.check_authorized(scope, "token.read", {:token, "*"}) do
       :ok ->
         tokens = Tokens.list(daemon.store)
         assign(socket, tokens: Enum.map(tokens, &Tokens.json/1), error: nil)

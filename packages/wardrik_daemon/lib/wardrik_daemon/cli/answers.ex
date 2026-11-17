@@ -13,21 +13,21 @@ defmodule WardrikDaemon.CLI.Answers do
   alias WardrikDaemon.Setup.Question
 
   @doc "Returns the answers `--set` and `--answers` give, by question key."
-  @spec given(map()) :: {:ok, %{String.t() => term()}} | {:error, String.t()}
-  def given(flags) do
+  @spec parse_given(map()) :: {:ok, %{String.t() => term()}} | {:error, String.t()}
+  def parse_given(flags) do
     with {:ok, read} <- read(flags[:answers]),
          {:ok, set} <- set(List.wrap(flags[:set])),
          do: {:ok, Map.merge(read, set)}
   end
 
   defp read(nil), do: {:ok, %{}}
-  defp read("-"), do: parsed(IO.read(:stdio, :eof), "stdin")
-  defp read(path), do: parsed(File.read(path), path)
+  defp read("-"), do: parse(IO.read(:stdio, :eof), "stdin")
+  defp read(path), do: parse(File.read(path), path)
 
-  defp parsed({:ok, text}, from), do: parsed(text, from)
-  defp parsed({:error, why}, from), do: {:error, "--answers #{from}: #{:file.format_error(why)}"}
+  defp parse({:ok, text}, from), do: parse(text, from)
+  defp parse({:error, why}, from), do: {:error, "--answers #{from}: #{:file.format_error(why)}"}
 
-  defp parsed(text, from) when is_binary(text) do
+  defp parse(text, from) when is_binary(text) do
     case YamlElixir.read_from_string(text) do
       {:ok, %{} = answers} -> {:ok, flat(answers, "")}
       {:ok, nil} -> {:ok, %{}}
@@ -35,7 +35,7 @@ defmodule WardrikDaemon.CLI.Answers do
     end
   end
 
-  defp parsed(_eof, _from), do: {:ok, %{}}
+  defp parse(_eof, _from), do: {:ok, %{}}
 
   defp flat(map, prefix) do
     Enum.reduce(map, %{}, fn
@@ -59,19 +59,19 @@ defmodule WardrikDaemon.CLI.Answers do
     fn %Question{key: key} = question ->
       case Map.fetch(given, key) do
         {:ok, value} -> Question.cast(question, value)
-        :error -> asked(cx, question, flags)
+        :error -> ask(cx, question, flags)
       end
     end
   end
 
-  defp asked(%Context{terminal: %{input?: true}}, question, _flags),
+  defp ask(%Context{terminal: %{input?: true}}, question, _flags),
     do: {:ok, Owl.IO.confirm(message: question.label, default: question.default)}
 
-  defp asked(_cx, _question, flags), do: {:ok, flags[:yes] == true}
+  defp ask(_cx, _question, flags), do: {:ok, flags[:yes] == true}
 
   @doc "Returns a line for each given answer no question asked, as a typo in `--set` would be."
-  @spec unasked(%{String.t() => term()}, [String.t()]) :: [String.t()]
-  def unasked(given, asked) do
+  @spec list_unasked(%{String.t() => term()}, [String.t()]) :: [String.t()]
+  def list_unasked(given, asked) do
     for key <- Map.keys(given) -- asked,
         do: "Nothing asked #{key}: no step here offers it."
   end

@@ -166,7 +166,7 @@ defmodule WardrikDaemon.OrgsTest do
                WardrikDaemon.Orgs.settings("ops", config)
 
       assert message == "ops's ceiling unlimited: a ceiling sets usd, tokens or both."
-      assert WardrikDaemon.Orgs.known("platform", config) == :ok
+      assert WardrikDaemon.Orgs.check_known("platform", config) == :ok
     end
   end
 end

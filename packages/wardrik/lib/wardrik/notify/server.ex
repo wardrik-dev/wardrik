@@ -29,22 +29,27 @@ defmodule Wardrik.Notify.Server do
 
   @impl GenServer
   def handle_cast({:event, %Wardrik.Event{} = event}, state),
-    do: {:noreply, taken(state, agent(event), event)}
+    do: {:noreply, take(state, agent(event), event)}
 
-  defp taken(state, agent, %{type: "wardrik.run.interrupted", data: data} = event) do
+  defp take(state, agent, %{type: "wardrik.run.interrupted", data: data} = event) do
     ids = Enum.map(data["interrupts"], & &1["id"])
 
     case waiting(state, agent, ids) do
       [] -> state
-      calls -> told(state, agent, notice(event, :parked, calls: calls))
+      calls -> handle_tell(state, agent, notice(event, :parked, calls: calls))
     end
   end
 
-  defp taken(state, agent, %{type: "wardrik.run.failed", data: data} = event),
-    do: told(state, agent, notice(event, :failed, reason: data["error"]["message"]))
+  defp take(state, agent, %{type: "wardrik.run.failed", data: data} = event),
+    do: handle_tell(state, agent, notice(event, :failed, reason: data["error"]["message"]))
 
-  defp taken(state, agent, %{type: "wardrik.run.completed", data: data} = event),
-    do: told(state, agent, notice(event, :finished, text: Wardrik.Reply.text(data["messages"])))
+  defp take(state, agent, %{type: "wardrik.run.completed", data: data} = event),
+    do:
+      handle_tell(
+        state,
+        agent,
+        notice(event, :finished, text: Wardrik.Reply.text(data["messages"]))
+      )
 
   defp notice(event, kind, fields),
     do:
@@ -55,7 +60,7 @@ defmodule Wardrik.Notify.Server do
       )
 
   defp waiting(state, agent, ids) do
-    case Snapshot.known(state.wardrik, agent) do
+    case Snapshot.check_known(state.wardrik, agent) do
       :ok ->
         for interrupt <- interrupts(state.wardrik, agent),
             interrupt.id in ids,
@@ -74,7 +79,7 @@ defmodule Wardrik.Notify.Server do
     |> Enum.map(&Wardrik.Interrupt.from_json/1)
   end
 
-  defp told(state, {agent, _conversation}, notice) do
+  defp handle_tell(state, {agent, _conversation}, notice) do
     with {:ok, definition} <- Wardrik.Definitions.fetch(state.wardrik, agent),
          {:ok, resolved} <-
            Wardrik.Resolver.resolve(state.wardrik, %Wardrik.Resolver.Request{
@@ -93,7 +98,7 @@ defmodule Wardrik.Notify.Server do
 
   defp tell(state, name, notice) do
     case Retry.run(state.wardrik.notify.retries, fn -> attempt(state, name, notice) end,
-           transient: &failed/1,
+           transient: &fail/1,
            announce: &again(name, notice, &1)
          ) do
       {:ok, :ok} ->
@@ -119,8 +124,8 @@ defmodule Wardrik.Notify.Server do
     end
   end
 
-  defp failed({:error, reason}), do: reason
-  defp failed(_delivered), do: nil
+  defp fail({:error, reason}), do: reason
+  defp fail(_delivered), do: nil
 
   defp again(name, notice, %{reason: reason}),
     do: Logger.warning(couldnt(name, notice, reason) <> "; trying again.")

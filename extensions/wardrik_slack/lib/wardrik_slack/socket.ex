@@ -39,24 +39,24 @@ defmodule WardrikSlack.Socket do
     case JSON.decode(text) do
       {:ok, %{"type" => "hello"}} -> :hello
       {:ok, %{"type" => "disconnect"}} -> :disconnect
-      {:ok, %{"envelope_id" => id} = envelope} -> carried(id, envelope)
+      {:ok, %{"envelope_id" => id} = envelope} -> carry(id, envelope)
       _other -> :ignore
     end
   end
 
-  defp carried(id, %{"type" => "interactive", "payload" => payload}),
+  defp carry(id, %{"type" => "interactive", "payload" => payload}),
     do: {:ack, id, {:interactive, payload}}
 
-  defp carried(id, %{
+  defp carry(id, %{
          "type" => "events_api",
          "payload" => %{"event" => %{"type" => "message"}} = callback
        }),
        do: {:ack_after, id, {:message, callback}}
 
-  defp carried(id, %{"type" => "events_api", "payload" => %{"event" => _event} = callback}),
+  defp carry(id, %{"type" => "events_api", "payload" => %{"event" => _event} = callback}),
     do: {:ack, id, {:event, callback}}
 
-  defp carried(id, _envelope), do: {:ack, id, :ignore}
+  defp carry(id, _envelope), do: {:ack, id, :ignore}
 
   @impl GenServer
   def init(channel) do

@@ -17,11 +17,11 @@ defmodule WardrikDaemon.Web.Resolver do
         {:ok, scope}
 
       :error ->
-        signed_out()
+        sign_out()
     end
   end
 
-  def scope(_request, _opts), do: signed_out()
+  def scope(_request, _opts), do: sign_out()
 
   @impl true
   def names(%Request{endpoint: endpoint}, ids, _opts) do
@@ -33,5 +33,5 @@ defmodule WardrikDaemon.Web.Resolver do
         do: {id, record.name}
   end
 
-  defp signed_out, do: {:error, Error.new(:unauthorized, "Sign in with wardrik web.")}
+  defp sign_out, do: {:error, Error.new(:unauthorized, "Sign in with wardrik web.")}
 end

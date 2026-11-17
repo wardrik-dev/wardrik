@@ -35,7 +35,7 @@ defmodule WardrikCore.Agent.Stored do
   def dump(%State{unreadable: {_reason, json}}), do: json
 
   def dump(%State{} = state) do
-    kept = requeued(state)
+    kept = requeue(state)
 
     core = %{
       "agent_id" => state.agent_id,
@@ -47,23 +47,23 @@ defmodule WardrikCore.Agent.Stored do
       "in_flight" => Message.dump(kept.in_flight)
     }
 
-    Map.merge(core, deferred(state))
+    Map.merge(core, defer(state))
   end
 
-  defp deferred(%State{deferred: %{} = json}), do: Map.take(json, @deferred)
+  defp defer(%State{deferred: %{} = json}), do: Map.take(json, @deferred)
 
-  defp deferred(%State{} = state) do
+  defp defer(%State{} = state) do
     %{
       "private" => private(state.context.private),
       "checkpoint" => state.checkpoint && checkpoint(state.checkpoint),
-      "parked" => state.parked && parked(state.parked)
+      "parked" => state.parked && encode_parked(state.parked)
     }
   end
 
-  defp requeued(%State{state: :running, checkpoint: %{}} = state), do: %{state | state: :due}
-  defp requeued(%State{state: :running, parked: %{}} = state), do: %{state | state: :waiting}
+  defp requeue(%State{state: :running, checkpoint: %{}} = state), do: %{state | state: :due}
+  defp requeue(%State{state: :running, parked: %{}} = state), do: %{state | state: :waiting}
 
-  defp requeued(%State{state: :running} = state),
+  defp requeue(%State{state: :running} = state),
     do: %{
       state
       | state: :idle,
@@ -71,7 +71,7 @@ defmodule WardrikCore.Agent.Stored do
         pending_messages: state.in_flight ++ state.pending_messages
     }
 
-  defp requeued(state), do: state
+  defp requeue(state), do: state
 
   @doc """
   Reads a kept state, all but what waits on its middleware's formats. A state that can't be read
@@ -84,13 +84,13 @@ defmodule WardrikCore.Agent.Stored do
       conversation: json["conversation"],
       model: json["model"],
       state: Map.fetch!(@states, json["state"]),
-      messages: Message.loaded(json["messages"]),
-      pending_messages: Message.loaded(json["pending"]),
-      in_flight: Message.loaded(json["in_flight"]),
+      messages: Message.load_messages(json["messages"]),
+      pending_messages: Message.load_messages(json["pending"]),
+      in_flight: Message.load_messages(json["in_flight"]),
       deferred: json
     }
   rescue
-    error in @malformed -> unreadable(json, malformed(error))
+    error in @malformed -> unreadable(json, describe_malformed(error))
   catch
     {:unreadable, reason} -> unreadable(json, reason)
   end
@@ -115,7 +115,7 @@ defmodule WardrikCore.Agent.Stored do
         parked: json["parked"] && read_parked(json["parked"], formats)
     }
   rescue
-    error in @malformed -> unreadable(json, malformed(error))
+    error in @malformed -> unreadable(json, describe_malformed(error))
   catch
     {:unreadable, reason} -> unreadable(json, reason)
   end
@@ -130,7 +130,7 @@ defmodule WardrikCore.Agent.Stored do
 
   defp unreadable(json, reason), do: %State{unreadable: {reason, json}}
 
-  defp malformed(error),
+  defp describe_malformed(error),
     do: "it isn't in a form this release can read: #{Exception.message(error)}"
 
   @doc """
@@ -197,7 +197,7 @@ defmodule WardrikCore.Agent.Stored do
   end
 
   defp private(private) do
-    Map.new(private, fn {format, value} -> {type!(format), typed(format, value)} end)
+    Map.new(private, fn {format, value} -> {type!(format), type(format, value)} end)
   end
 
   defp read_private(private, formats),
@@ -216,7 +216,7 @@ defmodule WardrikCore.Agent.Stored do
 
   defp read_checkpoint(checkpoint, formats) do
     %{
-      messages: Message.loaded(checkpoint["messages"]),
+      messages: Message.load_messages(checkpoint["messages"]),
       calls: Enum.map(checkpoint["calls"], &read_call/1),
       rounds: read_rounds(checkpoint["rounds"]),
       metadata: %{},
@@ -226,7 +226,7 @@ defmodule WardrikCore.Agent.Stored do
     }
   end
 
-  defp parked(parked) do
+  defp encode_parked(parked) do
     %{
       "reason" => reason(parked.reason),
       "messages" => Message.dump(parked.messages),
@@ -238,7 +238,7 @@ defmodule WardrikCore.Agent.Stored do
   defp read_parked(parked, formats) do
     %{
       reason: read_reason(parked["reason"], formats),
-      messages: Message.loaded(parked["messages"]),
+      messages: Message.load_messages(parked["messages"]),
       metadata: %{},
       span: read_span(parked["span"]),
       measurements: read_measurements(parked["measurements"])
@@ -259,7 +259,7 @@ defmodule WardrikCore.Agent.Stored do
   end
 
   defp reason(%format{} = reason) do
-    typed = typed(format, reason)
+    typed = type(format, reason)
     Map.put(typed, "type", type!(format))
   end
 
@@ -298,7 +298,7 @@ defmodule WardrikCore.Agent.Stored do
     %{
       "result" => %{
         "content" => result.content && Enum.map(result.content, &Message.part/1),
-        "output" => shown(result.output),
+        "output" => show(result.output),
         "metadata" => Term.dump(result.metadata)
       }
     }
@@ -309,13 +309,13 @@ defmodule WardrikCore.Agent.Stored do
   defp output([%ReqLLM.Message.ContentPart{} | _parts] = parts),
     do: %{"parts" => Enum.map(parts, &Message.part/1)}
 
-  defp output(output), do: %{"json" => shown(output)}
+  defp output(output), do: %{"json" => show(output)}
 
   defp read_output(%{"result" => result}) do
     %ReqLLM.ToolResult{
       content: result["content"] && Enum.map(result["content"], &Message.read_part/1),
       output: result["output"],
-      metadata: Term.loaded(result["metadata"])
+      metadata: Term.load_or_throw(result["metadata"])
     }
   end
 
@@ -323,7 +323,7 @@ defmodule WardrikCore.Agent.Stored do
   defp read_output(%{"parts" => parts}), do: Enum.map(parts, &Message.read_part/1)
   defp read_output(%{"json" => json}), do: json
 
-  defp shown(output) do
+  defp show(output) do
     output
     |> JSON.encode!()
     |> JSON.decode!()
@@ -331,11 +331,11 @@ defmodule WardrikCore.Agent.Stored do
     _not_json in [Protocol.UndefinedError, ArgumentError] -> inspect(output)
   end
 
-  defp typed(format, value),
+  defp type(format, value),
     do: %{"version" => format.version(), "value" => format.dump(value)}
 
   defp read_typed(type, %{"version" => version, "value" => value}, formats) do
-    format = Map.get(formats, type) || throw({:unreadable, unknown(type)})
+    format = Map.get(formats, type) || throw({:unreadable, describe_unknown(type)})
 
     if version > format.version(),
       do: throw({:unreadable, "a later release kept its #{type} at version #{version}"})
@@ -349,7 +349,8 @@ defmodule WardrikCore.Agent.Stored do
   defp both(format, other, type),
     do: "#{inspect(format)} and #{inspect(other)} are both #{type}, so neither can be read"
 
-  defp unknown(type), do: "it holds a #{type}, which none of its middleware or capabilities reads"
+  defp describe_unknown(type),
+    do: "it holds a #{type}, which none of its middleware or capabilities reads"
 
   defp type!(format) do
     if Code.ensure_loaded?(format) and function_exported?(format, :type, 0),

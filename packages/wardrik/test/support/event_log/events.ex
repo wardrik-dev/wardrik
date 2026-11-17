@@ -10,11 +10,11 @@ defmodule Wardrik.EventLog.Test.Events do
     events = :"events #{context.test}"
     start_supervised!({Wardrik.Store, store})
     start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
-    trimmed(events)
+    trim_events(events)
     %{events: events, store: store}
   end
 
-  def trimmed(events) do
+  def trim_events(events) do
     {Wardrik.EventLog.Retention, retention, :worker, _modules} =
       events
       |> Supervisor.which_children()
@@ -36,7 +36,7 @@ defmodule Wardrik.EventLog.Test.Events do
     :ok = Wardrik.EventLog.handle_event(event, events)
   end
 
-  def stopped(events, log, time \\ DateTime.utc_now()),
+  def emit_stop(events, log, time \\ DateTime.utc_now()),
     do: emit(events, log, [:agent, :stop], %{reason: :normal}, time)
 
   defp log({_agent, _conversation} = log), do: log

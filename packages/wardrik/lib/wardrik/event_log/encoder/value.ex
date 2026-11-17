@@ -25,9 +25,9 @@ defmodule Wardrik.EventLog.Encoder.Value do
     do: %{"type" => Atom.to_string(reason), "message" => inspect(reason)}
 
   def error(reason) when is_tuple(reason) and tuple_size(reason) > 0,
-    do: tagged(elem(reason, 0), reason)
+    do: encode_tagged(elem(reason, 0), reason)
 
-  def error(reason), do: tagged(nil, reason)
+  def error(reason), do: encode_tagged(nil, reason)
 
   @doc "Encodes the tokens a model call read and wrote. Returns `nil` if there are none."
   @spec usage(map()) :: map() | nil
@@ -67,8 +67,8 @@ defmodule Wardrik.EventLog.Encoder.Value do
   def json(value), do: inspect(value)
 
   @doc "Puts `value` under `key`. If it's longer than 64 KiB, cuts it short and sets `\"truncated\"`."
-  @spec capped(map(), String.t(), term()) :: map()
-  def capped(map, key, value) do
+  @spec put_capped(map(), String.t(), term()) :: map()
+  def put_capped(map, key, value) do
     encoded =
       value
       |> json()
@@ -89,7 +89,7 @@ defmodule Wardrik.EventLog.Encoder.Value do
   def put(map, key, value), do: Map.put(map, key, value)
 
   defp parts(%ReqLLM.Message{role: :tool, tool_call_id: id} = message),
-    do: [capped(%{"type" => "tool_call_response", "id" => id}, "response", text(message))]
+    do: [put_capped(%{"type" => "tool_call_response", "id" => id}, "response", text(message))]
 
   defp parts(%ReqLLM.Message{content: content, tool_calls: calls}),
     do: Enum.flat_map(content, &part/1) ++ Enum.map(calls || [], &tool_call/1)
@@ -114,14 +114,14 @@ defmodule Wardrik.EventLog.Encoder.Value do
   defp part(_provider_block), do: []
 
   defp tool_call(call) do
-    capped(
+    put_capped(
       %{"type" => "tool_call", "id" => call.id, "name" => ReqLLM.ToolCall.name(call)},
       "arguments",
       ReqLLM.ToolCall.args_map(call)
     )
   end
 
-  defp text_part(type, text), do: capped(%{"type" => type}, "content", text)
+  defp text_part(type, text), do: put_capped(%{"type" => type}, "content", text)
 
   defp uri(url, modality), do: %{"type" => "uri", "modality" => modality, "uri" => url}
 
@@ -131,10 +131,10 @@ defmodule Wardrik.EventLog.Encoder.Value do
   defp text(%ReqLLM.Message{content: content}),
     do: Enum.map_join(content, fn part -> part.text || "" end)
 
-  defp tagged(tag, reason) when is_atom(tag) and not is_nil(tag),
+  defp encode_tagged(tag, reason) when is_atom(tag) and not is_nil(tag),
     do: %{"type" => Atom.to_string(tag), "message" => inspect(reason)}
 
-  defp tagged(_tag, reason), do: %{"type" => "error", "message" => inspect(reason)}
+  defp encode_tagged(_tag, reason), do: %{"type" => "error", "message" => inspect(reason)}
 
   defp json_key(key) when is_atom(key), do: Atom.to_string(key)
   defp json_key(key), do: to_string(key)

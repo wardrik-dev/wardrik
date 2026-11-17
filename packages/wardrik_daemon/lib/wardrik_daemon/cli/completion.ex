@@ -19,7 +19,7 @@ defmodule WardrikDaemon.CLI.Completion do
   defp bash(commands) do
     command_cases =
       commands
-      |> sorted()
+      |> sort()
       |> Enum.map(fn command ->
         patterns =
           command
@@ -74,7 +74,7 @@ defmodule WardrikDaemon.CLI.Completion do
         word <- next(commands, prefix),
         do:
           "complete -c #{program} -n 'test (__wardrik_words) = \"+#{prefix}\"' -a #{word}" <>
-            described(commands, prefix, word)
+            describe(commands, prefix, word)
       ) ++
       for(
         command <- commands,
@@ -85,21 +85,21 @@ defmodule WardrikDaemon.CLI.Completion do
       )
   end
 
-  defp described(commands, prefix, word) do
+  defp describe(commands, prefix, word) do
     name = String.trim("#{prefix} #{word}")
 
     case Enum.find(commands, &(&1.name == name)) do
       nil -> ""
-      command -> " -d " <> quoted(command.summary)
+      command -> " -d " <> quote_text(command.summary)
     end
   end
 
-  defp quoted(text), do: "'" <> String.replace(text, "'", "\\'") <> "'"
+  defp quote_text(text), do: "'" <> String.replace(text, "'", "\\'") <> "'"
 
   defp names(%Command{name: name, shortcut: nil}), do: [name]
   defp names(%Command{name: name, shortcut: shortcut}), do: [name, shortcut]
 
-  defp sorted(commands), do: Enum.sort_by(commands, &(-length(Command.words(&1))))
+  defp sort(commands), do: Enum.sort_by(commands, &(-length(Command.words(&1))))
 
   defp prefixes(commands) do
     commands

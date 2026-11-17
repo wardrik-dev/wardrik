@@ -46,7 +46,7 @@ defmodule Wardrik.DeclarationsTest do
   end
 
   test "keeps a declared agent the API asks to forget", %{scope: scope} do
-    assert refused(scope, "agent.forget", %{"agent" => "acme/triage"}) == :conflict
+    assert assert_refused(scope, "agent.forget", %{"agent" => "acme/triage"}) == :conflict
 
     assert %{
              "forgotten" => ["acme/notes"],
@@ -65,7 +65,7 @@ defmodule Wardrik.DeclarationsTest do
                "policy" => policy
              })
 
-    assert refused(scope, "agent.define", %{
+    assert assert_refused(scope, "agent.define", %{
              "agent" => "acme/notes",
              "model" => @model,
              "policy" => policy

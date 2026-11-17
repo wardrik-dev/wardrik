@@ -39,11 +39,11 @@ defmodule Wardrik.MCP.Servers do
 
   @doc "Returns the tools of the server `name`."
   @spec tools(atom(), String.t()) :: [Wardrik.Tool.t()]
-  def tools(mcp, name), do: offered(mcp, read(mcp, {:server, name}))
+  def tools(mcp, name), do: offer(mcp, read(mcp, {:server, name}))
 
   @doc "Stores the tools listed by a server reached with a credential."
-  @spec listed(atom(), String.t(), [map()]) :: :ok
-  def listed(mcp, name, definitions) do
+  @spec store_listed_tools(atom(), String.t(), [map()]) :: :ok
+  def store_listed_tools(mcp, name, definitions) do
     mcp
     |> name()
     |> GenServer.call({:listed, name, definitions})
@@ -81,20 +81,20 @@ defmodule Wardrik.MCP.Servers do
   def handle_continue(:start, %{settings: settings} = state) do
     state =
       Enum.reduce(settings.servers, state, fn {name, opts}, state ->
-        started(state, Server.new!(name, opts))
+        start(state, Server.new!(name, opts))
       end)
 
     tick(settings)
-    {:noreply, reconciled(state)}
+    {:noreply, handle_reconcile(state)}
   end
 
   @impl GenServer
   def handle_call({:add, name, opts}, _from, state) do
-    with {:ok, server} <- built(state.settings, name, opts),
+    with {:ok, server} <- build(state.settings, name, opts),
          :ok <- new(state, name),
          :ok <- Server.reachable(server),
-         :ok <- kept(state.settings, name, opts) do
-      {:reply, :ok, started(state, server)}
+         :ok <- keep(state.settings, name, opts) do
+      {:reply, :ok, start(state, server)}
     else
       {:error, why} -> {:reply, {:error, why}, state}
     end
@@ -107,14 +107,14 @@ defmodule Wardrik.MCP.Servers do
 
       Map.has_key?(state.servers, name) ->
         forget(state.settings, name)
-        {:reply, :ok, stopped(state, name)}
+        {:reply, :ok, stop(state, name)}
 
       true ->
         {:reply, {:error, :not_found}, state}
     end
   end
 
-  def handle_call(:reconcile, _from, state), do: {:reply, :ok, reconciled(state)}
+  def handle_call(:reconcile, _from, state), do: {:reply, :ok, handle_reconcile(state)}
 
   def handle_call({:reconnect, owner, secret}, _from, %{settings: settings} = state) do
     for {name, %Server{owner: ^owner} = server} <- state.servers, Server.names?(server, secret) do
@@ -141,25 +141,25 @@ defmodule Wardrik.MCP.Servers do
   @impl GenServer
   def handle_info(:reconcile, state) do
     tick(state.settings)
-    {:noreply, reconciled(state)}
+    {:noreply, handle_reconcile(state)}
   end
 
-  defp offered(_mcp, nil), do: []
+  defp offer(_mcp, nil), do: []
 
-  defp offered(mcp, %Server{credential_name: nil} = server),
+  defp offer(mcp, %Server{credential_name: nil} = server),
     do: Connection.tools(mcp, server.name)
 
-  defp offered(mcp, server) do
-    case listed(mcp, server.name) do
+  defp offer(mcp, server) do
+    case store_listed_tools(mcp, server.name) do
       nil -> [Tool.connect(server)]
-      definitions -> Tool.offered(server, definitions)
+      definitions -> Tool.build_offered(server, definitions)
     end
   end
 
-  defp listed(mcp, name) do
+  defp store_listed_tools(mcp, name) do
     case {read(mcp, {:listed, name}), read(mcp, :store)} do
       {nil, nil} -> nil
-      {nil, store} -> stored_tools(store, name)
+      {nil, store} -> store_tools(store, name)
       {definitions, _store} -> definitions
     end
   end
@@ -183,17 +183,17 @@ defmodule Wardrik.MCP.Servers do
     "#{inspect(mcp)} isn't started. Add {Wardrik.MCP, name: #{inspect(mcp)}, servers: servers} to your supervision tree, ahead of what uses it."
   end
 
-  defp built(settings, name, opts) do
+  defp build(settings, name, opts) do
     values = Keyword.values(opts)
 
     if Enum.any?(values, &is_function/1),
       do: {:error, "a server added as the app runs takes its options as data"},
-      else: {:ok, added(settings, name, opts)}
+      else: {:ok, build_server(settings, name, opts)}
   rescue
     error in NimbleOptions.ValidationError -> {:error, Exception.message(error)}
   end
 
-  defp added(settings, name, opts), do: %{Server.new!(name, opts) | check: settings.check}
+  defp build_server(settings, name, opts), do: %{Server.new!(name, opts) | check: settings.check}
 
   defp new(state, name) do
     if Map.has_key?(state.servers, name),
@@ -201,9 +201,9 @@ defmodule Wardrik.MCP.Servers do
       else: :ok
   end
 
-  defp kept(%{store: nil}, _name, _opts), do: :ok
+  defp keep(%{store: nil}, _name, _opts), do: :ok
 
-  defp kept(%{store: store}, name, opts) do
+  defp keep(%{store: store}, name, opts) do
     servers = servers(store)
     with {:ok, _vsn} <- Wardrik.Store.put(servers, name, opts), do: :ok
   end
@@ -216,7 +216,7 @@ defmodule Wardrik.MCP.Servers do
     with :ok <- Wardrik.Store.delete(servers, name), do: Wardrik.Store.delete(tools, name)
   end
 
-  defp started(%{settings: settings} = state, server) do
+  defp start(%{settings: settings} = state, server) do
     server = %{server | mcp: settings.mcp, secret: settings.secret}
 
     if server.credential_name == nil, do: connect(settings.mcp, server)
@@ -234,7 +234,7 @@ defmodule Wardrik.MCP.Servers do
     end
   end
 
-  defp stopped(state, name) do
+  defp stop(state, name) do
     :ok = Connection.close(state.settings.mcp, name)
     table = name(state.settings.mcp)
     true = :ets.delete(table, {:server, name})
@@ -242,9 +242,9 @@ defmodule Wardrik.MCP.Servers do
     %{state | servers: Map.delete(state.servers, name)}
   end
 
-  defp reconciled(%{settings: %{store: nil}} = state), do: state
+  defp handle_reconcile(%{settings: %{store: nil}} = state), do: state
 
-  defp reconciled(%{settings: settings} = state) do
+  defp handle_reconcile(%{settings: settings} = state) do
     stored = servers(settings.store)
 
     kept =
@@ -256,7 +256,7 @@ defmodule Wardrik.MCP.Servers do
       Enum.reduce(kept, state, fn name, state ->
         if Map.has_key?(state.servers, name),
           do: state,
-          else: started(state, added(settings, name, Wardrik.Store.get(stored, name)))
+          else: start(state, build_server(settings, name, Wardrik.Store.get(stored, name)))
       end)
 
     gone =
@@ -265,7 +265,7 @@ defmodule Wardrik.MCP.Servers do
           not MapSet.member?(kept, name),
           do: name
 
-    Enum.reduce(gone, state, &stopped(&2, &1))
+    Enum.reduce(gone, state, &stop(&2, &1))
   end
 
   defp tick(%{reconcile: :infinity}), do: :ok
@@ -276,7 +276,7 @@ defmodule Wardrik.MCP.Servers do
   defp servers(store), do: Wardrik.Store.scope(store, "servers", format: Server)
   defp tools(store), do: Wardrik.Store.scope(store, "tools")
 
-  defp stored_tools(store, name) do
+  defp store_tools(store, name) do
     tools = tools(store)
     Wardrik.Store.get(tools, name)
   end

@@ -19,7 +19,7 @@ defmodule Wardrik.MCPCase.Rotating do
   def resolve(%{name: "stub"}, tokens), do: {:ok, Agent.get(tokens, & &1.token)}
 
   @impl true
-  def refused(%{name: "stub"}, tokens) do
+  def report_refusal(%{name: "stub"}, tokens) do
     Agent.update(tokens, fn state ->
       send(state.test, {:refused, state.token})
       %{state | token: state.token <> "-renewed"}
@@ -71,19 +71,19 @@ defmodule Wardrik.MCPCase do
            ]}
         )
 
-        Enum.each(~w(stub cheap metered hasty growing flaky), &connected/1)
+        Enum.each(~w(stub cheap metered hasty growing flaky), &connect/1)
       end
 
-      defp requested do
+      defp request do
         receive do
-          {:http, _method, path} -> [path | requested()]
+          {:http, _method, path} -> [path | request()]
         after
           0 -> []
         end
       end
 
-      defp answered([answer]), do: {answer, [answer]}
-      defp answered([answer | rest]), do: {answer, rest}
+      defp take_answer([answer]), do: {answer, [answer]}
+      defp take_answer([answer | rest]), do: {answer, rest}
 
       defp flaky_client do
         [{connection, _hash}] =
@@ -128,7 +128,7 @@ defmodule Wardrik.MCPCase do
 
       defp context, do: Context.new(agent_id: "mcp-test")
 
-      defp connected(server) do
+      defp connect(server) do
         if tools(server) == [],
           do: assert_receive({:tools, @mcp, ^server, %{count: _count}}, 10_000)
       end

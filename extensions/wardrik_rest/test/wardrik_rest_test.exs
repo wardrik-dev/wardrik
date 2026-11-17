@@ -35,7 +35,7 @@ defmodule WardrikRestTest do
     )
   end
 
-  defp stubbed(test), do: [req_options: [plug: {Req.Test, test}]]
+  defp stub(test), do: [req_options: [plug: {Req.Test, test}]]
 
   describe "load/2" do
     test "offers the operations named, with what they need" do
@@ -200,7 +200,7 @@ defmodule WardrikRestTest do
               "properties_getMetadata",
               "properties_audienceExports_list"
             ]
-          ] ++ stubbed(test)
+          ] ++ stub(test)
         )
 
       %{tools: tools, test_pid: self()}
@@ -299,7 +299,7 @@ defmodule WardrikRestTest do
         API.load(
           notes,
           [name: "notes", base_url: "https://notes.test/", auth: %{"key" => {:key, "NOTES_KEY"}}] ++
-            stubbed(test)
+            stub(test)
         )
 
       Req.Test.stub(test, fn conn ->

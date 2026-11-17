@@ -133,7 +133,7 @@ defmodule WardrikWeb.DefinitionComponent do
           <dl class="facts definition">
             <%= for name <- @common, value = @current[name], value not in [nil, "", []] do %>
               <dt>{name}</dt>
-              <dd class={name == "instructions" && "prose"}>{shown(value)}</dd>
+              <dd class={name == "instructions" && "prose"}>{show(value)}</dd>
             <% end %>
           </dl>
           <details style="margin-top: 14px">
@@ -146,6 +146,6 @@ defmodule WardrikWeb.DefinitionComponent do
     """
   end
 
-  defp shown(value) when is_list(value), do: Enum.join(value, ", ")
-  defp shown(value), do: value
+  defp show(value) when is_list(value), do: Enum.join(value, ", ")
+  defp show(value), do: value
 end

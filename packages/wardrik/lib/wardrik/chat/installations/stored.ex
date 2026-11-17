@@ -20,7 +20,7 @@ defmodule Wardrik.Chat.Installations.Stored do
     store = store(config)
 
     with %{"owner" => owner} <- Wardrik.Store.get(store, key(channel, workspace)),
-         {:ok, token} <- sealed(config, owner, secret(channel, workspace)) do
+         {:ok, token} <- handle_seal(config, owner, secret(channel, workspace)) do
       {:ok,
        %Installation{
          channel: channel,
@@ -34,7 +34,7 @@ defmodule Wardrik.Chat.Installations.Stored do
   end
 
   @impl Wardrik.Channel.Installations
-  def owned(%Request{channel: channel, owner: owner}, config) do
+  def list_installations(%Request{channel: channel, owner: owner}, config) do
     prefix = key(channel, "")
     store = store(config)
 
@@ -79,15 +79,15 @@ defmodule Wardrik.Chat.Installations.Stored do
     end
   end
 
-  defp sealed(config, owner, name) do
+  defp handle_seal(config, owner, name) do
     config
     |> vault()
-    |> sealed_in(owner, name)
+    |> handle_seal_in(owner, name)
   end
 
-  defp sealed_in(nil, _owner, _name), do: {:error, :no_keys}
+  defp handle_seal_in(nil, _owner, _name), do: {:error, :no_keys}
 
-  defp sealed_in(vault, owner, name),
+  defp handle_seal_in(vault, owner, name),
     do: Wardrik.Vault.fetch(vault, %Principal{id: owner}, name, kind: :token)
 
   defp seal(config, owner, name, token) do

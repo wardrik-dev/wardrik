@@ -64,7 +64,7 @@ defmodule WardrikRest.Schema do
     {schemas, cut} =
       Enum.map_reduce(parameters, [], fn %Parameter{name: name, schema: schema}, cut ->
         {inlined, more} = inline(schema, how, depth, {[], "#{how.tool}/#{name}"})
-        {{name, described(inlined, brief(schema["description"], how))}, [more | cut]}
+        {{name, handle_describe(inlined, brief(schema["description"], how))}, [more | cut]}
       end)
 
     cut =
@@ -141,7 +141,7 @@ defmodule WardrikRest.Schema do
     fields =
       for {field, schema} <- properties, into: %{} do
         {inlined, _cut} = inline(schema, how, 0, {seen, "#{path}/#{field}"})
-        {field, described(inlined, schema["description"])}
+        {field, handle_describe(inlined, schema["description"])}
       end
 
     Map.put(object, "properties", fields)
@@ -154,14 +154,14 @@ defmodule WardrikRest.Schema do
 
     cond do
       ref in seen -> {%{"type" => "object", "description" => "A #{ref}, as above."}, []}
-      depth == 0 and object?(type) -> {named(ref, how.describe), [ref]}
+      depth == 0 and object?(type) -> {describe_ref(ref, how.describe), [ref]}
       true -> inline(type, how, depth, {[ref | seen], ref})
     end
   end
 
   defp inline(%{"properties" => properties}, how, 0, {_seen, path})
        when map_size(properties) > 0,
-       do: {placed(path, how.describe), [path]}
+       do: {place(path, how.describe), [path]}
 
   # The objects cut come back as nested lists, flattened once by at/3.
   defp inline(schema, how, depth, {seen, path}) do
@@ -199,19 +199,19 @@ defmodule WardrikRest.Schema do
   defp object?(type),
     do: type["type"] == "object" or Enum.any?(["properties" | @choices], &Map.has_key?(type, &1))
 
-  defp named(ref, describe),
+  defp describe_ref(ref, describe),
     do: %{"type" => "object", "description" => "A #{ref}; #{describe} gives its fields."}
 
-  defp placed(path, describe),
+  defp place(path, describe),
     do: %{
       "type" => "object",
       "description" => ~s(An object; #{describe} gives its fields as "#{path}".)
     }
 
-  defp described(schema, nil), do: schema
+  defp handle_describe(schema, nil), do: schema
 
-  defp described(%{"description" => named} = schema, description),
+  defp handle_describe(%{"description" => named} = schema, description),
     do: %{schema | "description" => "#{description} #{named}"}
 
-  defp described(schema, description), do: Map.put(schema, "description", description)
+  defp handle_describe(schema, description), do: Map.put(schema, "description", description)
 end

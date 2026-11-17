@@ -302,8 +302,8 @@ defmodule Wardrik.VaultTest do
       {:ok, _vsn} =
         Wardrik.Vault.put(vault, %Secret{principal: @jon, name: "linear", value: "secret"})
 
-      assert :ok = Wardrik.Vault.refused(github, vault)
-      assert :ok = Wardrik.Vault.refused(linear, vault)
+      assert :ok = Wardrik.Vault.report_refusal(github, vault)
+      assert :ok = Wardrik.Vault.report_refusal(linear, vault)
       assert_received {:refused, "github"}
       refute_received {:refused, "linear"}
     end
@@ -313,7 +313,7 @@ defmodule Wardrik.VaultTest do
       github = credential("github", @jon)
 
       assert Wardrik.Vault.resolve(unowned, vault) == {:error, :no_principal}
-      assert Wardrik.Vault.refused(unowned, vault) == :ok
+      assert Wardrik.Vault.report_refusal(unowned, vault) == :ok
 
       plain = start_vault(store, [Wardrik.Vault.generate_key()], nil)
       assert Wardrik.Vault.resolve(github, plain) == {:error, :not_found}

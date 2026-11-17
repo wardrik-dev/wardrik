@@ -14,20 +14,20 @@ defmodule Wardrik.Resolution do
   @spec resolve(Wardrik.t(), String.t(), map()) :: {:ok, keyword()} | {:error, Error.t()}
   def resolve(wardrik, id, definition) do
     with {:ok, resolved} <- Resolver.resolve(wardrik, %Request{agent: id, definition: definition}),
-         :ok <- used(wardrik, resolved),
-         {:ok, opts} <- resolved(within(wardrik, resolved), id, definition, resolved),
+         :ok <- record_use(wardrik, resolved),
+         {:ok, opts} <- handle_resolve(within(wardrik, resolved), id, definition, resolved),
          do: {:ok, hold(opts, resolved)}
   end
 
   # Each server and notify target another owner keeps is used only as the authorizer allows. An
   # agent that acts for no one is given what the resolver gives it.
-  defp used(_wardrik, %Resolved{principal: nil}), do: :ok
+  defp record_use(_wardrik, %Resolved{principal: nil}), do: :ok
 
-  defp used(_wardrik, %Resolved{servers: servers, notify: notify})
+  defp record_use(_wardrik, %Resolved{servers: servers, notify: notify})
        when map_size(servers) == 0 and map_size(notify) == 0,
        do: :ok
 
-  defp used(wardrik, %Resolved{principal: principal, servers: servers, notify: notify}) do
+  defp record_use(wardrik, %Resolved{principal: principal, servers: servers, notify: notify}) do
     servers =
       for {name, key} <- servers,
           do:
@@ -70,7 +70,7 @@ defmodule Wardrik.Resolution do
     }
 
   # Every check runs, so a definition's problems come back together.
-  defp resolved(wardrik, id, definition, resolved) do
+  defp handle_resolve(wardrik, id, definition, resolved) do
     definition = Map.merge(wardrik.defaults, definition)
     servers = resolved.servers
 
@@ -136,17 +136,17 @@ defmodule Wardrik.Resolution do
     for {agent, _conversation} = key <- WardrikCore.list(agents),
         refreshing?(ids, agent),
         Running.whereis(wardrik, key) != nil,
-        {:error, error} <- [refreshed(wardrik, key)],
+        {:error, error} <- [handle_refresh(wardrik, key)],
         do: "#{Running.describe(key)}: #{error.message}"
   end
 
   defp refreshing?(:all, _agent), do: true
   defp refreshing?(ids, agent), do: agent in ids
 
-  defp refreshed(wardrik, {agent, conversation}) do
+  defp handle_refresh(wardrik, {agent, conversation}) do
     with {:ok, definition} <- Running.definition(wardrik, agent),
          {:ok, opts} <- resolve(wardrik, agent, definition),
-         do: Running.bring(wardrik, Running.held(opts, conversation))
+         do: Running.bring(wardrik, Running.put_conversation(opts, conversation))
   end
 
   @doc "Returns `:ok` if the trigger in `fields` is valid for the agent `definition`."
@@ -155,7 +155,7 @@ defmodule Wardrik.Resolution do
     do: trigger(fields, index, files?(Map.merge(wardrik.defaults, definition)))
 
   defp trigger(fields, index, files?) do
-    with :ok <- prompted(fields, files?) do
+    with :ok <- prompt(fields, files?) do
       case Wardrik.Triggers.Trigger.decode(fields, index) do
         {:ok, _trigger} -> :ok
         {:error, why} -> {:error, Error.new(:invalid_request, "A trigger doesn't read: #{why}.")}
@@ -174,11 +174,11 @@ defmodule Wardrik.Resolution do
 
     mcp = Wardrik.mcp(wardrik)
 
-    for tool <- expanded(wardrik, servers, Map.get(definition, "tools", [])),
-        {:server, name} <- [named(wardrik, tool)],
+    for tool <- handle_expand(wardrik, servers, Map.get(definition, "tools", [])),
+        {:server, name} <- [parse_name(wardrik, tool)],
         Wardrik.MCP.tools(nil,
           name: mcp,
-          servers: Wardrik.MCP.Capability.picked(mcp, servers, names: [name])
+          servers: Wardrik.MCP.Capability.pick_servers(mcp, servers, names: [name])
         ) == [],
         do: tool
   end
@@ -213,14 +213,14 @@ defmodule Wardrik.Resolution do
     |> Map.get("triggers", [])
     |> Enum.with_index(1)
     |> Enum.map(fn {fields, index} -> trigger(fields, index, files?) end)
-    |> joined()
+    |> join()
   end
 
-  defp prompted(%{"prompt_file" => _file, "prompt" => _prompt}, _files?),
+  defp prompt(%{"prompt_file" => _file, "prompt" => _prompt}, _files?),
     do:
       {:error, Error.new(:invalid_request, "A trigger has a prompt or a prompt_file, not both.")}
 
-  defp prompted(%{"prompt_file" => _file}, false),
+  defp prompt(%{"prompt_file" => _file}, false),
     do:
       {:error,
        Error.new(
@@ -228,14 +228,14 @@ defmodule Wardrik.Resolution do
          "A trigger's prompt_file names a file, and tools names no files to read it with."
        )}
 
-  defp prompted(%{"prompt_file" => file}, true) do
+  defp prompt(%{"prompt_file" => file}, true) do
     case Wardrik.Workspace.Path.normalize(file) do
       {:ok, _path} -> :ok
       {:error, why} -> {:error, Error.new(:invalid_request, "A trigger's prompt_file: #{why}.")}
     end
   end
 
-  defp prompted(_fields, _files?), do: :ok
+  defp prompt(_fields, _files?), do: :ok
 
   # A model the catalog doesn't list may still be served, as a fine-tune or through a gateway, so
   # only what can never work is refused.
@@ -245,7 +245,7 @@ defmodule Wardrik.Resolution do
   defp model(_wardrik, %{"model" => model}) when is_binary(model) do
     case ReqLLM.model(model) do
       {:ok, _model} -> {:ok, model}
-      {:error, _reason} -> {:error, Error.new(:invalid_request, unmodelled(model))}
+      {:error, _reason} -> {:error, Error.new(:invalid_request, check_model(model))}
     end
   end
 
@@ -255,7 +255,7 @@ defmodule Wardrik.Resolution do
   defp model(_wardrik, _definition),
     do: {:error, Error.new(:invalid_request, "A definition names a model.")}
 
-  defp unmodelled(model) do
+  defp check_model(model) do
     case String.split(model, ":", parts: 2) do
       [provider, _id] ->
         "#{model} isn't a model: there's no provider #{provider}. Models are named as provider:model, such as anthropic:claude-haiku-4-5."
@@ -272,20 +272,21 @@ defmodule Wardrik.Resolution do
   defp capabilities(wardrik, servers, definition) do
     named =
       wardrik
-      |> expanded(servers, Map.get(definition, "tools", []))
-      |> Enum.map(&named(wardrik, &1))
+      |> handle_expand(servers, Map.get(definition, "tools", []))
+      |> Enum.map(&parse_name(wardrik, &1))
 
-    with :ok <- joined(named), do: {:ok, entries(wardrik, definition, named)}
+    with :ok <- join(named), do: {:ok, entries(wardrik, definition, named)}
   end
 
-  defp joined(results) do
+  defp join(results) do
     case for({:error, error} <- results, do: error.message) do
       [] -> :ok
       messages -> {:error, Error.new(:invalid_request, Enum.join(messages, " "))}
     end
   end
 
-  defp expanded(wardrik, servers, tools), do: Enum.flat_map(tools, &expand(wardrik, servers, &1))
+  defp handle_expand(wardrik, servers, tools),
+    do: Enum.flat_map(tools, &expand(wardrik, servers, &1))
 
   defp expand(wardrik, servers, "*") do
     names = Map.keys(servers)
@@ -296,28 +297,29 @@ defmodule Wardrik.Resolution do
 
   defp expand(_wardrik, _servers, tool), do: [tool]
 
-  defp named(_wardrik, "servers/*"), do: :all_servers
-  defp named(_wardrik, "files"), do: :files
+  defp parse_name(_wardrik, "servers/*"), do: :all_servers
+  defp parse_name(_wardrik, "files"), do: :files
 
-  defp named(wardrik, "agents/*"),
+  defp parse_name(wardrik, "agents/*"),
     do: {:capability, {Wardrik.AgentTools, wardrik: wardrik.name, reach: :agents}}
 
-  defp named(wardrik, "self/*"),
+  defp parse_name(wardrik, "self/*"),
     do: {:capability, {Wardrik.AgentTools, wardrik: wardrik.name, reach: :self}}
 
-  defp named(wardrik, "workers/*"), do: {:capability, {Wardrik.Workers, wardrik: wardrik.name}}
+  defp parse_name(wardrik, "workers/*"),
+    do: {:capability, {Wardrik.Workers, wardrik: wardrik.name}}
 
-  defp named(wardrik, "ops/read"),
+  defp parse_name(wardrik, "ops/read"),
     do: {:capability, {Wardrik.OperationTools, wardrik: wardrik.name, operations: :read}}
 
-  defp named(wardrik, "ops/" <> id) do
+  defp parse_name(wardrik, "ops/" <> id) do
     if Wardrik.OperationTools.offered?(id),
       do: {:capability, {Wardrik.OperationTools, wardrik: wardrik.name, operations: id}},
       else:
         {:error, Error.new(:invalid_request, "There's no operation #{id} an agent can be given.")}
   end
 
-  defp named(wardrik, tool) do
+  defp parse_name(wardrik, tool) do
     case {Map.fetch(wardrik.capabilities, tool), String.split(tool, "/")} do
       {{:ok, entry}, _parts} -> {:capability, entry}
       {:error, [name, "*"]} when name != "" -> {:server, name}
@@ -394,7 +396,7 @@ defmodule Wardrik.Resolution do
     names
     |> Enum.reject(&Map.has_key?(wardrik.channels, &1))
     |> Enum.map(&{:error, Error.new(:invalid_request, "There's no channel #{&1} here.")})
-    |> joined()
+    |> join()
   end
 
   defp policy(_wardrik, nil), do: {:ok, nil}

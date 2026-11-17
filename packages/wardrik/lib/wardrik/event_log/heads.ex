@@ -24,15 +24,15 @@ defmodule Wardrik.EventLog.Heads do
   """
   @spec update(atom(), term(), initial: term(), with: (term() -> term())) :: {term(), term()}
   def update(heads, key, args),
-    do: updated(heads, key, Keyword.fetch!(args, :initial), Keyword.fetch!(args, :with))
+    do: handle_update(heads, key, Keyword.fetch!(args, :initial), Keyword.fetch!(args, :with))
 
-  defp updated(heads, key, initial, fun) do
+  defp handle_update(heads, key, initial, fun) do
     {version, value} = current(heads, key, initial)
     updated = fun.(value)
 
     if swapped?(heads, key, version, updated),
       do: {value, updated},
-      else: updated(heads, key, initial, fun)
+      else: handle_update(heads, key, initial, fun)
   end
 
   defp current(heads, key, initial) do

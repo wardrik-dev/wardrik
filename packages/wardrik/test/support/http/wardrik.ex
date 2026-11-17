@@ -55,7 +55,7 @@ defmodule Wardrik.Test.HTTP do
       |> Wardrik.HTTP.init()
 
     method
-    |> conn(path, encoded(body))
+    |> conn(path, encode(body))
     |> put_req_header("authorization", "Bearer " <> context.secret)
     |> put_req_header("content-type", "application/json")
     |> merge_req_headers(headers)
@@ -67,9 +67,9 @@ defmodule Wardrik.Test.HTTP do
   @doc "Returns `id` as one path segment, with everything but unreserved characters encoded."
   def segment(id), do: URI.encode(id, &URI.char_unreserved?/1)
 
-  defp encoded(nil), do: ""
-  defp encoded(body) when is_binary(body), do: body
-  defp encoded(body), do: JSON.encode!(body)
+  defp encode(nil), do: ""
+  defp encode(body) when is_binary(body), do: body
+  defp encode(body), do: JSON.encode!(body)
 end
 
 defmodule Wardrik.Test.HTTP.Authenticator do
@@ -81,7 +81,7 @@ defmodule Wardrik.Test.HTTP.Authenticator do
 
   @doc "Signs `principal` in to the test's Wardrik `name`. Returns the secret it sends."
   def start(name, principal) do
-    signed_in = signed_in(name)
+    signed_in = handle_sign_in(name)
 
     ExUnit.Callbacks.start_supervised!(%{
       id: signed_in,
@@ -97,7 +97,7 @@ defmodule Wardrik.Test.HTTP.Authenticator do
     secret = "secret-" <> Integer.to_string(unique)
 
     name
-    |> signed_in()
+    |> handle_sign_in()
     |> Agent.update(&Map.put(&1, secret, principal))
 
     secret
@@ -106,13 +106,13 @@ defmodule Wardrik.Test.HTTP.Authenticator do
   @doc "Signs out whoever sends `secret`."
   def revoke(name, secret) do
     name
-    |> signed_in()
+    |> handle_sign_in()
     |> Agent.update(&Map.delete(&1, secret))
   end
 
   @impl Wardrik.HTTP.Authenticator
   def authenticate(%{conn: conn, wardrik: wardrik}, _opts) do
-    signed_in = signed_in(wardrik)
+    signed_in = handle_sign_in(wardrik)
 
     with ["Bearer " <> secret] <- get_req_header(conn, "authorization"),
          principal when is_binary(principal) <- Agent.get(signed_in, &Map.get(&1, secret)) do
@@ -122,7 +122,7 @@ defmodule Wardrik.Test.HTTP.Authenticator do
     end
   end
 
-  defp signed_in(name), do: Module.concat(name, SignedIn)
+  defp handle_sign_in(name), do: Module.concat(name, SignedIn)
 end
 
 defmodule Wardrik.Test.HTTP.Channel do

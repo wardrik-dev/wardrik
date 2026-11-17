@@ -21,7 +21,7 @@ defmodule WardrikDaemon.Web.ConnectionSettings do
 
   @impl true
   def pair(scope, provider, code, _opts) do
-    with :ok <- allowed(scope, "connection.connect"),
+    with :ok <- allow(scope, "connection.connect"),
          {:ok, _connection} <-
            Connections.pair(Settings.daemon(), scope.principal, {provider, code}),
          do: :ok
@@ -33,6 +33,6 @@ defmodule WardrikDaemon.Web.ConnectionSettings do
          do: :ok
   end
 
-  defp allowed(scope, action),
-    do: Allowed.authorized(scope, action, {:connection, scope.principal.id})
+  defp allow(scope, action),
+    do: Allowed.check_authorized(scope, action, {:connection, scope.principal.id})
 end

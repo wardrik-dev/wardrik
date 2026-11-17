@@ -50,7 +50,7 @@ defmodule WardrikDaemon.EnvFile do
 
       [name, value] ->
         if Regex.match?(~r/\A[A-Za-z_][A-Za-z0-9_]*\z/, name),
-          do: [{name, unquoted(value)}],
+          do: [{name, strip_quotes(value)}],
           else: []
 
       _blank ->
@@ -58,7 +58,7 @@ defmodule WardrikDaemon.EnvFile do
     end
   end
 
-  defp unquoted("\"" <> rest), do: String.trim_trailing(rest, "\"")
-  defp unquoted("'" <> rest), do: String.trim_trailing(rest, "'")
-  defp unquoted(value), do: value
+  defp strip_quotes("\"" <> rest), do: String.trim_trailing(rest, "\"")
+  defp strip_quotes("'" <> rest), do: String.trim_trailing(rest, "'")
+  defp strip_quotes(value), do: value
 end

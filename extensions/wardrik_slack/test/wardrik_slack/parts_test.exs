@@ -70,7 +70,7 @@ defmodule WardrikSlack.PartsTest do
     test "say how the agent answers", context do
       define(context.owner, "agt_triage", channels: ["slack"])
       {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
-      {:bound, binding, offer} = Wardrik.Chat.Rooms.joined(workspace, "C1")
+      {:bound, binding, offer} = Wardrik.Chat.Rooms.join(workspace, "C1")
 
       message = Rooms.message({:bound, binding, offer}, workspace, nil)
       assert JSON.encode!(message) =~ "Mention the app"
@@ -80,9 +80,9 @@ defmodule WardrikSlack.PartsTest do
     end
 
     test "show an agent by its display name, or else its ID" do
-      assert Rooms.shown(%Offer{agent: "agt_triage", name: "Triage"}) == "Triage"
-      assert Rooms.shown(%Offer{agent: "agt_triage", name: ""}) == "agt_triage"
-      assert Rooms.shown(%Offer{agent: "agt_triage"}) == "agt_triage"
+      assert Rooms.get_display_name(%Offer{agent: "agt_triage", name: "Triage"}) == "Triage"
+      assert Rooms.get_display_name(%Offer{agent: "agt_triage", name: ""}) == "agt_triage"
+      assert Rooms.get_display_name(%Offer{agent: "agt_triage"}) == "agt_triage"
     end
 
     test "offer nothing to a member your app doesn't know", context do

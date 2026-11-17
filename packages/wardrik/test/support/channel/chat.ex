@@ -15,13 +15,13 @@ defmodule Wardrik.Test.Channel.Chat do
       send(channel.options[:test], {:refused, outbound})
       {:error, :busy}
     else
-      delivered(channel, outbound)
+      handle_deliver(channel, outbound)
     end
   end
 
-  def deliver(outbound, channel), do: delivered(channel, outbound)
+  def deliver(outbound, channel), do: handle_deliver(channel, outbound)
 
-  defp delivered(channel, outbound) do
+  defp handle_deliver(channel, outbound) do
     send(channel.options[:test], {:delivered, outbound})
     :ok
   end

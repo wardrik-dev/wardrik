@@ -36,14 +36,14 @@ defmodule Wardrik.Triggers.Records do
   def all(store) do
     store
     |> Wardrik.Store.keys(@prefix)
-    |> Enum.map(&parsed/1)
+    |> Enum.map(&parse/1)
   end
 
   @doc "Returns the trigger names of `agent_id`."
   @spec of(Wardrik.Store.t(), String.t()) :: [String.t()]
   def of(store, agent_id) do
     for key <- Wardrik.Store.keys(store, prefix(agent_id)),
-        {^agent_id, name} <- [parsed(key)],
+        {^agent_id, name} <- [parse(key)],
         do: name
   end
 
@@ -100,7 +100,7 @@ defmodule Wardrik.Triggers.Records do
   defp key(agent_id, name), do: prefix(agent_id) <> name
   defp prefix(agent_id), do: @prefix <> URI.encode_www_form(agent_id) <> "/"
 
-  defp parsed(@prefix <> rest) do
+  defp parse(@prefix <> rest) do
     [agent_id, name] = String.split(rest, "/", parts: 2)
     {URI.decode_www_form(agent_id), name}
   end

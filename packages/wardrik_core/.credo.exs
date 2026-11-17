@@ -167,6 +167,7 @@ process_files = %{included: ["lib/"], excluded: [~r"lib/[^/]+/test/"]}
             ## Project Checks
             #
             {WardrikCore.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
+            {Wardrik.Credo.Check.VerbFunctionNames, []},
             {WardrikCore.Credo.Check.QualifiedProjectCalls,
              files: %{included: ["lib/"]}, namespaces: ["WardrikCore"]},
             {WardrikCore.Credo.Check.NoSelfSend, files: process_files},

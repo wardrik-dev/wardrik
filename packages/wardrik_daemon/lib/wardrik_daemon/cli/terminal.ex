@@ -48,7 +48,7 @@ defmodule WardrikDaemon.CLI.Terminal do
     |> Ansi.chardata(terminal.colour?)
     |> IO.write()
 
-    typed(IO.gets(""))
+    echo_line(IO.gets(""))
   end
 
   @doc "Asks for a line with `prompt`, not showing what's typed where it can. Returns `nil` for none."
@@ -63,13 +63,13 @@ defmodule WardrikDaemon.CLI.Terminal do
       line = :io.get_password()
       :ok = :shell.start_interactive({:noshell, :cooked})
       IO.write("\n")
-      typed(line)
+      echo_line(line)
     else
-      typed(IO.gets(""))
+      echo_line(IO.gets(""))
     end
   end
 
-  defp typed(line) when is_binary(line) or is_list(line) do
+  defp echo_line(line) when is_binary(line) or is_list(line) do
     text = IO.chardata_to_string(line)
 
     case String.trim(text) do
@@ -78,7 +78,7 @@ defmodule WardrikDaemon.CLI.Terminal do
     end
   end
 
-  defp typed(_eof), do: nil
+  defp echo_line(_eof), do: nil
 
   @doc """
   Runs `fun` under a spinner labelled `label`, where there's a live screen, and returns what it

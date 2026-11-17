@@ -20,7 +20,7 @@ defmodule WardrikDaemon.CLI.Approvals do
           "At a terminal it shows each call and asks whether to approve it; Enter skips it.",
           "Elsewhere, or with --json, it lists them, as approval ls does."
         ],
-        run: &reviewed/3
+        run: &handle_review/3
       },
       %Command{
         name: "approval ls",
@@ -30,7 +30,7 @@ defmodule WardrikDaemon.CLI.Approvals do
           "A call held because its run read content from outside says so. A call in one of an",
           "agent's conversations shows the conversation; decide it with --conversation."
         ],
-        run: &listed/3
+        run: &list/3
       },
       %Command{
         name: "approval approve",
@@ -39,7 +39,7 @@ defmodule WardrikDaemon.CLI.Approvals do
         switches: [note: :string, conversation: :string],
         count: 2,
         summary: "let a call run; a --note reaches the model beside its result",
-        run: &decided(&1, &2, &3, "agent.approve", :note, "Approved")
+        run: &decide(&1, &2, &3, "agent.approve", :note, "Approved")
       },
       %Command{
         name: "approval deny",
@@ -48,7 +48,7 @@ defmodule WardrikDaemon.CLI.Approvals do
         switches: [reason: :string, conversation: :string],
         count: 2,
         summary: "refuse a call; a --reason reaches the model as its error",
-        run: &decided(&1, &2, &3, "agent.deny", :reason, "Denied")
+        run: &decide(&1, &2, &3, "agent.deny", :reason, "Denied")
       }
     ]
   end
@@ -74,19 +74,19 @@ defmodule WardrikDaemon.CLI.Approvals do
     do: group in [@group, "Set up"] or name in ["agent ask", "agent follow"]
 
   defp waits(cx, [%{"agent" => %{"id" => agent}, "interrupt" => interrupt} = waiting]) do
-    name = typed(Context.names(cx), agent, waiting["conversation"])
+    name = describe_call(Context.names(cx), agent, waiting["conversation"])
     "1 call waits on you: #{cx.program} approval approve #{Decide.decision(name, interrupt)}"
   end
 
   defp waits(cx, waiting), do: "#{length(waiting)} calls wait on you: #{cx.program} approval"
 
-  defp reviewed([], _flags, %{json?: false, terminal: %{input?: true}} = cx) do
+  defp handle_review([], _flags, %{json?: false, terminal: %{input?: true}} = cx) do
     with {:ok, %{"interrupts" => waiting}} <- Context.call(cx, "interrupts.list", %{}) do
       review(cx, waiting)
     end
   end
 
-  defp reviewed([], flags, cx), do: listed([], flags, cx)
+  defp handle_review([], flags, cx), do: list([], flags, cx)
 
   defp review(cx, []), do: Context.puts(cx, "Nothing waits on a person.")
 
@@ -104,7 +104,7 @@ defmodule WardrikDaemon.CLI.Approvals do
 
   defp reviewed?(cx, names, %{"agent" => %{"id" => agent}} = waiting, place) do
     conversation = waiting["conversation"]
-    name = typed(names, agent, conversation)
+    name = describe_call(names, agent, conversation)
     Context.puts(cx, ["\n", Owl.Data.tag("#{place} · #{name}", :light_black)])
 
     Decide.asked?(cx, waiting["interrupt"],
@@ -115,12 +115,12 @@ defmodule WardrikDaemon.CLI.Approvals do
   end
 
   # How an agent, and its conversation, is typed in a command.
-  defp typed(names, agent, conversation) do
+  defp describe_call(names, agent, conversation) do
     name = get_in(names, [agent, "shown"]) || agent
     if conversation, do: "#{name} --conversation #{conversation}", else: name
   end
 
-  defp listed([], _flags, cx) do
+  defp list([], _flags, cx) do
     with {:ok, %{"interrupts" => listed} = answer} <- Context.call(cx, "interrupts.list", %{}) do
       names = if listed == [], do: %{}, else: Context.names(cx)
 
@@ -144,11 +144,11 @@ defmodule WardrikDaemon.CLI.Approvals do
 
   defp why(interrupt), do: interrupt["message"]
 
-  defp decided([agent, call], flags, cx, operation, given, done) do
+  defp decide([agent, call], flags, cx, operation, given, done) do
     with {:ok, id} <- Context.agent(cx, agent),
          decision = Context.conversation(%{"agent" => id, "interrupt" => call}, flags),
          input = Context.put(decision, Atom.to_string(given), flags[given]),
          {:ok, answer} <- Context.call(cx, operation, input),
-         do: Context.done(cx, answer, "#{done} #{call}.")
+         do: Context.report_done(cx, answer, "#{done} #{call}.")
   end
 end

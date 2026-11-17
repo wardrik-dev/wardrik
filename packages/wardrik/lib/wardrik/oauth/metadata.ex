@@ -37,11 +37,11 @@ defmodule Wardrik.OAuth.Metadata do
   @spec discover(Provider.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def discover(%Provider{} = provider, req_options) do
     if Provider.endpoints?(provider),
-      do: {:ok, named(provider)},
-      else: discovered(provider, req_options)
+      do: {:ok, build_named(provider)},
+      else: handle_discover(provider, req_options)
   end
 
-  defp named(%Provider{} = provider) do
+  defp build_named(%Provider{} = provider) do
     %__MODULE__{
       issuer: provider.issuer,
       authorization_endpoint: provider.authorization_endpoint,
@@ -49,7 +49,7 @@ defmodule Wardrik.OAuth.Metadata do
     }
   end
 
-  defp discovered(provider, req_options) do
+  defp handle_discover(provider, req_options) do
     with {:ok, issuer} <- issuer(provider, req_options),
          {:ok, body} <- server_metadata(issuer, req_options),
          :ok <- same_issuer(body, issuer) do
@@ -84,7 +84,7 @@ defmodule Wardrik.OAuth.Metadata do
   end
 
   defp same_issuer(%{"issuer" => said}, issuer) do
-    if trimmed(said) == trimmed(issuer), do: :ok, else: {:error, {:issuer_mismatch, said}}
+    if trim(said) == trim(issuer), do: :ok, else: {:error, {:issuer_mismatch, said}}
   end
 
   defp same_issuer(_body, issuer), do: {:error, {:issuer_mismatch, issuer}}
@@ -106,11 +106,11 @@ defmodule Wardrik.OAuth.Metadata do
 
   defp well_known(url, suffix) do
     uri = URI.parse(url)
-    path = trimmed(uri.path || "")
+    path = trim(uri.path || "")
     URI.to_string(%{uri | path: "/.well-known/#{suffix}#{path}", query: nil, fragment: nil})
   end
 
-  defp openid(issuer), do: trimmed(issuer) <> "/.well-known/openid-configuration"
+  defp openid(issuer), do: trim(issuer) <> "/.well-known/openid-configuration"
 
-  defp trimmed(url), do: String.trim_trailing(url, "/")
+  defp trim(url), do: String.trim_trailing(url, "/")
 end

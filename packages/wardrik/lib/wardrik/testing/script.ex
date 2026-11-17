@@ -54,9 +54,9 @@ defmodule Wardrik.Testing.Script do
     decision = if id == "agent.approve", do: "approved", else: "rejected"
     by = %{"id" => scope.principal.id, "name" => scope.principal.attributes[:name]}
     resolved = %{"interrupt" => %{"id" => call}, "decision" => decision, "resolved_by" => by}
-    write(scope, conversation, "interrupt.resolved", Map.merge(resolved, said(id, input)))
+    write(scope, conversation, "interrupt.resolved", Map.merge(resolved, say(id, input)))
     Server.hold(name, conversation, {"idle", []})
-    answered(scope, conversation, "Done.")
+    answer(scope, conversation, "Done.")
     {:ok, %{"decisions" => [%{"id" => call, "decision" => decision}]}}
   end
 
@@ -69,8 +69,8 @@ defmodule Wardrik.Testing.Script do
     {:ok, nil}
   end
 
-  defp said("agent.deny", input), do: %{"reason" => input["reason"] || "Rejected."}
-  defp said(_approve, input), do: Map.take(input, ["note"])
+  defp say("agent.deny", input), do: %{"reason" => input["reason"] || "Rejected."}
+  defp say(_approve, input), do: Map.take(input, ["note"])
 
   defp turn(%Scope{wardrik: name} = scope, conversation, "echo" <> _rest) do
     call = %{"id" => "call_1", "name" => "echo", "arguments" => %{"text" => "hi"}}
@@ -102,9 +102,9 @@ defmodule Wardrik.Testing.Script do
     write(scope, conversation, "run.failed", %{"run" => %{"id" => "r1"}, "error" => error})
   end
 
-  defp turn(scope, conversation, text), do: answered(scope, conversation, "Answered: " <> text)
+  defp turn(scope, conversation, text), do: answer(scope, conversation, "Answered: " <> text)
 
-  defp answered(scope, conversation, text) do
+  defp answer(scope, conversation, text) do
     messages = [%{"role" => "assistant", "parts" => [%{"type" => "text", "content" => text}]}]
 
     write(scope, conversation, "run.completed", %{

@@ -164,7 +164,7 @@ defmodule WardrikDaemon.HTTP do
   get "/oauth/callback" do
     conn = Plug.Conn.fetch_query_params(conn)
 
-    case Connections.called_back(conn.assigns.daemon, conn.query_params) do
+    case Connections.take_callback(conn.assigns.daemon, conn.query_params) do
       {:ok, %{provider: provider, code: code}} ->
         page(conn, 200, "Enter this code", """
         <p>To finish signing in to #{escape(provider)}, enter this code on the Connections page of
@@ -279,8 +279,8 @@ defmodule WardrikDaemon.HTTP do
   end
 
   @doc "Validates `input` against one of the daemon's input schemas, for example `server_input`."
-  @spec checked(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
-  def checked(schema, input) do
+  @spec validate_input(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
+  def validate_input(schema, input) do
     case JSV.validate(input, Map.fetch!(@inputs, schema)) do
       {:ok, input} -> {:ok, input}
       {:error, error} -> {:error, Error.new(:invalid_request, Exception.message(error))}

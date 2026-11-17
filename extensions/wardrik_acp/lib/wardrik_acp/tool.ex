@@ -64,14 +64,16 @@ defmodule WardrikACP.Tool do
 
   defp run(settings, harness, checkouts, args, context) do
     if args["checkout"] in [nil | checkouts],
-      do: started(settings, harness, args, context),
-      else: {:error, "No checkout named #{args["checkout"]}. #{named(checkouts)}"}
+      do: start(settings, harness, args, context),
+      else: {:error, "No checkout named #{args["checkout"]}. #{describe_checkouts(checkouts)}"}
   end
 
-  defp named([]), do: "Leave checkout out."
-  defp named(checkouts), do: "Use one of #{Enum.join(checkouts, ", ")}, or leave it out."
+  defp describe_checkouts([]), do: "Leave checkout out."
 
-  defp started(settings, harness, args, %Context{step: {:tool_call, call}} = context) do
+  defp describe_checkouts(checkouts),
+    do: "Use one of #{Enum.join(checkouts, ", ")}, or leave it out."
+
+  defp start(settings, harness, args, %Context{step: {:tool_call, call}} = context) do
     worktree = worktree(settings, harness, args, context)
 
     spec = %{
@@ -237,7 +239,7 @@ defmodule WardrikACP.Tool do
         "refused" => reader.refused
       })
 
-    stop(reader, {:ok, answer(output, reader.labels), measured(reader.context, reader.usd)})
+    stop(reader, {:ok, answer(output, reader.labels), measure(reader.context, reader.usd)})
   end
 
   defp event(reader, {:failed, reason}),
@@ -249,8 +251,8 @@ defmodule WardrikACP.Tool do
     outcome
   end
 
-  defp measured(context, usd) when usd > 0, do: Context.measure(context, :usd, usd)
-  defp measured(context, _usd), do: context
+  defp measure(context, usd) when usd > 0, do: Context.measure(context, :usd, usd)
+  defp measure(context, _usd), do: context
 
   defp answer(output, []), do: output
   defp answer(output, labels), do: %ReqLLM.ToolResult{output: output, metadata: %{labels: labels}}
@@ -289,7 +291,7 @@ defmodule WardrikACP.Tool do
       reader.context
       | resume: answering(reader.resume, reader.call.id, id),
         tools: [step_tool(name, kind, tool_call, reader.worktree) | reader.context.tools],
-        messages: reader.context.messages ++ labelled(reader.labels)
+        messages: reader.context.messages ++ label(reader.labels)
     }
 
     reader = %{reader | resume: nil}
@@ -330,9 +332,9 @@ defmodule WardrikACP.Tool do
     )
   end
 
-  defp labelled([]), do: []
+  defp label([]), do: []
 
-  defp labelled(labels) do
+  defp label(labels) do
     message = ReqLLM.Context.user("")
     [%{message | metadata: Map.put(message.metadata, :labels, labels)}]
   end

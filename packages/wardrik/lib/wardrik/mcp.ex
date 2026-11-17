@@ -155,7 +155,7 @@ defmodule Wardrik.MCP do
     settings = %{
       mcp: opts.name,
       servers: opts.servers,
-      store: scoped(opts[:store]),
+      store: put_scope(opts[:store]),
       reconcile: opts.reconcile,
       check: opts[:check],
       secret: opts[:secret]
@@ -171,9 +171,9 @@ defmodule Wardrik.MCP do
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
-  defp scoped(nil), do: nil
+  defp put_scope(nil), do: nil
 
-  defp scoped(store), do: Wardrik.Store.scope(store, "wardrik_mcp")
+  defp put_scope(store), do: Wardrik.Store.scope(store, "wardrik_mcp")
 
   @doc """
   Returns the tools of the named servers.

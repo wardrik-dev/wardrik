@@ -133,7 +133,9 @@ defmodule WardrikDaemon.ServerTest do
     capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
 
     assert {:error, %Wardrik.Error{type: :not_found}} = Wardrik.Agent.read(context.admin, triage)
-    assert WardrikDaemon.AgentRecords.named(context.daemon_store, "acme", "triage") == :error
+
+    assert WardrikDaemon.AgentRecords.fetch_by_name(context.daemon_store, "acme", "triage") ==
+             :error
 
     assert {:ok, _definition, []} =
              Wardrik.Agent.definition(context.admin, id(context, "acme", "notes"))
@@ -276,7 +278,7 @@ defmodule WardrikDaemon.ServerTest do
         value: "m"
       })
 
-    sealed = WardrikDaemon.Running.sealed(store, [key])
+    sealed = WardrikDaemon.Running.build_sealed_vault(store, [key])
     assert sealed.("MODEL") == {:ok, "m"}
     assert sealed.("NOPE") == :error
   end

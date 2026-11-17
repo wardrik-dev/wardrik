@@ -155,7 +155,7 @@ defmodule Wardrik.ChildrenTest do
       ]
     ]
 
-  defp keyed(test, mcp) do
+  defp build_with_keys(test, mcp) do
     Wardrik.new(
       authorizer: {Wardrik.Test.Allow, []},
       resolver: {Wardrik.Test.Owned, :"keyed #{test}"},
@@ -168,7 +168,7 @@ defmodule Wardrik.ChildrenTest do
   test "an MCP server it starts names the deployment's secrets in its headers, unread", %{
     test: test
   } do
-    wardrik = keyed(test, [])
+    wardrik = build_with_keys(test, [])
     start_supervised!({Wardrik, wardrik}, id: :keyed)
     :ok = seal(wardrik, {"deployment", "LINEAR_TOKEN"}, "lin_123", :header)
 
@@ -190,7 +190,7 @@ defmodule Wardrik.ChildrenTest do
   test "an MCP server it starts reads the secret its headers name as it connects again", %{
     test: test
   } do
-    wardrik = keyed(test, linear(Wardrik.Test.Headers.start("/mcp")))
+    wardrik = build_with_keys(test, linear(Wardrik.Test.Headers.start("/mcp")))
     start_supervised!({Wardrik, wardrik}, id: :keyed)
 
     :ok = seal(wardrik, {"deployment", "LINEAR_TOKEN"}, "Bearer lin_123", :header)

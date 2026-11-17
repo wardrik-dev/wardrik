@@ -233,28 +233,28 @@ defmodule Wardrik.Triggers do
   defp ahead(%Trigger{clock: {:at, _at} = clock, timezone: timezone} = trigger, now) do
     if Clock.next(clock, timezone, now),
       do: :ok,
-      else: {:error, "at #{trigger.at}#{zoned(trigger)} has passed"}
+      else: {:error, "at #{trigger.at}#{format_zone(trigger)} has passed"}
   end
 
   defp ahead(_trigger, _now), do: :ok
 
-  defp zoned(%Trigger{clock: clock, timezone: timezone}),
+  defp format_zone(%Trigger{clock: clock, timezone: timezone}),
     do: if(Clock.instant?(clock), do: "", else: " " <> timezone)
 
   defp decode_all(fields) do
     fields
     |> Enum.with_index(1)
     |> Enum.map(fn {trigger, index} -> Trigger.decode(trigger, index) end)
-    |> Enum.reduce({:ok, []}, &collected/2)
-    |> reversed()
+    |> Enum.reduce({:ok, []}, &collect/2)
+    |> reverse()
   end
 
-  defp collected({:ok, trigger}, {:ok, triggers}), do: {:ok, [trigger | triggers]}
-  defp collected({:error, why}, {:ok, _triggers}), do: {:error, why}
-  defp collected(_result, error), do: error
+  defp collect({:ok, trigger}, {:ok, triggers}), do: {:ok, [trigger | triggers]}
+  defp collect({:error, why}, {:ok, _triggers}), do: {:error, why}
+  defp collect(_result, error), do: error
 
-  defp reversed({:ok, triggers}), do: {:ok, Enum.reverse(triggers)}
-  defp reversed(error), do: error
+  defp reverse({:ok, triggers}), do: {:ok, Enum.reverse(triggers)}
+  defp reverse(error), do: error
 
   defp set_all(triggers, agent_id, decoded) do
     Enum.reduce_while(decoded, :ok, fn trigger, :ok ->

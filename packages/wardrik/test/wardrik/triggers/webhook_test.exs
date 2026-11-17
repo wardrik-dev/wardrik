@@ -8,7 +8,7 @@ defmodule Wardrik.Triggers.WebhookTest do
   defp request(headers, body \\ "{}", path_secret \\ nil),
     do: %{headers: headers, body: body, path_secret: path_secret}
 
-  defp signed(id, at, body) do
+  defp sign(id, at, body) do
     mac = :crypto.mac(:hmac, :sha256, "key", "#{id}.#{at}.#{body}")
     signature = Base.encode64(mac)
 
@@ -40,8 +40,8 @@ defmodule Wardrik.Triggers.WebhookTest do
     at = DateTime.to_unix(@now)
     standard = [verify: :standard, secret: secret, now: @now]
 
-    fresh = signed("msg_1", at, "{}")
-    stale = signed("msg_1", at - 600, "{}")
+    fresh = sign("msg_1", at, "{}")
+    stale = sign("msg_1", at - 600, "{}")
 
     request = request(fresh)
     assert :ok = Webhook.verify(request, standard)
@@ -55,7 +55,7 @@ defmodule Wardrik.Triggers.WebhookTest do
     request = request(%{})
     assert {:error, "it has no webhook-id header"} = Webhook.verify(request, standard)
 
-    headers = %{signed("msg_1", at, "{}") | "webhook-timestamp" => "soon"}
+    headers = %{sign("msg_1", at, "{}") | "webhook-timestamp" => "soon"}
 
     request = request(headers)
     assert {:error, "its webhook-timestamp isn't a time"} = Webhook.verify(request, standard)

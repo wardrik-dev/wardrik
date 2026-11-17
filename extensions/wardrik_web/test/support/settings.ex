@@ -2,10 +2,10 @@ defmodule WardrikWeb.Test.Servers do
   @moduledoc "A `WardrikWeb.Settings` that keeps servers in an Agent, for tests."
   @behaviour WardrikWeb.Settings
 
-  def start, do: Agent.start(fn -> fixed() end, name: __MODULE__)
-  def reset, do: Agent.update(__MODULE__, fn _items -> fixed() end)
+  def start, do: Agent.start(fn -> fix() end, name: __MODULE__)
+  def reset, do: Agent.update(__MODULE__, fn _items -> fix() end)
 
-  defp fixed,
+  defp fix,
     do: [
       %{
         "owner" => "acme",
@@ -110,13 +110,13 @@ defmodule WardrikWeb.Test.Connections do
   @moduledoc "A `WardrikWeb.Connections` that keeps connections in an Agent, for tests."
   @behaviour WardrikWeb.Connections
 
-  def start, do: Agent.start(fn -> fixed() end, name: __MODULE__)
-  def reset, do: Agent.update(__MODULE__, fn _connections -> fixed() end)
+  def start, do: Agent.start(fn -> fix() end, name: __MODULE__)
+  def reset, do: Agent.update(__MODULE__, fn _connections -> fix() end)
 
-  def connected(provider),
+  def handle_connect(provider),
     do: Agent.update(__MODULE__, &Map.put(&1, provider, %{"connected" => true}))
 
-  defp fixed,
+  defp fix,
     do: %{
       "google" => %{"connected" => true},
       "github" => %{},
@@ -150,7 +150,7 @@ defmodule WardrikWeb.Test.Connections do
   def connect(_scope, provider, _opts), do: {:error, "#{provider} isn't set up."}
 
   @impl true
-  def pair(_scope, "linear", "GOOD", _opts), do: connected("linear")
+  def pair(_scope, "linear", "GOOD", _opts), do: handle_connect("linear")
 
   def pair(_scope, _provider, _code, _opts),
     do: {:error, Wardrik.Error.new(:invalid_request, "Wrong code.")}

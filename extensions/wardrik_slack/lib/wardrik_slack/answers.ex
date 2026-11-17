@@ -33,7 +33,7 @@ defmodule WardrikSlack.Answers do
 
   defp respond(workspace, payload, action, %{"i" => interrupt} = button) do
     member = Messages.sender(workspace, get_in(payload, ["user", "id"]))
-    reply = pressed(action, workspace, member, button, note(payload, interrupt))
+    reply = handle_press(action, workspace, member, button, note(payload, interrupt))
 
     API.respond(
       payload["response_url"],
@@ -42,10 +42,10 @@ defmodule WardrikSlack.Answers do
     )
   end
 
-  defp pressed("wardrik_link", workspace, member, button, _note) do
+  defp handle_press("wardrik_link", workspace, member, button, _note) do
     with {:ok, scope} <- Workspace.member_scope(workspace, member),
          {:ok, %Wardrik.Authorization{url: url}} <-
-           Wardrik.Agent.authorization(scope, call(button) ++ held(button)) do
+           Wardrik.Agent.authorization(scope, call(button) ++ hold(button)) do
       {:said, "Sign in at #{url}"}
     else
       {:error, %Error{message: message}} -> {:said, message}
@@ -53,7 +53,7 @@ defmodule WardrikSlack.Answers do
     end
   end
 
-  defp pressed(action, workspace, member, button, note) do
+  defp handle_press(action, workspace, member, button, note) do
     answer = %Answer{
       member: member,
       agent: button["g"],
@@ -72,10 +72,10 @@ defmodule WardrikSlack.Answers do
   defp call(button), do: [agent: button["g"], interrupt: button["i"]]
 
   # A notice's call is in the agent's own conversation, which is named by none.
-  defp held(%{"c" => conversation}) when is_binary(conversation),
+  defp hold(%{"c" => conversation}) when is_binary(conversation),
     do: [conversation: conversation]
 
-  defp held(_button), do: []
+  defp hold(_button), do: []
 
   defp decision("wardrik_approve", note), do: {:approve, note}
   defp decision("wardrik_deny", note), do: {:deny, note}

@@ -32,7 +32,7 @@ defmodule Wardrik.OAuth.Renewal do
   @doc "Marks the grant `name` expired, so the next use refreshes it."
   @spec expire(map(), String.t(), Principal.t()) :: :ok
   def expire(settings, name, principal) do
-    locked(name, principal, fn ->
+    with_lock(name, principal, fn ->
       with {:ok, token, vsn} <- current(settings, name, principal) do
         value =
           token
@@ -48,15 +48,15 @@ defmodule Wardrik.OAuth.Renewal do
   end
 
   defp refresh(settings, provider, principal) do
-    locked(provider.name, principal, fn ->
+    with_lock(provider.name, principal, fn ->
       case current(settings, provider.name, principal) do
-        {:ok, token, vsn} -> refreshed(settings, provider, principal, token, vsn)
+        {:ok, token, vsn} -> handle_refresh(settings, provider, principal, token, vsn)
         :none -> :ask
       end
     end)
   end
 
-  defp refreshed(settings, provider, principal, token, vsn) do
+  defp handle_refresh(settings, provider, principal, token, vsn) do
     cond do
       Token.fresh?(token) -> {:ok, token.access_token}
       Token.renewable?(token) -> exchange(settings, provider, principal, token, vsn)
@@ -102,7 +102,7 @@ defmodule Wardrik.OAuth.Renewal do
     end
   end
 
-  defp locked(name, %Principal{id: id}, fun) do
+  defp with_lock(name, %Principal{id: id}, fun) do
     case :global.trans({{Wardrik.OAuth, name, id}, self()}, fun, [node() | Node.list()], 20) do
       :aborted -> {:error, :renewing}
       result -> result

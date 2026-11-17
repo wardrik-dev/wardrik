@@ -36,7 +36,7 @@ defmodule WardrikDaemon.Running do
   def init(opts) do
     %{name: name, dirs: dirs, env: env, store: store, keys: keys} = Map.new(opts)
 
-    read = fn -> read(dirs, env, sealed(store, keys)) end
+    read = fn -> read(dirs, env, build_sealed_vault(store, keys)) end
     {config, policies} = started = WardrikDaemon.ok!(read.())
     running = self()
     orgs = %{org: config.org, orgs: config.orgs, policies: policies}
@@ -126,10 +126,10 @@ defmodule WardrikDaemon.Running do
              web: web,
              port: config.port,
              ip: config.ip
-           ] ++ shared(config.cluster) ++ drain(opts[:shutdown_timeout])},
+           ] ++ build_cluster_opts(config.cluster) ++ drain(opts[:shutdown_timeout])},
           %{
             id: :started,
-            start: {Task, :start_link, [fn -> started(agents, dirs, config) end]},
+            start: {Task, :start_link, [fn -> start(agents, dirs, config) end]},
             restart: :transient
           }
         ]
@@ -157,12 +157,12 @@ defmodule WardrikDaemon.Running do
   defp drain(timeout), do: [thousand_island_options: [shutdown_timeout: timeout]]
 
   # Nodes on one machine share the HTTP API's port.
-  defp shared(nil), do: []
-  defp shared(_cluster), do: [retry: :timer.seconds(5)]
+  defp build_cluster_opts(nil), do: []
+  defp build_cluster_opts(_cluster), do: [retry: :timer.seconds(5)]
 
   @doc "Returns a `t:WardrikDaemon.Config.vault/0` that reads the deployment's secrets from `store` with `keys`."
-  @spec sealed(Wardrik.Store.t(), [String.t()]) :: Config.vault()
-  def sealed(store, keys) do
+  @spec build_sealed_vault(Wardrik.Store.t(), [String.t()]) :: Config.vault()
+  def build_sealed_vault(store, keys) do
     fn name ->
       case Wardrik.Vault.read(store, %Principal{id: "deployment"}, name, keys: keys) do
         {:ok, value} -> {:ok, value}
@@ -197,7 +197,7 @@ defmodule WardrikDaemon.Running do
   # config.yaml's providers are the deployment's apps, which Wardrik.OAuth.Apps gives.
   defp oauth(%Config{oauth: oauth}, _daemon), do: [oauth: oauth]
 
-  defp started(agents, dirs, config) do
+  defp start(agents, dirs, config) do
     Enum.each(config.warnings, &Logger.warning("config.yaml: #{&1}"))
     _problems = Agents.reload(agents)
     :ok = CLIToken.issue(agents[:store], Dirs.data_home(dirs, "cli_token"), Config.url(config))

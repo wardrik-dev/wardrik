@@ -7,7 +7,7 @@ defmodule Wardrik.Vault.Lookup do
 
   @spec fetch(atom() | Wardrik.t(), keyword()) :: {:ok, binary()} | {:error, term()}
   def fetch(instance, args) do
-    {owner, name, opts} = named(args)
+    {owner, name, opts} = split_owner(args)
 
     with {:ok, wardrik} <- sealing(instance) do
       vault = Wardrik.vault(wardrik)
@@ -31,21 +31,21 @@ defmodule Wardrik.Vault.Lookup do
   @doc "Returns whether `:owner` holds the secret `:name` sealed as `:kind`. Needs no key."
   @spec holds?(atom() | Wardrik.t(), keyword()) :: boolean()
   def holds?(instance, args) do
-    {owner, name, args} = named(args)
+    {owner, name, args} = split_owner(args)
     {owner, name, Keyword.fetch!(args, :kind)} in list(instance)
   end
 
   @doc """
   Returns `opts` with each `{:secret, name}` read from the deployment's secrets, or `nil`.
   """
-  @spec resolved(Wardrik.t(), String.t(), keyword() | map()) :: keyword() | map()
-  def resolved(wardrik, what, opts) when is_map(opts),
-    do: Map.new(opts, &resolved_pair(wardrik, what, &1))
+  @spec resolve_secrets(Wardrik.t(), String.t(), keyword() | map()) :: keyword() | map()
+  def resolve_secrets(wardrik, what, opts) when is_map(opts),
+    do: Map.new(opts, &resolve_pair(wardrik, what, &1))
 
-  def resolved(wardrik, what, opts) when is_list(opts),
-    do: Enum.map(opts, &resolved_pair(wardrik, what, &1))
+  def resolve_secrets(wardrik, what, opts) when is_list(opts),
+    do: Enum.map(opts, &resolve_pair(wardrik, what, &1))
 
-  defp resolved_pair(wardrik, what, {key, {:secret, name} = ref}) when is_binary(name) do
+  defp resolve_pair(wardrik, what, {key, {:secret, name} = ref}) when is_binary(name) do
     case value(wardrik, ref) do
       {:ok, value} ->
         {key, value}
@@ -59,7 +59,7 @@ defmodule Wardrik.Vault.Lookup do
     end
   end
 
-  defp resolved_pair(_wardrik, _what, pair), do: pair
+  defp resolve_pair(_wardrik, _what, pair), do: pair
 
   defp value(%Wardrik{vault_keys: []}, _ref), do: {:error, :no_keys}
 
@@ -76,7 +76,7 @@ defmodule Wardrik.Vault.Lookup do
     end
   end
 
-  defp named(args) do
+  defp split_owner(args) do
     {owner, args} = Keyword.pop!(args, :owner)
     {name, args} = Keyword.pop!(args, :name)
     {owner, name, args}

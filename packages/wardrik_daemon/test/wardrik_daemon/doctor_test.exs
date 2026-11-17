@@ -51,7 +51,7 @@ defmodule WardrikDaemon.DoctorTest do
 
   defp run(env), do: Doctor.run(env, req_options: [plug: {Req.Test, __MODULE__}])
 
-  defp found(checks, name), do: for({status, ^name, found} <- checks, do: {status, found})
+  defp find_check(checks, name), do: for({status, ^name, found} <- checks, do: {status, found})
 
   defp listening do
     {:ok, socket} = :gen_tcp.listen(0, [])
@@ -100,7 +100,7 @@ defmodule WardrikDaemon.DoctorTest do
       end
     end)
 
-    assert found(run(context.env), "saved") == [
+    assert find_check(run(context.env), "saved") == [
              {:fail,
               "acme.old can't start, as its saved state can't be read: #{why}. Define it again to start it over: `wardrik reload` does for agents in agents/."},
              {:fail,
@@ -108,10 +108,10 @@ defmodule WardrikDaemon.DoctorTest do
            ]
 
     Req.Test.stub(__MODULE__, &Req.Test.json(&1, %{"agents" => [], "next" => nil}))
-    assert found(run(context.env), "saved") == [{:ok, "every agent's saved state reads"}]
+    assert find_check(run(context.env), "saved") == [{:ok, "every agent's saved state reads"}]
 
     File.rm!(token)
-    assert found(run(context.env), "saved") == []
+    assert find_check(run(context.env), "saved") == []
   end
 
   test "says each part reads where it does", context do
@@ -146,25 +146,25 @@ defmodule WardrikDaemon.DoctorTest do
 
     checks = run(context.env)
 
-    assert [{:ok, "#{env_file} sets 2 variables"}] == found(checks, "env")
+    assert [{:ok, "#{env_file} sets 2 variables"}] == find_check(checks, "env")
 
     assert [{:ok, config}, {:warn, "ssh isn't supported here yet, so it's passed over"}] =
-             found(checks, "config")
+             find_check(checks, "config")
 
     assert config =~ "reads; the vault must hold GITHUB_CLIENT_SECRET"
-    assert [{:ok, "1 key from config.yaml, which seals"}] = found(checks, "vault")
-    assert [{:ok, "runs sh"}] = found(checks, "mcp notes")
-    assert [{:ok, "lists 1 tool at 127.0.0.1:" <> _port}] = found(checks, "mcp github")
+    assert [{:ok, "1 key from config.yaml, which seals"}] = find_check(checks, "vault")
+    assert [{:ok, "runs sh"}] = find_check(checks, "mcp notes")
+    assert [{:ok, "lists 1 tool at 127.0.0.1:" <> _port}] = find_check(checks, "mcp github")
 
     assert [
              {:ok,
               "takes Slack's events over Socket Mode; posts as @wardrik in Acme; 1 member mapped to users, acme.com members to acme, others refused"}
            ] =
-             found(checks, "channel slack")
+             find_check(checks, "channel slack")
 
-    assert [{:ok, "signs people in with a device code" <> _}] = found(checks, "oauth")
-    assert [{:ok, "1 agent file and 1 policy read"}] = found(checks, "agents")
-    assert [{:ok, "web_search has a key"}] = found(checks, "brave")
+    assert [{:ok, "signs people in with a device code" <> _}] = find_check(checks, "oauth")
+    assert [{:ok, "1 agent file and 1 policy read"}] = find_check(checks, "agents")
+    assert [{:ok, "web_search has a key"}] = find_check(checks, "brave")
 
     assert capture_io(fn -> assert Doctor.print(checks) == 0 end) =~
              ~r/ok    channel slack  takes/
@@ -194,18 +194,18 @@ defmodule WardrikDaemon.DoctorTest do
 
     checks = run(context.env)
 
-    assert [{:ok, "lists 2 tools at 127.0.0.1:" <> _port}] = found(checks, "mcp open")
+    assert [{:ok, "lists 2 tools at 127.0.0.1:" <> _port}] = find_check(checks, "mcp open")
 
-    assert [{:ok, kept}] = found(checks, "mcp kept")
+    assert [{:ok, kept}] = find_check(checks, "mcp kept")
     assert kept =~ ~r/^lists 2 tools at 127.0.0.1:\d+; only and except keep 1$/
 
-    assert [{:fail, refused}] = found(checks, "mcp refused")
+    assert [{:fail, refused}] = find_check(checks, "mcp refused")
     assert refused =~ "but initialize gets 403: This API key has no access"
 
-    assert [{:ok, sealed}] = found(checks, "mcp sealed")
+    assert [{:ok, sealed}] = find_check(checks, "mcp sealed")
     assert sealed =~ "the vault holds its headers"
 
-    assert [{:ok, github}] = found(checks, "mcp github")
+    assert [{:ok, github}] = find_check(checks, "mcp github")
     assert github =~ "each user's account reaches it"
   end
 
@@ -214,7 +214,8 @@ defmodule WardrikDaemon.DoctorTest do
     broker: {url: "http://127.0.0.1:#{listening()}/credentials", secret: s, credentials: [gmail]}
     """)
 
-    assert [{:ok, "answers gmail at 127.0.0.1:" <> _port}] = found(run(context.env), "broker")
+    assert [{:ok, "answers gmail at 127.0.0.1:" <> _port}] =
+             find_check(run(context.env), "broker")
   end
 
   test "says whether each harness runs and each checkout is a repository", context do
@@ -246,26 +247,26 @@ defmodule WardrikDaemon.DoctorTest do
 
     checks = run(context.env)
 
-    assert [{:ok, "runs sh"}] = found(checks, "harness claude")
+    assert [{:ok, "runs sh"}] = find_check(checks, "harness claude")
 
     assert [{:fail, "runs no-such-acp-agent, which isn't on this machine's PATH"}] =
-             found(checks, "harness codex")
+             find_check(checks, "harness codex")
 
     assert [{:ok, "#{repo} is a git repository; new work starts from HEAD"}] ==
-             found(checks, "checkout core")
+             find_check(checks, "checkout core")
 
     assert [{:fail, "#{repo}-gone isn't a git repository with HEAD"}] ==
-             found(checks, "checkout gone")
+             find_check(checks, "checkout gone")
 
     assert [{:fail, "#{repo} isn't a git repository with release"}] ==
-             found(checks, "checkout based")
+             find_check(checks, "checkout based")
   end
 
   test "says where everything is kept, and whether Postgres answers", context do
     write(context, "config.yaml", "org: acme\n")
 
     assert [{:ok, "keeps everything on this node's disk" <> _}] =
-             found(run(context.env), "storage")
+             find_check(run(context.env), "storage")
 
     write(
       context,
@@ -274,7 +275,7 @@ defmodule WardrikDaemon.DoctorTest do
     )
 
     assert [{:ok, "keeps everything in Postgres at 127.0.0.1:" <> _}] =
-             found(run(context.env), "storage")
+             find_check(run(context.env), "storage")
 
     write(
       context,
@@ -283,17 +284,17 @@ defmodule WardrikDaemon.DoctorTest do
     )
 
     assert [{:fail, "Postgres at 127.0.0.1:1/w doesn't answer: " <> _}] =
-             found(run(context.env), "storage")
+             find_check(run(context.env), "storage")
 
     write(context, "config.yaml", s3("http://127.0.0.1:#{listening()}"))
 
     assert [{:ok, "keeps everything in the bucket wardrik at http://127.0.0.1:" <> _}] =
-             found(run(context.env), "storage")
+             find_check(run(context.env), "storage")
 
     write(context, "config.yaml", s3("http://127.0.0.1:1"))
 
     assert [{:fail, "the bucket wardrik at http://127.0.0.1:1 doesn't answer: " <> _}] =
-             found(run(context.env), "storage")
+             find_check(run(context.env), "storage")
   end
 
   defp s3(endpoint),
@@ -327,22 +328,27 @@ defmodule WardrikDaemon.DoctorTest do
 
     checks = run(context.env)
 
-    assert [{:fail, "#{env_file} can be read by others; chmod 600 it"}] == found(checks, "env")
-    assert [{:fail, "a key from config.yaml isn't 32 bytes of base64"}] = found(checks, "vault")
-    assert [{:warn, "config.yaml gives web_search no key." <> rest}] = found(checks, "brave")
+    assert [{:fail, "#{env_file} can be read by others; chmod 600 it"}] ==
+             find_check(checks, "env")
+
+    assert [{:fail, "a key from config.yaml isn't 32 bytes of base64"}] =
+             find_check(checks, "vault")
+
+    assert [{:warn, "config.yaml gives web_search no key." <> rest}] = find_check(checks, "brave")
     assert rest =~ "wardrik vault put BRAVE_API_KEY --for api_key"
 
     assert [{:fail, "runs no-such-program-here, which isn't on this machine's PATH"}] =
-             found(checks, "mcp notes")
+             find_check(checks, "mcp notes")
 
-    assert [{:fail, "doesn't answer at 127.0.0.1:" <> _}] = found(checks, "mcp github")
-    assert [{:fail, "takes nothing from Slack" <> _}] = found(checks, "channel quiet")
+    assert [{:fail, "doesn't answer at 127.0.0.1:" <> _}] = find_check(checks, "mcp github")
+    assert [{:fail, "takes nothing from Slack" <> _}] = find_check(checks, "channel quiet")
 
-    assert [{:fail, ~s(Slack refused its token: "invalid_auth")}] = found(checks, "channel open")
+    assert [{:fail, ~s(Slack refused its token: "invalid_auth")}] =
+             find_check(checks, "channel open")
 
-    assert [{:fail, "http://127.0.0.1:" <> _}] = found(checks, "oauth")
+    assert [{:fail, "http://127.0.0.1:" <> _}] = find_check(checks, "oauth")
 
-    agents = found(checks, "agents")
+    agents = find_check(checks, "agents")
     assert {:fail, "broken.md: There's no tool nope here."} in agents
     assert Enum.any?(agents, fn {:fail, why} -> why =~ "odd.md" end)
     assert Enum.any?(agents, fn {:fail, why} -> why =~ ~s(far.md: is in the org "globex") end)
@@ -354,7 +360,7 @@ defmodule WardrikDaemon.DoctorTest do
     File.chmod!(env_file, 0o600)
 
     assert [{:fail, "#{env_file} sets no variable on line 2"}] ==
-             found(run(context.env), "env")
+             find_check(run(context.env), "env")
   end
 
   test "stops after a config that doesn't read, and says how the command did", context do
@@ -379,9 +385,9 @@ defmodule WardrikDaemon.DoctorTest do
              Enum.filter(checks, &match?({_status, "agents", _found}, &1))
 
     assert why =~ "empty.yaml: is empty"
-    assert [{:ok, "no key yet" <> _}] = found(checks, "vault")
+    assert [{:ok, "no key yet" <> _}] = find_check(checks, "vault")
 
-    assert found(
+    assert find_check(
              run(Map.put(context.env, "WARDRIK_VAULT_KEY", Wardrik.Vault.generate_key())),
              "vault"
            ) ==
@@ -397,16 +403,16 @@ defmodule WardrikDaemon.DoctorTest do
       "---\ntools: [self/*, agents/*, agent_create, files]\n---\nHi.\n"
     )
 
-    assert [{:warn, found}] = found(run(context.env), "assistant")
+    assert [{:warn, found}] = find_check(run(context.env), "assistant")
     assert found =~ "doesn't give ops/agent.runs, ops/agent.timeline"
     assert found =~ "settings, help, web_search, run_lua"
 
     tools = Enum.join(WardrikDaemon.CLI.Init.assistant_tools(), ", ")
     write(context, "agents/assistant.md", "---\ntools: [#{tools}]\n---\nHi.\n")
-    assert [{:ok, _found}] = found(run(context.env), "assistant")
+    assert [{:ok, _found}] = find_check(run(context.env), "assistant")
 
     file = Path.join(context.env["WARDRIK_CONFIG_DIR"], "agents/assistant.md")
     File.rm!(file)
-    assert [] = found(run(context.env), "assistant")
+    assert [] = find_check(run(context.env), "assistant")
   end
 end

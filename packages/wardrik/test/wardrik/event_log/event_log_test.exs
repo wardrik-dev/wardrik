@@ -21,27 +21,27 @@ defmodule Wardrik.EventLogTest do
   end
 
   test "keeps each agent's events in order, numbered from 1 with no gaps", %{events: events} do
-    for _n <- 1..3, do: stopped(events, "agt_1")
+    for _n <- 1..3, do: emit_stop(events, "agt_1")
 
     assert sequences(events, ["agt_1"]) == ["000000000001", "000000000002", "000000000003"]
   end
 
   test "numbers each conversation's log apart from the agent's", %{events: events} do
-    stopped(events, "agt_1")
-    stopped(events, {"agt_1", "C1"})
-    stopped(events, {"agt_1", "C1"})
+    emit_stop(events, "agt_1")
+    emit_stop(events, {"agt_1", "C1"})
+    emit_stop(events, {"agt_1", "C1"})
 
     assert sequences(events, [{"agt_1", nil}]) == ["000000000001"]
     assert sequences(events, [{"agt_1", "C1"}]) == ["000000000001", "000000000002"]
   end
 
   test "carries on numbering after a restart", %{events: events, store: store} do
-    stopped(events, "agt_1")
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     stop_supervised!(Wardrik.EventLog)
     start_supervised!({Wardrik.EventLog, name: events, store: store, deployment: "test"})
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     last =
       events
@@ -140,7 +140,7 @@ defmodule Wardrik.EventLogTest do
 
   test "sends kept events to the stream with their place in the log", %{events: events} do
     :ok = Wardrik.EventLog.subscribe(events, ["agt_1"])
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     assert_receive {Wardrik.EventLog, {"agt_1", nil},
                     %{"type" => "wardrik.agent.stopped", "sequence" => "000000000001"}}
@@ -173,7 +173,7 @@ defmodule Wardrik.EventLogTest do
 
   test "names the agent and conversation of a conversation's event", %{events: events} do
     :ok = Wardrik.EventLog.subscribe(events, ["a/b c%"])
-    stopped(events, {"a/b c%", "C/1"})
+    emit_stop(events, {"a/b c%", "C/1"})
 
     assert_receive {Wardrik.EventLog, {"a/b c%", "C/1"}, event}
 
@@ -185,7 +185,7 @@ defmodule Wardrik.EventLogTest do
   end
 
   test "takes the next number when another writer took this one", %{events: events, store: store} do
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
     taken = Wardrik.Store.scope(store, "wardrik_events")
 
     {:ok, _vsn} =
@@ -196,7 +196,7 @@ defmodule Wardrik.EventLogTest do
         if_vsn: nil
       )
 
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     assert sequences(events, ["agt_1"]) == ["000000000001", "000000000002", "000000000003"]
   end
@@ -215,7 +215,7 @@ defmodule Wardrik.EventLogTest do
       end
     end)
 
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     assert sequences(events, ["agt_1"]) == ["000000000001"]
   end
@@ -223,22 +223,22 @@ defmodule Wardrik.EventLogTest do
   test "keeps nothing for a log it couldn't list", %{events: events} do
     failing_once()
 
-    assert capture_log(fn -> stopped(events, "agt_1") end) =~
+    assert capture_log(fn -> emit_stop(events, "agt_1") end) =~
              ~s(Couldn't keep wardrik.agent.stopped for {"agt_1", nil})
 
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     assert sequences(events, ["agt_1"]) == ["000000000001"]
   end
 
   test "leaves no gap when an event's write fails", %{events: events} do
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
     failing_once()
 
-    assert capture_log(fn -> stopped(events, "agt_1") end) =~
+    assert capture_log(fn -> emit_stop(events, "agt_1") end) =~
              "Couldn't keep wardrik.agent.stopped"
 
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     assert sequences(events, ["agt_1"]) == ["000000000001", "000000000002"]
   end
@@ -268,7 +268,7 @@ defmodule Wardrik.EventLogTest do
     setup %{events: events} do
       for log <- ["agt_1", {"agt_1", "C1"}, "agt_10", "agt_2"],
           _n <- 1..2,
-          do: stopped(events, log)
+          do: emit_stop(events, log)
 
       :ok
     end
@@ -349,7 +349,7 @@ defmodule Wardrik.EventLogTest do
       events: events,
       store: store
     } do
-      for log <- @odd, do: stopped(events, log)
+      for log <- @odd, do: emit_stop(events, log)
 
       logs =
         store
@@ -376,7 +376,7 @@ defmodule Wardrik.EventLogTest do
       events: events,
       store: store
     } do
-      for log <- @odd, do: stopped(events, log)
+      for log <- @odd, do: emit_stop(events, log)
       logs = Wardrik.Store.scope(store, "wardrik_events")
 
       sorted =

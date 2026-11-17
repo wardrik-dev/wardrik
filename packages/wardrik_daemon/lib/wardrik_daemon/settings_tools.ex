@@ -65,7 +65,7 @@ defmodule WardrikDaemon.SettingsTools do
         }
       },
       run: fn args, _context ->
-        run(me, args, fn scope, owner -> listed(me.daemon, scope, args["kind"], owner) end)
+        run(me, args, fn scope, owner -> handle_list(me.daemon, scope, args["kind"], owner) end)
       end,
       annotations: [read_only: true, idempotent: true]
     )
@@ -124,16 +124,16 @@ defmodule WardrikDaemon.SettingsTools do
     end
   end
 
-  defp listed(_daemon, scope, "secrets", owner),
+  defp handle_list(_daemon, scope, "secrets", owner),
     do: Wardrik.run(scope, "secrets.list", %{"owner" => owner})
 
-  defp listed(daemon, scope, kind, owner) do
+  defp handle_list(daemon, scope, kind, owner) do
     with {:ok, items} <- Settings.list(daemon, scope, kind, owner), do: {:ok, %{kind => items}}
   end
 
   # The agent can't seal a secret, so it hands a person the page and the command.
   defp where(daemon, scope, owner, %{"name" => name, "purpose" => purpose}) do
-    with :ok <- Allowed.owned(daemon, scope, owner, {"secret.read", :secret}) do
+    with :ok <- Allowed.check_owned(daemon, scope, owner, {"secret.read", :secret}) do
       {:ok,
        %{}
        |> put("url", page(daemon, owner))

@@ -39,31 +39,34 @@ defmodule Wardrik.Slack.InstallTest do
               owner: "globex",
               token: "xoxb-globex"
             }, "/settings"} =
-             Install.installed(channel, "globex", %{"code" => "good", "state" => state(url)})
+             Install.complete_install(channel, "globex", %{
+               "code" => "good",
+               "state" => state(url)
+             })
 
     assert {:ok, %Installation{owner: "globex"}} =
              Wardrik.Chat.Channel.installation(channel, "T7")
 
     assert {:error, "This was started by someone else" <> _} =
-             Install.installed(channel, "acme", %{"code" => "good", "state" => state(url)})
+             Install.complete_install(channel, "acme", %{"code" => "good", "state" => state(url)})
 
     assert {:error, "Slack didn't add the app: access_denied" <> _} =
-             Install.installed(channel, "globex", %{
+             Install.complete_install(channel, "globex", %{
                "error" => "access_denied",
                "state" => state(url)
              })
 
     assert {:error, "Slack sent no code back" <> _} =
-             Install.installed(channel, "globex", %{"state" => state(url)})
+             Install.complete_install(channel, "globex", %{"state" => state(url)})
 
     assert {:error, "Slack didn't give the app its token" <> _} =
-             Install.installed(channel, "globex", %{"code" => "bad", "state" => state(url)})
+             Install.complete_install(channel, "globex", %{"code" => "bad", "state" => state(url)})
 
     assert {:error, "This was started" <> _} =
-             Install.installed(channel, "globex", %{"code" => "good"})
+             Install.complete_install(channel, "globex", %{"code" => "good"})
 
     assert {:error, "This was started" <> _} =
-             Install.installed(channel, "globex", %{"code" => "good", "state" => "x.y"})
+             Install.complete_install(channel, "globex", %{"code" => "good", "state" => "x.y"})
 
     callback = %{type: "event_callback", team_id: "T7", event: %{type: "tokens_revoked"}}
     deliver(context, "events", JSON.encode!(callback))
@@ -90,7 +93,7 @@ defmodule Wardrik.Slack.InstallTest do
     assert url =~ "client_id=1.2"
 
     assert {:ok, %Installation{workspace: "T7", name: "Globex", owner: "globex"}, "/s"} =
-             Wardrik.Channels.installed(wardrik,
+             Wardrik.Channels.complete_install(wardrik,
                channel: "slack",
                owner: "globex",
                query: %{

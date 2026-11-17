@@ -67,7 +67,7 @@ defmodule WardrikCore.Agent.StateTest do
       %{state: state}
     end
 
-    defp kept(state, settings \\ [middleware: [ParkTools]]) do
+    defp keep(state, settings \\ [middleware: [ParkTools]]) do
       state
       |> State.dump()
       |> JSON.encode!()
@@ -76,7 +76,7 @@ defmodule WardrikCore.Agent.StateTest do
       |> State.configure(settings)
     end
 
-    defp asked(text), do: ReqLLM.Context.user(text, %{id: "msg_" <> text})
+    defp ask(text), do: ReqLLM.Context.user(text, %{id: "msg_" <> text})
 
     test "keeps the state as JSON, without how the agent is configured", %{state: state} do
       state = put_in(state.context.instructions, "Be brief.")
@@ -97,10 +97,10 @@ defmodule WardrikCore.Agent.StateTest do
     end
 
     test "a running turn comes back idle with its messages queued first", %{state: state} do
-      state = %{state | in_flight: [asked("taken")], pending_messages: [asked("queued")]}
+      state = %{state | in_flight: [ask("taken")], pending_messages: [ask("queued")]}
 
       assert %State{state: :idle, task: nil, in_flight: [], pending_messages: pending} =
-               kept(state)
+               keep(state)
 
       assert Enum.map(pending, & &1.metadata.id) == ["msg_taken", "msg_queued"]
     end
@@ -116,15 +116,15 @@ defmodule WardrikCore.Agent.StateTest do
              {%ToolCall{id: "2", name: "look"}, {:ok, %{found: [:it]}}},
              {%ToolCall{id: "3", name: "fail"}, {:error, {:exit, :timeout}}}
            ]},
-        messages: [asked("pay")],
+        messages: [ask("pay")],
         metadata: %{},
         span: WardrikCore.Span.root(),
         measurements: %{usd: 0.25}
       }
 
-      state = %{state | state: :waiting, parked: parked, in_flight: [asked("pay")]}
+      state = %{state | state: :waiting, parked: parked, in_flight: [ask("pay")]}
 
-      assert %State{state: :waiting, parked: loaded} = kept(state)
+      assert %State{state: :waiting, parked: loaded} = keep(state)
 
       assert loaded.reason ==
                {:tool_calls,
@@ -141,19 +141,19 @@ defmodule WardrikCore.Agent.StateTest do
 
     test "a resumed turn comes back waiting on the same calls", %{state: state} do
       parked = %{reason: :in_doubt, messages: [], metadata: %{}, span: nil, measurements: %{}}
-      state = %{state | parked: parked, in_flight: [asked("taken")]}
+      state = %{state | parked: parked, in_flight: [ask("taken")]}
 
       assert %State{
                state: :waiting,
                in_flight: [%{metadata: %{id: "msg_taken"}}],
                parked: ^parked
              } =
-               kept(state)
+               keep(state)
     end
 
     test "a turn that checkpointed a batch comes back due to recover it", %{state: state} do
       checkpoint = %{
-        messages: [asked("asked")],
+        messages: [ask("asked")],
         calls: [%ToolCall{id: "1", name: "look", arguments: %{}}],
         rounds: :infinity,
         metadata: %{},
@@ -163,11 +163,11 @@ defmodule WardrikCore.Agent.StateTest do
       }
 
       assert %State{state: :due, checkpoint: ^checkpoint} =
-               kept(%{state | checkpoint: checkpoint})
+               keep(%{state | checkpoint: checkpoint})
     end
 
     test "keeps a state whose model no longer resolves", %{state: state} do
-      assert %State{model: "gone:model"} = kept(%{state | model: "gone:model"})
+      assert %State{model: "gone:model"} = keep(%{state | model: "gone:model"})
     end
 
     test "keeps what it can't read as it was, and says why", %{state: state} do
@@ -192,7 +192,7 @@ defmodule WardrikCore.Agent.StateTest do
     end
 
     test "keeps a state it can't read as it was, whatever it holds", %{state: state} do
-      dumped = State.dump(%{state | pending_messages: [asked("queued")]})
+      dumped = State.dump(%{state | pending_messages: [ask("queued")]})
       [message] = dumped["pending"]
 
       broken = [
@@ -269,7 +269,7 @@ defmodule WardrikCore.Agent.StateTest do
         |> JSON.encode!()
         |> JSON.decode!()
 
-      assert WardrikCore.Stored.Message.loaded(json) == messages
+      assert WardrikCore.Stored.Message.load_messages(json) == messages
     end
   end
 

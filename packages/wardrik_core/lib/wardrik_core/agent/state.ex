@@ -77,16 +77,16 @@ defmodule WardrikCore.Agent.State do
 
   def configure(%__MODULE__{} = state, opts) do
     {model, settings} = Keyword.pop(opts, :model, state.model)
-    Stored.resolve(%{state | model: model, context: configured(state, settings)})
+    Stored.resolve(%{state | model: model, context: handle_configure(state, settings)})
   end
 
-  defp configured(%__MODULE__{context: nil} = state, settings),
+  defp handle_configure(%__MODULE__{context: nil} = state, settings),
     do:
       Wardrik.Context.new(
         [agent_id: state.agent_id, conversation: state.conversation] ++ settings
       )
 
-  defp configured(%__MODULE__{context: context}, settings), do: struct!(context, settings)
+  defp handle_configure(%__MODULE__{context: context}, settings), do: struct!(context, settings)
 
   @doc "Returns why what the agent kept can't be read, or `nil`."
   @spec unreadable(t()) :: String.t() | nil
@@ -130,8 +130,8 @@ defmodule WardrikCore.Agent.State do
   def waiting(%__MODULE__{}), do: nil
 
   @doc "Notes the calls answered, by `input` and the answers kept, as the turn it resumes starts."
-  @spec answered(t(), term()) :: t()
-  def answered(%__MODULE__{} = state, input),
+  @spec note_answered(t(), term()) :: t()
+  def note_answered(%__MODULE__{} = state, input),
     do: %{
       state
       | answered: Enum.flat_map([input | Enum.map(state.answers, &elem(&1, 0))], &ids/1)
@@ -150,16 +150,16 @@ defmodule WardrikCore.Agent.State do
     }
 
   @doc "Keeps a running turn's checkpoint, and the private data it saved."
-  @spec checkpointed(t(), map()) :: t()
-  def checkpointed(%__MODULE__{} = state, checkpoint) do
+  @spec put_checkpoint(t(), map()) :: t()
+  def put_checkpoint(%__MODULE__{} = state, checkpoint) do
     state = keep_private(state, checkpoint.private)
     checkpoint = %{checkpoint | private: state.context.private}
     %{state | checkpoint: checkpoint, parked: nil}
   end
 
   @doc "Takes what a turn ended with: answered, parked, or failed."
-  @spec finished(t(), Wardrik.Middleware.result()) :: t()
-  def finished(%__MODULE__{} = state, {:ok, context}),
+  @spec finish_turn(t(), Wardrik.Middleware.result()) :: t()
+  def finish_turn(%__MODULE__{} = state, {:ok, context}),
     do: %{
       keep_private(state, context.private)
       | state: :idle,
@@ -172,7 +172,7 @@ defmodule WardrikCore.Agent.State do
         answers: []
     }
 
-  def finished(%__MODULE__{} = state, {:park, reason, context}),
+  def finish_turn(%__MODULE__{} = state, {:park, reason, context}),
     do: %{
       keep_private(state, context.private)
       | state: :waiting,
@@ -188,11 +188,11 @@ defmodule WardrikCore.Agent.State do
         }
     }
 
-  def finished(%__MODULE__{} = state, {:error, _reason}), do: unanswered(state)
+  def finish_turn(%__MODULE__{} = state, {:error, _reason}), do: drop_turn(state)
 
   @doc "Drops the turn, keeping the messages it was answering in the history."
-  @spec unanswered(t()) :: t()
-  def unanswered(%__MODULE__{} = state),
+  @spec drop_turn(t()) :: t()
+  def drop_turn(%__MODULE__{} = state),
     do: %{
       state
       | state: :idle,

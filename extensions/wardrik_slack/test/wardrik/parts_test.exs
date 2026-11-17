@@ -60,7 +60,7 @@ defmodule Wardrik.Slack.PartsTest do
     test "say how the agent answers", context do
       define(context.owner, "acme/triage", channels: ["slack"])
       {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
-      {:bound, binding, offer} = Wardrik.Chat.Rooms.joined(workspace, "C1")
+      {:bound, binding, offer} = Wardrik.Chat.Rooms.join(workspace, "C1")
 
       message = Rooms.message({:bound, binding, offer}, workspace, nil)
       assert JSON.encode!(message) =~ "Mention the app"

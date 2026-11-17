@@ -47,7 +47,7 @@ defmodule Wardrik.HTTP.Worker do
   @impl WebSock
   def handle_in({text, [opcode: :text]}, state) do
     case JSON.decode(text) do
-      {:ok, message} -> received(message, state)
+      {:ok, message} -> handle_receive(message, state)
       {:error, _reason} -> {:ok, state}
     end
   end
@@ -69,53 +69,53 @@ defmodule Wardrik.HTTP.Worker do
 
   def handle_info(:keepalive, state) do
     case state.alive?.() do
-      true -> pinged(state)
+      true -> ping(state)
       false -> {:stop, :normal, {1008, "The request no longer authenticates."}, state}
     end
   end
 
   def handle_info(_message, state), do: {:ok, state}
 
-  defp pinged(state) do
+  defp ping(state) do
     keep_alive(state)
     {:push, {:ping, ""}, state}
   end
 
-  defp received(%{"method" => "notifications/tools/list_changed"}, state) do
+  defp handle_receive(%{"method" => "notifications/tools/list_changed"}, state) do
     {frame, state} = request(state, "tools/list", %{}, :list)
     {:push, frame, state}
   end
 
-  defp received(%{"method" => "ping", "id" => id}, state),
+  defp handle_receive(%{"method" => "ping", "id" => id}, state),
     do: {:push, response(id, %{"result" => %{}}), state}
 
-  defp received(%{"method" => _method, "id" => id}, state),
+  defp handle_receive(%{"method" => _method, "id" => id}, state),
     do:
       {:push, response(id, %{"error" => %{"code" => -32_601, "message" => "Method not found"}}),
        state}
 
-  defp received(%{"id" => id} = message, state) when is_map_key(state.pending, id) do
+  defp handle_receive(%{"id" => id} = message, state) when is_map_key(state.pending, id) do
     {purpose, pending} = Map.pop(state.pending, id)
-    answered(purpose, message, %{state | pending: pending})
+    answer(purpose, message, %{state | pending: pending})
   end
 
-  defp received(_message, state), do: {:ok, state}
+  defp handle_receive(_message, state), do: {:ok, state}
 
-  defp answered(:initialize, %{"result" => _result}, state) do
+  defp answer(:initialize, %{"result" => _result}, state) do
     {list, state} = request(state, "tools/list", %{}, :list)
     {:push, [notification("notifications/initialized", %{}), list], state}
   end
 
-  defp answered(:initialize, _refused, state), do: {:stop, :normal, state}
+  defp answer(:initialize, _refused, state), do: {:stop, :normal, state}
 
-  defp answered(:list, %{"result" => %{"tools" => tools}}, state) when is_list(tools) do
+  defp answer(:list, %{"result" => %{"tools" => tools}}, state) when is_list(tools) do
     :ok = state.scope.server.offer(state.scope, tools)
     {:ok, state}
   end
 
-  defp answered(:list, _refused, state), do: {:ok, state}
+  defp answer(:list, _refused, state), do: {:ok, state}
 
-  defp answered({call, monitor}, message, state) do
+  defp answer({call, monitor}, message, state) do
     Process.demonitor(monitor, [:flush])
     :ok = state.scope.server.answer(call, message)
     {:ok, state}

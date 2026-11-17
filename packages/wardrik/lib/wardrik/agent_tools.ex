@@ -38,7 +38,7 @@ defmodule Wardrik.AgentTools do
   def tools(%Wardrik.Context{agent_id: id, principal: principal} = context, opts) do
     wardrik = Keyword.fetch!(opts, :wardrik)
 
-    offered(Keyword.fetch!(opts, :reach), %{
+    offer(Keyword.fetch!(opts, :reach), %{
       wardrik: wardrik,
       id: id,
       conversation: context.conversation,
@@ -48,14 +48,14 @@ defmodule Wardrik.AgentTools do
     })
   end
 
-  defp offered(:agents, me) do
+  defp offer(:agents, me) do
     [
       read(
         "agents_list",
         "List the agents you may reach: each one's ID, description and status. \"file\": true marks one an agent file declares, which only a person changes, by editing its file.",
         [],
         fn _args ->
-          listed(me)
+          list(me)
         end
       ),
       read(
@@ -74,7 +74,7 @@ defmodule Wardrik.AgentTools do
         "agent_ask",
         "Send an agent a message. This answers at once; the agent's answer comes back to you later as a message of its own.",
         [agent: @agent, content: [type: :string, required: true, doc: "What you ask it"]],
-        &asked(me, &1.agent, &1.content, &2)
+        &ask(me, &1.agent, &1.content, &2)
       ),
       change(
         "agent_define",
@@ -87,13 +87,13 @@ defmodule Wardrik.AgentTools do
             doc: "The definition, as model, instructions, tools, triggers and the rest"
           ]
         ],
-        &defined(me, &1.agent, &1.definition)
+        &define(me, &1.agent, &1.definition)
       ),
       change(
         "agent_schedule",
         "Schedule an agent a message: once at a time, or every so often. It answers with the schedule's name and its next run, as next_at. agent_trigger_remove removes it.",
         schedule_schema(:agents),
-        &scheduled(me, &1["agent"], &1)
+        &schedule(me, &1["agent"], &1)
       ),
       change(
         "agent_trigger_set",
@@ -113,7 +113,7 @@ defmodule Wardrik.AgentTools do
     ]
   end
 
-  defp offered(:self, me) do
+  defp offer(:self, me) do
     self = me.id
 
     [
@@ -130,7 +130,7 @@ defmodule Wardrik.AgentTools do
         "self_schedule",
         "Schedule yourself a message, to follow up or do something later: once at a time, or every so often. It answers with the schedule's name and its next run, as next_at. self_trigger_remove removes it.",
         schedule_schema(:self),
-        &scheduled(me, self, &1)
+        &schedule(me, self, &1)
       ),
       change(
         "self_trigger_set",
@@ -156,7 +156,7 @@ defmodule Wardrik.AgentTools do
   defp trigger_schema(reach) do
     %{"properties" => properties, "required" => required} = trigger_input()
     properties = Map.drop(properties, ["name", "next_at", "ask_in"])
-    reached(%{"type" => "object", "properties" => properties, "required" => required}, reach)
+    reach(%{"type" => "object", "properties" => properties, "required" => required}, reach)
   end
 
   defp schedule_schema(reach) do
@@ -179,15 +179,15 @@ defmodule Wardrik.AgentTools do
       "required" => ["agent", "prompt"]
     }
 
-    reached(schema, reach)
+    reach(schema, reach)
   end
 
   defp trigger_input, do: WardrikProtocol.operation("agent.trigger_set").input
 
-  defp reached(schema, :agents),
+  defp reach(schema, :agents),
     do: put_in(schema, ["properties", "agent", "description"], @agent[:doc])
 
-  defp reached(schema, :self) do
+  defp reach(schema, :self) do
     schema
     |> Map.update!("properties", &Map.delete(&1, "agent"))
     |> Map.update!("required", &List.delete(&1, "agent"))
@@ -204,16 +204,16 @@ defmodule Wardrik.AgentTools do
       name: name,
       description: description,
       schema: schema,
-      run: fn args, context -> called(run, args, context) end,
+      run: fn args, context -> call(run, args, context) end,
       annotations: annotations
     )
   end
 
-  defp called(run, args, _context) when is_function(run, 1), do: run.(args)
-  defp called(run, args, context), do: run.(args, context)
+  defp call(run, args, _context) when is_function(run, 1), do: run.(args)
+  defp call(run, args, context), do: run.(args, context)
 
   # Each agent's description says what it is, since its ID may not.
-  defp listed(me) do
+  defp list(me) do
     with {:ok, %{"agents" => agents}} <- run(me, "agents.list", %{}) do
       wardrik = Wardrik.Instance.fetch!(me.wardrik)
 
@@ -223,30 +223,30 @@ defmodule Wardrik.AgentTools do
            for(
              agent <- agents,
              not Map.has_key?(agent, "conversation"),
-             do: declared(wardrik, Map.take(agent, ["id", "status", "description"]))
+             do: declare(wardrik, Map.take(agent, ["id", "status", "description"]))
            )
        }}
     end
   end
 
-  defp declared(wardrik, %{"id" => id} = agent) do
+  defp declare(wardrik, %{"id" => id} = agent) do
     if Wardrik.Declarations.declared?(wardrik, id),
       do: Map.put(agent, "file", true),
       else: agent
   end
 
-  defp asked(me, agent, message, context) do
+  defp ask(me, agent, message, context) do
     random = :crypto.strong_rand_bytes(12)
     id = "msg_" <> Base.url_encode64(random, padding: false)
     me = %{me | labels: Context.labels(context)}
 
     asker = {me.id, me.conversation}
 
-    with :ok <- Delegation.asked(me.wardrik, asker: asker, agent: agent, message: id),
+    with :ok <- Delegation.record_ask(me.wardrik, asker: asker, agent: agent, message: id),
          do: run(me, "agent.ask", %{"agent" => agent, "content" => message, "id" => id})
   end
 
-  defp defined(me, agent, definition) do
+  defp define(me, agent, definition) do
     wardrik = Wardrik.Instance.fetch!(me.wardrik)
 
     if Wardrik.Declarations.declared?(wardrik, agent) do
@@ -277,7 +277,7 @@ defmodule Wardrik.AgentTools do
   defp set_own(%{conversation: conversation} = me, agent, args),
     do: set(me, agent, Map.put(args, "ask_in", conversation))
 
-  defp scheduled(me, agent, args) do
+  defp schedule(me, agent, args) do
     {name, fields} = Map.pop_lazy(args, "name", &schedule_name/0)
     set_own(me, agent, Map.put(fields, "trigger", name))
   end

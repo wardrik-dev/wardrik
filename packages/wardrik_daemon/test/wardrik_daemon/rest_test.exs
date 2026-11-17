@@ -45,7 +45,7 @@ defmodule WardrikDaemon.RestTest do
     }
   end
 
-  defp started(context, apis, opts \\ []) do
+  defp start(context, apis, opts \\ []) do
     config = %Config{
       org: "platform",
       orgs: %{
@@ -74,7 +74,7 @@ defmodule WardrikDaemon.RestTest do
     WardrikDaemon.Rest.capabilities(context.wardrik, context.store, config)
   end
 
-  defp offered(context, capabilities, owner) do
+  defp offer(context, capabilities, owner) do
     {:ok, record} =
       AgentRecords.create(context.store,
         owner: owner,
@@ -87,11 +87,11 @@ defmodule WardrikDaemon.RestTest do
   end
 
   test "names a tool group after each API, for the orgs that use it", context do
-    capabilities = started(context, [{"notes", entry("notes.json")}])
+    capabilities = start(context, [{"notes", entry("notes.json")}])
 
     assert [{"notes", _capability}] = capabilities
-    assert offered(context, capabilities, "growth") == ["notes__notes_list"]
-    assert offered(context, capabilities, "platform") == []
+    assert offer(context, capabilities, "growth") == ["notes__notes_list"]
+    assert offer(context, capabilities, "platform") == []
   end
 
   test "reads an OpenAPI document in YAML, with a scheme it doesn't name", context do
@@ -115,31 +115,31 @@ defmodule WardrikDaemon.RestTest do
       ]
     }
 
-    capabilities = started(context, [{"notes", entry}])
-    assert offered(context, capabilities, "growth") == ["notes__notes_list"]
+    capabilities = start(context, [{"notes", entry}])
+    assert offer(context, capabilities, "growth") == ["notes__notes_list"]
   end
 
   test "fetches a description from its URL", context do
     Req.Test.stub(context.test, &Req.Test.json(&1, @document))
 
     capabilities =
-      started(context, [{"notes", entry("https://notes.test/$discovery/rest")}],
+      start(context, [{"notes", entry("https://notes.test/$discovery/rest")}],
         req_options: [plug: {Req.Test, context.test}]
       )
 
-    assert offered(context, capabilities, "growth") == ["notes__notes_list"]
+    assert offer(context, capabilities, "growth") == ["notes__notes_list"]
   end
 
   test "offers no tools while a description doesn't read, and says why", context do
     log =
       capture_log(fn ->
         capabilities =
-          started(context, [
+          start(context, [
             {"notes", entry("missing.json")},
             {"plain", entry("http://notes.test/rest")}
           ])
 
-        assert offered(context, capabilities, "growth") == []
+        assert offer(context, capabilities, "growth") == []
       end)
 
     assert log =~ "rest.notes isn't read: #{context.dir}/missing.json doesn't read: :enoent."
@@ -147,14 +147,14 @@ defmodule WardrikDaemon.RestTest do
   end
 
   test "reads a description again until it does", context do
-    {capabilities, _log} = with_log(fn -> started(context, [{"notes", entry("later.json")}]) end)
+    {capabilities, _log} = with_log(fn -> start(context, [{"notes", entry("later.json")}]) end)
 
-    assert offered(context, capabilities, "growth") == []
+    assert offer(context, capabilities, "growth") == []
 
     later = Path.join(context.dir, "later.json")
     File.write!(later, JSON.encode!(@document))
     send(WardrikDaemon.Rest.name(context.wardrik), :read)
 
-    assert offered(context, capabilities, "growth") == ["notes__notes_list"]
+    assert offer(context, capabilities, "growth") == ["notes__notes_list"]
   end
 end

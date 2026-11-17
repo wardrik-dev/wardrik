@@ -33,9 +33,9 @@ defmodule Wardrik.Workspace.Context do
     spec = Spec.new(opts)
     files = Keyword.get(opts, :files, [])
     read = read(spec, files, Keyword.get(opts, :max_bytes, 16_384))
-    context = labelled(context, read)
+    context = label(context, read)
 
-    case next.(%{context | instructions: joined(instructions, told(spec, files, read))}) do
+    case next.(%{context | instructions: join(instructions, tell(spec, files, read))}) do
       {:ok, context} -> {:ok, %{context | instructions: instructions}}
       {:park, reason, context} -> {:park, reason, %{context | instructions: instructions}}
       {:error, reason} -> {:error, reason}
@@ -44,7 +44,7 @@ defmodule Wardrik.Workspace.Context do
 
   def call(context, next, _opts), do: next.(context)
 
-  defp labelled(context, read) do
+  defp label(context, read) do
     labels =
       read
       |> Enum.flat_map(&Map.get(&1, :labels, []))
@@ -65,26 +65,33 @@ defmodule Wardrik.Workspace.Context do
     earlier ++ [%{last | metadata: metadata}]
   end
 
-  defp joined(nil, text), do: text
-  defp joined(instructions, text), do: instructions <> "\n\n" <> text
+  defp join(nil, text), do: text
+  defp join(instructions, text), do: instructions <> "\n\n" <> text
 
   @doc "Returns the workspace section, reading `files` within `budget` bytes."
   @spec text(Spec.t(), [String.t()], pos_integer()) :: String.t()
-  def text(spec, files, budget), do: told(spec, files, read(spec, files, budget))
+  def text(spec, files, budget), do: tell(spec, files, read(spec, files, budget))
 
-  defp told(spec, files, read) do
-    [@heading, shown(read), crowded(read), unwritten(read), listing(spec, files), shared(spec)]
+  defp tell(spec, files, read) do
+    [
+      @heading,
+      show(read),
+      check_crowded(read),
+      unwritten(read),
+      listing(spec, files),
+      describe_shared(spec)
+    ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n\n")
   end
 
   defp read(spec, files, budget) do
-    found = Enum.map(files, &found(spec, &1))
+    found = Enum.map(files, &find_file(spec, &1))
     shares = shares(found, budget)
     Enum.map(found, &cut(&1, shares))
   end
 
-  defp found(spec, path) do
+  defp find_file(spec, path) do
     with {:ok, mount, rest} <- Spec.resolve(spec, path),
          {:ok, file, version} <- Files.read(spec.store, tree: mount.tree, path: rest) do
       %{
@@ -138,7 +145,7 @@ defmodule Wardrik.Workspace.Context do
     end
   end
 
-  defp shown(read) do
+  defp show(read) do
     case for(%{state: state} = file when state in [:found, :cut] <- read, do: file(file)) do
       [] -> nil
       files -> Enum.join(files, "\n\n")
@@ -155,7 +162,7 @@ defmodule Wardrik.Workspace.Context do
       file.tail <> "\n</file>"
   end
 
-  defp crowded(read) do
+  defp check_crowded(read) do
     case for %{state: :cut, path: path} <- read,
              not String.starts_with?(path, "shared/"),
              do: path do
@@ -185,15 +192,15 @@ defmodule Wardrik.Workspace.Context do
 
     {plain, other} = Enum.split_with(names, &Regex.match?(@plain, &1))
     {shown, over} = Enum.split(plain, @max_names)
-    listed(shown, length(over) + length(other))
+    list(shown, length(over) + length(other))
   end
 
-  defp listed([], 0), do: nil
+  defp list([], 0), do: nil
 
-  defp listed([], more),
+  defp list([], more),
     do: "#{more} more files are at the top of your workspace, which list_files names."
 
-  defp listed(shown, more) do
+  defp list(shown, more) do
     also =
       "Also at the top of your workspace: #{Enum.join(shown, ", ")}. read_file reads one when what you're doing needs it."
 
@@ -207,9 +214,9 @@ defmodule Wardrik.Workspace.Context do
     end
   end
 
-  defp shared(%Spec{shared: []}), do: nil
+  defp describe_shared(%Spec{shared: []}), do: nil
 
-  defp shared(%Spec{shared: shared}) do
+  defp describe_shared(%Spec{shared: shared}) do
     trees =
       Enum.map_join(shared, ", ", fn mount ->
         "shared/#{mount.name}" <> if(mount.mode == :read, do: " (read only)", else: "")

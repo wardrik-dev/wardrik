@@ -21,7 +21,7 @@ defmodule WardrikDaemon.CLI.OccupantTest do
   end
 
   test "reads an environment as /proc holds it" do
-    assert Occupant.parsed("HOME=/home/jon\0PATH=/bin\0EMPTY=\0A=b=c\0") ==
+    assert Occupant.parse_environ("HOME=/home/jon\0PATH=/bin\0EMPTY=\0A=b=c\0") ==
              %{"HOME" => "/home/jon", "PATH" => "/bin", "EMPTY" => "", "A" => "b=c"}
   end
 
@@ -33,7 +33,7 @@ defmodule WardrikDaemon.CLI.OccupantTest do
     }
 
     test "says how to reach it with the variables it was started with" do
-      told = Occupant.told(@occupant, %{"HOME" => "/home/jon"}, "wardrik", false)
+      told = Occupant.describe_occupant(@occupant, %{"HOME" => "/home/jon"}, "wardrik", false)
 
       assert told == """
              Another Wardrik service is running here, from /opt/wardrik/0.1.0-rc.5 (pid 977).
@@ -45,20 +45,20 @@ defmodule WardrikDaemon.CLI.OccupantTest do
     test "quotes what the shell would split" do
       occupant = %{@occupant | env: %{"WARDRIK_CONFIG_DIR" => "/tmp/my wardrik's"}}
 
-      assert Occupant.told(occupant, %{}, "wardrik", false) =~
+      assert Occupant.describe_occupant(occupant, %{}, "wardrik", false) =~
                ~S(Use it:      WARDRIK_CONFIG_DIR='/tmp/my wardrik'\''s' wardrik status)
     end
 
     test "stops the one this CLI reaches with stop, and a service with systemctl" do
-      assert Occupant.told(@occupant, %{}, "rik", true) =~
+      assert Occupant.describe_occupant(@occupant, %{}, "rik", true) =~
                "Use it:      rik status. It read what init wrote.\n  Replace it:  rik stop, then rik init again"
 
-      assert Occupant.told(%{@occupant | service?: true}, %{}, "wardrik", false) =~
+      assert Occupant.describe_occupant(%{@occupant | service?: true}, %{}, "wardrik", false) =~
                "Replace it:  systemctl --user stop wardrik, then wardrik init again"
     end
 
     test "says so when its environment can't be read" do
-      assert Occupant.told(%{@occupant | env: %{}}, %{}, "wardrik", false) =~
+      assert Occupant.describe_occupant(%{@occupant | env: %{}}, %{}, "wardrik", false) =~
                "Use it:      wardrik status, with the environment it was started with"
     end
   end

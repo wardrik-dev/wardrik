@@ -29,7 +29,7 @@ defmodule Wardrik.Notify.Room do
     wardrik = Wardrik.Instance.fetch!(opts[:wardrik])
     channel = opts[:channel]
 
-    with {:ok, resolved} <- Wardrik.Resolver.defined(wardrik, notice.agent),
+    with {:ok, resolved} <- Wardrik.Resolver.resolve_current(wardrik, notice.agent),
          {:ok, workspace} <- workspace(resolved, channel),
          {:ok, {module, channel_opts}} <- Wardrik.Operations.Channels.fetch(wardrik.name, channel),
          true <- posts?(module) do

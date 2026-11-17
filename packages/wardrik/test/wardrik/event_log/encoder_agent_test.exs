@@ -26,10 +26,10 @@ defmodule Wardrik.EventLog.EncoderAgentTest do
     :ok
   end
 
-  defp received(acc \\ []) do
+  defp handle_receive(acc \\ []) do
     receive do
       {:event, %Event{name: [:wardrik_core, :turn, :stop]} = event} -> Enum.reverse([event | acc])
-      {:event, event} -> received([event | acc])
+      {:event, event} -> handle_receive([event | acc])
     after
       1_000 -> flunk("The turn never stopped: #{inspect(Enum.map(acc, & &1.name))}")
     end
@@ -52,7 +52,7 @@ defmodule Wardrik.EventLog.EncoderAgentTest do
 
     :ok = WardrikCore.ask(agent, "Say hi", %{principal: %Wardrik.Principal{id: "user:jon"}})
 
-    events = received()
+    events = handle_receive()
 
     envelope =
       "cloudevent"

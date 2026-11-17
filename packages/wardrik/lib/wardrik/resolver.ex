@@ -44,8 +44,8 @@ defmodule Wardrik.Resolver do
   end
 
   @doc "Returns what the agent `id` gets, as defined now."
-  @spec defined(Wardrik.t(), String.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
-  def defined(wardrik, id) do
+  @spec resolve_current(Wardrik.t(), String.t()) :: {:ok, Resolved.t()} | {:error, Error.t()}
+  def resolve_current(wardrik, id) do
     case Wardrik.Operations.Running.definition(wardrik, id) do
       {:ok, definition} -> resolve(wardrik, %Request{agent: id, definition: definition})
       {:error, _none} -> resolve(wardrik, %Request{agent: id})
@@ -58,8 +58,8 @@ defmodule Wardrik.Resolver do
     with :ok <- principal(resolved.principal, unread),
          {:ok, policy} <- policy("policy", resolved.policy, unread),
          {:ok, policies} <- policies(wardrik, resolved.policies, unread),
-         {:ok, servers} <- named("servers", resolved.servers, unread),
-         {:ok, channels} <- named("channels", resolved.channels, unread),
+         {:ok, servers} <- check_names("servers", resolved.servers, unread),
+         {:ok, channels} <- check_names("channels", resolved.channels, unread),
          {:ok, workspaces} <- workspaces(resolved.workspaces, unread),
          {:ok, notify} <- targets(resolved.notify, unread) do
       {:ok,
@@ -86,13 +86,13 @@ defmodule Wardrik.Resolver do
   defp principal(%Principal{}, _unread), do: :ok
   defp principal(other, unread), do: {:error, unread.("its principal is #{inspect(other)}")}
 
-  defp named(what, names, unread) when is_map(names) do
+  defp check_names(what, names, unread) when is_map(names) do
     if Enum.all?(names, fn {name, key} -> is_binary(name) and is_binary(key) end),
       do: {:ok, names},
       else: {:error, unread.("its #{what} map names to names")}
   end
 
-  defp named(what, _names, unread), do: {:error, unread.("its #{what} map names to names")}
+  defp check_names(what, _names, unread), do: {:error, unread.("its #{what} map names to names")}
 
   defp workspaces(workspaces, unread) when is_map(workspaces) do
     if Enum.all?(workspaces, fn {id, access} -> is_binary(id) and access in [:read, :write] end),
@@ -112,7 +112,7 @@ defmodule Wardrik.Resolver do
   defp target(name, key, _unread) when is_binary(name) and is_binary(key), do: {:ok, key}
 
   defp target(name, target, unread) when is_binary(name) do
-    case Wardrik.Notify.given(target) do
+    case Wardrik.Notify.validate_target(target) do
       {:ok, target} -> {:ok, target}
       {:error, why} -> {:error, unread.("its notify target #{name}: #{why}")}
     end

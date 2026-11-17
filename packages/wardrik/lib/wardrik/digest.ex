@@ -40,7 +40,7 @@ defmodule Wardrik.Digest do
     newer = newer(context.messages, prior[:through])
 
     if through(newer),
-      do: written(wardrik, context, {agent, conversation}, {path, version}, prior, newer),
+      do: handle_write(wardrik, context, {agent, conversation}, {path, version}, prior, newer),
       else: :unchanged
   end
 
@@ -49,7 +49,7 @@ defmodule Wardrik.Digest do
   def path(nil), do: "digests/agent.md"
   def path(conversation), do: "digests/" <> URI.encode_www_form(conversation) <> ".md"
 
-  defp written(wardrik, context, key, {path, version}, prior, newer) do
+  defp handle_write(wardrik, context, key, {path, version}, prior, newer) do
     messages = so_far(prior) ++ newer
     summarizing = %{context | instructions: @instructions, messages: messages, tools: []}
 
@@ -63,7 +63,7 @@ defmodule Wardrik.Digest do
              file: file,
              version: version
            ) do
-      recorded(wardrik, context, key, path, version)
+      record(wardrik, context, key, path, version)
     end
   end
 
@@ -89,7 +89,7 @@ defmodule Wardrik.Digest do
     }
   end
 
-  defp recorded(wardrik, context, key, path, version) do
+  defp record(wardrik, context, key, path, version) do
     scope = Wardrik.as(wardrik, context.principal, actor: {:agent, context.agent_id})
 
     Changes.record(%{scope | wardrik: wardrik},
@@ -101,12 +101,12 @@ defmodule Wardrik.Digest do
 
   defp prior(wardrik, agent, path) do
     case Files.read(wardrik.store, tree: Wardrik.Workspace.Agents.tree(agent), path: path) do
-      {:ok, file, version} -> {parsed(file), version}
+      {:ok, file, version} -> {parse(file), version}
       :none -> {%{}, nil}
     end
   end
 
-  defp parsed(%File{content: content} = file) do
+  defp parse(%File{content: content} = file) do
     case String.split(content, "\n---\n", parts: 2) do
       ["---\n" <> front, body] ->
         %{through: through_line(front), body: String.trim(body), labels: File.labels(file)}

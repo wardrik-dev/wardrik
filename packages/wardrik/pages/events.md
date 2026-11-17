@@ -76,7 +76,7 @@ Wardrik.Views.Runs.totals(runs)
 #=> %{runs: 1, failed: 0, tool_calls: 0, cost_micro_usd: 0, ...}
 ```
 
-- Fold each streamed event in with `apply/2`. `Wardrik.Views.Timeline.touched/1` names the items
+- Fold each streamed event in with `apply/2`. `Wardrik.Views.Timeline.list_touched/1` names the items
   it changed, or `:reset` where the conversation was cleared.
 - A delegate's work is a `:subagent` step of its own, never the agent's answer.
 

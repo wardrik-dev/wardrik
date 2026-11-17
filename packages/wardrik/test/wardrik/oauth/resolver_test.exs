@@ -94,7 +94,7 @@ defmodule Wardrik.OAuth.ResolverTest do
     sign_in(oauth, @jon)
 
     give(apps, @jon, "github", app("globex-github", "globex-client", "globex-secret"))
-    :ok = Wardrik.Vault.refused(github, vault)
+    :ok = Wardrik.Vault.report_refusal(github, vault)
 
     assert {:authorize, url} = Wardrik.Vault.resolve(github, vault)
     assert client_id({:authorize, url}) == "globex-client"

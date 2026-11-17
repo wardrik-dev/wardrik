@@ -80,7 +80,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
 
   # The app `id` would sign in to `name` with, as a server or a connection picks it.
   defp nearest(context, id, name) do
-    case Apps.chosen(context.running, %Principal{id: id}, name) do
+    case Apps.choose(context.running, %Principal{id: id}, name) do
       %{} = app -> app
       _none -> nil
     end
@@ -327,7 +327,7 @@ defmodule WardrikDaemon.OAuthAppsTest do
              Client.run(ana, "connections.connect", %{"provider" => "nope"})
 
     # An agent's token acts for its owner, but manages no connections without a binding.
-    agent = client(context, "agent:" <> recorded(context, "payments/@ana/notes"))
+    agent = client(context, "agent:" <> ensure_record(context, "payments/@ana/notes"))
     assert {:error, "not_found", _message} = Client.run(agent, "connections.list", %{})
 
     assert {:error, "not_found", _message} =

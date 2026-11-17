@@ -58,14 +58,14 @@ defmodule WardrikDaemon.CLI.Occupant do
   # Where there's no /proc, as on macOS, its environment is unknown.
   defp environ(pid) do
     case File.read("/proc/#{pid}/environ") do
-      {:ok, environ} -> parsed(environ)
+      {:ok, environ} -> parse_environ(environ)
       {:error, _unreadable} -> %{}
     end
   end
 
   @doc "Returns the variables of an environment as `/proc/PID/environ` holds them."
-  @spec parsed(binary()) :: %{String.t() => String.t()}
-  def parsed(environ) do
+  @spec parse_environ(binary()) :: %{String.t() => String.t()}
+  def parse_environ(environ) do
     for pair <- String.split(environ, <<0>>, trim: true),
         [name, value] <- [String.split(pair, "=", parts: 2)],
         into: %{},
@@ -76,8 +76,8 @@ defmodule WardrikDaemon.CLI.Occupant do
   Returns what to tell someone about `occupant`, for the CLI run with `env` as `program`.
   `reachable?` is whether that CLI reaches it.
   """
-  @spec told(t(), %{String.t() => String.t()}, String.t(), boolean()) :: String.t()
-  def told(occupant, env, program, reachable?) do
+  @spec describe_occupant(t(), %{String.t() => String.t()}, String.t(), boolean()) :: String.t()
+  def describe_occupant(occupant, env, program, reachable?) do
     """
     Another Wardrik service is running here, from #{occupant.root} (pid #{occupant.pid}).
       Use it:      #{use(occupant, env, program, reachable?)}
@@ -95,12 +95,12 @@ defmodule WardrikDaemon.CLI.Occupant do
       for name <- @moved,
           value <- [occupant.env[name]],
           value not in [nil, env[name]],
-          do: "#{name}=#{quoted(value)} "
+          do: "#{name}=#{quote_value(value)} "
 
     "#{moved}#{program} status"
   end
 
-  defp quoted(value) do
+  defp quote_value(value) do
     if value =~ ~r"^[\w@%+=:,./-]+$",
       do: value,
       else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"

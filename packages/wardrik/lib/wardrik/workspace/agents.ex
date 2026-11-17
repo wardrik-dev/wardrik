@@ -47,7 +47,8 @@ defmodule Wardrik.Workspace.Agents do
     files? = Keyword.fetch!(args, :files)
     shares = Keyword.fetch!(args, :workspaces)
 
-    with {:ok, shared} <- shared(id, shares, get_in(definition, ["workspace", "shared"]) || %{}),
+    with {:ok, shared} <-
+           mount_shared(id, shares, get_in(definition, ["workspace", "shared"]) || %{}),
          {:ok, context} <- context(definition["context"]) do
       base = [store: wardrik.store, tree: tree(id), shared: shared]
 
@@ -65,7 +66,7 @@ defmodule Wardrik.Workspace.Agents do
   @spec tree(String.t()) :: String.t()
   def tree(id), do: "agents/" <> URI.encode_www_form(id)
 
-  defp shared(id, shares, shared) do
+  defp mount_shared(id, shares, shared) do
     mounts = Enum.map(shared, fn {name, mount} -> mount(id, shares, name, mount) end)
 
     case Enum.find(mounts, &match?({:error, _error}, &1)) do
@@ -78,12 +79,12 @@ defmodule Wardrik.Workspace.Agents do
     do: mount(id, shares, name, %{"agent" => agent})
 
   defp mount(id, shares, name, %{"agent" => agent} = mount) do
-    with :ok <- named(name),
+    with :ok <- validate_name(name),
          {:ok, mode} <- access(id, Map.get(shares, agent), agent, mount["mode"]),
          do: {:ok, %Mount{name: name, tree: tree(agent), mode: mode}}
   end
 
-  defp named(name) do
+  defp validate_name(name) do
     if Regex.match?(~r/\A[A-Za-z0-9_-]+\z/, name),
       do: :ok,
       else: invalid("A shared tree's name, #{inspect(name)}, is letters, digits, - and _.")

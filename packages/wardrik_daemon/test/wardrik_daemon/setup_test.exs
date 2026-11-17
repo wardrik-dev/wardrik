@@ -19,7 +19,7 @@ defmodule WardrikDaemon.SetupTest do
     Map.merge(context, %{bin: bin, env: Map.put(context.env, "PATH", "/nowhere:" <> bin)})
   end
 
-  defp installed(context, name) do
+  defp install(context, name) do
     path = Path.join(context.bin, name)
     File.write!(path, "#!/bin/sh\n")
     File.chmod!(path, 0o755)
@@ -37,7 +37,7 @@ defmodule WardrikDaemon.SetupTest do
   test "finds executables on the environment's PATH alone", context do
     plain = Path.join(context.bin, "plain")
     File.write!(plain, "")
-    installed = installed(context, "claude")
+    installed = install(context, "claude")
     machine = machine(context)
     pathless = machine(%{context | env: Map.delete(context.env, "PATH")})
 
@@ -49,7 +49,7 @@ defmodule WardrikDaemon.SetupTest do
   test "offers nothing without Claude Code, or with a claude harness already", context do
     assert {:ok, [], []} = Setup.plan([ClaudeCode], machine(context), &yes/1)
 
-    installed(context, "claude")
+    install(context, "claude")
     write(context, "config.yaml", "harnesses: {claude: {command: claude-agent-acp}}\n")
     assert {:ok, [], []} = Setup.plan([ClaudeCode], machine(context), &yes/1)
   end
@@ -81,7 +81,7 @@ defmodule WardrikDaemon.SetupTest do
 
   test "adds the claude harness and the coding policy, and shows how to install the adapter",
        context do
-    installed(context, "claude")
+    install(context, "claude")
 
     assert {:ok, changes, ["coding.claude"]} = Setup.plan([ClaudeCode], machine(context), &yes/1)
 
@@ -113,7 +113,7 @@ defmodule WardrikDaemon.SetupTest do
   end
 
   test "runs the adapter it finds, and passes a key when Claude Code isn't signed in", context do
-    adapter = installed(context, "claude-agent-acp")
+    adapter = install(context, "claude-agent-acp")
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
 
     {:ok, changes, _asked} = Setup.plan([ClaudeCode], machine(context), &yes/1)
@@ -136,7 +136,7 @@ defmodule WardrikDaemon.SetupTest do
   end
 
   test "changes nothing when the answer is no, and stops at an answer that fails", context do
-    installed(context, "claude")
+    install(context, "claude")
 
     assert {:ok, [], ["coding.claude"]} =
              Setup.plan([ClaudeCode], machine(context), fn _question -> {:ok, false} end)
@@ -149,17 +149,22 @@ defmodule WardrikDaemon.SetupTest do
     file = Path.join(context.root, "answers.yaml")
     File.write!(file, "coding:\n  claude: true\nother: 1\n")
 
-    assert {:ok, %{"coding.claude" => true, "other" => 1}} = Answers.given(%{answers: file})
+    assert {:ok, %{"coding.claude" => true, "other" => 1}} = Answers.parse_given(%{answers: file})
 
     assert {:ok, %{"coding.claude" => "no"}} =
-             only(Answers.given(%{answers: file, set: ["coding.claude=no"]}), "coding.claude")
+             only(
+               Answers.parse_given(%{answers: file, set: ["coding.claude=no"]}),
+               "coding.claude"
+             )
 
-    assert {:error, "--set coding: is KEY=VALUE" <> _} = Answers.given(%{set: ["coding"]})
+    assert {:error, "--set coding: is KEY=VALUE" <> _} = Answers.parse_given(%{set: ["coding"]})
 
     assert {:error, "--answers " <> _} =
-             Answers.given(%{answers: Path.join(context.root, "none")})
+             Answers.parse_given(%{answers: Path.join(context.root, "none")})
 
-    assert Answers.unasked(%{"coding.claude" => true, "codng.claude" => true}, ["coding.claude"]) ==
+    assert Answers.list_unasked(%{"coding.claude" => true, "codng.claude" => true}, [
+             "coding.claude"
+           ]) ==
              ["Nothing asked codng.claude: no step here offers it."]
   end
 

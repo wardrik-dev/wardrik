@@ -62,7 +62,7 @@ defmodule WardrikLua.Sandbox.Runner do
 
   defp stop_or_wait(task, deadline, limits) do
     cond do
-      past?(deadline) -> stop(task, timed_out(limits.timeout_ms))
+      past?(deadline) -> stop(task, describe_timeout(limits.timeout_ms))
       over_budget?(task.pid, limits.max_heap_bytes) -> stop(task, @out_of_memory)
       true -> await(task, deadline, limits)
     end
@@ -91,7 +91,7 @@ defmodule WardrikLua.Sandbox.Runner do
   defp past?(:infinity), do: false
   defp past?(deadline), do: remaining_ms(deadline) == 0
 
-  defp timed_out(ms), do: "the code ran for longer than #{ms}ms and was stopped"
+  defp describe_timeout(ms), do: "the code ran for longer than #{ms}ms and was stopped"
 
   defp over_budget?(_pid, :infinity), do: false
 

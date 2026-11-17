@@ -103,7 +103,7 @@ defmodule WardrikWeb.AgentLive do
     do: {:noreply, put_flash(socket, kind, message)}
 
   def handle_info({Follow, _message} = message, socket),
-    do: {:noreply, Follow.handle(message, socket, &load/1, on_event: &Timeline.drafted/2)}
+    do: {:noreply, Follow.handle(message, socket, &load/1, on_event: &Timeline.add_draft/2)}
 
   defp act(socket, id, input, done), do: Timeline.act(socket, id, input, done, &load/1)
 

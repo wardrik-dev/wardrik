@@ -32,9 +32,9 @@ defmodule Wardrik.Triggers.Run do
     now = Keyword.fetch!(args, :now)
     due = Keyword.fetch!(args, :due)
 
-    status = ran(settings, agent_id, trigger, DateTime.diff(now, due) > @lateness)
+    status = run(settings, agent_id, trigger, DateTime.diff(now, due) > @lateness)
 
-    fired(
+    fire(
       settings,
       %Target.Fired{agent: agent_id, trigger: trigger.name, status: status},
       trigger
@@ -51,24 +51,24 @@ defmodule Wardrik.Triggers.Run do
 
     with {:ok, record} <- record(settings, agent_id, name),
          %Trigger{webhook: %{} = webhook} = trigger <- Records.trigger(record),
-         :ok <- verified(settings, agent_id, trigger, webhook, request) do
+         :ok <- verify(settings, agent_id, trigger, webhook, request) do
       id = Webhook.id(request)
 
       if id in Map.get(record, "delivered", []),
         do: :ok,
-        else: delivered(settings, agent_id, trigger, id, request)
+        else: deliver(settings, agent_id, trigger, id, request)
     else
       %Trigger{} -> {:error, :not_found}
       {:error, :not_found} -> {:error, :not_found}
     end
   end
 
-  defp ran(_settings, _agent_id, %Trigger{missed: :skip}, true), do: :missed
+  defp run(_settings, _agent_id, %Trigger{missed: :skip}, true), do: :missed
 
-  defp ran(settings, agent_id, %Trigger{feeds: [_ | _]} = trigger, _late),
+  defp run(settings, agent_id, %Trigger{feeds: [_ | _]} = trigger, _late),
     do: read(settings, agent_id, trigger)
 
-  defp ran(settings, agent_id, trigger, _late),
+  defp run(settings, agent_id, trigger, _late),
     do: ask(settings, agent_id, trigger, prompt(trigger), [])
 
   defp read(settings, agent_id, trigger) do
@@ -122,12 +122,12 @@ defmodule Wardrik.Triggers.Run do
 
   defp fresh(url, body, response, kept) do
     case Feed.parse(body) do
-      {:ok, entries} -> noted(entries, response, kept)
+      {:ok, entries} -> note(entries, response, kept)
       {:error, why} -> unread(url, why)
     end
   end
 
-  defp noted(entries, response, nil) do
+  defp note(entries, response, nil) do
     seen =
       entries
       |> Enum.map(& &1.id)
@@ -136,8 +136,8 @@ defmodule Wardrik.Triggers.Run do
     {:ok, [], state(response, seen)}
   end
 
-  defp noted(entries, response, kept) do
-    {new, seen} = Feed.unseen(entries, kept["seen"])
+  defp note(entries, response, kept) do
+    {new, seen} = Feed.filter_unseen(entries, kept["seen"])
     {:ok, new, state(response, seen)}
   end
 
@@ -176,7 +176,7 @@ defmodule Wardrik.Triggers.Run do
     end
   end
 
-  defp verified(settings, agent_id, trigger, webhook, request) do
+  defp verify(settings, agent_id, trigger, webhook, request) do
     with {:ok, secret} <- resolve_secret(settings, agent_id, webhook.secret),
          :ok <-
            Webhook.verify(request,
@@ -201,11 +201,11 @@ defmodule Wardrik.Triggers.Run do
     end
   end
 
-  defp delivered(settings, agent_id, trigger, id, request) do
+  defp deliver(settings, agent_id, trigger, id, request) do
     prompt = prompt(trigger)
     status = ask(settings, agent_id, trigger, Webhook.prompt(prompt, request), @outside)
 
-    fired(
+    fire(
       settings,
       %Target.Fired{agent: agent_id, trigger: trigger.name, status: status},
       trigger
@@ -218,11 +218,11 @@ defmodule Wardrik.Triggers.Run do
       :ok = Records.update(settings.store, [agent_id: agent_id, name: trigger.name], remember)
     end
 
-    answered(status)
+    answer(status)
   end
 
-  defp answered(:asked), do: :ok
-  defp answered(status), do: {:error, status}
+  defp answer(:asked), do: :ok
+  defp answer(status), do: {:error, status}
 
   defp ask(%{target: {module, opts}}, agent_id, trigger, prompt, labels) do
     ask = %Target.Ask{
@@ -247,9 +247,9 @@ defmodule Wardrik.Triggers.Run do
   defp prompt(%Trigger{prompt: nil, prompt_file: file}), do: "Read #{file}, and do what it says."
   defp prompt(%Trigger{prompt: prompt}), do: prompt
 
-  defp fired(%{target: {module, opts}}, %Target.Fired{} = fired, trigger) do
+  defp fire(%{target: {module, opts}}, %Target.Fired{} = fired, trigger) do
     fired = %{fired | last: match?({:at, _at}, trigger.clock)}
-    :ok = module.fired(fired, opts)
+    :ok = module.handle_fired(fired, opts)
 
     :telemetry.execute([:wardrik_triggers, :fired], %{}, %{
       agent_id: fired.agent,

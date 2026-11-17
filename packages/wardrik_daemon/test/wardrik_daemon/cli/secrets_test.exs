@@ -111,7 +111,7 @@ defmodule WardrikDaemon.CLI.SecretsTest do
     wardrik = Wardrik.Instance.fetch!(context.wardrik)
     durable = Wardrik.Store.scope(wardrik.store, "durable")
     agents = Wardrik.agents(wardrik)
-    key = WardrikCore.saved_key(agents, {triage, nil})
+    key = WardrikCore.build_state_key(agents, {triage, nil})
     {value, vsn} = Wardrik.Store.lookup(durable, key)
     parked = %{"reason" => %{"type" => "gone_reason", "version" => 1, "value" => %{}}}
     parked = Map.merge(parked, %{"messages" => [], "span" => nil, "measurements" => %{}})

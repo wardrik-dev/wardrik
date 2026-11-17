@@ -63,7 +63,7 @@ defmodule WardrikDaemon.Cluster do
   def new(opts) do
     case {opts[:nodes], opts[:dns], opts[:size]} do
       {[_ | _] = nodes, nil, size} when size in [nil, length(nodes)] ->
-        named(nodes)
+        validate_names(nodes)
 
       {[_ | _] = nodes, nil, _size} ->
         {:error, "cluster.size: is the number of nodes, #{length(nodes)}, or left out"}
@@ -79,7 +79,7 @@ defmodule WardrikDaemon.Cluster do
     end
   end
 
-  defp named(names) do
+  defp validate_names(names) do
     case Enum.reject(names, &(&1 =~ @short or &1 =~ @full)) do
       [] ->
         nodes = Enum.map(names, &node_name/1)

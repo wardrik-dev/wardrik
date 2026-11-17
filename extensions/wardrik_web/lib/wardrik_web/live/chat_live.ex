@@ -80,7 +80,7 @@ defmodule WardrikWeb.ChatLive do
 
   @impl true
   def handle_info({Follow, _message} = message, socket),
-    do: {:noreply, Follow.handle(message, socket, &load/1, on_event: &Timeline.drafted/2)}
+    do: {:noreply, Follow.handle(message, socket, &load/1, on_event: &Timeline.add_draft/2)}
 
   def handle_info(:refresh, socket), do: {:noreply, refresh(socket)}
 
@@ -119,7 +119,7 @@ defmodule WardrikWeb.ChatLive do
           |> Enum.reject(&is_nil(&1["id"]))
           |> Enum.group_by(& &1["id"], & &1["conversation"])
           |> Enum.map(fn {id, conversations} ->
-            %{id: id, conversations: listed(conversations)}
+            %{id: id, conversations: list(conversations)}
           end)
 
         ids = Enum.map(chats, & &1.id)
@@ -139,7 +139,7 @@ defmodule WardrikWeb.ChatLive do
   end
 
   # The agent's own history is the agent's link; its conversations follow, newest first.
-  defp listed(conversations) do
+  defp list(conversations) do
     conversations
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()

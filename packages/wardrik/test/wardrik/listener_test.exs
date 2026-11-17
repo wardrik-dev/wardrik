@@ -2,7 +2,7 @@ defmodule Wardrik.ListenerTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
-  import Wardrik.EventLog.Test.Events, only: [stopped: 2]
+  import Wardrik.EventLog.Test.Events, only: [emit_stop: 2]
 
   alias Wardrik.EventLog.Cursor
   alias Wardrik.Test.Instance
@@ -52,7 +52,7 @@ defmodule Wardrik.ListenerTest do
   end
 
   test "hands each event over with the cursor past it, then follows", %{events: events} do
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
 
     start_supervised!(
       {Told, wardrik: Instance, agents: ["agt_1"], after: Cursor.encode(%{}), test: self()}
@@ -61,13 +61,13 @@ defmodule Wardrik.ListenerTest do
     assert_receive {:handled, "000000000001", cursor}
     assert Cursor.decode(cursor) == {:ok, %{{"agt_1", nil} => 1}}
 
-    stopped(events, "agt_1")
+    emit_stop(events, "agt_1")
     assert_receive {:handled, "000000000002", cursor}
     assert Cursor.decode(cursor) == {:ok, %{{"agt_1", nil} => 2}}
   end
 
   test "carries on from the cursor it saved after a handle that failed", %{events: events} do
-    for _n <- 1..3, do: stopped(events, "agt_1")
+    for _n <- 1..3, do: emit_stop(events, "agt_1")
     {:ok, saved} = Agent.start_link(fn -> %{cursor: Cursor.encode(%{}), fail: "000000000002"} end)
 
     log =

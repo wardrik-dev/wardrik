@@ -126,7 +126,7 @@ defmodule Wardrik.Testing.Model do
       do: {:reply, answers.(request), state}
 
   def handle_call({:next, request}, _from, %{answers: [next | rest]} = state),
-    do: {:reply, answered(next, request), %{state | answers: rest}}
+    do: {:reply, handle_answer(next, request), %{state | answers: rest}}
 
   def handle_call({:next, request}, _from, %{answers: []}),
     do:
@@ -135,8 +135,8 @@ defmodule Wardrik.Testing.Model do
         "the test model has no answer left for #{inspect(request["messages"])}"
       )
 
-  defp answered(answer, request) when is_function(answer, 1), do: answer.(request)
-  defp answered(answer, _request), do: answer
+  defp handle_answer(answer, request) when is_function(answer, 1), do: answer.(request)
+  defp handle_answer(answer, _request), do: answer
 
   defmodule Plug do
     @moduledoc false
@@ -148,18 +148,18 @@ defmodule Wardrik.Testing.Model do
     @spec call(Elixir.Plug.Conn.t(), pid()) :: Elixir.Plug.Conn.t()
     def call(conn, model) do
       {:ok, body, conn} = read_body(conn, length: 100_000_000)
-      sent(conn, GenServer.call(model, {:next, JSON.decode!(body)}))
+      send_reply(conn, GenServer.call(model, {:next, JSON.decode!(body)}))
     end
 
-    defp sent(conn, {:status, status}), do: sent(conn, {:status, status, "Failed."})
+    defp send_reply(conn, {:status, status}), do: send_reply(conn, {:status, status, "Failed."})
 
-    defp sent(conn, {:status, status, message}) do
+    defp send_reply(conn, {:status, status, message}) do
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(status, JSON.encode!(%{error: %{message: message}}))
     end
 
-    defp sent(conn, %ReqLLM.Response{} = response) do
+    defp send_reply(conn, %ReqLLM.Response{} = response) do
       conn =
         conn
         |> put_resp_content_type("text/event-stream")

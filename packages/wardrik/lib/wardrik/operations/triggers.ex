@@ -24,7 +24,7 @@ defmodule Wardrik.Operations.Triggers do
     with {:ok, definition} <- Running.definition(wardrik, id),
          :ok <- Wardrik.Resolution.trigger(wardrik, definition, fields, 1),
          {:ok, trigger} <- set_trigger(wardrik, id, fields),
-         :ok <- saved(wardrik, id, Map.put(definition, "triggers", replaced(definition, fields))) do
+         :ok <- save(wardrik, id, Map.put(definition, "triggers", replace(definition, fields))) do
       Changes.record(scope,
         type: "trigger.set",
         agent: id,
@@ -39,9 +39,9 @@ defmodule Wardrik.Operations.Triggers do
   @spec remove(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def remove(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "trigger" => name}) do
     with {:ok, definition} <- Running.definition(wardrik, id),
-         {:ok, trigger} <- kept(wardrik, id, name),
-         :ok <- removed(wardrik, id, name),
-         :ok <- saved(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do
+         {:ok, trigger} <- keep(wardrik, id, name),
+         :ok <- handle_remove(wardrik, id, name),
+         :ok <- save(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do
       Changes.record(scope,
         type: "trigger.removed",
         agent: id,
@@ -56,11 +56,11 @@ defmodule Wardrik.Operations.Triggers do
   Removes a trigger that won't run again from the agent and its definition. A failure is logged:
   the trigger stays listed, and never runs.
   """
-  @spec ended(Wardrik.t(), String.t(), String.t()) :: :ok
-  def ended(wardrik, id, name) do
+  @spec remove_ended(Wardrik.t(), String.t(), String.t()) :: :ok
+  def remove_ended(wardrik, id, name) do
     with {:ok, definition} <- Running.definition(wardrik, id),
-         :ok <- removed(wardrik, id, name),
-         :ok <- saved(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do
+         :ok <- handle_remove(wardrik, id, name),
+         :ok <- save(wardrik, id, Map.put(definition, "triggers", without(definition, name))) do
       :ok
     else
       {:error, error} ->
@@ -126,11 +126,11 @@ defmodule Wardrik.Operations.Triggers do
         {:error, Error.new(:invalid_request, "The trigger doesn't read: #{why}.")}
 
       {:error, reason} ->
-        unsaved(id, reason)
+        log_unsaved(id, reason)
     end
   end
 
-  defp removed(wardrik, id, name) do
+  defp handle_remove(wardrik, id, name) do
     triggers = Wardrik.triggers(wardrik)
 
     case Wardrik.Triggers.remove(triggers, agent_id: id, name: name) do
@@ -141,23 +141,23 @@ defmodule Wardrik.Operations.Triggers do
         {:error, Error.new(:not_found, "There's no trigger #{name} of #{id}.")}
 
       {:error, reason} ->
-        unsaved(id, reason)
+        log_unsaved(id, reason)
     end
   end
 
-  defp saved(wardrik, id, definition) do
+  defp save(wardrik, id, definition) do
     case Definitions.put(wardrik, id, definition) do
       :ok -> :ok
-      {:error, reason} -> unsaved(id, reason)
+      {:error, reason} -> log_unsaved(id, reason)
     end
   end
 
-  defp unsaved(id, reason),
+  defp log_unsaved(id, reason),
     do:
       {:error,
        Error.new(:unavailable, "#{id}'s triggers weren't saved: #{inspect(reason)}. Try again.")}
 
-  defp kept(wardrik, id, name) do
+  defp keep(wardrik, id, name) do
     triggers = Wardrik.triggers(wardrik)
     scheduled = Wardrik.Triggers.list(triggers, id)
 
@@ -167,7 +167,7 @@ defmodule Wardrik.Operations.Triggers do
     end
   end
 
-  defp replaced(definition, %{"name" => name} = fields) do
+  defp replace(definition, %{"name" => name} = fields) do
     triggers = Map.get(definition, "triggers", [])
 
     if Enum.any?(triggers, &(&1["name"] == name)),

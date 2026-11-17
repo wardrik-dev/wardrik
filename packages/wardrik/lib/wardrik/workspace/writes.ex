@@ -20,38 +20,38 @@ defmodule Wardrik.Workspace.Writes do
   end
 
   defp writing(spec, mount, path, %{append: true} = args, context),
-    do: retrying(fn -> appended(spec, mount, path, args[:content], context) end)
+    do: retrying(fn -> append(spec, mount, path, args[:content], context) end)
 
-  defp writing(spec, mount, path, args, context), do: replaced(spec, mount, path, args, context)
+  defp writing(spec, mount, path, args, context), do: replace(spec, mount, path, args, context)
 
   @doc "Replaces text in a file, once or, with `all`, everywhere it appears."
   @spec edit_file(Spec.t(), map(), Context.t()) :: {:ok, map()}
   def edit_file(spec, args, context) do
     with {:ok, mount, path} <- writable(spec, args[:path]),
-         do: retrying(fn -> edited(spec, mount, path, args, context) end)
+         do: retrying(fn -> edit(spec, mount, path, args, context) end)
   end
 
   @doc "Deletes a file. The answer says whether it was there."
   @spec delete_file(Spec.t(), map()) :: {:ok, map()}
   def delete_file(spec, args) do
     with {:ok, mount, path} <- writable(spec, args[:path]),
-         do: retrying(fn -> deleted(spec, mount, path) end)
+         do: retrying(fn -> delete(spec, mount, path) end)
   end
 
-  defp replaced(spec, mount, path, args, context) do
+  defp replace(spec, mount, path, args, context) do
     version = args[:version]
 
-    case written(spec, mount, path, args[:content], version, context) do
+    case write(spec, mount, path, args[:content], version, context) do
       {:error, :conflict} when is_nil(version) ->
-        Tools.failed(
+        Tools.build_failure(
           :exists,
-          "#{Spec.shown(mount, path)} is there already; pass the version read_file gave to replace it"
+          "#{Spec.format_path(mount, path)} is there already; pass the version read_file gave to replace it"
         )
 
       {:error, :conflict} ->
-        Tools.failed(
+        Tools.build_failure(
           :conflict,
-          "#{Spec.shown(mount, path)} changed since you read it; read it again"
+          "#{Spec.format_path(mount, path)} changed since you read it; read it again"
         )
 
       answer ->
@@ -59,46 +59,46 @@ defmodule Wardrik.Workspace.Writes do
     end
   end
 
-  defp appended(spec, mount, path, content, context) do
+  defp append(spec, mount, path, content, context) do
     case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, file, version} ->
-        kept(spec, mount, path, file, file.content <> content, version, context)
+        keep(spec, mount, path, file, file.content <> content, version, context)
 
       :none ->
-        written(spec, mount, path, content, nil, context)
+        write(spec, mount, path, content, nil, context)
     end
   end
 
-  defp edited(spec, mount, path, args, context) do
+  defp edit(spec, mount, path, args, context) do
     case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, file, version} -> replacing(spec, mount, path, file, version, args, context)
-      :none -> Tools.failed(:not_found, "#{Spec.shown(mount, path)} isn't there")
+      :none -> Tools.build_failure(:not_found, "#{Spec.format_path(mount, path)} isn't there")
     end
   end
 
   defp replacing(spec, mount, path, file, version, args, context) do
     case {count(file.content, args[:old]), args[:all]} do
       {0, _all} ->
-        Tools.failed(
+        Tools.build_failure(
           :not_found,
-          "old isn't in #{Spec.shown(mount, path)}; read it, and copy the text exactly"
+          "old isn't in #{Spec.format_path(mount, path)}; read it, and copy the text exactly"
         )
 
       {count, all} when count > 1 and all != true ->
-        Tools.failed(
+        Tools.build_failure(
           :ambiguous,
-          "old is in #{Spec.shown(mount, path)} #{count} times; give more of it, or pass all"
+          "old is in #{Spec.format_path(mount, path)} #{count} times; give more of it, or pass all"
         )
 
       {count, _all} ->
         content = String.replace(file.content, args[:old], args[:new], global: args[:all] == true)
 
-        with {:ok, answer} <- kept(spec, mount, path, file, content, version, context),
+        with {:ok, answer} <- keep(spec, mount, path, file, content, version, context),
              do: {:ok, Map.put(answer, :replaced, if(args[:all], do: count, else: 1))}
     end
   end
 
-  defp deleted(spec, mount, path) do
+  defp delete(spec, mount, path) do
     case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, _file, version} ->
         with :ok <- Files.delete(spec.store, tree: mount.tree, path: path, version: version),
@@ -109,16 +109,16 @@ defmodule Wardrik.Workspace.Writes do
     end
   end
 
-  defp kept(spec, mount, path, file, content, version, context),
-    do: written(spec, mount, path, content, version, context, File.labels(file))
+  defp keep(spec, mount, path, file, content, version, context),
+    do: write(spec, mount, path, content, version, context, File.labels(file))
 
-  defp written(spec, mount, path, content, version, context, kept \\ [])
+  defp write(spec, mount, path, content, version, context, kept \\ [])
 
-  defp written(_spec, mount, path, content, _version, _context, _kept)
+  defp write(_spec, mount, path, content, _version, _context, _kept)
        when byte_size(content) > @max_file_bytes,
-       do: Tools.failed(:too_large, "#{Spec.shown(mount, path)} would be over 4 MiB")
+       do: Tools.build_failure(:too_large, "#{Spec.format_path(mount, path)} would be over 4 MiB")
 
-  defp written(spec, mount, path, content, version, context, kept) do
+  defp write(spec, mount, path, content, version, context, kept) do
     labels =
       (kept ++ Context.labels(context))
       |> Enum.uniq()
@@ -133,13 +133,16 @@ defmodule Wardrik.Workspace.Writes do
 
     with {:ok, version} <-
            Files.write(spec.store, tree: mount.tree, path: path, file: file, version: version),
-         do: {:ok, %{ok: true, path: Spec.shown(mount, path), version: version}}
+         do: {:ok, %{ok: true, path: Spec.format_path(mount, path), version: version}}
   end
 
   defp writable(spec, path) do
-    case Reads.resolved(spec, path) do
+    case Reads.resolve_path(spec, path) do
       {:ok, %Mount{mode: :read} = mount, path} ->
-        Tools.failed(:read_only, "#{Spec.shown(mount, path)} is in a tree you may only read")
+        Tools.build_failure(
+          :read_only,
+          "#{Spec.format_path(mount, path)} is in a tree you may only read"
+        )
 
       resolved ->
         resolved
@@ -151,7 +154,7 @@ defmodule Wardrik.Workspace.Writes do
 
   defp retrying(change), do: retrying(change, @tries)
 
-  defp retrying(change, 1), do: conflicted(change.())
+  defp retrying(change, 1), do: conflict(change.())
 
   defp retrying(change, tries) do
     case change.() do
@@ -160,8 +163,8 @@ defmodule Wardrik.Workspace.Writes do
     end
   end
 
-  defp conflicted({:error, :conflict}),
-    do: Tools.failed(:conflict, "others kept changing the file; try again")
+  defp conflict({:error, :conflict}),
+    do: Tools.build_failure(:conflict, "others kept changing the file; try again")
 
-  defp conflicted(answer), do: answer
+  defp conflict(answer), do: answer
 end

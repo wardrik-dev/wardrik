@@ -22,7 +22,7 @@ defmodule Wardrik.Operations.Files do
   def list(%Scope{wardrik: wardrik}, %{"agent" => id} = input) do
     glob = Map.get(input, "glob", "**")
 
-    with :ok <- Snapshot.known(wardrik, {id, nil}) do
+    with :ok <- Snapshot.check_known(wardrik, {id, nil}) do
       files =
         wardrik.store
         |> Files.list(Agents.tree(id))
@@ -39,7 +39,7 @@ defmodule Wardrik.Operations.Files do
   def memory_search(%Scope{wardrik: wardrik}, %{"agent" => id, "query" => query} = input) do
     glob = Map.get(input, "glob", "**")
 
-    with :ok <- Snapshot.known(wardrik, {id, nil}) do
+    with :ok <- Snapshot.check_known(wardrik, {id, nil}) do
       files =
         for {path, file, _version} <- Files.list(wardrik.store, Agents.tree(id)),
             Path.match?(glob, path),
@@ -55,9 +55,9 @@ defmodule Wardrik.Operations.Files do
   @doc "Returns one of the agent's files, with its content."
   @spec read(Scope.t(), map()) :: {:ok, map()} | {:error, Error.t()}
   def read(%Scope{wardrik: wardrik}, %{"agent" => id, "path" => path}) do
-    with :ok <- Snapshot.known(wardrik, {id, nil}),
-         {:ok, path} <- normalized(path),
-         {:ok, file, version} <- found(wardrik, id, path) do
+    with :ok <- Snapshot.check_known(wardrik, {id, nil}),
+         {:ok, path} <- normalize(path),
+         {:ok, file, version} <- find_file(wardrik, id, path) do
       {:ok, %{"file" => entry({path, file, version}), "content" => file.content}}
     end
   end
@@ -67,10 +67,10 @@ defmodule Wardrik.Operations.Files do
   def put(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "path" => path} = input) do
     file = %File{content: input["content"], by: scope.principal.id, at: DateTime.utc_now()}
 
-    with :ok <- Snapshot.known(wardrik, {id, nil}),
-         {:ok, path} <- normalized(path),
-         :ok <- sized(file.content),
-         {:ok, version} <- written(wardrik, id, path, file, Map.fetch(input, "version")) do
+    with :ok <- Snapshot.check_known(wardrik, {id, nil}),
+         {:ok, path} <- normalize(path),
+         :ok <- check_size(file.content),
+         {:ok, version} <- write(wardrik, id, path, file, Map.fetch(input, "version")) do
       Changes.record(scope,
         type: "file.written",
         agent: id,
@@ -84,26 +84,26 @@ defmodule Wardrik.Operations.Files do
   @doc "Deletes one of the agent's files."
   @spec delete(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def delete(%Scope{wardrik: wardrik} = scope, %{"agent" => id, "path" => path}) do
-    with :ok <- Snapshot.known(wardrik, {id, nil}),
-         {:ok, path} <- normalized(path),
-         {:ok, _file, version} <- found(wardrik, id, path),
-         :ok <- deleted(wardrik, id, path, version) do
+    with :ok <- Snapshot.check_known(wardrik, {id, nil}),
+         {:ok, path} <- normalize(path),
+         {:ok, _file, version} <- find_file(wardrik, id, path),
+         :ok <- handle_delete(wardrik, id, path, version) do
       Changes.record(scope, type: "file.removed", agent: id, data: %{"file" => %{"path" => path}})
       {:ok, nil}
     end
   end
 
-  defp normalized(path) do
+  defp normalize(path) do
     case Path.normalize(path) do
       {:ok, path} -> {:ok, path}
       {:error, reason} -> {:error, Error.new(:invalid_request, reason <> ".")}
     end
   end
 
-  defp sized(content) when byte_size(content) <= @max_bytes, do: :ok
-  defp sized(_content), do: {:error, Error.new(:invalid_request, "A file is at most 4 MiB.")}
+  defp check_size(content) when byte_size(content) <= @max_bytes, do: :ok
+  defp check_size(_content), do: {:error, Error.new(:invalid_request, "A file is at most 4 MiB.")}
 
-  defp found(wardrik, id, path) do
+  defp find_file(wardrik, id, path) do
     case Files.read(wardrik.store, tree: Agents.tree(id), path: path) do
       {:ok, file, version} -> {:ok, file, version}
       :none -> {:error, Error.new(:not_found, "#{id} has no file #{path}.")}
@@ -111,15 +111,15 @@ defmodule Wardrik.Operations.Files do
   end
 
   # Without a version, the write goes over whatever is there now.
-  defp written(wardrik, id, path, file, :error),
-    do: written(wardrik, id, path, file, {:ok, current(wardrik, id, path)})
+  defp write(wardrik, id, path, file, :error),
+    do: write(wardrik, id, path, file, {:ok, current(wardrik, id, path)})
 
-  defp written(wardrik, id, path, file, {:ok, version}) do
+  defp write(wardrik, id, path, file, {:ok, version}) do
     tree = Agents.tree(id)
 
     case Files.write(wardrik.store, tree: tree, path: path, file: file, version: version) do
       {:ok, version} -> {:ok, version}
-      {:error, :conflict} -> {:error, changed(id, path)}
+      {:error, :conflict} -> {:error, change(id, path)}
     end
   end
 
@@ -130,16 +130,16 @@ defmodule Wardrik.Operations.Files do
     end
   end
 
-  defp deleted(wardrik, id, path, version) do
+  defp handle_delete(wardrik, id, path, version) do
     tree = Agents.tree(id)
 
     case Files.delete(wardrik.store, tree: tree, path: path, version: version) do
       :ok -> :ok
-      {:error, :conflict} -> {:error, changed(id, path)}
+      {:error, :conflict} -> {:error, change(id, path)}
     end
   end
 
-  defp changed(id, path),
+  defp change(id, path),
     do: Error.new(:conflict, "#{id}'s #{path} changed since it was read. Read it again.")
 
   defp entry({path, file, version}) do

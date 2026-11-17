@@ -4,6 +4,10 @@
 
 - `Wardrik.Credentials.Request` carries the `agent` whose tool asks, and the tool `call`, or
   `nil` outside one.
+- **Upgrading:** the `Wardrik.Credentials` callback `refused/2` is `report_refusal/2`, and so is
+  the function. `WardrikCore.parked/1` is `get_parked/1`, `WardrikCore.saved_key/2` is
+  `build_state_key/2`, and in `Wardrik.Context`, `reported` and `unreported` are `add_reported`
+  and `drop_reported`.
 
 ## 0.1.0-rc.11 (2026-11-16)
 

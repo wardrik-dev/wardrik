@@ -36,7 +36,7 @@ defmodule MyApp.Vault do
   end
 
   @impl true
-  def refused(%{name: name, principal: %{id: id}}, _opts), do: MyApp.Tokens.delete(id, name)
+  def report_refusal(%{name: name, principal: %{id: id}}, _opts), do: MyApp.Tokens.delete(id, name)
 end
 ```
 
@@ -46,7 +46,7 @@ end
 - `{:authorize, url}`: the person must sign in first, at a page in your app.
 - `{:error, reason}`.
 
-`refused/2` is optional. A tool calls `Wardrik.Credentials.refused/2` when a service rejects
+`report_refusal/2` is optional. A tool calls `Wardrik.Credentials.report_refusal/2` when a service rejects
 a token, such as with a 401.
 
 ## Use it from a tool
@@ -93,7 +93,7 @@ Maria has no token yet, so the call waits on a `Wardrik.Credentials.Authorizatio
 
 ```elixir
 {:tool_calls, [{_call, {:park, %Wardrik.Credentials.Authorization{url: url}}}]} =
-  WardrikCore.parked(agent)
+  WardrikCore.get_parked(agent)
 
 url
 #=> "https://app.example.com/connect/github"

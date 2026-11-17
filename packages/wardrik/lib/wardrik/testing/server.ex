@@ -110,23 +110,23 @@ defmodule Wardrik.Testing.Server do
   def run(%Request{scope: %Scope{wardrik: name} = scope, operation: id, input: input} = request) do
     tell(name, {:ran, id, input})
 
-    with :ok <- authorized(request), do: answer(scope, id, input)
+    with :ok <- authorize(request), do: answer(scope, id, input)
   end
 
   @impl Wardrik.Server
   def stream(%Request{scope: %Scope{wardrik: name}, operation: id, input: input} = request) do
     tell(name, {:streamed, id, input})
 
-    with :ok <- authorized(request), do: streamed(input)
+    with :ok <- authorize(request), do: handle_stream(input)
   end
 
-  defp streamed(%{"after" => "nope"}),
+  defp handle_stream(%{"after" => "nope"}),
     do: {:error, Error.new(:invalid_request, "That cursor doesn't read.")}
 
-  defp streamed(_input),
+  defp handle_stream(_input),
     do: {:ok, Stream.concat([{@event, "cursor-1"}], Stream.repeatedly(&quiet/0))}
 
-  defp authorized(%Request{scope: %Scope{wardrik: name}} = request) do
+  defp authorize(%Request{scope: %Scope{wardrik: name}} = request) do
     case state(name).authorize.(request) do
       :ok -> :ok
       {:error, :forbidden} -> {:error, Error.new(:forbidden, "You may not do that.")}
@@ -181,7 +181,7 @@ defmodule Wardrik.Testing.Server do
     |> state()
     |> Map.fetch!(:offered)
     |> List.keyfind(agent, 0)
-    |> defined(agent)
+    |> define(agent)
   end
 
   defp answer(%Scope{wardrik: name}, "agent.read", input) do
@@ -207,15 +207,15 @@ defmodule Wardrik.Testing.Server do
     end
   end
 
-  defp defined({agent, channels}, agent), do: defined({agent, channels, nil}, agent)
+  defp define({agent, channels}, agent), do: define({agent, channels, nil}, agent)
 
-  defp defined({agent, channels, description}, agent) do
+  defp define({agent, channels, description}, agent) do
     described = description || "Answers #{agent}."
     definition = %{"model" => "m", "channels" => channels, "description" => described}
     {:ok, %{"definition" => definition, "missing" => []}}
   end
 
-  defp defined(nil, agent), do: {:error, Error.new(:not_found, "There's no agent #{agent}.")}
+  defp define(nil, agent), do: {:error, Error.new(:not_found, "There's no agent #{agent}.")}
 
   defp quiet do
     receive do

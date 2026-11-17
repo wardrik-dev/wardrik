@@ -96,9 +96,9 @@ defmodule Wardrik.Credentials.Broker do
   end
 
   @impl Wardrik.Credentials
-  def refused(%Request{principal: nil}, _instance), do: :ok
+  def report_refusal(%Request{principal: nil}, _instance), do: :ok
 
-  def refused(%Request{name: name} = request, instance) do
+  def report_refusal(%Request{name: name} = request, instance) do
     wardrik = Wardrik.Instance.fetch!(instance)
     settings = wardrik.broker
 
@@ -141,7 +141,7 @@ defmodule Wardrik.Credentials.Broker do
 
   defp apply_change(wardrik, {"granted", name, principal}) do
     forget_tokens(wardrik, name, principal)
-    Wardrik.SignIns.granted(name, principal, Wardrik.agents(wardrik))
+    Wardrik.SignIns.resume_waiting(name, principal, Wardrik.agents(wardrik))
   end
 
   defp apply_change(wardrik, {"revoked", name, principal}) do
@@ -232,7 +232,7 @@ defmodule Wardrik.Credentials.Broker do
   end
 
   defp fetch_secret(%Wardrik{broker: %{secret: secret}} = wardrik) do
-    case Wardrik.Vault.Lookup.resolved(wardrik, "broker", secret: secret) do
+    case Wardrik.Vault.Lookup.resolve_secrets(wardrik, "broker", secret: secret) do
       [secret: value] when is_binary(value) -> {:ok, value}
       [secret: nil] -> {:error, "The deployment hasn't sealed the credential broker's secret."}
     end
@@ -250,8 +250,8 @@ defmodule Wardrik.Credentials.Broker do
       callback == :resolve ->
         module.resolve(request, opts)
 
-      Code.ensure_loaded?(module) and function_exported?(module, :refused, 2) ->
-        module.refused(request, opts)
+      Code.ensure_loaded?(module) and function_exported?(module, :report_refusal, 2) ->
+        module.report_refusal(request, opts)
 
       true ->
         :ok

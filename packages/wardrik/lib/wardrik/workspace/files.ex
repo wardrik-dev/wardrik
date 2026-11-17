@@ -28,7 +28,7 @@ defmodule Wardrik.Workspace.Files do
   @spec read(Wardrik.Store.t(), tree: String.t(), path: String.t()) ::
           {:ok, File.t(), version()} | :none
   def read(store, args) do
-    scoped = scoped(store)
+    scoped = scope_store(store)
 
     case Wardrik.Store.lookup(scoped, key(args)) do
       {%File{} = file, vsn} -> {:ok, file, version(vsn)}
@@ -47,7 +47,7 @@ defmodule Wardrik.Workspace.Files do
     %File{} = file = Keyword.fetch!(args, :file)
 
     with {:ok, vsn} <- vsn(Keyword.fetch!(args, :version)),
-         scoped = scoped(store),
+         scoped = scope_store(store),
          {:ok, written} <- Wardrik.Store.put(scoped, key(args), file, if_vsn: vsn),
          do: {:ok, version(written)}
   end
@@ -61,7 +61,7 @@ defmodule Wardrik.Workspace.Files do
   def delete(store, args) do
     with {:ok, vsn} <- vsn(Keyword.fetch!(args, :version)) do
       store
-      |> scoped()
+      |> scope_store()
       |> Wardrik.Store.delete(key(args), if_vsn: vsn)
     end
   end
@@ -71,7 +71,7 @@ defmodule Wardrik.Workspace.Files do
   def paths(store, tree) do
     prefix = tree <> "//"
 
-    scoped = scoped(store)
+    scoped = scope_store(store)
 
     for key <- Wardrik.Store.keys(scoped, prefix),
         do: String.replace_prefix(key, prefix, "")
@@ -85,7 +85,7 @@ defmodule Wardrik.Workspace.Files do
         do: {path, file, version}
   end
 
-  defp scoped(store),
+  defp scope_store(store),
     do: Wardrik.Store.scope(store, "wardrik_workspace", format: File)
 
   defp key(args), do: Keyword.fetch!(args, :tree) <> "//" <> Keyword.fetch!(args, :path)

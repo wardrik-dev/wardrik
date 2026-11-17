@@ -136,7 +136,7 @@ defmodule Wardrik.WorkspaceTest do
 
   test "a file keeps the labels of what its writers had read, and its readers carry them",
        context do
-    outside = %{context | agent: labelled(context.agent, ["outside"])}
+    outside = %{context | agent: label(context.agent, ["outside"])}
 
     call(outside, "write_file", %{path: "notes/page.md", content: "From the web."})
     call(context, "write_file", %{path: "notes/mine.md", content: "Mine."})
@@ -151,7 +151,7 @@ defmodule Wardrik.WorkspaceTest do
     assert {:ok, %ReqLLM.ToolResult{metadata: %{labels: ["outside"]}}} =
              run(context, "read_file", %{path: "notes/page.md"})
 
-    call(%{context | agent: labelled(context.agent, ["books"])}, "edit_file", %{
+    call(%{context | agent: label(context.agent, ["books"])}, "edit_file", %{
       path: "notes/mine.md",
       old: "Mine",
       new: "Ours"
@@ -170,7 +170,7 @@ defmodule Wardrik.WorkspaceTest do
   defp run(%{tools: tools, agent: agent}, name, args),
     do: Map.fetch!(tools, name).run.(args, agent)
 
-  defp labelled(agent, labels),
+  defp label(agent, labels),
     do: %{agent | messages: [ReqLLM.Context.user("Go.", %{labels: labels})]}
 
   test "deletes a file, and says whether it was there", context do

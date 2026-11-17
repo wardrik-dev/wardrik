@@ -75,7 +75,7 @@ defmodule Wardrik.FilesTest do
     assert {:ok, [%Wardrik.MemoryHit{path: "notes/prices.md"}]} =
              Wardrik.Agent.memory_search(scope, @agent, query: "pumpkin", glob: "notes/**")
 
-    assert refused(scope, "agent.memory_search", %{"agent" => @agent, "query" => "the"}) ==
+    assert assert_refused(scope, "agent.memory_search", %{"agent" => @agent, "query" => "the"}) ==
              :invalid_request
   end
 
@@ -94,7 +94,7 @@ defmodule Wardrik.FilesTest do
     assert run!(scope, "agent.file_delete", %{"agent" => @agent, "path" => "notes/today.md"}) ==
              nil
 
-    assert refused(scope, "agent.file", %{"agent" => @agent, "path" => "notes/today.md"}) ==
+    assert assert_refused(scope, "agent.file", %{"agent" => @agent, "path" => "notes/today.md"}) ==
              :not_found
 
     assert %{"events" => changes} = run!(scope, "audit.list", %{})
@@ -124,6 +124,6 @@ defmodule Wardrik.FilesTest do
     assert {:error, %Wardrik.Error{type: :invalid_request}} =
              put(scope, "big.md", String.duplicate("a", 4 * 1024 * 1024 + 1))
 
-    assert refused(scope, "agent.files", %{"agent" => "acme/none"}) == :not_found
+    assert assert_refused(scope, "agent.files", %{"agent" => "acme/none"}) == :not_found
   end
 end

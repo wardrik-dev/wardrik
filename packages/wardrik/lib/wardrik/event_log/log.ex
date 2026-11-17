@@ -16,7 +16,7 @@ defmodule Wardrik.EventLog.Log do
   @spec append(Wardrik.Store.t(), Wardrik.EventLog.log(), CloudEvent.t(), heads: :ets.table()) ::
           {:ok, CloudEvent.t()} | {:error, term()}
   def append(store, log, event, args),
-    do: appended(store, Keyword.fetch!(args, :heads), log, event)
+    do: handle_append(store, Keyword.fetch!(args, :heads), log, event)
 
   @doc "Returns the sequence number of the log's last event. If every event was dropped, returns the last dropped one's."
   @spec last(Wardrik.Store.t(), Wardrik.EventLog.log()) :: non_neg_integer()
@@ -50,7 +50,7 @@ defmodule Wardrik.EventLog.Log do
 
     if after_sequence + 1 < oldest,
       do: {:dropped, oldest},
-      else: {:ok, taken(store, log, after_sequence + 1, limit)}
+      else: {:ok, take(store, log, after_sequence + 1, limit)}
   end
 
   @doc "Returns every log, or the logs of the agent `agent`: its own and its conversations'."
@@ -78,15 +78,15 @@ defmodule Wardrik.EventLog.Log do
   def trim(store, log, cutoff) do
     {dropped, vsn} = lookup_dropped(store, log)
 
-    case expired_through(store, log, dropped, cutoff) do
+    case expire_through(store, log, dropped, cutoff) do
       ^dropped -> :ok
       last -> drop(store, log, dropped + 1, last, vsn)
     end
   end
 
-  defp appended(store, heads, log, event) do
+  defp handle_append(store, heads, log, event) do
     with {:ok, sequence} <- next(store, heads, log) do
-      sequenced = CloudEvent.sequenced(event, sequence)
+      sequenced = CloudEvent.put_sequence(event, sequence)
 
       case Wardrik.Store.put(store, key(log, sequence), sequenced, if_vsn: nil) do
         {:ok, _vsn} ->
@@ -94,27 +94,27 @@ defmodule Wardrik.EventLog.Log do
 
         {:error, reason} ->
           :ets.delete(heads, head_key(store, log))
-          retried(reason, store, heads, log, event)
+          retry(reason, store, heads, log, event)
       end
     end
   end
 
   # A conflict means another writer, on this node or another, took the sequence number, so the
   # log moved on. Count from the log again and write at the next one.
-  defp retried(:conflict, store, heads, log, event), do: appended(store, heads, log, event)
-  defp retried(reason, _store, _heads, _log, _event), do: {:error, reason}
+  defp retry(:conflict, store, heads, log, event), do: handle_append(store, heads, log, event)
+  defp retry(reason, _store, _heads, _log, _event), do: {:error, reason}
 
   defp next(store, heads, log) do
-    with :ok <- loaded(store, heads, log),
+    with :ok <- handle_load(store, heads, log),
          do: {:ok, :ets.update_counter(heads, head_key(store, log), 1)}
   end
 
-  defp loaded(store, heads, log) do
+  defp handle_load(store, heads, log) do
     if :ets.member(heads, head_key(store, log)), do: :ok, else: load(store, heads, log)
   end
 
   defp load(store, heads, log) do
-    with :ok <- indexed(store, log) do
+    with :ok <- create_index(store, log) do
       :ets.insert_new(heads, {head_key(store, log), last(store, log)})
       :ok
     end
@@ -122,7 +122,7 @@ defmodule Wardrik.EventLog.Log do
 
   defp head_key(store, log), do: {store.scope, log}
 
-  defp indexed(store, log) do
+  defp create_index(store, log) do
     case Wardrik.Store.put(store, index_key(log), %{"dropped" => 0}, if_vsn: nil) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> :ok
@@ -130,7 +130,7 @@ defmodule Wardrik.EventLog.Log do
     end
   end
 
-  defp taken(store, log, first, limit) do
+  defp take(store, log, first, limit) do
     keys = for sequence <- first..(first + limit - 1)//1, do: key(log, sequence)
     found = Wardrik.Store.lookup_many(store, keys)
 
@@ -165,16 +165,16 @@ defmodule Wardrik.EventLog.Log do
     end
   end
 
-  defp expired_through(store, log, sequence, cutoff) do
+  defp expire_through(store, log, sequence, cutoff) do
     expired =
       store
-      |> taken(log, sequence + 1, @batch)
+      |> take(log, sequence + 1, @batch)
       |> Enum.take_while(&expired?(&1, cutoff))
 
     through = sequence + length(expired)
 
     if length(expired) == @batch,
-      do: expired_through(store, log, through, cutoff),
+      do: expire_through(store, log, through, cutoff),
       else: through
   end
 

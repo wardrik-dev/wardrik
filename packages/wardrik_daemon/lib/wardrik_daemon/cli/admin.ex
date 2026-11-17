@@ -90,7 +90,7 @@ defmodule WardrikDaemon.CLI.Admin do
     |> Doctor.lines()
     |> Enum.each(&Context.puts(cx, &1))
 
-    case Doctor.failed(checks) do
+    case Doctor.count_failed(checks) do
       0 -> :ok
       failed -> {:error, "#{failed} of the checks failed."}
     end
@@ -104,7 +104,7 @@ defmodule WardrikDaemon.CLI.Admin do
          {:ok, %{"nodes" => nodes, "asleep" => asleep} = answer} <-
            client
            |> Client.run("deployment.nodes", %{})
-           |> Context.called(),
+           |> Context.format_result(),
          do: Context.show(cx, answer, fn _answer -> nodes(cx, client.url, nodes, asleep) end)
   end
 
@@ -128,7 +128,7 @@ defmodule WardrikDaemon.CLI.Admin do
            Terminal.spinning(cx.terminal, "Reading the agent files", fn ->
              Context.call(cx, "deployment.reload", input)
            end),
-         do: Context.show(cx, answer, &reloaded(cx, &1))
+         do: Context.show(cx, answer, &handle_reload(cx, &1))
   end
 
   defp covering(_cx, []), do: {:ok, %{}}
@@ -137,7 +137,7 @@ defmodule WardrikDaemon.CLI.Admin do
     with {:ok, ids} <- Context.agents(cx, agents), do: {:ok, %{"agents" => ids}}
   end
 
-  defp reloaded(cx, %{"reloaded" => nodes} = answer) do
+  defp handle_reload(cx, %{"reloaded" => nodes} = answer) do
     Context.puts(cx, "Read the agent files again on #{Enum.join(nodes, ", ")}.")
 
     for problem <- Map.get(answer, "problems", []),

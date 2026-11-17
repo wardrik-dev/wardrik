@@ -9,7 +9,8 @@
   so a refused key fails the check.
 - `broker:` in `config.yaml` gives agents credentials from a service of your own. See the docs'
   "Connect accounts".
-- Requires `wardrik` 0.1.0-rc.17.
+- Requires `wardrik` 0.1.0-rc.17, `wardrik_slack` 0.1.0-rc.6, `wardrik_brave` 0.1.0-rc.5,
+  `wardrik_rest` 0.1.0-rc.3 and `wardrik_web` 0.1.0-rc.6.
 
 ## 0.1.0-rc.20 (2026-11-16)
 

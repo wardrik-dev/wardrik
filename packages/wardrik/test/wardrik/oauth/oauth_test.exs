@@ -50,7 +50,7 @@ defmodule Wardrik.OAuthTest do
        vault: vault,
        store: store,
        page: "https://agents.test/oauth/",
-       on_granted: {Wardrik.OAuth.TestHook, :granted, [test]},
+       on_granted: {Wardrik.OAuth.TestHook, :notify_granted, [test]},
        req_options: [plug: {Req.Test, GitHub}],
        resolver:
          {Wardrik.OAuth.Test.Fixed,
@@ -531,7 +531,7 @@ defmodule Wardrik.OAuthTest do
       {:ok, _vsn} =
         keep(vault, token(access_token: "revoked", refresh_token: "rt", expires_at: nil))
 
-      assert :ok = Wardrik.Vault.refused(github, vault)
+      assert :ok = Wardrik.Vault.report_refusal(github, vault)
       assert Wardrik.Vault.resolve(github, vault) == {:ok, "fresh"}
     end
 

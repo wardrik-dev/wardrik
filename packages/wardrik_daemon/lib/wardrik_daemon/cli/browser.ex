@@ -36,15 +36,15 @@ defmodule WardrikDaemon.CLI.Browser do
 
   defp command(%{"SSH_CONNECTION" => _ssh}, _os), do: {:error, :remote}
   defp command(%{"SSH_TTY" => _ssh}, _os), do: {:error, :remote}
-  defp command(_env, {:unix, :darwin}), do: found("open")
+  defp command(_env, {:unix, :darwin}), do: find_program("open")
 
   defp command(env, _os) do
     if env["DISPLAY"] || env["WAYLAND_DISPLAY"],
-      do: found("xdg-open"),
+      do: find_program("xdg-open"),
       else: {:error, :remote}
   end
 
-  defp found(program) do
+  defp find_program(program) do
     if System.find_executable(program), do: {:ok, program <> ~s( "$1")}, else: {:error, :none}
   end
 end

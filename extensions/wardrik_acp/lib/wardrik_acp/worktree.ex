@@ -64,10 +64,10 @@ defmodule WardrikACP.Worktree do
     checkout.path
     |> git!(["worktree", "list", "--porcelain"])
     |> String.split("\n\n", trim: true)
-    |> Enum.flat_map(&listed(&1, checkout, dir <> "/"))
+    |> Enum.flat_map(&handle_list(&1, checkout, dir <> "/"))
   end
 
-  defp listed(block, checkout, dir) do
+  defp handle_list(block, checkout, dir) do
     with ["worktree " <> path | rest] <- String.split(block, "\n"),
          true <- String.starts_with?(path, dir),
          "branch refs/heads/" <> branch <-

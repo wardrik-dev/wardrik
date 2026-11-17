@@ -152,7 +152,7 @@ if Code.ensure_loaded?(Req) do
 
       store
       |> write(object, encode(nonce, value), condition)
-      |> confirmed(store, object, nonce, condition)
+      |> confirm(store, object, nonce, condition)
     end
 
     defp write(store, object, body, {:ok, nil}) do
@@ -173,14 +173,14 @@ if Code.ensure_loaded?(Req) do
 
     defp write(store, object, body, :error), do: put_object(store, object, body, [])
 
-    defp confirmed({:error, {:unconfirmed, reason}}, store, object, nonce, condition) do
+    defp confirm({:error, {:unconfirmed, reason}}, store, object, nonce, condition) do
       case read(store, object) do
         {:value, ^nonce, _value, etag} -> {:ok, etag}
         current -> if holds?(current, condition), do: {:error, reason}, else: {:error, :conflict}
       end
     end
 
-    defp confirmed(result, _store, _object, _nonce, _condition), do: result
+    defp confirm(result, _store, _object, _nonce, _condition), do: result
 
     defp holds?(_current, :error), do: true
     defp holds?(nil, {:ok, nil}), do: true
@@ -192,13 +192,13 @@ if Code.ensure_loaded?(Req) do
       case request(store, :put, object, body: body, headers: headers) do
         {:ok, %{status: 200} = response} -> {:ok, etag(response)}
         {:ok, %{status: status}} when status in [409, 412] -> {:error, :conflict}
-        {:ok, response} -> refused_write(response)
+        {:ok, response} -> refuse_write(response)
         {:error, reason} -> {:error, {:unconfirmed, reason}}
       end
     end
 
     # MinIO answers a write over a version of a key that isn't there with NoSuchKey.
-    defp refused_write(response) do
+    defp refuse_write(response) do
       case Error.exception(response) do
         %Error{code: "NoSuchKey"} -> {:error, :conflict}
         error -> {:error, error}
@@ -257,12 +257,12 @@ if Code.ensure_loaded?(Req) do
         :error ->
           store
           |> remove(object, [])
-          |> removed(store, object, :error)
+          |> handle_remove(store, object, :error)
 
         {:ok, vsn} ->
           store
           |> delete_over(object, vsn)
-          |> removed(store, object, {:ok, vsn})
+          |> handle_remove(store, object, {:ok, vsn})
       end
     end
 
@@ -284,17 +284,17 @@ if Code.ensure_loaded?(Req) do
     end
 
     # Removing what's already gone is done, whatever the condition named.
-    defp removed({:ok, _tombstone}, _store, _object, _condition), do: :ok
-    defp removed(:ok, _store, _object, _condition), do: :ok
+    defp handle_remove({:ok, _tombstone}, _store, _object, _condition), do: :ok
+    defp handle_remove(:ok, _store, _object, _condition), do: :ok
 
-    defp removed({:error, :conflict}, store, object, _condition) do
+    defp handle_remove({:error, :conflict}, store, object, _condition) do
       case read(store, object) do
         {:value, _nonce, _value, _etag} -> {:error, :conflict}
         _absent -> :ok
       end
     end
 
-    defp removed({:error, {:unconfirmed, reason}}, store, object, condition) do
+    defp handle_remove({:error, {:unconfirmed, reason}}, store, object, condition) do
       case read(store, object) do
         {:value, _nonce, _value, _etag} = current ->
           if holds?(current, condition), do: {:error, reason}, else: {:error, :conflict}
@@ -304,7 +304,7 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    defp removed(error, _store, _object, _condition), do: error
+    defp handle_remove(error, _store, _object, _condition), do: error
 
     @impl Wardrik.Store.Adapter
     def keys(%__MODULE__{} = store, prefix),
@@ -390,9 +390,9 @@ if Code.ensure_loaded?(Req) do
       body = encode(nonce(), ~s("probe"))
       stale = ~s("0000000000000000000000000000000f")
 
-      with {:ok, etag} <- probed(store, object, body, [{"if-none-match", "*"}]),
+      with {:ok, etag} <- handle_probe(store, object, body, [{"if-none-match", "*"}]),
            :ok <-
-             refused(
+             refuse(
                store,
                object,
                body,
@@ -400,7 +400,7 @@ if Code.ensure_loaded?(Req) do
                "wrote a key where one was already written"
              ),
            :ok <-
-             refused(
+             refuse(
                store,
                object,
                body,
@@ -429,7 +429,7 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    defp probed(store, object, body, headers) do
+    defp handle_probe(store, object, body, headers) do
       case request(store, :put, object, body: body, headers: headers) do
         {:ok, %{status: 200} = response} -> {:ok, etag(response)}
         {:ok, response} -> {:error, Error.exception(response)}
@@ -437,7 +437,7 @@ if Code.ensure_loaded?(Req) do
       end
     end
 
-    defp refused(store, object, body, headers, what) do
+    defp refuse(store, object, body, headers, what) do
       case request(store, :put, object, body: body, headers: headers) do
         {:ok, %{status: 412}} ->
           :ok

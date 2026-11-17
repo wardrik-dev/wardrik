@@ -87,7 +87,7 @@ defmodule WardrikCore.Retry do
   def run(retries, fun, args) do
     transient = Keyword.fetch!(args, :transient)
     announce = Keyword.fetch!(args, :announce)
-    tried(settings(retries), fun, transient, announce, 1)
+    handle_try(settings(retries), fun, transient, announce, 1)
   end
 
   @doc "Returns the number of retries after the first try."
@@ -109,7 +109,7 @@ defmodule WardrikCore.Retry do
   defp settings(retries),
     do: %{attempts: attempts(retries), max_wait: Keyword.get(retries, :max_wait, @max_wait)}
 
-  defp tried(settings, fun, transient, announce, attempt) do
+  defp handle_try(settings, fun, transient, announce, attempt) do
     answer = fun.()
 
     case transient.(answer) do
@@ -123,7 +123,7 @@ defmodule WardrikCore.Retry do
     wait = min(retry_after(reason) || wait(attempt, settings.max_wait), settings.max_wait)
     announce.(%{attempt: attempt, attempts: settings.attempts, wait_ms: wait, reason: reason})
     Process.sleep(wait)
-    tried(settings, fun, transient, announce, attempt + 1)
+    handle_try(settings, fun, transient, announce, attempt + 1)
   end
 
   # Mint gives headers as a list of pairs, Req as a map of lists.

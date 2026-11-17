@@ -24,7 +24,7 @@ defmodule WardrikSlack.Install do
 
       # 2. In your :redirect_uri route
       installed =
-        Wardrik.Channels.installed(MyApp.AgentRuntime,
+        Wardrik.Channels.complete_install(MyApp.AgentRuntime,
           channel: "slack",
           owner: "acme",
           query: conn.query_params
@@ -56,7 +56,7 @@ defmodule WardrikSlack.Install do
 
   ## Options
 
-    * `:return_to` - where to send them once it's added. Returned by `installed/3`.
+    * `:return_to` - where to send them once it's added. Returned by `complete_install/3`.
   """
   @spec url(Channel.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def url(channel, owner, opts \\ []) do
@@ -86,11 +86,11 @@ defmodule WardrikSlack.Install do
 
   Returns the installation and the `:return_to` given to `url/3`, or `{:error, message}`.
   """
-  @spec installed(Channel.t(), String.t(), map()) ::
+  @spec complete_install(Channel.t(), String.t(), map()) ::
           {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
-  def installed(channel, owner, query) do
+  def complete_install(channel, owner, query) do
     with {:ok, id, secret} <- client(channel),
-         {:ok, state} <- verified(query["state"], secret, owner),
+         {:ok, state} <- verify(query["state"], secret, owner),
          {:ok, code} <- code(query),
          {:ok, installation} <- exchange(channel, code, {id, secret}, owner),
          :ok <- Channel.install(channel, installation) do
@@ -154,7 +154,7 @@ defmodule WardrikSlack.Install do
     payload <> "." <> mac(payload, secret)
   end
 
-  defp verified(text, secret, owner) when is_binary(text) do
+  defp verify(text, secret, owner) when is_binary(text) do
     with [payload, mac] <- String.split(text, ".", parts: 2),
          true <- same?(mac, mac(payload, secret)),
          {:ok, json} <- Base.url_decode64(payload, padding: false),
@@ -162,13 +162,13 @@ defmodule WardrikSlack.Install do
          true <- System.os_time(:second) <= expires do
       {:ok, state}
     else
-      _unverified -> refused()
+      _unverified -> refuse()
     end
   end
 
-  defp verified(_none, _secret, _owner), do: refused()
+  defp verify(_none, _secret, _owner), do: refuse()
 
-  defp refused,
+  defp refuse,
     do:
       {:error,
        "This was started by someone else, for another org, or too long ago. Start again to add the app."}

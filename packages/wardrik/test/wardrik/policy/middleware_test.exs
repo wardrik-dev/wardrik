@@ -294,7 +294,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
   describe "budgets" do
     setup do
       policy = Wardrik.Policy.new!(budget: [usd: 1.00, tokens: 1000])
-      %{context: metered(policy)}
+      %{context: build_metered(policy)}
     end
 
     test "counts what each model call spent", %{context: context} do
@@ -315,7 +315,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
 
     test "an approval allows a grant's worth more", %{context: context} do
       {:ok, context} = generate(context, usd: 1.20)
-      {:ok, context} = generate(answered(context, %{"model" => :approve}), usd: 0.50)
+      {:ok, context} = generate(answer(context, %{"model" => :approve}), usd: 0.50)
       {:ok, context} = generate(%{context | resume: nil}, usd: 0.60)
 
       assert {:park, %Ask{message: "This agent has spent $2.30 of $2.20 today." <> _rest},
@@ -327,12 +327,12 @@ defmodule Wardrik.Policy.MiddlewareTest do
       {:ok, context} = generate(context, tokens: 1000)
 
       assert {:error, "Not today."} =
-               generate(answered(context, %{"model" => {:deny, "Not today."}}))
+               generate(answer(context, %{"model" => {:deny, "Not today."}}))
     end
 
     test "on_exhausted: :deny refuses without asking" do
       policy = Wardrik.Policy.new!(budget: [tokens: 10, on_exhausted: :deny])
-      context = metered(policy)
+      context = build_metered(policy)
       {:ok, context} = generate(context, tokens: 20)
 
       assert {:error, "This agent has used 20 of 10 tokens today."} = generate(context)
@@ -358,7 +358,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
 
     test "a price stands in for a cost the model doesn't report" do
       policy = Wardrik.Policy.new!(budget: [usd: 1.00, price: [input: 1.0, output: 1.0]])
-      context = metered(policy)
+      context = build_metered(policy)
       {:ok, context} = generate(context, usd: nil, tokens: 500_000)
 
       assert %{0 => %{usd: 0.5}} = Context.get_private(context, Wardrik.Policy.Spending.Spent)
@@ -385,7 +385,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
     test "each policy's budget counts apart" do
       org = Wardrik.Policy.new!([budget: [usd: 100.00]], name: "acme")
       agent = Wardrik.Policy.new!([budget: [usd: 1.00, on_exhausted: :deny]], name: "books")
-      context = metered([org, agent])
+      context = build_metered([org, agent])
       {:ok, context} = generate(context, usd: 2.00)
 
       assert {:error, "This agent has spent $2.00 of $1.00 today."} = generate(context)
@@ -397,7 +397,7 @@ defmodule Wardrik.Policy.MiddlewareTest do
 
   defp generate(context, spent \\ []) do
     measured =
-      priced(%{input_tokens: Keyword.get(spent, :tokens, 0)}, Keyword.get(spent, :usd, 0.0))
+      put_price(%{input_tokens: Keyword.get(spent, :tokens, 0)}, Keyword.get(spent, :usd, 0.0))
 
     Context.run(context, :generate, fn context ->
       {:ok,
@@ -405,17 +405,17 @@ defmodule Wardrik.Policy.MiddlewareTest do
     end)
   end
 
-  defp priced(measured, nil), do: Map.put(measured, :unpriced_calls, 1)
-  defp priced(measured, usd), do: Map.put(measured, :usd, usd)
+  defp put_price(measured, nil), do: Map.put(measured, :unpriced_calls, 1)
+  defp put_price(measured, usd), do: Map.put(measured, :usd, usd)
 
-  defp metered(policies),
+  defp build_metered(policies),
     do:
       Context.new(
         middleware: [{Wardrik.Policy.Middleware, policies}],
         span: WardrikCore.Span.root()
       )
 
-  defp answered(context, decisions),
+  defp answer(context, decisions),
     do: %{
       context
       | resume: %Wardrik.Resume{

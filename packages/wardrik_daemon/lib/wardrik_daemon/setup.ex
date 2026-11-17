@@ -41,17 +41,17 @@ defmodule WardrikDaemon.Setup do
   @spec plan([module()], Machine.t(), answer()) ::
           {:ok, [change()], [String.t()]} | {:error, String.t()}
   def plan(steps, %Machine{} = machine, answer) do
-    with {:ok, planned} <- planned(steps, machine, answer) do
+    with {:ok, planned} <- handle_plan(steps, machine, answer) do
       planned = Enum.reverse(planned)
       {:ok, Enum.flat_map(planned, &elem(&1, 0)), Enum.flat_map(planned, &elem(&1, 1))}
     end
   end
 
-  defp planned(steps, machine, answer) do
+  defp handle_plan(steps, machine, answer) do
     Enum.reduce_while(steps, {:ok, []}, fn step, {:ok, planned} ->
       found = step.detect(machine)
 
-      case answered(step.questions(found), answer) do
+      case answer(step.questions(found), answer) do
         {:ok, answers} ->
           {:cont, {:ok, [{step.plan(found, answers), Map.keys(answers)} | planned]}}
 
@@ -61,7 +61,7 @@ defmodule WardrikDaemon.Setup do
     end)
   end
 
-  defp answered(questions, answer) do
+  defp answer(questions, answer) do
     Enum.reduce_while(questions, {:ok, %{}}, fn %Question{key: key} = question, {:ok, answers} ->
       case answer.(question) do
         {:ok, value} -> {:cont, {:ok, Map.put(answers, key, value)}}
@@ -73,19 +73,19 @@ defmodule WardrikDaemon.Setup do
   @doc "Makes `changes` in `dirs`. Returns what each did, or why one can't be made."
   @spec apply([change()], Dirs.t()) :: {:ok, [done()]} | {:error, String.t()}
   def apply(changes, %Dirs{} = dirs) do
-    with {:ok, done} <- made(changes, dirs, []), do: {:ok, Enum.reverse(done)}
+    with {:ok, done} <- make(changes, dirs, []), do: {:ok, Enum.reverse(done)}
   end
 
-  defp made([], _dirs, done), do: {:ok, done}
+  defp make([], _dirs, done), do: {:ok, done}
 
-  defp made([change | changes], dirs, done) do
-    case made(change, dirs) do
+  defp make([change | changes], dirs, done) do
+    case make(change, dirs) do
       {:error, _why} = error -> error
-      made -> made(changes, dirs, [made | done])
+      made -> make(changes, dirs, [made | done])
     end
   end
 
-  defp made({:write, name, text}, dirs) do
+  defp make({:write, name, text}, dirs) do
     path = config(dirs, name)
 
     if File.exists?(path) do
@@ -100,18 +100,18 @@ defmodule WardrikDaemon.Setup do
     end
   end
 
-  defp made({:entry, name, section, key, text}, dirs) do
+  defp make({:entry, name, section, key, text}, dirs) do
     path = config(dirs, name)
     written = File.read!(path)
     {:ok, read} = YamlElixir.read_from_string(written)
-    entry = indented("#{key}:\n" <> indented(text))
+    entry = indent("#{key}:\n" <> indent(text))
 
     case Map.get(read || %{}, section) do
       %{^key => _entry} ->
         {:kept, path}
 
       nil ->
-        File.write!(path, [written, ended(written), "\n#{section}:\n", entry])
+        File.write!(path, [written, finish(written), "\n#{section}:\n", entry])
         {:wrote, path}
 
       _section ->
@@ -130,11 +130,11 @@ defmodule WardrikDaemon.Setup do
     end
   end
 
-  defp made({:command, command, why}, _dirs), do: {:command, command, why}
+  defp make({:command, command, why}, _dirs), do: {:command, command, why}
 
-  defp ended(text), do: if(String.ends_with?(text, "\n"), do: "", else: "\n")
+  defp finish(text), do: if(String.ends_with?(text, "\n"), do: "", else: "\n")
 
-  defp indented(text) do
+  defp indent(text) do
     text
     |> String.split("\n")
     |> Enum.map_join("\n", fn

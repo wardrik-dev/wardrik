@@ -46,24 +46,24 @@ defmodule WardrikCore.ToolRunner do
     Task.Supervisor.async_stream_nolink(
       supervisor,
       calls,
-      &retried(supervisor, %{context | resume: Map.get(resume, &1.id)}, &1, opts),
+      &retry(supervisor, %{context | resume: Map.get(resume, &1.id)}, &1, opts),
       ordered: true,
       max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
       timeout: :infinity
     )
   end
 
-  defp retried(supervisor, context, call, opts) do
+  defp retry(supervisor, context, call, opts) do
     timeout = Keyword.get_lazy(opts, :timeout, fn -> timeout(context.tools, call) end)
     attempt = fn -> attempt(supervisor, context, call, timeout) end
     retries = retries(context, call)
 
     case Retry.run(retries, attempt,
-           transient: &failed/1,
+           transient: &fail/1,
            announce: &retrying(context, call, &1)
          ) do
-      {:ok, ran} -> answered(context, call, ran)
-      {:spent, ran, _tries} -> answered(context, call, ran)
+      {:ok, ran} -> handle_answer(context, call, ran)
+      {:spent, ran, _tries} -> handle_answer(context, call, ran)
     end
   end
 
@@ -88,8 +88,8 @@ defmodule WardrikCore.ToolRunner do
     end
   end
 
-  defp failed({:crashed, reason}), do: reason
-  defp failed(_ran), do: nil
+  defp fail({:crashed, reason}), do: reason
+  defp fail(_ran), do: nil
 
   defp retrying(context, call, retry) do
     Event.emit(
@@ -104,15 +104,19 @@ defmodule WardrikCore.ToolRunner do
     )
   end
 
-  defp answered(_context, _call, {:crashed, %{__exception__: true} = error}),
+  defp handle_answer(_context, _call, {:crashed, %{__exception__: true} = error}),
     do: {{:error, error}, %{}}
 
-  defp answered(context, call, {:crashed, {:exit, reason}}),
-    do: {exited(context, call, reason), %{}}
+  defp handle_answer(context, call, {:crashed, {:exit, reason}}),
+    do: {emit_exit(context, call, reason), %{}}
 
-  defp answered(context, call, {:crashed, reason}), do: {exited(context, call, reason), %{}}
-  defp answered(context, call, {:stopped, reason}), do: {exited(context, call, reason), %{}}
-  defp answered(_context, _call, {outcome, measured}), do: {outcome, measured}
+  defp handle_answer(context, call, {:crashed, reason}),
+    do: {emit_exit(context, call, reason), %{}}
+
+  defp handle_answer(context, call, {:stopped, reason}),
+    do: {emit_exit(context, call, reason), %{}}
+
+  defp handle_answer(_context, _call, {outcome, measured}), do: {outcome, measured}
 
   @doc "The tool result messages for a batch's answered calls, in order, each with its labels."
   @spec messages([{ToolCall.t(), outcome()}], [Tool.t()]) :: [ReqLLM.Message.t()]
@@ -120,26 +124,26 @@ defmodule WardrikCore.ToolRunner do
     for {call, {tag, output}} <- results, tag in [:ok, :error] do
       call.id
       |> ReqLLM.Context.tool_result(call.name, answer(tag, output))
-      |> labelled(annotated(tools, call))
+      |> label(annotate(tools, call))
     end
   end
 
-  defp annotated(tools, call) do
+  defp annotate(tools, call) do
     case Enum.find(tools, &(&1.name == call.name)) do
       nil -> []
       tool -> Tool.annotation(tool, :labels, [])
     end
   end
 
-  defp labelled(message, []), do: message
+  defp label(message, []), do: message
 
-  defp labelled(%ReqLLM.Message{metadata: metadata} = message, labels) do
+  defp label(%ReqLLM.Message{metadata: metadata} = message, labels) do
     held = Map.get(metadata, :labels, [])
     %{message | metadata: Map.put(metadata, :labels, Enum.uniq(held ++ labels))}
   end
 
   defp call(context, tool_call) do
-    started(context, tool_call)
+    start(context, tool_call)
 
     case Context.run(context, {:tool_call, tool_call}, &execute/1) do
       {:ok, %Context{response: outcome, measurements: measured}} -> {outcome, measured}
@@ -151,10 +155,10 @@ defmodule WardrikCore.ToolRunner do
     kind, reason -> {:crashed, {kind, reason}}
   end
 
-  defp started(%Context{call_started: nil}, _call), do: :ok
-  defp started(%Context{call_started: started}, call), do: started.(call.id)
+  defp start(%Context{call_started: nil}, _call), do: :ok
+  defp start(%Context{call_started: started}, call), do: started.(call.id)
 
-  defp exited(context, call, reason) do
+  defp emit_exit(context, call, reason) do
     Event.emit(context, [:wardrik_core, :tool_call, :exit], %{
       agent_id: context.agent_id,
       call: call,
@@ -166,15 +170,15 @@ defmodule WardrikCore.ToolRunner do
 
   defp execute(%Context{step: {:tool_call, call}, tools: tools} = context) do
     case InDoubt.check(context, call) do
-      :run -> {:ok, answered(context, Tool.call(tools, call, context))}
-      answer -> {:ok, answered(context, answer)}
+      :run -> {:ok, handle_answer(context, Tool.call(tools, call, context))}
+      answer -> {:ok, handle_answer(context, answer)}
     end
   end
 
-  defp answered(_context, {tag, output, %Context{} = context}) when tag in [:ok, :error],
-    do: answered(context, {tag, output})
+  defp handle_answer(_context, {tag, output, %Context{} = context}) when tag in [:ok, :error],
+    do: handle_answer(context, {tag, output})
 
-  defp answered(context, answer), do: %{context | response: answer}
+  defp handle_answer(context, answer), do: %{context | response: answer}
 
   defp timeout(tools, call) do
     case Enum.find(tools, &(&1.name == call.name)) do

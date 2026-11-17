@@ -97,12 +97,12 @@ defmodule WardrikResearch.Deep do
       )
       |> Enum.map(fn {:ok, outcome} -> outcome end)
 
-    measured = Enum.reduce(researched, %{}, &added(&2, measurements(&1)))
+    measured = Enum.reduce(researched, %{}, &add_measured(&2, measurements(&1)))
     outcomes = Enum.zip(briefs, researched)
     found = for {brief, {:ok, answer, _measured}} <- outcomes, do: {brief, answer}
     gaps = for {brief, {:error, reason, _measured}} <- outcomes, do: gap(brief, reason)
 
-    combined(context, topic, found, gaps, measured, opts)
+    combine(context, topic, found, gaps, measured, opts)
   end
 
   defp briefs(%{angles: [_angle | _rest] = angles}, _opts),
@@ -123,12 +123,12 @@ defmodule WardrikResearch.Deep do
   defp persona(%{prompt: nil}), do: @researcher
   defp persona(%{prompt: prompt}), do: @researcher <> "\n" <> prompt
 
-  defp combined(context, _topic, [], gaps, measured, _opts) do
+  defp combine(context, _topic, [], gaps, measured, _opts) do
     why = Enum.map_join(gaps, "; ", &"#{&1["angle"]}: #{&1["reason"]}")
     {:error, "Every angle failed. #{why}", Context.measure(context, measured)}
   end
 
-  defp combined(context, topic, found, gaps, measured, opts) do
+  defp combine(context, topic, found, gaps, measured, opts) do
     case WardrikCore.subagent(context, findings(topic, found),
            name: "synthesis",
            instructions: @synthesist,
@@ -144,11 +144,11 @@ defmodule WardrikResearch.Deep do
         output = %{"topic" => topic, "report" => report.text, "gaps" => gaps}
 
         {:ok, %ReqLLM.ToolResult{output: output, metadata: %{labels: Enum.sort(labels)}},
-         Context.measure(context, added(measured, more))}
+         Context.measure(context, add_measured(measured, more))}
 
       {:error, reason, more} ->
-        {:error, "The findings couldn't be brought together: #{said(reason)}",
-         Context.measure(context, added(measured, more))}
+        {:error, "The findings couldn't be brought together: #{say(reason)}",
+         Context.measure(context, add_measured(measured, more))}
     end
   end
 
@@ -159,16 +159,16 @@ defmodule WardrikResearch.Deep do
     "Topic: #{topic}\n\n#{reports}"
   end
 
-  defp gap(brief, reason), do: %{"angle" => brief.angle, "reason" => said(reason)}
+  defp gap(brief, reason), do: %{"angle" => brief.angle, "reason" => say(reason)}
 
-  defp said(:timeout), do: "it ran out of time"
-  defp said({:exit, _reason}), do: "it crashed"
-  defp said(:max_rounds), do: "it made as many model calls as it may"
-  defp said(reason) when is_binary(reason), do: reason
-  defp said(reason), do: inspect(reason)
+  defp say(:timeout), do: "it ran out of time"
+  defp say({:exit, _reason}), do: "it crashed"
+  defp say(:max_rounds), do: "it made as many model calls as it may"
+  defp say(reason) when is_binary(reason), do: reason
+  defp say(reason), do: inspect(reason)
 
   defp measurements({_outcome, _answer, measured}), do: measured
 
-  defp added(measured, more),
+  defp add_measured(measured, more),
     do: Map.merge(measured, more, fn _key, held, also -> held + also end)
 end

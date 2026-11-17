@@ -182,44 +182,48 @@ defmodule Wardrik.MCP.Server do
   @doc "Returns the options a server was added with as JSON."
   @impl Wardrik.Format
   def dump(opts),
-    do: Map.new(opts, fn {option, value} -> {Atom.to_string(option), dumped(option, value)} end)
+    do:
+      Map.new(opts, fn {option, value} -> {Atom.to_string(option), handle_dump(option, value)} end)
 
   @impl Wardrik.Format
   def load(1, json) do
     Enum.reduce_while(json, {:ok, []}, fn {option, value}, {:ok, opts} ->
-      case loaded(@options[option], value) do
+      case handle_load(@options[option], value) do
         {:ok, value} -> {:cont, {:ok, [{@options[option], value} | opts]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  defp dumped(:transport, {type, opts}) do
+  defp handle_dump(:transport, {type, opts}) do
     opts
-    |> Map.new(fn {option, value} -> {Atom.to_string(option), dumped(option, value)} end)
+    |> Map.new(fn {option, value} -> {Atom.to_string(option), handle_dump(option, value)} end)
     |> Map.put("type", Atom.to_string(type))
   end
 
-  defp dumped(:headers, headers),
-    do: Map.new(headers, fn {header, value} -> {header, sent(value)} end)
+  defp handle_dump(:headers, headers),
+    do: Map.new(headers, fn {header, value} -> {header, encode_parts(value)} end)
 
-  defp dumped(:cost, cost), do: Map.new(cost, fn {measure, n} -> {Atom.to_string(measure), n} end)
-  defp dumped(_option, value), do: value
+  defp handle_dump(:cost, cost),
+    do: Map.new(cost, fn {measure, n} -> {Atom.to_string(measure), n} end)
 
-  defp sent({:secret, name}), do: %{"secret" => name}
-  defp sent(parts) when is_list(parts), do: Enum.map(parts, &sent/1)
-  defp sent(text), do: text
+  defp handle_dump(_option, value), do: value
 
-  defp loaded(nil, _value), do: {:error, "it names an option this release doesn't have"}
+  defp encode_parts({:secret, name}), do: %{"secret" => name}
+  defp encode_parts(parts) when is_list(parts), do: Enum.map(parts, &encode_parts/1)
+  defp encode_parts(text), do: text
 
-  defp loaded(:transport, %{"type" => type} = transport) when is_map_key(@transports, type) do
+  defp handle_load(nil, _value), do: {:error, "it names an option this release doesn't have"}
+
+  defp handle_load(:transport, %{"type" => type} = transport)
+       when is_map_key(@transports, type) do
     options = Map.delete(transport, "type")
 
     if Enum.all?(options, fn {option, _value} -> is_map_key(@transport_options, option) end) do
       opts =
         for {option, value} <- options,
             option = @transport_options[option],
-            do: {option, loaded_transport(option, value)}
+            do: {option, load_transport(option, value)}
 
       {:ok, {@transports[type], opts}}
     else
@@ -227,15 +231,16 @@ defmodule Wardrik.MCP.Server do
     end
   end
 
-  defp loaded(:transport, _transport), do: {:error, "its transport isn't one this release has"}
+  defp handle_load(:transport, _transport),
+    do: {:error, "its transport isn't one this release has"}
 
-  defp loaded(:cost, cost), do: measures(cost)
-  defp loaded(_option, value), do: {:ok, value}
+  defp handle_load(:cost, cost), do: measures(cost)
+  defp handle_load(_option, value), do: {:ok, value}
 
-  defp loaded_transport(:headers, headers),
+  defp load_transport(:headers, headers),
     do: Map.new(headers, fn {header, value} -> {header, read_sent(value)} end)
 
-  defp loaded_transport(_option, value), do: value
+  defp load_transport(_option, value), do: value
 
   defp read_sent(%{"secret" => name}), do: {:secret, name}
   defp read_sent(parts) when is_list(parts), do: Enum.map(parts, &read_sent/1)
@@ -299,8 +304,8 @@ defmodule Wardrik.MCP.Server do
   end
 
   @doc "Returns the server with its header secrets read, or `{:error, reason}`."
-  @spec resolved(t()) :: {:ok, t()} | {:error, String.t()}
-  def resolved(%__MODULE__{transport: {:streamable_http, opts}} = server) do
+  @spec resolve_headers(t()) :: {:ok, t()} | {:error, String.t()}
+  def resolve_headers(%__MODULE__{transport: {:streamable_http, opts}} = server) do
     headers = opts[:headers]
 
     named =
@@ -316,7 +321,7 @@ defmodule Wardrik.MCP.Server do
     end
   end
 
-  def resolved(server), do: {:ok, server}
+  def resolve_headers(server), do: {:ok, server}
 
   @doc "Returns whether the server's headers name the secret `name`."
   @spec names?(t(), String.t()) :: boolean()
@@ -370,8 +375,8 @@ defmodule Wardrik.MCP.Server do
     opts =
       opts
       |> endpoint()
-      |> pooled(server.mcp)
-      |> credentialed(server, token)
+      |> put_pool(server.mcp)
+      |> put_credential(server, token)
 
     {:streamable_http, opts}
   end
@@ -379,10 +384,10 @@ defmodule Wardrik.MCP.Server do
   def transport(%__MODULE__{transport: {:stdio, opts}, credential_env: env}, token)
       when is_binary(env) and is_binary(token) do
     opts = Keyword.update(opts, :env, %{env => token}, &Map.put(&1, env, token))
-    {:stdio, isolated(opts)}
+    {:stdio, isolate(opts)}
   end
 
-  def transport(%__MODULE__{transport: {:stdio, opts}}, _token), do: {:stdio, isolated(opts)}
+  def transport(%__MODULE__{transport: {:stdio, opts}}, _token), do: {:stdio, isolate(opts)}
 
   # Anubis joins base_url and mcp_path, so the URL splits into them to be reached as given.
   defp endpoint(opts) do
@@ -396,12 +401,12 @@ defmodule Wardrik.MCP.Server do
     )
   end
 
-  defp pooled(opts, nil), do: opts
+  defp put_pool(opts, nil), do: opts
 
-  defp pooled(opts, mcp),
+  defp put_pool(opts, mcp),
     do: Keyword.put_new(opts, :finch_name, Wardrik.MCP.Connection.finch(mcp))
 
-  defp isolated(opts) do
+  defp isolate(opts) do
     kept = @inherited ++ Map.keys(opts[:env] || %{})
     unset = for {name, _value} <- System.get_env(), name not in kept, do: ["-u", name]
     command = System.find_executable(opts[:command]) || opts[:command]
@@ -412,9 +417,9 @@ defmodule Wardrik.MCP.Server do
     )
   end
 
-  defp credentialed(opts, _server, nil), do: opts
+  defp put_credential(opts, _server, nil), do: opts
 
-  defp credentialed(opts, server, token) do
+  defp put_credential(opts, server, token) do
     value = String.trim("#{server.credential_scheme} #{token}")
 
     Keyword.update(

@@ -17,7 +17,7 @@ defmodule WardrikSlack.Waiting do
   @doc "Returns the message that asks about `calls`."
   @spec message([Waiting.t()]) :: %{text: String.t(), blocks: [map()]}
   def message(calls) do
-    text = "Waiting for someone to #{asked(calls)}."
+    text = "Waiting for someone to #{describe_asks(calls)}."
     %{text: text, blocks: [Blocks.section(text) | calls_blocks(calls)]}
   end
 
@@ -28,11 +28,11 @@ defmodule WardrikSlack.Waiting do
   @doc """
   Returns what `calls` ask for, in words.
 
-      WardrikSlack.Waiting.asked(calls)
+      WardrikSlack.Waiting.describe_asks(calls)
       #=> "approve `echo` and sign in for `mail`"
   """
-  @spec asked([Waiting.t()]) :: String.t()
-  def asked(calls), do: Enum.map_join(calls, " and ", &ask/1)
+  @spec describe_asks([Waiting.t()]) :: String.t()
+  def describe_asks(calls), do: Enum.map_join(calls, " and ", &ask/1)
 
   @doc "Returns the block ID of the note box for the call `id`."
   @spec note_block(String.t()) :: String.t()
@@ -68,7 +68,7 @@ defmodule WardrikSlack.Waiting do
     lines = [
       "`#{interrupt.name || "the model"}`  #{interrupt.message}",
       read(interrupt.labels),
-      shown(arguments)
+      show(arguments)
     ]
 
     lines
@@ -85,8 +85,8 @@ defmodule WardrikSlack.Waiting do
 
   defp read(_labels), do: ""
 
-  defp shown(nil), do: ""
-  defp shown(arguments), do: "```#{Blocks.clip(JSON.encode!(arguments), @max_arguments)}```"
+  defp show(nil), do: ""
+  defp show(arguments), do: "```#{Blocks.clip(JSON.encode!(arguments), @max_arguments)}```"
 
   defp note_box(%{reason: :authorization}), do: []
 

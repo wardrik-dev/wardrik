@@ -31,22 +31,23 @@ defmodule WardrikDaemon.CLI.Web do
   prints the link to open instead.
   """
   @spec open(Context.t(), String.t()) :: :ok | {:error, String.t()}
-  def open(cx, id), do: linked(cx, %{"agent" => id}, false)
+  def open(cx, id), do: handle_link(cx, %{"agent" => id}, false)
 
-  defp run([], flags, cx), do: linked(cx, %{}, flags[:print])
+  defp run([], flags, cx), do: handle_link(cx, %{}, flags[:print])
 
   defp run([name], flags, cx) do
-    with {:ok, id} <- Context.agent(cx, name), do: linked(cx, %{"agent" => id}, flags[:print])
+    with {:ok, id} <- Context.agent(cx, name),
+         do: handle_link(cx, %{"agent" => id}, flags[:print])
   end
 
   defp run(_names, _flags, _cx), do: {:error, "web opens one agent's chat at most."}
 
-  defp linked(cx, input, print) do
+  defp handle_link(cx, input, print) do
     with {:ok, client} <- Context.client(cx),
          {:ok, %{"url" => url} = answer} <-
            client
            |> Client.run("tokens.web", input)
-           |> Context.called(),
+           |> Context.format_result(),
          do: Context.show(cx, answer, fn _answer -> link(cx, url, print) end)
   end
 

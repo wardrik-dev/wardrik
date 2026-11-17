@@ -22,11 +22,11 @@ defmodule WardrikDaemon.CLI.Table do
   def print(cx, table) do
     case Keyword.fetch!(table, :rows) do
       [] -> Context.puts(cx, Owl.Data.tag(Keyword.fetch!(table, :empty), :light_black))
-      rows -> printed(cx, Keyword.fetch!(table, :header), rows)
+      rows -> print_table(cx, Keyword.fetch!(table, :header), rows)
     end
   end
 
-  defp printed(cx, header, rows) do
+  defp print_table(cx, header, rows) do
     rows = Enum.map(rows, fn row -> Enum.map(row, &cell/1) end)
     widths = Enum.zip_with([Enum.map(header, &{&1, nil}) | rows], &widest/1)
 
@@ -75,12 +75,12 @@ defmodule WardrikDaemon.CLI.Table do
 
     padded =
       for {{text, style}, width} <- cells,
-          do: [styled(String.pad_trailing(text, width), style), "  "]
+          do: [apply_style(String.pad_trailing(text, width), style), "  "]
 
     {{text, style}, _width} = last
-    [padded, styled(text, style)]
+    [padded, apply_style(text, style)]
   end
 
-  defp styled(text, nil), do: text
-  defp styled(text, style), do: Owl.Data.tag(text, style)
+  defp apply_style(text, nil), do: text
+  defp apply_style(text, style), do: Owl.Data.tag(text, style)
 end

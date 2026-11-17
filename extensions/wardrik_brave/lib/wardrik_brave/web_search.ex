@@ -26,7 +26,7 @@ defmodule WardrikBrave.WebSearch do
   def tool(brave, context \\ nil) do
     Wardrik.Tool.new!(
       name: "web_search",
-      description: described(settings(brave, context)),
+      description: describe(settings(brave, context)),
       schema: [
         query: [type: :string, required: true, doc: "What you want to know, as a search query"],
         count: [
@@ -68,10 +68,10 @@ defmodule WardrikBrave.WebSearch do
     end
   end
 
-  defp described(%{api_key: key} = settings) when key in [nil, ""],
+  defp describe(%{api_key: key} = settings) when key in [nil, ""],
     do: @description <> "\n" <> Client.no_key(settings)
 
-  defp described(_settings), do: @description
+  defp describe(_settings), do: @description
 
   defp settings(brave, nil), do: WardrikBrave.settings(brave)
 

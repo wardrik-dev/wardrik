@@ -16,7 +16,7 @@ defmodule Wardrik.HTTP.EventStream do
   def serve(conn, events, opts) do
     stream = self()
     taker = Task.async(fn -> take(events, stream) end)
-    opened(taker.pid)
+    open(taker.pid)
 
     conn =
       conn
@@ -43,7 +43,7 @@ defmodule Wardrik.HTTP.EventStream do
     end
   end
 
-  defp opened(taker) do
+  defp open(taker) do
     receive do
       {^taker, :open} -> :ok
     end
@@ -53,20 +53,20 @@ defmodule Wardrik.HTTP.EventStream do
     receive do
       {^taker, {event, moved}} ->
         send(taker, :taken)
-        sent(conn, frame(event, cursor, moved), taker, moved, opts)
+        send_chunk(conn, frame(event, cursor, moved), taker, moved, opts)
     after
-      Keyword.fetch!(opts, :keepalive) -> kept_alive(conn, taker, cursor, opts)
+      Keyword.fetch!(opts, :keepalive) -> keep_alive(conn, taker, cursor, opts)
     end
   end
 
-  defp kept_alive(conn, taker, cursor, opts) do
+  defp keep_alive(conn, taker, cursor, opts) do
     case Keyword.fetch!(opts, :alive?).() do
-      true -> sent(conn, ": keepalive\n\n", taker, cursor, opts)
+      true -> send_chunk(conn, ": keepalive\n\n", taker, cursor, opts)
       false -> conn
     end
   end
 
-  defp sent(conn, data, taker, cursor, opts) do
+  defp send_chunk(conn, data, taker, cursor, opts) do
     case chunk(conn, data) do
       {:ok, conn} -> follow(conn, taker, cursor, opts)
       {:error, _closed} -> conn

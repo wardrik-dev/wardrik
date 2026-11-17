@@ -304,12 +304,12 @@ defmodule WardrikWeb.Components do
   def bytes(nil), do: "—"
   def bytes(count) when count < 1024, do: "#{count} B"
 
-  def bytes(count), do: scaled(count / 1024, ~w(KB MB GB TB))
+  def bytes(count), do: handle_scale(count / 1024, ~w(KB MB GB TB))
 
-  defp scaled(value, [_unit | rest]) when value >= 1024 and rest != [],
-    do: scaled(value / 1024, rest)
+  defp handle_scale(value, [_unit | rest]) when value >= 1024 and rest != [],
+    do: handle_scale(value / 1024, rest)
 
-  defp scaled(value, [unit | _rest]),
+  defp handle_scale(value, [unit | _rest]),
     do: "#{:erlang.float_to_binary(value, decimals: if(value < 10, do: 1, else: 0))} #{unit}"
 
   @doc """

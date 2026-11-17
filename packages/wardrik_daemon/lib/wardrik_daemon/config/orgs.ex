@@ -105,13 +105,13 @@ defmodule WardrikDaemon.Config.Orgs do
   defp entry(org, entry, defined) do
     path = "orgs.#{org}"
 
-    with :ok <- named(org, path),
+    with :ok <- validate_name(org, path),
          {:ok, opts} <- Options.validate(entry, @schema, path),
-         :ok <- listed(opts, :mcp, defined, path),
-         :ok <- listed(opts, :harnesses, defined, path),
-         :ok <- listed(opts, :rest, defined, path),
-         :ok <- listed(opts, :channels, defined, path),
-         :ok <- listed(opts, :notify, defined, path) do
+         :ok <- list(opts, :mcp, defined, path),
+         :ok <- list(opts, :harnesses, defined, path),
+         :ok <- list(opts, :rest, defined, path),
+         :ok <- list(opts, :channels, defined, path),
+         :ok <- list(opts, :notify, defined, path) do
       {:ok,
        %{
          mcp: opts[:mcp],
@@ -124,18 +124,18 @@ defmodule WardrikDaemon.Config.Orgs do
     end
   end
 
-  defp named("*", _path), do: :ok
+  defp validate_name("*", _path), do: :ok
 
-  defp named("deployment", path),
+  defp validate_name("deployment", path),
     do: {:error, "#{path}: is the deployment's own namespace, not an org"}
 
-  defp named(org, path) do
+  defp validate_name(org, path) do
     if Regex.match?(@name, org),
       do: :ok,
       else: {:error, "#{path}: isn't an org's name: letters, digits, _, . and -"}
   end
 
-  defp listed(opts, kind, defined, path) do
+  defp list(opts, kind, defined, path) do
     known = Map.get(defined, Atom.to_string(kind), [])
 
     case Enum.find(opts[kind], &(&1 not in known)) do

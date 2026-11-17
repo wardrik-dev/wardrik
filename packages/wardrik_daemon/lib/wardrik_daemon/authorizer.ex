@@ -55,7 +55,7 @@ defmodule WardrikDaemon.Authorizer do
   @spec authorize(Request.t(), opts()) :: :ok | {:error, :forbidden | :not_found}
   def authorize(%Request{resource: {:agent, id}} = request, opts) do
     case AgentRecords.fetch(opts.store, id) do
-      {:ok, record} -> decided(request, Map.put(opts, :record, record))
+      {:ok, record} -> decide(request, Map.put(opts, :record, record))
       :error -> {:error, :not_found}
     end
   end
@@ -64,47 +64,47 @@ defmodule WardrikDaemon.Authorizer do
   # runs, or a person in one.
   def authorize(%Request{resource: {kind, owner}} = request, opts) when kind in @held do
     if known?(owner, opts),
-      do: decided(request, Map.put(opts, :record, nil)),
+      do: decide(request, Map.put(opts, :record, nil)),
       else: {:error, :not_found}
   end
 
-  def authorize(%Request{} = request, opts), do: decided(request, Map.put(opts, :record, nil))
+  def authorize(%Request{} = request, opts), do: decide(request, Map.put(opts, :record, nil))
 
   defp known?("deployment", _opts), do: true
 
   defp known?(owner, %{orgs: orgs}) do
     with true <- Owners.valid?(owner) do
       org = Owners.org(owner)
-      WardrikDaemon.Orgs.known(org, orgs) == :ok
+      WardrikDaemon.Orgs.check_known(org, orgs) == :ok
     end
   end
 
   defp known?(owner, _opts), do: Owners.valid?(owner)
 
-  defp decided(%Request{actor: {:channel, _name}} = request, opts), do: member(request, opts)
+  defp decide(%Request{actor: {:channel, _name}} = request, opts), do: member(request, opts)
 
   # A token for the admin is the admin's alone to make, whatever else may make tokens, as
   # Kubernetes' TokenRequest needs rights on the very account.
-  defp decided(
+  defp decide(
          %Request{action: "token.create", resource: {:token, "user:" <> id}} = request,
          opts
        )
        when id == @admin do
     case request do
-      %Request{actor: nil, principal: %{id: @admin}} -> bound(request, opts)
+      %Request{actor: nil, principal: %{id: @admin}} -> bind(request, opts)
       _anyone_else -> {:error, :forbidden}
     end
   end
 
   # Using what another owner holds, as an OAuth app, is for its owner's people alone, and the
   # deployment's is for everyone. No role grants more.
-  defp decided(%Request{action: action, resource: {_kind, owner}} = request, _opts)
+  defp decide(%Request{action: action, resource: {_kind, owner}} = request, _opts)
        when action in @uses do
     if uses?(request.principal, owner), do: :ok, else: {:error, :forbidden}
   end
 
-  defp decided(%Request{} = request, opts),
-    do: if(owns?(request, opts), do: :ok, else: bound(request, opts))
+  defp decide(%Request{} = request, opts),
+    do: if(owns?(request, opts), do: :ok, else: bind(request, opts))
 
   defp uses?(_principal, "deployment"), do: true
   defp uses?(%{id: id}, owner), do: Owners.valid?(id) and Owners.within?(id, owner)
@@ -123,13 +123,13 @@ defmodule WardrikDaemon.Authorizer do
 
   defp owns?(_request, _opts), do: false
 
-  defp bound(request, %{access: %{roles: roles, bindings: bindings}} = opts) do
+  defp bind(request, %{access: %{roles: roles, bindings: bindings}} = opts) do
     org = Owners.org_of(opts.store, request.resource)
 
     reaching =
       for binding <- bindings,
           reaches?(binding.org, org, request.resource),
-          subjects = subjects(request, bound_in(binding.org, opts), opts),
+          subjects = subjects(request, bind_in(binding.org, opts), opts),
           Enum.any?(binding.subjects, &(&1 in subjects)),
           do: Map.fetch!(roles, binding.role)
 
@@ -147,8 +147,8 @@ defmodule WardrikDaemon.Authorizer do
   defp reaches?(bound, org, _resource), do: bound == org
 
   # A binding in deployment names agents of the deployment's own org.
-  defp bound_in("deployment", opts), do: opts.access.home
-  defp bound_in(org, _opts), do: org
+  defp bind_in("deployment", opts), do: opts.access.home
+  defp bind_in(org, _opts), do: org
 
   # An agent is bound by its name in the binding's org.
   defp subjects(%Request{actor: {:agent, id}}, org, opts) do
@@ -212,6 +212,6 @@ defmodule WardrikDaemon.Authorizer do
   # The member's user, deciding as they would themselves.
   defp as_user(request, opts) do
     user = %{request | actor: nil}
-    if owns?(user, opts), do: :ok, else: bound(user, opts)
+    if owns?(user, opts), do: :ok, else: bind(user, opts)
   end
 end

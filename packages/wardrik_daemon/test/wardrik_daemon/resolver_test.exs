@@ -41,7 +41,7 @@ defmodule WardrikDaemon.ResolverTest do
     start_daemon(context)
   end
 
-  defp resolve(context, owner, name), do: resolve(context, recorded(context, owner, name))
+  defp resolve(context, owner, name), do: resolve(context, record(context, owner, name))
 
   defp resolve(context, id) do
     context.wardrik
@@ -49,8 +49,8 @@ defmodule WardrikDaemon.ResolverTest do
     |> Wardrik.Resolver.resolve(%Request{agent: id})
   end
 
-  defp recorded(context, owner, name) do
-    case AgentRecords.named(context.daemon_store, WardrikDaemon.Owners.org(owner), name) do
+  defp record(context, owner, name) do
+    case AgentRecords.fetch_by_name(context.daemon_store, WardrikDaemon.Owners.org(owner), name) do
       {:ok, record} ->
         record.id
 
@@ -158,7 +158,7 @@ defmodule WardrikDaemon.ResolverTest do
 
   test "mounts exactly the workspaces config.yaml shares with the agent, by name in its org",
        context do
-    ledger = recorded(context, "payments", "ledger")
+    ledger = record(context, "payments", "ledger")
 
     assert {:ok, %Resolved{workspaces: %{^ledger => :read} = read}} =
              resolve(context, "payments", "refunds")
@@ -173,7 +173,7 @@ defmodule WardrikDaemon.ResolverTest do
       assert none == %{}
     end
 
-    growth = recorded(context, "growth", "ledger")
+    growth = record(context, "growth", "ledger")
 
     assert {:ok, %Resolved{workspaces: workspaces}} = resolve(context, "growth", "refunds")
     assert workspaces == %{growth => :read}

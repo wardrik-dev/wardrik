@@ -36,8 +36,8 @@ defmodule WardrikDaemon.CreateAgent do
   def create(daemon, scope, {owner, input}) do
     with :ok <- an_owner_of_agents(owner),
          {:ok, %{"name" => name} = input} <- valid(input),
-         {:ok, record} <- recorded(daemon, owner, name),
-         {:ok, _snapshot} <- defined(daemon, scope, record, Map.delete(input, "name")),
+         {:ok, record} <- record(daemon, owner, name),
+         {:ok, _snapshot} <- define(daemon, scope, record, Map.delete(input, "name")),
          do: {:ok, record}
   end
 
@@ -63,16 +63,16 @@ defmodule WardrikDaemon.CreateAgent do
               "The definition, as model, instructions, tools, triggers and the rest. Its workspace.shared names agents of your org as agent:NAME"
           ]
         ],
-        run: fn args, _context -> made(daemon, {id, principal}, args) end,
+        run: fn args, _context -> make(daemon, {id, principal}, args) end,
         annotations: [gated: true]
       )
     ]
   end
 
-  defp made(_daemon, {id, nil}, _args),
+  defp make(_daemon, {id, nil}, _args),
     do: {:error, "#{id} acts for no one, so it can't make agents."}
 
-  defp made(daemon, {id, principal}, %{name: name, definition: definition}) do
+  defp make(daemon, {id, principal}, %{name: name, definition: definition}) do
     scope = %{
       Wardrik.as(daemon.wardrik, principal, actor: {:agent, id})
       | policy: policy(daemon.wardrik, id)
@@ -85,7 +85,7 @@ defmodule WardrikDaemon.CreateAgent do
       |> JSON.decode!()
       |> Map.put("name", name)
 
-    with :ok <- authorized(scope, principal.id),
+    with :ok <- authorize(scope, principal.id),
          {:ok, record} <- create(daemon, scope, {principal.id, input}) do
       {:ok, %{"id" => record.id, "name" => record.name, "org" => record.org}}
     else
@@ -93,7 +93,7 @@ defmodule WardrikDaemon.CreateAgent do
     end
   end
 
-  defp authorized(scope, owner) do
+  defp authorize(scope, owner) do
     case Wardrik.Authorizer.authorize(scope, action: "agent.create", resource: {:agents, owner}) do
       :ok -> :ok
       {:error, _denied} -> {:error, Error.new(:forbidden, "You may not make agents.")}
@@ -122,7 +122,7 @@ defmodule WardrikDaemon.CreateAgent do
 
   defp an_owner_of_agents(_owner), do: :ok
 
-  defp recorded(%{wardrik: wardrik, store: store}, owner, name) do
+  defp record(%{wardrik: wardrik, store: store}, owner, name) do
     # A file's agent keeps its name, defined or not yet; a reload forgets it with its file.
     replaces = &(not AgentRecords.file?(&1) and Agents.gone?([wardrik: wardrik], &1))
 
@@ -136,8 +136,8 @@ defmodule WardrikDaemon.CreateAgent do
   end
 
   # An agent that isn't defined has no record, so its name is free.
-  defp defined(%{store: store}, scope, record, definition) do
-    with {:ok, definition} <- identified(store, record, definition),
+  defp define(%{store: store}, scope, record, definition) do
+    with {:ok, definition} <- identify(store, record, definition),
          {:ok, snapshot} <-
            Wardrik.run(scope, "agent.define", Map.put(definition, "agent", record.id)) do
       {:ok, snapshot}
@@ -148,8 +148,8 @@ defmodule WardrikDaemon.CreateAgent do
     end
   end
 
-  defp identified(store, record, definition) do
-    case AgentRecords.identified(store, record.org, definition) do
+  defp identify(store, record, definition) do
+    case AgentRecords.replace_shared_names(store, record.org, definition) do
       {:ok, definition} -> {:ok, definition}
       {:error, why} -> {:error, Error.new(:invalid_request, why <> ".")}
     end

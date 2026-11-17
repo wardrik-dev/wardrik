@@ -52,7 +52,7 @@ defmodule WardrikWeb.DashboardTest do
     |> form(".ask form", %{"note" => "ok"})
     |> render_submit()
 
-    assert {"agent.approve", %{"agent" => "triage", "interrupt" => "toolu_1", "note" => "ok"}} in Server.asked()
+    assert {"agent.approve", %{"agent" => "triage", "interrupt" => "toolu_1", "note" => "ok"}} in Server.list_asks()
   end
 
   test "shows the error an operation answers", %{conn: conn} do
@@ -67,7 +67,7 @@ defmodule WardrikWeb.DashboardTest do
     |> element("button", "Reject")
     |> render_click()
 
-    assert {"agent.deny", %{"agent" => "triage", "interrupt" => "toolu_1"}} in Server.asked()
+    assert {"agent.deny", %{"agent" => "triage", "interrupt" => "toolu_1"}} in Server.list_asks()
   end
 
   test "runs any operation from its form", %{conn: conn} do
@@ -88,7 +88,7 @@ defmodule WardrikWeb.DashboardTest do
       |> render_submit(%{"input" => %{"agent" => "triage", "content" => "Hi"}})
 
     assert html =~ "m2"
-    assert {"agent.ask", %{"agent" => "triage", "content" => "Hi"}} in Server.asked()
+    assert {"agent.ask", %{"agent" => "triage", "content" => "Hi"}} in Server.list_asks()
   end
 
   test "decides several calls with groups added to the form", %{conn: conn} do
@@ -121,7 +121,7 @@ defmodule WardrikWeb.DashboardTest do
                 %{"id" => "toolu_1", "decision" => "approve"},
                 %{"id" => "toolu_2", "decision" => "reject", "reason" => "No."}
               ]
-            }} in Server.asked()
+            }} in Server.list_asks()
   end
 
   test "keeps operations other systems call apart, and finds operations", %{conn: conn} do
@@ -159,7 +159,7 @@ defmodule WardrikWeb.DashboardTest do
     {:ok, view, html} = live(conn, "/ops/audit")
     assert html =~ "agent.defined"
     render_click(view, "more", %{})
-    assert {"audit.list", %{"limit" => 100, "starting_after" => 1}} in Server.asked()
+    assert {"audit.list", %{"limit" => 100, "starting_after" => 1}} in Server.list_asks()
   end
 
   test "lists nodes and reloads definitions", %{conn: conn} do
@@ -190,7 +190,8 @@ defmodule WardrikWeb.DashboardTest do
   test "approves from the approvals page", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/ops/approvals")
     render_submit(view, "approve", %{"agent" => "triage", "interrupt" => "toolu_1", "note" => ""})
-    assert {"agent.approve", %{"agent" => "triage", "interrupt" => "toolu_1"}} in Server.asked()
+
+    assert {"agent.approve", %{"agent" => "triage", "interrupt" => "toolu_1"}} in Server.list_asks()
   end
 
   test "shows tool and delegate steps, and drafts while a reply streams", %{conn: conn} do

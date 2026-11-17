@@ -154,10 +154,10 @@ defmodule Wardrik.Operations.Runtime do
       "run_queue" => :erlang.statistics(:total_run_queue_lengths),
       "memory" => memory(),
       "process_groups" => groups(),
-      "processes" => used(:process_count, :process_limit),
-      "ports" => used(:port_count, :port_limit),
-      "atoms" => used(:atom_count, :atom_limit),
-      "ets_tables" => used(:ets_count, :ets_limit),
+      "processes" => measure_use(:process_count, :process_limit),
+      "ports" => measure_use(:port_count, :port_limit),
+      "atoms" => measure_use(:atom_count, :atom_limit),
+      "ets_tables" => measure_use(:ets_count, :ets_limit),
       "reductions" => reductions,
       "garbage_collections" => %{"count" => collections, "words_reclaimed" => reclaimed},
       "io" => %{"input_bytes" => input, "output_bytes" => output},
@@ -250,7 +250,7 @@ defmodule Wardrik.Operations.Runtime do
   defp runs(:undefined, {:erlang, :apply, 2}, name) when name != [], do: name
   defp runs(:undefined, {module, _function, _arity}, _name), do: module
 
-  defp used(count, limit),
+  defp measure_use(count, limit),
     do: %{"count" => :erlang.system_info(count), "limit" => :erlang.system_info(limit)}
 
   defp processors do

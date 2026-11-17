@@ -20,7 +20,7 @@ defmodule WardrikSlack.API do
   """
   @spec post(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def post(method, args),
-    do: call(method, [json: Keyword.fetch!(args, :body)] ++ sent(args))
+    do: call(method, [json: Keyword.fetch!(args, :body)] ++ build_request_options(args))
 
   @doc """
   Calls `method` with `:token`, and `:params` as a form. Drops `nil` params. Takes `:req_options`.
@@ -28,10 +28,10 @@ defmodule WardrikSlack.API do
   @spec read(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def read(method, args) do
     form = for {key, value} <- Keyword.fetch!(args, :params), value != nil, do: {key, value}
-    call(method, [form: form] ++ sent(args))
+    call(method, [form: form] ++ build_request_options(args))
   end
 
-  defp sent(args),
+  defp build_request_options(args),
     do: [auth: {:bearer, Keyword.fetch!(args, :token)}] ++ Keyword.get(args, :req_options, [])
 
   @doc "Like `post/2`, with the bot token and `:req_options` of `workspace`."

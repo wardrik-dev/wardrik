@@ -7,7 +7,7 @@ defmodule Wardrik.Setup do
     name = Keyword.fetch!(opts, :name)
     store = store(name, opts[:store])
     vault = Module.concat(name, Vault)
-    credentials = opts[:credentials] || vaulted(opts[:vault_keys], {Wardrik.Vault, vault})
+    credentials = opts[:credentials] || vault(opts[:vault_keys], {Wardrik.Vault, vault})
 
     %Wardrik{
       name: name,
@@ -69,16 +69,16 @@ defmodule Wardrik.Setup do
   @spec price(String.t(), keyword()) :: WardrikCore.price()
   def price(spec, price) do
     {markup, price} = Keyword.pop(price, :markup, 0)
-    for {kind, rate} <- priced(spec, price), do: {kind, rate * (1 + marked_up(spec, markup))}
+    for {kind, rate} <- apply_price(spec, price), do: {kind, rate * (1 + mark_up(spec, markup))}
   end
 
-  defp marked_up(_spec, markup) when is_number(markup), do: markup
-  defp marked_up(spec, _markup), do: raise(ArgumentError, "#{spec}'s markup is a number.")
+  defp mark_up(_spec, markup) when is_number(markup), do: markup
+  defp mark_up(spec, _markup), do: raise(ArgumentError, "#{spec}'s markup is a number.")
 
-  defp priced(spec, price) do
+  defp apply_price(spec, price) do
     case Keyword.split(price, [:priced_as]) do
       {[], rates} ->
-        rated(spec, rates)
+        rate(spec, rates)
 
       {[priced_as: model], []} ->
         twin(spec, model)
@@ -95,7 +95,7 @@ defmodule Wardrik.Setup do
     end
   end
 
-  defp rated(spec, rates) do
+  defp rate(spec, rates) do
     case Keyword.split(rates, [:input, :output, :cache_read, :cache_write]) do
       {rates, []} -> both(spec, rates)
       {_rates, [{key, _value} | _rest]} -> raise ArgumentError, "#{spec}'s price has no #{key}."
@@ -122,8 +122,8 @@ defmodule Wardrik.Setup do
     |> Keyword.put_new(:endpoints, wardrik.endpoints)
     |> model_options(wardrik)
     |> credentials(wardrik)
-    |> wrapped([{Wardrik.Spending, wardrik.name} | wardrik.middleware])
-    |> governed(policies)
+    |> wrap([{Wardrik.Spending, wardrik.name} | wardrik.middleware])
+    |> apply_governance(policies)
   end
 
   defp model_options(opts, wardrik),
@@ -154,9 +154,9 @@ defmodule Wardrik.Setup do
   defp store(name, nil), do: store(name, {Wardrik.Store.ETS, []})
 
   defp store(name, {adapter, opts}),
-    do: built(adapter, Keyword.put_new(opts, :name, Module.concat(name, Store)))
+    do: build(adapter, Keyword.put_new(opts, :name, Module.concat(name, Store)))
 
-  defp built(adapter, opts) do
+  defp build(adapter, opts) do
     if Code.ensure_loaded?(adapter),
       do: adapter.new(opts),
       else: raise(ArgumentError, unavailable(adapter))
@@ -188,27 +188,27 @@ defmodule Wardrik.Setup do
   defp build_broker_settings(nil, _credentials), do: nil
   defp build_broker_settings(broker, credentials), do: Map.new([fallback: credentials] ++ broker)
 
-  defp vaulted([], _entry), do: nil
-  defp vaulted(_keys, entry), do: entry
+  defp vault([], _entry), do: nil
+  defp vault(_keys, entry), do: entry
 
   defp grants(nil, _oauth), do: nil
   defp grants(_oauth, name), do: {Wardrik.OAuth, name}
 
   defp credentials(opts, wardrik) do
     opts
-    |> given(:credentials, wardrik.credentials)
-    |> given(:keys, wardrik.key_source)
+    |> give(:credentials, wardrik.credentials)
+    |> give(:keys, wardrik.key_source)
   end
 
-  defp given(opts, _key, nil), do: opts
-  defp given(opts, key, entry), do: Keyword.put_new(opts, key, entry)
+  defp give(opts, _key, nil), do: opts
+  defp give(opts, key, entry), do: Keyword.put_new(opts, key, entry)
 
-  defp wrapped(opts, middleware),
+  defp wrap(opts, middleware),
     do: Keyword.update(opts, :middleware, middleware, &(middleware ++ &1))
 
-  defp governed(opts, []), do: opts
+  defp apply_governance(opts, []), do: opts
 
-  defp governed(opts, policies) do
+  defp apply_governance(opts, policies) do
     middleware = {Wardrik.Policy.Middleware, policies}
     Keyword.update(opts, :middleware, [middleware], &[middleware | &1])
   end

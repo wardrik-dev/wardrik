@@ -51,9 +51,9 @@ defmodule Wardrik.OwnerSecretsTest do
   end
 
   test "asks the authorizer about the owner, and refuses what it refuses", %{scope: scope} do
-    assert refused(scope, "secrets.list", %{"owner" => "globex"}) == :forbidden
+    assert assert_refused(scope, "secrets.list", %{"owner" => "globex"}) == :forbidden
 
-    assert refused(scope, "secrets.put", %{
+    assert assert_refused(scope, "secrets.put", %{
              "owner" => "acme",
              "name" => "X",
              "value" => "v",

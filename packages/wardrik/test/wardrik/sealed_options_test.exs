@@ -4,12 +4,12 @@ defmodule Wardrik.Test.Sealed do
 
   @impl Wardrik.Channel
   def child_spec(opts),
-    do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> started(opts) end]}}
+    do: %{id: __MODULE__, start: {Agent, :start_link, [fn -> start(opts) end]}}
 
   @impl Wardrik.Channel
   def request(_request, opts), do: %{status: 200, headers: %{}, body: opts[:signing_secret]}
 
-  defp started(opts), do: send(opts[:test], {:started_with, opts[:signing_secret]})
+  defp start(opts), do: send(opts[:test], {:started_with, opts[:signing_secret]})
 end
 
 defmodule Wardrik.SealedOptionsTest do

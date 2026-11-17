@@ -31,13 +31,13 @@ defmodule WardrikDaemon.Ceiling do
   @doc "Builds the ceiling `name` from a policy's budget. Returns an error for one per turn."
   @spec new(String.t(), Budget.t()) :: {:ok, t()} | {:error, String.t()}
   def new(name, %Budget{} = budget) do
-    with :ok <- limited(budget),
+    with :ok <- limit(budget),
          do: {:ok, %__MODULE__{name: name, budget: budget, on_exhausted: budget.on_exhausted}}
   end
 
-  defp limited(%Budget{per: :turn}), do: {:error, "a ceiling isn't per turn"}
-  defp limited(%Budget{usd: nil, tokens: nil}), do: {:error, "a ceiling sets usd, tokens or both"}
-  defp limited(_budget), do: :ok
+  defp limit(%Budget{per: :turn}), do: {:error, "a ceiling isn't per turn"}
+  defp limit(%Budget{usd: nil, tokens: nil}), do: {:error, "a ceiling sets usd, tokens or both"}
+  defp limit(_budget), do: :ok
 
   @doc """
   Returns what `org`'s agents have spent against `ceiling` this period.
@@ -53,8 +53,8 @@ defmodule WardrikDaemon.Ceiling do
 
   `:starts_over` is `nil` for `per: :total`.
   """
-  @spec spent(Wardrik.Store.t(), String.t(), t()) :: map()
-  def spent(store, org, %__MODULE__{budget: budget} = ceiling) do
+  @spec sum_spent(Wardrik.Store.t(), String.t(), t()) :: map()
+  def sum_spent(store, org, %__MODULE__{budget: budget} = ceiling) do
     period = Budget.period(budget, DateTime.utc_now())
     {spent, _vsn} = current(Wardrik.Store.lookup(store, key(org, ceiling)), period)
 
@@ -68,10 +68,10 @@ defmodule WardrikDaemon.Ceiling do
     }
   end
 
-  @doc "Returns `spent/3` as JSON, as `GET /v1/owners/{org}/ceilings` answers it."
+  @doc "Returns `sum_spent/3` as JSON, as `GET /v1/owners/{org}/ceilings` answers it."
   @spec json(Wardrik.Store.t(), String.t(), t()) :: map()
   def json(store, org, ceiling) do
-    spend = spent(store, org, ceiling)
+    spend = sum_spent(store, org, ceiling)
 
     fields = %{
       "ceiling" => ceiling.name,
@@ -122,19 +122,19 @@ defmodule WardrikDaemon.Ceiling do
 
   @impl Wardrik.Middleware
   def call(%Context{step: :generate} = context, next, held) do
-    case stopped(held) do
-      nil -> counted(context, next, held)
+    case stop(held) do
+      nil -> count(context, next, held)
       {:deny, message} -> {:error, message}
-      {:ask, message} -> asked(context, next, held, message)
+      {:ask, message} -> ask(context, next, held, message)
     end
   end
 
   def call(%Context{step: {:tool_call, _call}} = context, next, held),
-    do: counted(context, next, held)
+    do: count(context, next, held)
 
   def call(context, next, _held), do: next.(context)
 
-  defp stopped(held) do
+  defp stop(held) do
     decisions =
       for ceiling <- held.ceilings,
           do: decision(held.org, ceiling, read(held.store, held.org, ceiling))
@@ -150,14 +150,14 @@ defmodule WardrikDaemon.Ceiling do
   defp decision(org, ceiling, spent),
     do: Budget.check(ceiling.budget, spent, spender: "#{org}'s agents have")
 
-  defp asked(context, next, held, message) do
+  defp ask(context, next, held, message) do
     case answer(context) do
       nil ->
         {:park, %Reached{message: message, labels: Context.labels(context)}, context}
 
       answer ->
-        resolved(context, answer)
-        answered(answer, context, next, held)
+        resolve(context, answer)
+        handle_answer(answer, context, next, held)
     end
   end
 
@@ -166,29 +166,29 @@ defmodule WardrikDaemon.Ceiling do
 
   defp answer(_context), do: nil
 
-  defp answered({:deny, reason}, _context, _next, _held), do: {:error, reason}
+  defp handle_answer({:deny, reason}, _context, _next, _held), do: {:error, reason}
 
-  defp answered(_approved, context, next, held) do
+  defp handle_answer(_approved, context, next, held) do
     for %__MODULE__{on_exhausted: :ask} = ceiling <- held.ceilings,
-        do: update(held.store, held.org, ceiling, &granted(ceiling, &1))
+        do: update(held.store, held.org, ceiling, &grant(ceiling, &1))
 
-    counted(context, next, held)
+    count(context, next, held)
   end
 
-  defp granted(ceiling, spent) do
+  defp grant(ceiling, spent) do
     case Budget.check(ceiling.budget, spent) do
       :allow -> spent
       _exhausted -> Budget.grant(ceiling.budget, spent)
     end
   end
 
-  defp counted(%Context{subagent: name} = context, next, _held) when is_binary(name),
+  defp count(%Context{subagent: name} = context, next, _held) when is_binary(name),
     do: next.(context)
 
-  defp counted(context, next, held) do
+  defp count(context, next, held) do
     case next.(context) do
       {:ok, after_step} = done ->
-        recorded(context, held, gained(context.measurements, after_step.measurements))
+        record(context, held, compute_gain(context.measurements, after_step.measurements))
         done
 
       other ->
@@ -196,18 +196,18 @@ defmodule WardrikDaemon.Ceiling do
     end
   end
 
-  defp gained(before, measured) do
+  defp compute_gain(before, measured) do
     [:input_tokens, :output_tokens, :usd, :unpriced_calls]
     |> Map.new(&{&1, Map.get(measured, &1, 0) - Map.get(before, &1, 0)})
     |> Map.reject(fn {_key, amount} -> amount == 0 end)
   end
 
-  defp recorded(_context, _held, gained) when map_size(gained) == 0, do: :ok
+  defp record(_context, _held, gained) when map_size(gained) == 0, do: :ok
 
-  defp recorded(context, held, gained) do
+  defp record(context, held, gained) do
     for ceiling <- held.ceilings do
       {spent, now} = update(held.store, held.org, ceiling, &spend(ceiling.budget, &1, gained))
-      reached(context, held.org, ceiling, decision(held.org, ceiling, spent), now)
+      reach(context, held.org, ceiling, decision(held.org, ceiling, spent), now)
     end
 
     :ok
@@ -230,14 +230,14 @@ defmodule WardrikDaemon.Ceiling do
 
   defp cost(_budget, gained), do: Map.get(gained, :usd, 0)
 
-  defp reached(context, org, ceiling, :allow, now) do
+  defp reach(context, org, ceiling, :allow, now) do
     case decision(org, ceiling, now) do
       :allow -> :ok
       {_effect, message} -> emit_reached(context, org, ceiling, message)
     end
   end
 
-  defp reached(_context, _org, _ceiling, _before, _now), do: :ok
+  defp reach(_context, _org, _ceiling, _before, _now), do: :ok
 
   # Telemetry only: Wardrik's event log holds Wardrik's events, and ceilings are the daemon's.
   defp emit_reached(context, org, ceiling, message) do
@@ -252,7 +252,7 @@ defmodule WardrikDaemon.Ceiling do
     })
   end
 
-  defp resolved(context, answer) do
+  defp resolve(context, answer) do
     WardrikCore.Event.emit(
       context,
       [:wardrik, :interrupt, :resolved],
@@ -287,21 +287,21 @@ defmodule WardrikDaemon.Ceiling do
     {spent, vsn} = current(Wardrik.Store.lookup(store, key), period)
     changed = change.(spent)
 
-    case Wardrik.Store.put(store, key, stored(changed, period), if_vsn: vsn) do
+    case Wardrik.Store.put(store, key, store(changed, period), if_vsn: vsn) do
       {:ok, _vsn} -> {spent, changed}
       {:error, :conflict} -> update(store, org, ceiling, change)
     end
   end
 
   defp current({%{"period" => written} = spent, vsn}, period) do
-    if written == period_name(period), do: {loaded(spent), vsn}, else: {fresh(), vsn}
+    if written == period_name(period), do: {load(spent), vsn}, else: {fresh(), vsn}
   end
 
   defp current(nil, _period), do: {fresh(), nil}
 
   defp fresh, do: %{usd: 0, tokens: 0, granted: %{}, unpriced: false}
 
-  defp loaded(spent) do
+  defp load(spent) do
     %{
       usd: spent["usd"],
       tokens: spent["tokens"],
@@ -310,7 +310,7 @@ defmodule WardrikDaemon.Ceiling do
     }
   end
 
-  defp stored(spent, period) do
+  defp store(spent, period) do
     %{
       "period" => period_name(period),
       "usd" => spent.usd,

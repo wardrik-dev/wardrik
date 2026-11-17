@@ -6,11 +6,11 @@ defmodule Wardrik.Policy.Name do
   @spec glob(String.t()) :: glob()
   def glob(source), do: String.split(source, "*")
 
-  @spec shown(String.t()) :: String.t()
-  def shown(name), do: String.replace(name, "__", "/", global: false)
+  @spec format_name(String.t()) :: String.t()
+  def format_name(name), do: String.replace(name, "__", "/", global: false)
 
   @spec match?(glob(), String.t()) :: boolean()
-  def match?(glob, name), do: glob?(glob, name) or glob?(glob, shown(name))
+  def match?(glob, name), do: glob?(glob, name) or glob?(glob, format_name(name))
 
   @spec glob?(glob(), String.t()) :: boolean()
   def glob?([whole], text), do: text == whole

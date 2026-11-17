@@ -9,6 +9,19 @@
   signed both ways. See `Wardrik.Credentials.Broker`.
 - A trigger an agent sets itself from a conversation answers in that conversation.
 - Requires `wardrik_core` 0.1.0-rc.12 and `wardrik_protocol` 0.1.0-rc.12.
+- **Upgrading:** functions are named for what they do. Callbacks: `Wardrik.Chat.installed/2` is
+  `complete_install/2`, `Wardrik.Triggers.Target.fired/2` is `handle_fired/2` and
+  `Wardrik.Vault.Grants.refused/2` is `report_refusal/2`. Functions: `Wardrik.started_sign_in/2`
+  is `fetch_sign_in/2`; in `Wardrik.Channels`, `installed` and `owned` are `complete_install` and
+  `list_installations`; `Wardrik.Chat.received` is `answer_inbound`; in `Wardrik.Chat.Rooms`,
+  `joined` and `left` are `join` and `leave`; `Wardrik.Chat.Workspace.offered` is
+  `list_offered_agents`; `Wardrik.Delegation.asked` is `record_ask`;
+  `Wardrik.EventLog.CloudEvent.sequenced` is `put_sequence`; `touched` in
+  `Wardrik.Views.Timeline` is `list_touched`; `Wardrik.MCP.Server.resolved` is `resolve_headers`;
+  `Wardrik.Notify.given` is `validate_target`; `Wardrik.OAuth.started` is `fetch_sign_in`; in
+  `Wardrik.OAuth.Apps`, `chosen`, `offered` and `shown` are `choose`, `list_offered` and
+  `get_display_name`; `Wardrik.Workspace.File.labelled` is `label_answer`;
+  `Wardrik.Workspace.Tools.failed` is `build_failure`.
 
 ## 0.1.0-rc.16 (2026-11-16)
 

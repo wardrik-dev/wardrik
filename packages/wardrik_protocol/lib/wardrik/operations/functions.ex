@@ -56,7 +56,7 @@ defmodule Wardrik.Operations.Functions do
   defp functions(operation), do: [run(operation)]
 
   defp run(operation),
-    do: define(operation, name(operation), operation.summary, quote(do: term()), &ran/3)
+    do: define(operation, name(operation), operation.summary, quote(do: term()), &handle_run/3)
 
   defp stream(operation) do
     lead =
@@ -67,18 +67,18 @@ defmodule Wardrik.Operations.Functions do
       :"stream_#{name(operation)}",
       lead,
       quote(do: {:ok, Enumerable.t()}),
-      &streamed/3
+      &handle_stream/3
     )
   end
 
-  defp ran(id, scope, input) do
+  defp handle_run(id, scope, input) do
     quote do
       with {:ok, output} <- Wardrik.Scope.run(unquote(scope), unquote(id), unquote(input)),
            do: Types.decode(unquote(id), output)
     end
   end
 
-  defp streamed(id, scope, input) do
+  defp handle_stream(id, scope, input) do
     quote do
       with {:ok, stream} <- Wardrik.Scope.stream(unquote(scope), unquote(id), unquote(input)),
            do: {:ok, Stream.map(stream, &Types.event/1)}
@@ -92,7 +92,7 @@ defmodule Wardrik.Operations.Functions do
 
     {arguments, types, input} =
       if named?(operation),
-        do: named(operation, parameters, given),
+        do: build_named_function(operation, parameters, given),
         else: arguments(operation, parameters, given)
 
     quote do
@@ -106,9 +106,9 @@ defmodule Wardrik.Operations.Functions do
   end
 
   # Named path parameters are in the input, beside the conversation where there is one.
-  defp named(%{id: id}, parameters, given) do
+  defp build_named_function(%{id: id}, parameters, given) do
     keys = Enum.map(parameters, &String.to_atom/1)
-    input = quote(do: Types.named(unquote(id), unquote(given), unquote(keys)))
+    input = quote(do: Types.encode_named_input(unquote(id), unquote(given), unquote(keys)))
     {[given], [quote(do: keyword())], input}
   end
 
@@ -122,7 +122,7 @@ defmodule Wardrik.Operations.Functions do
       quote do
         unquote(id)
         |> Types.encode(unquote(given))
-        |> then(&Types.checked(unquote(id), &1))
+        |> then(&Types.validate_fields!(unquote(id), &1))
         |> Map.merge(unquote(path_input))
       end
 
@@ -155,7 +155,7 @@ defmodule Wardrik.Operations.Functions do
       sentence(lead),
       example(operation, name, parameters),
       operation.description,
-      held(operation),
+      hold(operation),
       route
     ]
     |> Enum.reject(&(&1 in [nil, ""]))
@@ -182,11 +182,11 @@ defmodule Wardrik.Operations.Functions do
 
   defp example_arguments(operation, parameters) do
     if named?(operation),
-      do: named_example(operation, parameters),
+      do: build_named_example(operation, parameters),
       else: positional_example(operation, parameters)
   end
 
-  defp named_example(operation, parameters) do
+  defp build_named_example(operation, parameters) do
     required = Map.get(operation.input, "required", []) -- parameters
 
     Enum.map(parameters, &"#{&1}: #{Map.get(@samples, &1, ~s("..."))}") ++
@@ -198,8 +198,8 @@ defmodule Wardrik.Operations.Functions do
     if Types.fields(operation) == [], do: path, else: path ++ ["input"]
   end
 
-  defp held(%{conversation: nil}), do: nil
+  defp hold(%{conversation: nil}), do: nil
 
-  defp held(_operation),
+  defp hold(_operation),
     do: ~s(Add `conversation: "C1"` to act on one of the agent's conversations.)
 end

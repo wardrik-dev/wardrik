@@ -75,19 +75,19 @@ defmodule WardrikWeb.ConnectionsLive do
 
   defp load(%{assigns: %{source: {module, opts}, scope: scope}} = socket) do
     case module.list(scope, opts) do
-      {:ok, connections} -> finished(assign(socket, connections: connections, error: nil))
+      {:ok, connections} -> finish(assign(socket, connections: connections, error: nil))
       {:error, error} -> assign(socket, connections: [], error: message(error))
     end
   end
 
   # A sign-in with a code finishes on the service's side. Close the card once it's connected.
-  defp finished(%{assigns: %{signing_in: %{"provider" => provider}}} = socket) do
+  defp finish(%{assigns: %{signing_in: %{"provider" => provider}}} = socket) do
     if Enum.any?(socket.assigns.connections, &(&1["provider"] == provider and &1["connected"])),
       do: assign(socket, :signing_in, nil),
       else: socket
   end
 
-  defp finished(socket), do: socket
+  defp finish(socket), do: socket
 
   defp state(%{"connected" => true}), do: "ok"
   defp state(%{"signing_in" => true}), do: "waiting"

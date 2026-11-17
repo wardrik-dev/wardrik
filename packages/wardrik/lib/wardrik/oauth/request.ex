@@ -34,7 +34,7 @@ defmodule Wardrik.OAuth.Request do
   @spec post_as(String.t(), map(), keyword()) :: {:ok, pos_integer(), map()} | {:error, term()}
   def post_as(url, form, req_options) do
     {%Provider{} = provider, req_options} = Keyword.pop!(req_options, :as)
-    {form, headers} = authenticated(provider, Map.put(form, "client_id", provider.client_id))
+    {form, headers} = authenticate(provider, Map.put(form, "client_id", provider.client_id))
     {check, req_options} = Keyword.pop(req_options, :check)
 
     with :ok <- secure(url, check) do
@@ -75,13 +75,13 @@ defmodule Wardrik.OAuth.Request do
   def present(form, _key, ""), do: form
   def present(form, key, value), do: Map.put(form, key, value)
 
-  defp authenticated(%Provider{client_auth: :basic, client_secret: secret} = provider, form)
+  defp authenticate(%Provider{client_auth: :basic, client_secret: secret} = provider, form)
        when is_binary(secret) do
     pair = URI.encode_www_form(provider.client_id) <> ":" <> URI.encode_www_form(secret)
     {form, [{"authorization", "Basic " <> Base.encode64(pair)}]}
   end
 
-  defp authenticated(%Provider{client_secret: secret}, form),
+  defp authenticate(%Provider{client_secret: secret}, form),
     do: {present(form, "client_secret", secret), []}
 
   defp options(req_options, headers \\ []) do
@@ -94,10 +94,10 @@ defmodule Wardrik.OAuth.Request do
   end
 
   defp secure(url, check) do
-    with :ok <- encrypted(url), do: checked(url, check)
+    with :ok <- encrypt(url), do: check(url, check)
   end
 
-  defp encrypted(url) do
+  defp encrypt(url) do
     case URI.parse(url) do
       %URI{scheme: "https", host: host} when is_binary(host) -> :ok
       %URI{scheme: "http", host: host} when host in ["localhost", "127.0.0.1", "::1"] -> :ok
@@ -105,9 +105,9 @@ defmodule Wardrik.OAuth.Request do
     end
   end
 
-  defp checked(_url, nil), do: :ok
+  defp check(_url, nil), do: :ok
 
-  defp checked(url, check) do
+  defp check(url, check) do
     case check.(url) do
       :ok -> :ok
       {:error, why} -> {:error, {:unreachable_url, url, why}}

@@ -33,14 +33,14 @@ defmodule WardrikSlack.Rooms do
     by = person(workspace, event["inviter"])
 
     workspace
-    |> Chat.Rooms.joined(room, by)
+    |> Chat.Rooms.join(room, by)
     |> message(workspace, bot)
     |> post(workspace, room)
   end
 
   def event(workspace, %{"type" => type, "channel" => room} = event, _bot)
       when type in ["channel_left", "group_left"],
-      do: Chat.Rooms.left(workspace, room, person(workspace, event["actor_id"]))
+      do: Chat.Rooms.leave(workspace, room, person(workspace, event["actor_id"]))
 
   def event(_workspace, _event, _bot), do: :ignored
 
@@ -85,7 +85,7 @@ defmodule WardrikSlack.Rooms do
   end
 
   defp act("more", "stop", workspace, room, by) do
-    :ok = Chat.Rooms.left(workspace, room, by)
+    :ok = Chat.Rooms.leave(workspace, room, by)
     :stopped
   end
 
@@ -96,7 +96,7 @@ defmodule WardrikSlack.Rooms do
 
   defp offer(workspace, agent, by) do
     workspace
-    |> Workspace.offered(by)
+    |> Workspace.list_offered_agents(by)
     |> Enum.find(%Offer{agent: agent}, &(&1.agent == agent))
   end
 
@@ -108,13 +108,13 @@ defmodule WardrikSlack.Rooms do
   @spec message(Chat.Rooms.shown() | :stopped, Workspace.t(), String.t() | nil) ::
           %{text: String.t(), blocks: [map()]}
   def message({:bound, %Binding{answers: answers}, offer}, _workspace, bot) do
-    text = ":wave: *#{shown(offer)}* answers here now."
+    text = ":wave: *#{get_display_name(offer)}* answers here now."
 
     %{
       text: text,
       blocks:
         [Blocks.section(text)] ++
-          described(offer) ++
+          describe(offer) ++
           [
             Blocks.section(how(answers, bot) <> " " <> @approving),
             Blocks.actions("wardrik_room", [toggle(answers), more()])
@@ -161,17 +161,17 @@ defmodule WardrikSlack.Rooms do
         value: "everything"
       )
 
-  defp described(%Offer{description: description}) when is_binary(description),
+  defp describe(%Offer{description: description}) when is_binary(description),
     do: [Blocks.context("_#{description}_")]
 
-  defp described(_offer), do: []
+  defp describe(_offer), do: []
 
   defp choose(offers) when length(offers) <= @max_buttons do
     for %Offer{agent: agent, description: description} = offer <- offers do
       line =
         if description,
-          do: "*#{shown(offer)}*\n#{description}",
-          else: "*#{shown(offer)}*"
+          do: "*#{get_display_name(offer)}*\n#{description}",
+          else: "*#{get_display_name(offer)}*"
 
       line
       |> Blocks.section()
@@ -182,7 +182,7 @@ defmodule WardrikSlack.Rooms do
   defp choose(offers) do
     options =
       for %Offer{agent: agent} = offer <- offers do
-        name = shown(offer)
+        name = get_display_name(offer)
         %{text: Blocks.plain(name), value: agent}
       end
 
@@ -208,9 +208,9 @@ defmodule WardrikSlack.Rooms do
   end
 
   @doc "Returns the name an offer shows: its agent's display name, or else its ID."
-  @spec shown(Offer.t()) :: String.t()
-  def shown(%Offer{name: name}) when is_binary(name) and name != "", do: name
-  def shown(%Offer{agent: agent}), do: agent
+  @spec get_display_name(Offer.t()) :: String.t()
+  def get_display_name(%Offer{name: name}) when is_binary(name) and name != "", do: name
+  def get_display_name(%Offer{agent: agent}), do: agent
 
   defp person(_workspace, nil), do: nil
   defp person(workspace, id), do: Messages.sender(workspace, id)

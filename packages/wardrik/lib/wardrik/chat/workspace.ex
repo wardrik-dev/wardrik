@@ -73,19 +73,19 @@ defmodule Wardrik.Chat.Workspace do
   Returns the agents that list this channel and that `member` may read, sorted by ID. Without a
   member, uses the channel's own scope.
   """
-  @spec offered(t(), Member.t() | nil) :: [Offer.t()]
-  def offered(workspace, member \\ nil)
+  @spec list_offered_agents(t(), Member.t() | nil) :: [Offer.t()]
+  def list_offered_agents(workspace, member \\ nil)
 
-  def offered(workspace, nil), do: offered_in(workspace, scope(workspace))
+  def list_offered_agents(workspace, nil), do: offer_in(workspace, scope(workspace))
 
-  def offered(workspace, %Member{} = member) do
+  def list_offered_agents(workspace, %Member{} = member) do
     case member_scope(workspace, member) do
-      {:ok, scope} -> offered_in(workspace, scope)
+      {:ok, scope} -> offer_in(workspace, scope)
       {:error, _why} -> []
     end
   end
 
-  defp offered_in(workspace, scope) do
+  defp offer_in(workspace, scope) do
     case Wardrik.Agents.list(scope) do
       {:ok, agents} ->
         agents

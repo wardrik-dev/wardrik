@@ -70,8 +70,8 @@ defmodule Wardrik.EventLog.Runs do
 
     run =
       id
-      |> started(event, source(runs, data["run"]))
-      |> kept(runs, event)
+      |> start(event, source(runs, data["run"]))
+      |> keep(runs, event)
 
     %{runs | runs: Map.put(runs.runs, id, run), order: [id | runs.order]}
   end
@@ -81,7 +81,7 @@ defmodule Wardrik.EventLog.Runs do
       {:ok, run} ->
         run =
           run
-          |> kept(runs, event)
+          |> keep(runs, event)
           |> step(type, data, event)
 
         %{runs | runs: Map.put(runs.runs, run.id, run)}
@@ -146,7 +146,7 @@ defmodule Wardrik.EventLog.Runs do
   defp last_at([newest | _older]), do: newest.started_at
   defp last_at([]), do: nil
 
-  defp started(id, event, source) do
+  defp start(id, event, source) do
     %{
       id: id,
       status: :running,
@@ -163,10 +163,10 @@ defmodule Wardrik.EventLog.Runs do
     }
   end
 
-  defp kept(run, %__MODULE__{events?: true}, event),
+  defp keep(run, %__MODULE__{events?: true}, event),
     do: Map.update(run, :events, [event], &(&1 ++ [event]))
 
-  defp kept(run, _runs, _event), do: run
+  defp keep(run, _runs, _event), do: run
 
   defp source(runs, run) do
     run

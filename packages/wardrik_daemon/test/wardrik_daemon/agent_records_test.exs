@@ -40,9 +40,9 @@ defmodule WardrikDaemon.AgentRecordsTest do
     assert other.id != notes.id
 
     assert AgentRecords.fetch(store, notes.id) == {:ok, notes}
-    assert AgentRecords.named(store, "acme", "notes") == {:ok, notes}
-    assert AgentRecords.named(store, "globex", "notes") == {:ok, other}
-    assert AgentRecords.named(store, "initech", "notes") == :error
+    assert AgentRecords.fetch_by_name(store, "acme", "notes") == {:ok, notes}
+    assert AgentRecords.fetch_by_name(store, "globex", "notes") == {:ok, other}
+    assert AgentRecords.fetch_by_name(store, "initech", "notes") == :error
     assert AgentRecords.in_org(store, "acme") == [notes]
 
     assert {:ok, again} =
@@ -55,12 +55,12 @@ defmodule WardrikDaemon.AgentRecordsTest do
 
     assert again.id != notes.id
     assert AgentRecords.fetch(store, notes.id) == :error
-    assert AgentRecords.named(store, "acme", "notes") == {:ok, again}
+    assert AgentRecords.fetch_by_name(store, "acme", "notes") == {:ok, again}
 
     assert :ok = AgentRecords.delete(store, notes)
-    assert AgentRecords.named(store, "acme", "notes") == {:ok, again}
+    assert AgentRecords.fetch_by_name(store, "acme", "notes") == {:ok, again}
     assert :ok = AgentRecords.delete(store, again)
-    assert AgentRecords.named(store, "acme", "notes") == :error
+    assert AgentRecords.fetch_by_name(store, "acme", "notes") == :error
   end
 
   test "keeps no record for a name it couldn't claim", %{store: store} do
@@ -84,7 +84,7 @@ defmodule WardrikDaemon.AgentRecordsTest do
     assert {:error, {:taken, ^holder}} =
              AgentRecords.create(store, owner: "acme", name: "notes", source: :file)
 
-    assert AgentRecords.named(store, "acme", "notes") == {:ok, holder}
+    assert AgentRecords.fetch_by_name(store, "acme", "notes") == {:ok, holder}
     assert Wardrik.Store.keys(records, "agents/") == []
   end
 
@@ -94,7 +94,7 @@ defmodule WardrikDaemon.AgentRecordsTest do
     definition = %{"model" => "m", "workspace" => %{"shared" => shared}}
 
     assert {:ok, %{"workspace" => %{"shared" => mounts}, "model" => "m"}} =
-             AgentRecords.identified(store, "acme", definition)
+             AgentRecords.replace_shared_names(store, "acme", definition)
 
     assert mounts == %{"a" => runbooks.id, "b" => %{"agent" => runbooks.id, "mode" => "read"}}
 
@@ -105,10 +105,14 @@ defmodule WardrikDaemon.AgentRecordsTest do
           {"acme", %{"e" => "runbooks"}}
         ] do
       assert {:error, "workspace.shared." <> _why} =
-               AgentRecords.identified(store, org, %{"workspace" => %{"shared" => shared}})
+               AgentRecords.replace_shared_names(store, org, %{
+                 "workspace" => %{"shared" => shared}
+               })
     end
 
-    assert AgentRecords.identified(store, "acme", %{"model" => "m"}) == {:ok, %{"model" => "m"}}
+    assert AgentRecords.replace_shared_names(store, "acme", %{"model" => "m"}) ==
+             {:ok, %{"model" => "m"}}
+
     assert AgentRecords.name?("triage-2.b_c")
     refute AgentRecords.name?("a/b")
     long = String.duplicate("a", 65)

@@ -25,7 +25,7 @@ defmodule Wardrik.CredentialsTest do
     end
 
     @impl true
-    def refused(%{name: name, principal: %Principal{id: id}}, granted) do
+    def report_refusal(%{name: name, principal: %Principal{id: id}}, granted) do
       :ets.delete(granted, {name, id})
       :ok
     end
@@ -94,13 +94,13 @@ defmodule Wardrik.CredentialsTest do
   test "a refused credential isn't given again", %{context: context, granted: granted} do
     :ets.insert(granted, {{"github", "user:maria"}, "revoked-token"})
 
-    assert :ok = Credentials.refused(context, "github")
+    assert :ok = Credentials.report_refusal(context, "github")
     assert {:park, %Authorization{}} = Credentials.fetch(context, "github")
   end
 
   test "credentials that can't be told of a refusal are left as they are", %{context: context} do
-    assert :ok = Credentials.refused(%{context | credentials: Forgetful}, "github")
-    assert :ok = Credentials.refused(%{context | credentials: nil}, "github")
+    assert :ok = Credentials.report_refusal(%{context | credentials: Forgetful}, "github")
+    assert :ok = Credentials.report_refusal(%{context | credentials: nil}, "github")
   end
 
   test "a call parked on a sign-in runs again once the person has signed in",

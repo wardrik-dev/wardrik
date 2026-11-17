@@ -19,7 +19,7 @@ defmodule WardrikWeb.NewAgentLive do
     id = String.trim(params["agent_id"] || "")
     schema = DefinitionComponent.schema()
 
-    with :ok <- named(id),
+    with :ok <- validate_id(id),
          {:ok, definition} <- definition(Form.read(schema, params["input"] || %{})),
          {:ok, _answer} <-
            Wardrik.Scope.run(
@@ -42,8 +42,8 @@ defmodule WardrikWeb.NewAgentLive do
   def handle_event(event, value, socket),
     do: {:noreply, assign(socket, :params, Form.handle(event, value, socket.assigns.params))}
 
-  defp named(""), do: {:error, "Enter an agent ID."}
-  defp named(_id), do: :ok
+  defp validate_id(""), do: {:error, "Enter an agent ID."}
+  defp validate_id(_id), do: :ok
 
   defp definition({:ok, definition}), do: {:ok, definition}
   defp definition(:none), do: {:ok, %{}}

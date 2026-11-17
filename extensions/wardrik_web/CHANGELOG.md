@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.6 (2026-11-16)
+
+- **Upgrading:** `WardrikWeb.Timeline.drafted` is `add_draft`.
+
 ## 0.1.0-rc.5 (2026-11-16)
 
 - The chat's sidebar updates while it's open, and counts each agent's and conversation's calls

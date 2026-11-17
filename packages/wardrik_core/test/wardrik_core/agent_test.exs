@@ -618,9 +618,9 @@ defmodule WardrikCore.AgentTest do
     assert {id, nil} in WardrikCore.list()
     assert {id, "C1/1696.1234"} in WardrikCore.list()
     assert %{agent_id: ^id, conversation: "C1/1696.1234"} = agent_state(held)
-    assert WardrikCore.saved_key(id) == "test/agents/acme%2Ftriage+%252F%2Fx"
+    assert WardrikCore.build_state_key(id) == "test/agents/acme%2Ftriage+%252F%2Fx"
 
-    assert WardrikCore.saved_key({id, "C1/1696.1234"}) ==
+    assert WardrikCore.build_state_key({id, "C1/1696.1234"}) ==
              "test/agents/acme%2Ftriage+%252F%2Fx/C1%2F1696.1234"
 
     expect(ReqLLM, :stream_text, fn _, _, _ -> {:ok, answer("done")} end)
@@ -750,7 +750,7 @@ defmodule WardrikCore.AgentTest do
 
     GenServer.cast(agent, :not_a_request)
 
-    assert nil == WardrikCore.parked(agent)
+    assert nil == WardrikCore.get_parked(agent)
   end
 
   test "a parked turn is resumed through the public API" do
@@ -766,7 +766,7 @@ defmodule WardrikCore.AgentTest do
     assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :park}}
 
     assert {:tool_calls, [{%{id: "1"}, {:park, %WardrikCore.Test.NeedsApproval{}}}]} =
-             WardrikCore.parked(agent)
+             WardrikCore.get_parked(agent)
 
     assert :ok = WardrikCore.resume(agent, %{"nope" => :approve})
     assert_receive {[:turn, :stop], %{agent_id: ^id, outcome: :park}}
@@ -777,7 +777,7 @@ defmodule WardrikCore.AgentTest do
 
     assert %{state: :idle, parked: nil, in_flight: [], messages: messages} = agent_state(agent)
     assert [:user, :assistant, :tool, :assistant] = Enum.map(messages, & &1.role)
-    assert nil == WardrikCore.parked(agent)
+    assert nil == WardrikCore.get_parked(agent)
   end
 
   test "a call the resumed turn still waits on is answered while the turn runs" do
@@ -803,12 +803,12 @@ defmodule WardrikCore.AgentTest do
     assert_receive {:tool_running, "1", tool}
 
     assert {:tool_calls, [{%{id: "2"}, {:park, %WardrikCore.Test.NeedsApproval{}}}]} =
-             WardrikCore.parked(agent)
+             WardrikCore.get_parked(agent)
 
     assert :ok = WardrikCore.resume(agent, %{"2" => {:deny, "Not now."}}, %{by: "maria"})
     assert {:error, :not_parked} = WardrikCore.resume(agent, %{"1" => :approve})
     assert {:error, :not_parked} = WardrikCore.resume(agent, %{"2" => :approve})
-    assert {:tool_calls, []} = WardrikCore.parked(agent)
+    assert {:tool_calls, []} = WardrikCore.get_parked(agent)
 
     send(tool, :release)
     assert_receive {[:turn, :stop], %{agent_id: ^id, kind: :resume, outcome: :park}}

@@ -22,14 +22,14 @@ defmodule Wardrik.Operations.Lifecycle do
     definition =
       input
       |> Map.delete("agent")
-      |> Definition.named()
+      |> Definition.name_triggers()
 
-    with :ok <- bounded(wardrik, id, scope.policy),
-         :ok <- written_after(wardrik, id, definition["policy"]),
+    with :ok <- put_boundary(wardrik, id, scope.policy),
+         :ok <- write_after(wardrik, id, definition["policy"]),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, id, definition),
          reset = Running.reset_unreadable(wardrik, id),
-         {:ok, reset} <- brought(wardrik, id, opts, reset),
-         :ok <- saved(wardrik, id, definition),
+         {:ok, reset} <- bring(wardrik, id, opts, reset),
+         :ok <- save(wardrik, id, definition),
          {:ok, snapshot} <- Agent.read(scope, %{"agent" => id}) do
       Sleeper.watch(wardrik, id)
       Changes.record(scope, type: "agent.defined", agent: id)
@@ -38,27 +38,27 @@ defmodule Wardrik.Operations.Lifecycle do
   end
 
   # A saved state only the agent can tell it can't read is found as it starts; start it over too.
-  defp brought(wardrik, id, opts, reset) do
+  defp bring(wardrik, id, opts, reset) do
     case Running.bring(wardrik, opts) do
       {:ok, _pid} ->
         {:ok, reset}
 
       {:error, %Error{type: :conflict}} = error ->
-        started_over(wardrik, id, opts, reset, error)
+        start_over(wardrik, id, opts, reset, error)
 
       error ->
         error
     end
   end
 
-  defp started_over(wardrik, id, opts, reset, error) do
+  defp start_over(wardrik, id, opts, reset, error) do
     case Running.reset_unreadable(wardrik, id) do
       [] -> error
       again -> with {:ok, _pid} <- Running.bring(wardrik, opts), do: {:ok, reset ++ again}
     end
   end
 
-  defp saved(wardrik, id, definition) do
+  defp save(wardrik, id, definition) do
     triggers = Map.get(definition, "triggers", [])
 
     with :ok <- Definitions.put(wardrik, id, definition),
@@ -92,9 +92,9 @@ defmodule Wardrik.Operations.Lifecycle do
   @doc "Stops the agent, and deletes its history, its conversations and its definition."
   @spec forget(Scope.t(), map()) :: {:ok, nil} | {:error, Error.t()}
   def forget(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
-    with :ok <- Snapshot.known(wardrik, {id, nil}),
-         :ok <- undeclared(wardrik, id),
-         :ok <- forgotten(wardrik, id) do
+    with :ok <- Snapshot.check_known(wardrik, {id, nil}),
+         :ok <- check_undeclared(wardrik, id),
+         :ok <- forget_agent(wardrik, id) do
       Changes.record(scope, type: "agent.forgotten", agent: id)
       {:ok, nil}
     end
@@ -116,8 +116,8 @@ defmodule Wardrik.Operations.Lifecycle do
   def stop(%Scope{wardrik: wardrik} = scope, input) do
     key = Running.key(input)
 
-    with :ok <- Snapshot.known(wardrik, key) do
-      stopped(scope, key, Running.whereis(wardrik, key))
+    with :ok <- Snapshot.check_known(wardrik, key) do
+      handle_stop(scope, key, Running.whereis(wardrik, key))
       {:ok, %{"agent" => asleep_now(Snapshot.summary(wardrik, key))}}
     end
   end
@@ -130,14 +130,14 @@ defmodule Wardrik.Operations.Lifecycle do
   def clear(%Scope{wardrik: wardrik} = scope, input) do
     {agent, conversation} = key = Running.key(input)
 
-    with :ok <- Snapshot.known(wardrik, key),
+    with :ok <- Snapshot.check_known(wardrik, key),
          :ok <- idle(wardrik, key),
          {:ok, definition} <- Running.definition(wardrik, agent),
          {:ok, opts} <- Wardrik.Resolution.resolve(wardrik, agent, definition),
          before = messages(wardrik, key),
          agents = Wardrik.agents(wardrik),
          :ok <- WardrikCore.delete(agents, key),
-         {:ok, _pid} <- Running.bring(wardrik, Running.held(opts, conversation)) do
+         {:ok, _pid} <- Running.bring(wardrik, Running.put_conversation(opts, conversation)) do
       subject = Wardrik.EventLog.CloudEvent.subject(agent)
       cleared = {"conversation.cleared", subject, %{"messages_before" => before}}
       events = Wardrik.events(wardrik)
@@ -163,7 +163,7 @@ defmodule Wardrik.Operations.Lifecycle do
             do: %{
               "id" => tool["call"]["id"],
               "name" => tool["name"],
-              "elapsed_ms" => elapsed(since, now)
+              "elapsed_ms" => measure_elapsed(since, now)
             }
 
       {:ok, %{"calls" => calls}}
@@ -193,9 +193,9 @@ defmodule Wardrik.Operations.Lifecycle do
   end
 
   @doc "Stops the agent and deletes all its data, including its conversations."
-  @spec forgotten(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
-  def forgotten(wardrik, id) do
-    with :ok <- deleted(wardrik, id),
+  @spec forget_agent(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
+  def forget_agent(wardrik, id) do
+    with :ok <- delete(wardrik, id),
          :ok <- Definitions.delete(wardrik, id),
          triggers = Wardrik.triggers(wardrik),
          :ok <- Wardrik.Triggers.put(triggers, id, []) do
@@ -206,17 +206,17 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  defp deleted(wardrik, id) do
+  defp delete(wardrik, id) do
     agents = Wardrik.agents(wardrik)
 
     deleted =
-      for key <- Enum.uniq([{id, nil} | Running.saved(wardrik, id)]),
+      for key <- Enum.uniq([{id, nil} | Running.list_saved_keys(wardrik, id)]),
           do: WardrikCore.delete(agents, key)
 
     Enum.find(deleted, :ok, &(&1 != :ok))
   end
 
-  defp written_after(wardrik, id, %{"allow_after" => _rules}) do
+  defp write_after(wardrik, id, %{"allow_after" => _rules}) do
     if Wardrik.Declarations.declared?(wardrik, id),
       do: :ok,
       else:
@@ -227,11 +227,11 @@ defmodule Wardrik.Operations.Lifecycle do
          )}
   end
 
-  defp written_after(_wardrik, _id, _policy), do: :ok
+  defp write_after(_wardrik, _id, _policy), do: :ok
 
   @doc "Returns `:ok`, or `conflict` if the agent `id` is declared."
-  @spec undeclared(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
-  def undeclared(wardrik, id) do
+  @spec check_undeclared(Wardrik.t(), String.t()) :: :ok | {:error, Error.t()}
+  def check_undeclared(wardrik, id) do
     if Wardrik.Declarations.declared?(wardrik, id),
       do:
         {:error,
@@ -242,12 +242,12 @@ defmodule Wardrik.Operations.Lifecycle do
       else: :ok
   end
 
-  defp bounded(_wardrik, _id, nil), do: :ok
-  defp bounded(wardrik, id, name), do: Definitions.put_boundary(wardrik, id, name)
+  defp put_boundary(_wardrik, _id, nil), do: :ok
+  defp put_boundary(wardrik, id, name), do: Definitions.put_boundary(wardrik, id, name)
 
-  defp stopped(_scope, _key, nil), do: :ok
+  defp handle_stop(_scope, _key, nil), do: :ok
 
-  defp stopped(scope, key, pid) do
+  defp handle_stop(scope, key, pid) do
     :ok = WardrikCore.stop(pid)
     Changes.record(scope, type: "agent.stopped", agent: key)
   end
@@ -273,7 +273,7 @@ defmodule Wardrik.Operations.Lifecycle do
     end
   end
 
-  defp elapsed(since, now) do
+  defp measure_elapsed(since, now) do
     {:ok, started, _offset} = DateTime.from_iso8601(since)
     max(DateTime.diff(now, started, :millisecond), 0)
   end

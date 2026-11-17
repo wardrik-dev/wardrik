@@ -18,9 +18,9 @@ defmodule WardrikDaemon.CLI.Decide do
     Context.puts(cx, ["\n", card(cx, interrupt, opts[:arguments])])
 
     case Owl.IO.input(
-           label: "Approve #{called(interrupt)}? [y/n, Enter leaves it]",
+           label: "Approve #{call(interrupt)}? [y/n, Enter leaves it]",
            optional: true,
-           cast: &answered/1
+           cast: &answer/1
          ) do
       :leave -> false
       :approve -> decided?(cx, interrupt, "agent.approve", Keyword.fetch!(opts, :log), %{})
@@ -48,9 +48,9 @@ defmodule WardrikDaemon.CLI.Decide do
     end
   end
 
-  defp answered(nil), do: {:ok, :leave}
+  defp answer(nil), do: {:ok, :leave}
 
-  defp answered(answer) do
+  defp answer(answer) do
     case String.downcase(answer) do
       yes when yes in ~w(y yes) -> {:ok, :approve}
       no when no in ~w(n no) -> {:ok, :deny}
@@ -81,8 +81,8 @@ defmodule WardrikDaemon.CLI.Decide do
     end
   end
 
-  defp called(%{"name" => name}), do: name
-  defp called(_interrupt), do: "the model call"
+  defp call(%{"name" => name}), do: name
+  defp call(_interrupt), do: "the model call"
 
   defp card(cx, interrupt, arguments) do
     arguments =
@@ -95,11 +95,11 @@ defmodule WardrikDaemon.CLI.Decide do
           [Owl.Data.tag(pretty, :light_black)]
       end
 
-    [why(interrupt, arguments), held(interrupt), arguments]
+    [why(interrupt, arguments), hold(interrupt), arguments]
     |> Enum.reject(&(&1 == []))
     |> Enum.intersperse("\n\n")
     |> Owl.Box.new(
-      title: [" ", called(interrupt), " "],
+      title: [" ", call(interrupt), " "],
       border_style: :solid_rounded,
       border_tag: :yellow,
       padding_x: 1,
@@ -113,10 +113,10 @@ defmodule WardrikDaemon.CLI.Decide do
   defp why(%{"reason" => "tool_approval"}, [_shown | _arguments]), do: []
   defp why(interrupt, _arguments), do: interrupt["message"]
 
-  defp held(%{"labels" => [_label | _labels]}),
+  defp hold(%{"labels" => [_label | _labels]}),
     do: Owl.Data.tag("It follows content from outside.", :yellow)
 
-  defp held(_interrupt), do: []
+  defp hold(_interrupt), do: []
 
   defp pretty(arguments) do
     arguments

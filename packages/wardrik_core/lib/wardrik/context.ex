@@ -189,20 +189,20 @@ defmodule Wardrik.Context do
   Adds each of `measurements` that an event of their own already reports, such as those
   `WardrikCore.evaluate/2` returns.
 
-      context = Wardrik.Context.reported(context, measurements)
+      context = Wardrik.Context.add_reported(context, measurements)
 
   Budgets and spending count them. The step's own event leaves them out, so nothing that sums
   events counts them twice.
   """
-  @spec reported(t(), map()) :: t()
-  def reported(%__MODULE__{} = context, measurements) do
+  @spec add_reported(t(), map()) :: t()
+  def add_reported(%__MODULE__{} = context, measurements) do
     already = for {key, as} <- @reported, amount = measurements[key], into: %{}, do: {as, amount}
     measure(context, Map.merge(measurements, already))
   end
 
-  @doc "Returns `measurements` less what an event of their own already reports. See `reported/2`."
-  @spec unreported(map()) :: map()
-  def unreported(measurements) do
+  @doc "Returns `measurements` less what an event of their own already reports. See `add_reported/2`."
+  @spec drop_reported(map()) :: map()
+  def drop_reported(measurements) do
     Enum.reduce(@reported, measurements, fn {key, as}, left ->
       case Map.pop(left, as) do
         {nil, left} -> left
@@ -220,11 +220,11 @@ defmodule Wardrik.Context do
     messages
     |> Enum.reverse()
     |> Enum.find(fn message -> message.role == :user end)
-    |> asked_by(principal)
+    |> ask_by(principal)
   end
 
-  defp asked_by(%{metadata: %{principal: %Wardrik.Principal{} = asked}}, _agent), do: asked
-  defp asked_by(_message, agent), do: agent
+  defp ask_by(%{metadata: %{principal: %Wardrik.Principal{} = asked}}, _agent), do: asked
+  defp ask_by(_message, agent), do: agent
 
   @doc """
   Returns the labels in the turn's messages, or in `messages`, sorted and unique.

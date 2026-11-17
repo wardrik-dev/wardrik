@@ -33,14 +33,14 @@ defmodule WardrikDaemon.Config.Harnesses do
   @doc "Returns the harnesses `section` names, as `WardrikACP` takes them, or the key that doesn't read."
   @spec read(map()) :: {:ok, keyword()} | {:error, String.t()}
   def read(section) do
-    Options.loaded([WardrikACP.Harness])
+    Options.load_modules([WardrikACP.Harness])
     Options.each(section, &harness/2)
   end
 
   @doc "Returns the checkouts `section` names, each as `WardrikACP.Checkout`'s options."
   @spec checkouts(map()) :: {:ok, keyword()} | {:error, String.t()}
   def checkouts(section) do
-    Options.loaded([WardrikACP.Checkout])
+    Options.load_modules([WardrikACP.Checkout])
     Options.each(section, &checkout/2)
   end
 
@@ -49,7 +49,8 @@ defmodule WardrikDaemon.Config.Harnesses do
 
     with {:ok, opts} <- Options.convert(harness, [], path),
          opts = Enum.map(opts, &option/1),
-         {:ok, _harness} <- Options.built(fn -> WardrikACP.Harness.new!(name, opts) end, path) do
+         {:ok, _harness} <-
+           Options.call_builder(fn -> WardrikACP.Harness.new!(name, opts) end, path) do
       {:ok, opts}
     end
   end
@@ -68,7 +69,8 @@ defmodule WardrikDaemon.Config.Harnesses do
     path = "checkouts.#{name}"
 
     with {:ok, opts} <- Options.convert(checkout, [], path),
-         {:ok, built} <- Options.built(fn -> WardrikACP.Checkout.new!(name, opts) end, path),
+         {:ok, built} <-
+           Options.call_builder(fn -> WardrikACP.Checkout.new!(name, opts) end, path),
          do: {:ok, [path: built.path, base: built.base, fetch: built.fetch]}
   end
 

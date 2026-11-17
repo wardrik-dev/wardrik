@@ -18,7 +18,7 @@ defmodule WardrikDaemon.CLI.Files do
         count: {1, :any},
         summary: "an agent's files, newest first",
         details: ["GLOB, as skills/**, lists only the paths it matches."],
-        run: &listed/3
+        run: &list/3
       },
       %Command{
         name: "agent files cat",
@@ -39,7 +39,7 @@ defmodule WardrikDaemon.CLI.Files do
           "Ranks its notes and digests by the words they share with WORDS, as search_memory does.",
           "--glob GLOB searches only the paths it matches. --limit N shows up to N, 5 unless set."
         ],
-        run: &searched/3
+        run: &search/3
       },
       %Command{
         name: "agent files put",
@@ -56,7 +56,7 @@ defmodule WardrikDaemon.CLI.Files do
         arguments: "AGENT PATH",
         count: 2,
         summary: "delete one of an agent's files",
-        run: &removed/3
+        run: &remove/3
       },
       %Command{
         name: "agent files sync",
@@ -71,18 +71,18 @@ defmodule WardrikDaemon.CLI.Files do
           "Files and directories whose names start with . are left out, and so are files that",
           "aren't text."
         ],
-        run: &synced/3
+        run: &sync_files/3
       }
     ]
   end
 
-  defp listed([agent], flags, cx), do: listed(agent, %{}, flags, cx)
-  defp listed([agent, glob], flags, cx), do: listed(agent, %{"glob" => glob}, flags, cx)
+  defp list([agent], flags, cx), do: list(agent, %{}, flags, cx)
+  defp list([agent, glob], flags, cx), do: list(agent, %{"glob" => glob}, flags, cx)
 
-  defp listed(_args, _flags, cx),
+  defp list(_args, _flags, cx),
     do: {:error, "Usage: #{cx.program} agent files ls AGENT [GLOB]"}
 
-  defp listed(agent, input, _flags, cx) do
+  defp list(agent, input, _flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
          {:ok, %{"files" => files} = answer} <-
            Context.call(cx, "agent.files", Map.put(input, "agent", id)) do
@@ -94,7 +94,7 @@ defmodule WardrikDaemon.CLI.Files do
     end
   end
 
-  defp searched([agent | words], flags, cx) do
+  defp search([agent | words], flags, cx) do
     fields = %{"query" => Enum.join(words, " "), "glob" => flags[:glob], "limit" => flags[:limit]}
     input = Map.reject(fields, fn {_key, value} -> is_nil(value) end)
 
@@ -129,8 +129,8 @@ defmodule WardrikDaemon.CLI.Files do
   defp put(agent, path, file, cx) do
     with {:ok, content} <- content(file),
          {:ok, id} <- Context.agent(cx, agent),
-         {:ok, answer} <- written(cx, id, path, content),
-         do: Context.done(cx, answer, "Wrote #{path}.")
+         {:ok, answer} <- write(cx, id, path, content),
+         do: Context.report_done(cx, answer, "Wrote #{path}.")
   end
 
   defp content("-"), do: text(IO.read(:stdio, :eof), "stdin")
@@ -146,19 +146,19 @@ defmodule WardrikDaemon.CLI.Files do
   defp text({:error, reason}, from),
     do: {:error, "#{from} can't be read: #{:file.format_error(reason)}."}
 
-  defp removed([agent, path], _flags, cx) do
+  defp remove([agent, path], _flags, cx) do
     with {:ok, id} <- Context.agent(cx, agent),
-         {:ok, answer} <- deleted(cx, id, path),
-         do: Context.done(cx, answer, "Deleted #{path}.")
+         {:ok, answer} <- delete(cx, id, path),
+         do: Context.report_done(cx, answer, "Deleted #{path}.")
   end
 
-  defp deleted(cx, id, path),
+  defp delete(cx, id, path),
     do: Context.call(cx, "agent.file_delete", %{"agent" => id, "path" => path})
 
-  defp written(cx, id, path, content),
+  defp write(cx, id, path, content),
     do: Context.call(cx, "agent.file_put", %{"agent" => id, "path" => path, "content" => content})
 
-  defp synced([agent, dir], flags, cx) do
+  defp sync_files([agent, dir], flags, cx) do
     prefix =
       flags
       |> Map.get(:to, "")
@@ -167,7 +167,7 @@ defmodule WardrikDaemon.CLI.Files do
     with :ok <- directory(dir),
          {:ok, id} <- Context.agent(cx, agent),
          {:ok, %{"files" => there}} <-
-           Context.call(cx, "agent.files", %{"agent" => id, "glob" => joined(prefix, "**")}) do
+           Context.call(cx, "agent.files", %{"agent" => id, "glob" => join(prefix, "**")}) do
       {local, skipped} = local(dir, prefix)
       there = Map.new(there, &{&1["path"], &1})
 
@@ -177,8 +177,8 @@ defmodule WardrikDaemon.CLI.Files do
         |> Enum.sort()
         |> Enum.split_with(&same?(cx, id, there[&1], local[&1]))
 
-      with {:ok, written} <- each(changed, &written(cx, id, &1, local[&1])),
-           {:ok, deleted} <- each(deleting(there, local, flags[:delete]), &deleted(cx, id, &1)) do
+      with {:ok, written} <- each(changed, &write(cx, id, &1, local[&1])),
+           {:ok, deleted} <- each(deleting(there, local, flags[:delete]), &delete(cx, id, &1)) do
         answer = %{
           "written" => written,
           "kept" => kept,
@@ -186,7 +186,7 @@ defmodule WardrikDaemon.CLI.Files do
           "skipped" => skipped
         }
 
-        Context.show(cx, answer, &said(cx, &1))
+        Context.show(cx, answer, &say(cx, &1))
       end
     end
   end
@@ -207,7 +207,7 @@ defmodule WardrikDaemon.CLI.Files do
       end)
       |> Enum.split_with(fn {_relative, content} -> String.valid?(content) end)
 
-    {Map.new(text, fn {relative, content} -> {joined(prefix, relative), content} end),
+    {Map.new(text, fn {relative, content} -> {join(prefix, relative), content} end),
      Enum.map(skipped, &elem(&1, 0))}
   end
 
@@ -217,14 +217,14 @@ defmodule WardrikDaemon.CLI.Files do
     |> File.ls!()
     |> Enum.reject(&String.starts_with?(&1, "."))
     |> Enum.flat_map(fn name ->
-      inner = joined(relative, name)
+      inner = join(relative, name)
       path = Path.join(dir, inner)
       if File.dir?(path), do: walk(dir, inner), else: [inner]
     end)
   end
 
-  defp joined("", name), do: name
-  defp joined(folder, name), do: folder <> "/" <> name
+  defp join("", name), do: name
+  defp join(folder, name), do: folder <> "/" <> name
 
   # Runs `run` on each path until one fails.
   defp each(paths, run) do
@@ -261,7 +261,7 @@ defmodule WardrikDaemon.CLI.Files do
     |> Enum.sort()
   end
 
-  defp said(cx, answer) do
+  defp say(cx, answer) do
     counts =
       "Wrote #{length(answer["written"])}, kept #{length(answer["kept"])}" <>
         if(answer["deleted"] == [], do: ".", else: ", deleted #{length(answer["deleted"])}.")

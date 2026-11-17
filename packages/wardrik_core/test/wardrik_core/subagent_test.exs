@@ -52,7 +52,7 @@ defmodule WardrikCore.SubagentTest do
     %{context: context}
   end
 
-  defp stuck(test) do
+  defp stick(test) do
     send(test, :stuck)
 
     receive do
@@ -60,13 +60,13 @@ defmodule WardrikCore.SubagentTest do
     end
   end
 
-  defp used(response, input, output),
+  defp put_usage(response, input, output),
     do: %{response | usage: %{input_tokens: input, output_tokens: output, total_cost: 0.01}}
 
   test "answers in a turn of its own, and says what it measured", %{context: context} do
     responses = [
-      used(calling([call("call_1", "echo", %{"text" => "x"})]), 10, 2),
-      used(answer("Found it."), 20, 4)
+      put_usage(calling([call("call_1", "echo", %{"text" => "x"})]), 10, 2),
+      put_usage(answer("Found it."), 20, 4)
     ]
 
     {:ok, queue} = Agent.start_link(fn -> responses end)
@@ -124,12 +124,12 @@ defmodule WardrikCore.SubagentTest do
     calls = :counters.new(1, [])
 
     stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, used(calling([call("call_1", "echo", %{"text" => "x"})]), 10, 2)}
+      {:ok, put_usage(calling([call("call_1", "echo", %{"text" => "x"})]), 10, 2)}
     end)
 
     stub(ReqLLM.StreamResponse, :process_stream, fn response, _opts ->
       :counters.add(calls, 1, 1)
-      if :counters.get(calls, 1) > 1, do: stuck(test)
+      if :counters.get(calls, 1) > 1, do: stick(test)
       {:ok, response}
     end)
 
@@ -144,7 +144,7 @@ defmodule WardrikCore.SubagentTest do
 
   test "fails where a call would wait on a person", %{context: context} do
     stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
-      {:ok, used(calling([call("call_1", "echo", %{"text" => "x"})]), 10, 2)}
+      {:ok, put_usage(calling([call("call_1", "echo", %{"text" => "x"})]), 10, 2)}
     end)
 
     context = %{context | middleware: [ParkTools]}

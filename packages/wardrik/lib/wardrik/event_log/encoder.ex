@@ -20,7 +20,7 @@ defmodule Wardrik.EventLog.Encoder do
     ]
 
     event
-    |> described()
+    |> describe()
     |> Enum.map(fn {type, subject, data} ->
       CloudEvent.new(type, [subject: subject, data: data] ++ opts)
     end)
@@ -28,7 +28,7 @@ defmodule Wardrik.EventLog.Encoder do
 
   def encode(%Event{}, _deployment), do: []
 
-  defp described(%Event{name: [:wardrik, noun, verb], metadata: metadata}) do
+  defp describe(%Event{name: [:wardrik, noun, verb], metadata: metadata}) do
     data =
       metadata
       |> Map.drop(@envelope)
@@ -37,8 +37,8 @@ defmodule Wardrik.EventLog.Encoder do
     [{"#{noun}.#{verb}", subject(noun, metadata), data}]
   end
 
-  defp described(%Event{name: [:wardrik_core | name]} = event), do: core(name, event)
-  defp described(_event), do: []
+  defp describe(%Event{name: [:wardrik_core | name]} = event), do: core(name, event)
+  defp describe(_event), do: []
 
   defp core([:agent, :start], %{metadata: metadata}) do
     [
@@ -78,14 +78,14 @@ defmodule Wardrik.EventLog.Encoder do
   defp core([:turn, :start], %{metadata: %{kind: :resume} = metadata}),
     do: [run("run.resumed", metadata, %{})]
 
-  defp core([:turn, :stop], event), do: [stopped(event.metadata.outcome, event)]
+  defp core([:turn, :stop], event), do: [stop(event.metadata.outcome, event)]
   defp core([:message, :delta], %{metadata: metadata}), do: [delta(metadata)]
 
   defp core([:message, :retrying], %{metadata: metadata}),
-    do: [about_message("message.retrying", metadata.span, retried(metadata))]
+    do: [about_message("message.retrying", metadata.span, retry(metadata))]
 
   defp core([:tool_call, :retrying], %{metadata: %{call: call} = metadata}) do
-    retried = retried(metadata)
+    retried = retry(metadata)
     [{"tool_call.retrying", "tool_calls/" <> call.id, Map.put(retried, "tool", tool(call))}]
   end
 
@@ -96,7 +96,7 @@ defmodule Wardrik.EventLog.Encoder do
   defp core([:tool_call, :exit], %{metadata: %{call: call, reason: reason}}),
     do: [
       {"tool_call.completed", "tool_calls/" <> call.id,
-       error_status(%{"tool" => tool(call), "replayed" => false}, exited(reason))}
+       error_status(%{"tool" => tool(call), "replayed" => false}, describe_exit(reason))}
     ]
 
   defp core([:subagent, :started], %{metadata: metadata}),
@@ -145,16 +145,16 @@ defmodule Wardrik.EventLog.Encoder do
       {type, CloudEvent.subject(metadata.agent_id),
        Map.put(data, "agent", %{"name" => metadata.agent.name})}
 
-  defp stopped(:ok, %{metadata: metadata}),
+  defp stop(:ok, %{metadata: metadata}),
     do:
       run("run.completed", metadata, %{
         "messages" => Enum.map(metadata.messages, &Value.message/1)
       })
 
-  defp stopped(:park, %{metadata: metadata}),
+  defp stop(:park, %{metadata: metadata}),
     do: run("run.interrupted", metadata, %{"interrupts" => interrupts(metadata.reason)})
 
-  defp stopped(:interrupted, event) do
+  defp stop(:interrupted, event) do
     run("run.cancelled", event.metadata, %{
       "dropped" => event.metadata.dropped,
       "kept" => event.metadata.kept,
@@ -163,19 +163,19 @@ defmodule Wardrik.EventLog.Encoder do
     })
   end
 
-  defp stopped(:timeout, %{metadata: metadata}),
+  defp stop(:timeout, %{metadata: metadata}),
     do: run("run.deadline_exceeded", metadata, %{"message_count" => metadata.kept})
 
-  defp stopped(:crash, %{metadata: metadata}),
+  defp stop(:crash, %{metadata: metadata}),
     do: run("run.failed", metadata, %{"error" => Value.error(:crash)})
 
-  defp stopped(:error, %{metadata: metadata}),
+  defp stop(:error, %{metadata: metadata}),
     do: run("run.failed", metadata, %{"error" => Value.error(metadata.reason)})
 
   defp run(type, %{span: %Span{trace: trace}}, data, run \\ %{}),
     do: {type, "runs/" <> trace, Map.put(data, "run", Map.put(run, "id", trace))}
 
-  defp retried(metadata) do
+  defp retry(metadata) do
     %{
       "attempt" => metadata.attempt,
       "attempts" => metadata.attempts,
@@ -220,7 +220,7 @@ defmodule Wardrik.EventLog.Encoder do
       |> status(metadata)
       |> Value.put("response", response(metadata[:response]))
       |> Value.put("usage", Value.usage(measurements))
-      |> priced(metadata, measurements)
+      |> add_cost(metadata, measurements)
 
     [{"message.completed", "messages/" <> id, data}]
   end
@@ -248,7 +248,7 @@ defmodule Wardrik.EventLog.Encoder do
       |> status(metadata)
       |> Value.put("answers", answers(metadata[:response]))
       |> Value.put("usage", Value.usage(measurements))
-      |> judged_cost(metadata, measurements)
+      |> judge_cost(metadata, measurements)
 
     [{"evaluation.completed", "evaluations/" <> metadata.span.id, data}]
   end
@@ -271,7 +271,7 @@ defmodule Wardrik.EventLog.Encoder do
 
   defp interrupt(reason, call) do
     {kind, message} = interruption(reason)
-    decided = decided(reason, call)
+    decided = decide(reason, call)
 
     %{"id" => (call && call.id) || "model", "reason" => kind, "message" => message}
     |> Value.put("tool_call_id", call && call.id)
@@ -282,8 +282,8 @@ defmodule Wardrik.EventLog.Encoder do
 
   # The call a person decides on: the one a policy asked about, which may be made inside the call
   # that parked, such as a coding agent's request.
-  defp decided(%{call: %{name: _name} = decided}, _call), do: decided
-  defp decided(_reason, call), do: call
+  defp decide(%{call: %{name: _name} = decided}, _call), do: decided
+  defp decide(_reason, call), do: call
 
   defp labels(%{labels: [_ | _] = labels}), do: labels
   defp labels(_reason), do: nil
@@ -321,28 +321,28 @@ defmodule Wardrik.EventLog.Encoder do
 
   defp tool_call(call, response) do
     %{"id" => call.id}
-    |> Value.capped("arguments", call.arguments)
+    |> Value.put_capped("arguments", call.arguments)
     |> result(response)
   end
 
-  defp priced(data, %{response: %ReqLLM.Response{}}, measurements),
+  defp add_cost(data, %{response: %ReqLLM.Response{}}, measurements),
     do: Map.put(data, "cost", Value.cost(measurements, "catalog"))
 
-  defp priced(data, _unanswered, _measurements), do: data
+  defp add_cost(data, _unanswered, _measurements), do: data
 
   # Like a model call's: null on an answered call nobody prices, which isn't the same as free.
-  defp judged_cost(data, %{status: :ok}, measurements),
+  defp judge_cost(data, %{status: :ok}, measurements),
     do: Map.put(data, "cost", Value.cost(measurements, "catalog"))
 
-  defp judged_cost(data, _failed, _measurements), do: data
+  defp judge_cost(data, _failed, _measurements), do: data
 
   defp answers({:ok, answers}) when is_map(answers), do: Value.json(answers)
   defp answers(_none), do: nil
 
   defp result(tool_call, {:ok, %ReqLLM.ToolResult{output: output}}),
-    do: Value.capped(tool_call, "result", output)
+    do: Value.put_capped(tool_call, "result", output)
 
-  defp result(tool_call, {:ok, answer}), do: Value.capped(tool_call, "result", answer)
+  defp result(tool_call, {:ok, answer}), do: Value.put_capped(tool_call, "result", answer)
   defp result(tool_call, _no_answer), do: tool_call
 
   defp tool_status(data, {:ok, _answer}, _metadata), do: Map.put(data, "status", "ok")
@@ -358,8 +358,8 @@ defmodule Wardrik.EventLog.Encoder do
     |> Map.put("error", Value.error(reason))
   end
 
-  defp exited(:killed), do: "The call was stopped before it finished."
-  defp exited(reason), do: {:exit, reason}
+  defp describe_exit(:killed), do: "The call was stopped before it finished."
+  defp describe_exit(reason), do: {:exit, reason}
 
   defp agent_status(:waiting), do: "parked"
   defp agent_status(:idle), do: "idle"

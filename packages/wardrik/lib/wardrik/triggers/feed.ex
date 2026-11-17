@@ -43,8 +43,8 @@ defmodule Wardrik.Triggers.Feed do
 
   The updated `seen` keeps the newest #{@remembered} ids.
   """
-  @spec unseen([entry()], [String.t()]) :: {[entry()], [String.t()]}
-  def unseen(entries, seen) do
+  @spec filter_unseen([entry()], [String.t()]) :: {[entry()], [String.t()]}
+  def filter_unseen(entries, seen) do
     known = MapSet.new(seen)
 
     new =
@@ -60,7 +60,7 @@ defmodule Wardrik.Triggers.Feed do
   def prompt(prompt, entries) do
     {shown, rest} = Enum.split(entries, @shown)
     more = if rest == [], do: [], else: ["And #{length(rest)} more."]
-    Enum.join([prompt | Enum.map(shown, &described/1)] ++ more, "\n\n")
+    Enum.join([prompt | Enum.map(shown, &describe/1)] ++ more, "\n\n")
   end
 
   @impl Saxy.Handler
@@ -84,21 +84,21 @@ defmodule Wardrik.Triggers.Feed do
   def handle_event(:cdata, text, state), do: handle_event(:characters, text, state)
 
   def handle_event(:end_element, name, %{entry: %{} = entry} = state) when name in @entries,
-    do: {:ok, %{state | entries: [identified(entry) | state.entries], entry: nil, field: nil}}
+    do: {:ok, %{state | entries: [identify(entry) | state.entries], entry: nil, field: nil}}
 
   def handle_event(:end_element, _name, state), do: {:ok, %{state | field: nil}}
   def handle_event(:end_document, _data, state), do: {:ok, Enum.reverse(state.entries)}
   def handle_event(_event, _data, state), do: {:ok, state}
 
-  defp identified(entry) do
-    entry = Map.new(entry, fn {key, value} -> {key, trimmed(value)} end)
+  defp identify(entry) do
+    entry = Map.new(entry, fn {key, value} -> {key, trim(value)} end)
     %{entry | id: entry.id || entry.link || entry.title}
   end
 
-  defp trimmed(nil), do: nil
-  defp trimmed(text), do: String.trim(text)
+  defp trim(nil), do: nil
+  defp trim(text), do: String.trim(text)
 
-  defp described(entry) do
+  defp describe(entry) do
     [
       entry.title,
       entry.link,

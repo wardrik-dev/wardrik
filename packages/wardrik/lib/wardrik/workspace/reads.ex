@@ -17,13 +17,13 @@ defmodule Wardrik.Workspace.Reads do
   @doc "Reads a file's lines, numbered from 1, with its version."
   @spec read_file(Spec.t(), map()) :: {:ok, map()}
   def read_file(spec, args) do
-    with {:ok, mount, path} <- resolved(spec, args[:path]),
-         {:ok, file, version} <- found(spec, mount, path) do
+    with {:ok, mount, path} <- resolve_path(spec, args[:path]),
+         {:ok, file, version} <- find_file(spec, mount, path) do
       lines = String.split(file.content, "\n")
       offset = args[:offset] || 1
       {shown, next} = window(lines, offset, min(args[:limit] || @max_lines, @max_lines))
 
-      File.labelled(
+      File.label_answer(
         %{
           ok: true,
           path: args[:path],
@@ -54,7 +54,7 @@ defmodule Wardrik.Workspace.Reads do
       for {path, file} <- shown,
           do: %{path: path, bytes: byte_size(file.content), at: file.at, by: file.by}
 
-    File.labelled(
+    File.label_answer(
       %{ok: true, files: listed, more: max(length(files) - @max_listed, 0)},
       Enum.map(shown, fn {_path, file} -> file end)
     )
@@ -65,10 +65,10 @@ defmodule Wardrik.Workspace.Reads do
   def search_files(spec, args) do
     case Regex.compile(args[:pattern] || "", "u") do
       {:ok, regex} ->
-        searched(spec, regex, args[:glob] || "**", min(args[:context] || 0, @max_context))
+        search(spec, regex, args[:glob] || "**", min(args[:context] || 0, @max_context))
 
       {:error, {why, _at}} ->
-        Tools.failed(:bad_pattern, "#{args[:pattern]} isn't a regular expression: #{why}")
+        Tools.build_failure(:bad_pattern, "#{args[:pattern]} isn't a regular expression: #{why}")
     end
   end
 
@@ -80,17 +80,17 @@ defmodule Wardrik.Workspace.Reads do
 
     case Search.search(files, query, limit: Map.get(args, "limit", 5)) do
       {:ok, hits} ->
-        File.labelled(
+        File.label_answer(
           %{ok: true, hits: Enum.map(hits, &Search.json/1)},
           Enum.map(hits, & &1.file)
         )
 
       {:error, why} ->
-        Tools.failed(:bad_query, why)
+        Tools.build_failure(:bad_query, why)
     end
   end
 
-  defp searched(spec, regex, glob, around) do
+  defp search(spec, regex, glob, around) do
     matches =
       for {path, file} <- all(spec),
           Path.match?(glob, path),
@@ -99,7 +99,7 @@ defmodule Wardrik.Workspace.Reads do
 
     shown = Enum.take(matches, @max_matches)
 
-    File.labelled(
+    File.label_answer(
       %{
         ok: true,
         matches: Enum.map(shown, fn {match, _file} -> match end),
@@ -129,7 +129,7 @@ defmodule Wardrik.Workspace.Reads do
   defp all(spec) do
     for mount <- Spec.mounts(spec),
         {path, file, _version} <- Files.list(spec.store, mount.tree),
-        do: {Spec.shown(mount, path), file}
+        do: {Spec.format_path(mount, path), file}
   end
 
   defp window(lines, offset, limit) do
@@ -159,24 +159,24 @@ defmodule Wardrik.Workspace.Reads do
   end
 
   @doc false
-  @spec resolved(Spec.t(), term()) ::
+  @spec resolve_path(Spec.t(), term()) ::
           {:ok, Wardrik.Workspace.Mount.t(), String.t()} | {:ok, map()}
-  def resolved(spec, path) do
+  def resolve_path(spec, path) do
     case Spec.resolve(spec, path) do
       {:ok, mount, path} -> {:ok, mount, path}
-      {:error, why} -> Tools.failed(:bad_path, why)
+      {:error, why} -> Tools.build_failure(:bad_path, why)
     end
   end
 
-  defp found(spec, mount, path) do
+  defp find_file(spec, mount, path) do
     case Files.read(spec.store, tree: mount.tree, path: path) do
       {:ok, file, version} ->
         {:ok, file, version}
 
       :none ->
-        Tools.failed(
+        Tools.build_failure(
           :not_found,
-          "#{Spec.shown(mount, path)} isn't there; list_files shows what is"
+          "#{Spec.format_path(mount, path)} isn't there; list_files shows what is"
         )
     end
   end

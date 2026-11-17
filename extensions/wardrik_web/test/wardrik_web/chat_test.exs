@@ -14,7 +14,7 @@ defmodule WardrikWeb.ChatTest do
 
   defp last(id),
     do:
-      Enum.reduce(Server.asked(), nil, fn {asked, input}, last ->
+      Enum.reduce(Server.list_asks(), nil, fn {asked, input}, last ->
         if(asked == id, do: input, else: last)
       end)
 

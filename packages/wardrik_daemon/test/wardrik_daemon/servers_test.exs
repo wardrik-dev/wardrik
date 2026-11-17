@@ -63,7 +63,7 @@ defmodule WardrikDaemon.ServersTest do
     do: Client.run(client, "servers.remove", %{"owner" => owner, "name" => name})
 
   defp servers(context, id) do
-    request = %Request{agent: recorded(context, id)}
+    request = %Request{agent: ensure_record(context, id)}
     {:ok, resolved} = Wardrik.Resolver.resolve(context.running, request)
     resolved.servers
   end
@@ -196,10 +196,10 @@ defmodule WardrikDaemon.ServersTest do
     assert {:error, "invalid_request", _message} = remove(admin, "deployment", "search")
   end
 
-  defp chosen(context, id, name) do
+  defp choose(context, id, name) do
     context.daemon.wardrik
     |> Wardrik.Instance.fetch!()
-    |> Wardrik.OAuth.Apps.chosen(%Wardrik.Principal{id: id}, name)
+    |> Wardrik.OAuth.Apps.choose(%Wardrik.Principal{id: id}, name)
   end
 
   test "signs in with the server's own app, made for it, and forgets it as it's removed",
@@ -219,7 +219,7 @@ defmodule WardrikDaemon.ServersTest do
     assert "https://crm-auth.test/authorize?" <> query = url
     assert %{"client_id" => "growth-app", "scope" => "read"} = URI.decode_query(query)
 
-    assert %{owner: "growth"} = chosen(context, "growth/@cy", "server:crm")
+    assert %{owner: "growth"} = choose(context, "growth/@cy", "server:crm")
 
     assert {:ok, %{"providers" => []}} =
              Client.run(admin, "providers.list", %{"owner" => "growth"})
@@ -230,7 +230,7 @@ defmodule WardrikDaemon.ServersTest do
              Client.run(cy, "connections.list", %{})
 
     assert {:ok, %{"auth" => "oauth"}} = remove(admin, "growth", "crm")
-    assert chosen(context, "growth/@cy", "server:crm") == nil
+    assert choose(context, "growth/@cy", "server:crm") == nil
     assert {:ok, %{"connections" => []}} = Client.run(cy, "connections.list", %{})
   end
 

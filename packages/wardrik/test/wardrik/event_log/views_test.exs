@@ -131,7 +131,7 @@ defmodule Wardrik.EventLog.ViewsTest do
         )
 
       assert Timeline.items(timeline) == []
-      assert Timeline.touched(timeline) == :reset
+      assert Timeline.list_touched(timeline) == :reset
       assert Timeline.current_run(timeline) == nil
     end
 
@@ -284,7 +284,7 @@ defmodule Wardrik.EventLog.ViewsTest do
                %{type: :tool, status: :denied, error: "not allowed"}
              ] = run.steps
 
-      assert Timeline.touched(timeline) == ["run-" <> @run]
+      assert Timeline.list_touched(timeline) == ["run-" <> @run]
     end
 
     test "waits on a person, and runs on once they answer" do
@@ -332,7 +332,7 @@ defmodule Wardrik.EventLog.ViewsTest do
                Timeline.items(timeline)
 
       assert String.length(error) == 301
-      assert Timeline.touched(timeline) == []
+      assert Timeline.list_touched(timeline) == []
     end
   end
 

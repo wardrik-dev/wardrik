@@ -35,7 +35,7 @@ defmodule Wardrik.Chat do
           event = JSON.decode!(body)
 
           with {:ok, workspace} <- Wardrik.Chat.workspace(channel, event["team"]) do
-            Wardrik.Chat.received(workspace, %Wardrik.Chat.Inbound{
+            Wardrik.Chat.answer_inbound(workspace, %Wardrik.Chat.Inbound{
               room: event["room"],
               id: event["id"],
               sender: %Wardrik.Chat.Member{id: event["user"]},
@@ -87,13 +87,13 @@ defmodule Wardrik.Chat do
   Finishes adding the chat app from the redirect's `query`. Returns the installation and where
   to send the person next.
   """
-  @callback installed(Wardrik.Chat.Install.t(), Channel.t()) ::
+  @callback complete_install(Wardrik.Chat.Install.t(), Channel.t()) ::
               {:ok, Installation.t(), String.t() | nil} | {:error, String.t()}
 
   @doc "Removes the chat app from `workspace`, where the chat app allows it."
   @callback uninstall(workspace :: String.t(), Channel.t()) :: :ok | {:error, String.t()}
 
-  @optional_callbacks install_url: 2, installed: 2, uninstall: 2
+  @optional_callbacks install_url: 2, complete_install: 2, uninstall: 2
 
   defmacro __using__(_opts) do
     quote do
@@ -163,9 +163,9 @@ defmodule Wardrik.Chat do
     * `:ignored` - no agent answers it.
     * `{:error, message}` - to tell the sender, such as when your app doesn't know them.
   """
-  @spec received(Workspace.t(), Inbound.t()) ::
+  @spec answer_inbound(Workspace.t(), Inbound.t()) ::
           {:asked, {String.t(), String.t()}} | :ignored | {:error, String.t()}
-  def received(%Workspace{} = workspace, %Inbound{} = inbound) do
+  def answer_inbound(%Workspace{} = workspace, %Inbound{} = inbound) do
     thread = inbound.thread || inbound.id
 
     with %Binding{} = binding <- Rooms.get(workspace, inbound.room),
@@ -228,25 +228,26 @@ defmodule Wardrik.Chat do
   @spec decide(Workspace.t(), Answer.t()) :: {:ok, Wardrik.Decision.t()} | {:error, String.t()}
   def decide(workspace, %Answer{decision: decision} = answer) do
     with {:ok, scope} <- Workspace.deciding_scope(workspace, answer),
-         do: decided(workspace, answered(scope, answer, decision))
+         do: handle_decide(workspace, answer(scope, answer, decision))
   end
 
   defp call(%Answer{agent: agent, interrupt: interrupt, conversation: conversation}),
-    do: [agent: agent, interrupt: interrupt] ++ given(:conversation, conversation)
+    do: [agent: agent, interrupt: interrupt] ++ give(:conversation, conversation)
 
-  defp decided(_workspace, {:ok, [decision]}), do: {:ok, decision}
+  defp handle_decide(_workspace, {:ok, [decision]}), do: {:ok, decision}
 
-  defp decided(workspace, {:error, %Error{type: type}}) when type in [:forbidden, :not_found],
-    do: {:error, workspace.channel.deciding}
+  defp handle_decide(workspace, {:error, %Error{type: type}})
+       when type in [:forbidden, :not_found],
+       do: {:error, workspace.channel.deciding}
 
-  defp decided(_workspace, {:error, %Error{message: message}}), do: {:error, message}
+  defp handle_decide(_workspace, {:error, %Error{message: message}}), do: {:error, message}
 
-  defp answered(scope, answer, {:approve, note}),
-    do: Wardrik.Agent.approve(scope, call(answer) ++ given(:note, note))
+  defp answer(scope, answer, {:approve, note}),
+    do: Wardrik.Agent.approve(scope, call(answer) ++ give(:note, note))
 
-  defp answered(scope, answer, {:deny, reason}),
-    do: Wardrik.Agent.deny(scope, call(answer) ++ given(:reason, reason))
+  defp answer(scope, answer, {:deny, reason}),
+    do: Wardrik.Agent.deny(scope, call(answer) ++ give(:reason, reason))
 
-  defp given(_key, nil), do: []
-  defp given(key, value), do: [{key, value}]
+  defp give(_key, nil), do: []
+  defp give(key, value), do: [{key, value}]
 end

@@ -106,7 +106,7 @@ defmodule WardrikDaemon.Config.Access do
   @spec read(term(), term(), [String.t()], String.t() | nil) :: {:ok, t()} | {:error, String.t()}
   def read(roles, bindings, orgs, home \\ nil) do
     with {:ok, roles} <- roles(roles),
-         :ok <- reserved(roles),
+         :ok <- reserve(roles),
          roles =
            roles
            |> Map.put_new("operator", [@everything])
@@ -122,7 +122,7 @@ defmodule WardrikDaemon.Config.Access do
   def subject("user:" <> id = subject) do
     if id == @admin or Owners.user?(id),
       do: {:ok, subject},
-      else: unknown(subject)
+      else: reject_subject(subject)
   end
 
   def subject("group:" <> name = subject) when name != "", do: {:ok, subject}
@@ -130,16 +130,16 @@ defmodule WardrikDaemon.Config.Access do
   def subject("agent:" <> _name = subject) do
     case AgentRecords.subject(subject) do
       {:ok, _name} -> {:ok, subject}
-      :error -> unknown(subject)
+      :error -> reject_subject(subject)
     end
   end
 
-  def subject(other), do: unknown(other)
+  def subject(other), do: reject_subject(other)
 
-  defp unknown(subject),
+  defp reject_subject(subject),
     do: {:error, "#{inspect(subject)} isn't user:ORG/@PERSON, group:NAME or agent:NAME"}
 
-  defp reserved(roles) do
+  defp reserve(roles) do
     if Map.has_key?(roles, @admin),
       do:
         {:error, "roles.#{@admin}: is the deployment admin's own role, so it can't be declared"},
@@ -154,7 +154,7 @@ defmodule WardrikDaemon.Config.Access do
     path = "roles.#{name}"
 
     with {:ok, opts} <- Options.validate(role, @role, path),
-         do: indexed(opts[:rules], "#{path}.rules", &rule/2)
+         do: index_items(opts[:rules], "#{path}.rules", &rule/2)
   end
 
   defp rule(rule, path) do
@@ -163,7 +163,7 @@ defmodule WardrikDaemon.Config.Access do
   end
 
   defp bindings(bindings, roles, orgs),
-    do: indexed(bindings, "bindings", &binding(&1, &2, {roles, orgs}))
+    do: index_items(bindings, "bindings", &binding(&1, &2, {roles, orgs}))
 
   defp binding(binding, path, {roles, orgs}) do
     with {:ok, opts} <- Options.validate(binding, @binding, path) do
@@ -183,7 +183,7 @@ defmodule WardrikDaemon.Config.Access do
     end
   end
 
-  defp indexed(items, path, read) do
+  defp index_items(items, path, read) do
     with {:ok, read} <-
            items
            |> Enum.with_index()

@@ -84,7 +84,7 @@ defmodule Wardrik.Triggers.Trigger do
   def decode(fields, index \\ 1)
 
   def decode(fields, index) when is_map(fields) do
-    with :ok <- known(fields),
+    with :ok <- know(fields),
          {:ok, name} <- name(Map.get(fields, "name", "trigger-#{index}")),
          {:ok, webhook} <- webhook(fields["webhook"]),
          {:ok, clock} <- clock(fields["every"], fields["at"], webhook),
@@ -93,7 +93,7 @@ defmodule Wardrik.Triggers.Trigger do
          {:ok, overlap} <- choice(fields, "overlap", @overlaps, default_overlap(clock, webhook)),
          {:ok, missed} <- choice(fields, "missed", @missed, :run_once),
          {:ok, feeds} <- feeds(Map.get(fields, "feed", [])),
-         :ok <- fed(feeds, clock),
+         :ok <- feed(feeds, clock),
          :ok <- ask_in(fields["ask_in"]) do
       {:ok,
        %__MODULE__{
@@ -137,7 +137,7 @@ defmodule Wardrik.Triggers.Trigger do
     Map.reject(fields, fn {_key, value} -> is_nil(value) end)
   end
 
-  defp known(fields) do
+  defp know(fields) do
     case Map.keys(fields) -- @keys do
       [] -> :ok
       [key | _rest] -> {:error, "#{key} is not a setting of a trigger"}
@@ -198,13 +198,13 @@ defmodule Wardrik.Triggers.Trigger do
   defp choice(fields, key, choices, default) do
     case Map.fetch(fields, key) do
       :error -> {:ok, default}
-      {:ok, value} -> chosen(Map.fetch(choices, value), key, choices)
+      {:ok, value} -> choose(Map.fetch(choices, value), key, choices)
     end
   end
 
-  defp chosen({:ok, atom}, _key, _choices), do: {:ok, atom}
+  defp choose({:ok, atom}, _key, _choices), do: {:ok, atom}
 
-  defp chosen(:error, key, choices),
+  defp choose(:error, key, choices),
     do: {:error, "#{key} is one of #{Enum.map_join(choices, ", ", fn {name, _atom} -> name end)}"}
 
   defp feeds(url) when is_binary(url), do: {:ok, [url]}
@@ -217,8 +217,8 @@ defmodule Wardrik.Triggers.Trigger do
 
   defp feeds(_urls), do: {:error, "a feed is a URL, or a list of them"}
 
-  defp fed([_ | _], {:at, _at}), do: {:error, "a trigger with at has no feed"}
-  defp fed(_feeds, _clock), do: :ok
+  defp feed([_ | _], {:at, _at}), do: {:error, "a trigger with at has no feed"}
+  defp feed(_feeds, _clock), do: :ok
 
   defp webhook_json(nil), do: nil
 

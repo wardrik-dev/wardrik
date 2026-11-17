@@ -74,7 +74,7 @@ defmodule Wardrik.Workers do
       |> Instance.fetch!()
 
     wardrik
-    |> offered(id)
+    |> handle_offer(id)
     |> Enum.group_by(fn offer -> offer.tool["name"] end)
     |> Enum.map(fn {name, offers} -> tool(wardrik, name, offers) end)
   end
@@ -88,7 +88,7 @@ defmodule Wardrik.Workers do
       [
         %{
           "name" => name,
-          "description" => described(tool["description"], tool["title"], name),
+          "description" => describe(tool["description"], tool["title"], name),
           "inputSchema" => schema,
           "annotations" => hints(tool["annotations"])
         }
@@ -111,9 +111,9 @@ defmodule Wardrik.Workers do
 
   defp schema(_schema), do: :error
 
-  defp described(description, _title, _name) when is_binary(description), do: description
-  defp described(_description, title, _name) when is_binary(title), do: title
-  defp described(_description, _title, name), do: name
+  defp describe(description, _title, _name) when is_binary(description), do: description
+  defp describe(_description, title, _name) when is_binary(title), do: title
+  defp describe(_description, _title, name), do: name
 
   defp hints(%{} = annotations),
     do: Map.filter(annotations, fn {hint, holds} -> hint in @hints and is_boolean(holds) end)
@@ -129,7 +129,7 @@ defmodule Wardrik.Workers do
     end
   end
 
-  defp offered(wardrik, id) do
+  defp handle_offer(wardrik, id) do
     group = group(wardrik)
 
     offers =
@@ -191,7 +191,8 @@ defmodule Wardrik.Workers do
 
   defp call(instance, name, arguments, %Context{agent_id: id} = context, repeatable) do
     offers =
-      for %{tool: %{"name" => ^name}} = offer <- offered(Instance.fetch!(instance), id), do: offer
+      for %{tool: %{"name" => ^name}} = offer <- handle_offer(Instance.fetch!(instance), id),
+          do: offer
 
     case offers do
       [] ->
@@ -202,13 +203,13 @@ defmodule Wardrik.Workers do
         |> Enum.random()
         |> Map.fetch!(:worker)
         |> ask(name, arguments, context)
-        |> lost(repeatable)
+        |> lose(repeatable)
     end
   end
 
-  defp lost({:lost, message}, true), do: raise(LostError, message)
-  defp lost({:lost, _message}, false), do: {:park, :in_doubt}
-  defp lost(answer, _repeatable), do: answer
+  defp lose({:lost, message}, true), do: raise(LostError, message)
+  defp lose({:lost, _message}, false), do: {:park, :in_doubt}
+  defp lose(answer, _repeatable), do: answer
 
   defp ask(worker, name, arguments, context) do
     ref = Process.monitor(worker)
@@ -217,7 +218,7 @@ defmodule Wardrik.Workers do
     receive do
       {^ref, response} ->
         Process.demonitor(ref, [:flush])
-        answered(response, context)
+        handle_answer(response, context)
 
       {:DOWN, ^ref, :process, _worker, :noproc} ->
         raise UnavailableError, "No worker offers #{name} now, so it didn't run."
@@ -248,26 +249,26 @@ defmodule Wardrik.Workers do
   defp principal(nil), do: %{}
   defp principal(%{id: id}), do: %{"principal" => id}
 
-  defp answered(%{"result" => %{"isError" => true} = result}, context),
-    do: {:error, text(result), measured(context, result)}
+  defp handle_answer(%{"result" => %{"isError" => true} = result}, context),
+    do: {:error, text(result), measure(context, result)}
 
-  defp answered(%{"result" => %{"structuredContent" => structured} = result}, context)
+  defp handle_answer(%{"result" => %{"structuredContent" => structured} = result}, context)
        when is_map(structured),
-       do: {:ok, structured, measured(context, result)}
+       do: {:ok, structured, measure(context, result)}
 
-  defp answered(%{"result" => %{} = result}, context),
-    do: {:ok, text(result), measured(context, result)}
+  defp handle_answer(%{"result" => %{} = result}, context),
+    do: {:ok, text(result), measure(context, result)}
 
-  defp answered(%{"error" => %{"message" => message}}, _context) when is_binary(message),
+  defp handle_answer(%{"error" => %{"message" => message}}, _context) when is_binary(message),
     do: {:error, message}
 
-  defp answered(_response, _context),
+  defp handle_answer(_response, _context),
     do: {:error, "The worker answered with neither a result nor an error."}
 
-  defp measured(context, %{"_meta" => %{"costUsd" => usd}}) when is_number(usd) and usd >= 0,
+  defp measure(context, %{"_meta" => %{"costUsd" => usd}}) when is_number(usd) and usd >= 0,
     do: Context.measure(context, :usd, usd)
 
-  defp measured(context, _result), do: context
+  defp measure(context, _result), do: context
 
   defp text(%{"content" => content}) when is_list(content),
     do: Enum.map_join(content, "\n", &part/1)

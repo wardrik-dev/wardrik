@@ -15,13 +15,13 @@ defmodule WardrikDaemon.Egress do
   def check(%Config{allow_private_urls: true}), do: &Wardrik.Egress.any/1
 
   def check(%Config{} = config) do
-    trusted = trusted(config.oauth)
+    trusted = build_trusted(config.oauth)
     fn url -> if host(url) in trusted, do: :ok, else: Wardrik.Egress.public(url) end
   end
 
-  defp trusted(nil), do: []
+  defp build_trusted(nil), do: []
 
-  defp trusted(oauth) do
+  defp build_trusted(oauth) do
     for {_name, provider} <- Keyword.get(oauth, :providers, []),
         {_key, value} <- provider,
         is_binary(value),

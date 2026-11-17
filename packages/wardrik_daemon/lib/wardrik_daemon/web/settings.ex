@@ -18,7 +18,7 @@ defmodule WardrikDaemon.Web.Settings do
   @impl true
   def list(scope, owner, opts) do
     with {:ok, items} <- Settings.list(daemon(), scope, opts[:kind], owner),
-         do: {:ok, Enum.map(items, &fixed/1)}
+         do: {:ok, Enum.map(items, &fix/1)}
   end
 
   @impl true
@@ -33,15 +33,15 @@ defmodule WardrikDaemon.Web.Settings do
   @impl true
   def add(scope, owner, input, opts) do
     with {:ok, added} <- Settings.add(daemon(), scope, opts[:kind], owner, input),
-         do: {:ok, fixed(added)}
+         do: {:ok, fix(added)}
   end
 
   @impl true
   def remove(scope, owner, name, opts),
     do: Settings.remove(daemon(), scope, opts[:kind], owner, name)
 
-  defp fixed(%{"source" => "config"} = item), do: Map.put(item, "fixed", "Set in config.yaml")
-  defp fixed(item), do: item
+  defp fix(%{"source" => "config"} = item), do: Map.put(item, "fixed", "Set in config.yaml")
+  defp fix(item), do: item
 
   @doc false
   @spec daemon() :: map()
