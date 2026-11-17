@@ -108,6 +108,15 @@ defmodule Wardrik.OAuthTest do
     {:DOWN, ref, :process, pid, :normal}
   end
 
+  defp wait_for_call(pid) do
+    {:messages, messages} = Process.info(pid, :messages)
+
+    unless Enum.any?(messages, &match?({:"$gen_call", _from, :url}, &1)) do
+      Process.sleep(5)
+      wait_for_call(pid)
+    end
+  end
+
   defp get(oauth, path, as \\ @jon) do
     :get
     |> Plug.Test.conn(path)
@@ -277,6 +286,29 @@ defmodule Wardrik.OAuthTest do
       assert Wardrik.Vault.resolve(github, vault) == {:ok, "gho_granted"}
       assert Wardrik.OAuth.flow(oauth, id) == :error
       refute Wardrik.OAuth.signing_in?(oauth, "github", @jon)
+    end
+
+    @tag polls: [%{"error" => "authorization_pending"}]
+    test "starts again when the sign-in it finds ends before it answers", %{
+      vault: vault,
+      oauth: oauth
+    } do
+      github = credential("github", @jon)
+      assert {:authorize, first} = Wardrik.Vault.resolve(github, vault)
+
+      [{pid, _value}] =
+        Registry.lookup(Module.concat(oauth, Registry), {:flow, "github", "user:jon"})
+
+      :ok = :sys.suspend(pid)
+      send(pid, :expire)
+      asking = Task.async(fn -> Wardrik.Vault.resolve(github, vault) end)
+      wait_for_call(pid)
+      ref = Process.monitor(pid)
+      :ok = :sys.resume(pid)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert {:authorize, again} = Task.await(asking)
+      assert again != first
     end
 
     @tag polls: [%{"error" => "access_denied"}]

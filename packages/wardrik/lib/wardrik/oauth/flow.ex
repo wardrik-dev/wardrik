@@ -20,8 +20,7 @@ defmodule Wardrik.OAuth.Flow do
   @doc "Returns the sign-in URL for `provider` and `principal`, starting a flow if none is running."
   @spec begin(map(), Provider.t(), Principal.t()) :: {:authorize, String.t()} | {:error, term()}
   def begin(settings, %Provider{} = provider, %Principal{} = principal) do
-    with {:ok, pid} <- open(settings, provider, principal),
-         do: {:authorize, GenServer.call(pid, :url)}
+    with {:ok, url} <- ask_flow(settings, provider, principal, :url), do: {:authorize, url}
   end
 
   @doc """
@@ -30,9 +29,16 @@ defmodule Wardrik.OAuth.Flow do
   """
   @spec sign_in(map(), Provider.t(), Principal.t()) ::
           {:ok, %{required(:url) => String.t(), optional(:code) => String.t()}} | {:error, term()}
-  def sign_in(settings, %Provider{} = provider, %Principal{} = principal) do
-    with {:ok, pid} <- open(settings, provider, principal),
-         do: {:ok, GenServer.call(pid, :sign_in)}
+  def sign_in(settings, %Provider{} = provider, %Principal{} = principal),
+    do: ask_flow(settings, provider, principal, :sign_in)
+
+  # A flow ends as its principal finishes, so the one found running can stop before it answers.
+  # A new one starts then, once.
+  defp ask_flow(settings, provider, principal, message, retries \\ 1) do
+    with {:ok, pid} <- open(settings, provider, principal), do: {:ok, GenServer.call(pid, message)}
+  catch
+    :exit, {reason, {GenServer, :call, _args}} when reason in [:normal, :noproc] and retries > 0 ->
+      ask_flow(settings, provider, principal, message, retries - 1)
   end
 
   defp open(settings, provider, principal) do
