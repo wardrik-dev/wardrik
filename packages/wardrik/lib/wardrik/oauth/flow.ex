@@ -35,9 +35,11 @@ defmodule Wardrik.OAuth.Flow do
   # A flow ends as its principal finishes, so the one found running can stop before it answers.
   # A new one starts then, once.
   defp ask_flow(settings, provider, principal, message, retries \\ 1) do
-    with {:ok, pid} <- open(settings, provider, principal), do: {:ok, GenServer.call(pid, message)}
+    with {:ok, pid} <- open(settings, provider, principal),
+         do: {:ok, GenServer.call(pid, message)}
   catch
-    :exit, {reason, {GenServer, :call, _args}} when reason in [:normal, :noproc] and retries > 0 ->
+    :exit, {reason, {GenServer, :call, _args}}
+    when reason in [:normal, :noproc] and retries > 0 ->
       ask_flow(settings, provider, principal, message, retries - 1)
   end
 

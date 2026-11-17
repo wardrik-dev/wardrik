@@ -108,15 +108,6 @@ defmodule Wardrik.OAuthTest do
     {:DOWN, ref, :process, pid, :normal}
   end
 
-  defp wait_for_call(pid) do
-    {:messages, messages} = Process.info(pid, :messages)
-
-    unless Enum.any?(messages, &match?({:"$gen_call", _from, :url}, &1)) do
-      Process.sleep(5)
-      wait_for_call(pid)
-    end
-  end
-
   defp get(oauth, path, as \\ @jon) do
     :get
     |> Plug.Test.conn(path)
@@ -297,12 +288,15 @@ defmodule Wardrik.OAuthTest do
       assert {:authorize, first} = Wardrik.Vault.resolve(github, vault)
 
       [{pid, _value}] =
-        Registry.lookup(Module.concat(oauth, Registry), {:flow, "github", "user:jon"})
+        oauth
+        |> Module.concat(Registry)
+        |> Registry.lookup({:flow, "github", "user:jon"})
 
       :ok = :sys.suspend(pid)
       send(pid, :expire)
+      1 = :erlang.trace(pid, true, [:receive])
       asking = Task.async(fn -> Wardrik.Vault.resolve(github, vault) end)
-      wait_for_call(pid)
+      assert_receive {:trace, ^pid, :receive, {:"$gen_call", _from, :url}}
       ref = Process.monitor(pid)
       :ok = :sys.resume(pid)
 
