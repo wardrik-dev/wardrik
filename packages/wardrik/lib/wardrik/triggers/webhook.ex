@@ -59,6 +59,27 @@ defmodule Wardrik.Triggers.Webhook do
     end
   end
 
+  @doc """
+  Returns the headers that sign `body` with `secret`, as Standard Webhooks specifies, for
+  `verify/2` with `verify: :standard` to check.
+
+      Wardrik.Triggers.Webhook.sign("whsec_...", body)
+      #=> [{"webhook-id", "msg_..."}, {"webhook-timestamp", "1731715200"}, {"webhook-signature", "v1,..."}]
+  """
+  @spec sign(String.t(), String.t()) :: [{String.t(), String.t()}]
+  def sign(secret, body) do
+    random = :crypto.strong_rand_bytes(16)
+    id = "msg_" <> Base.url_encode64(random, padding: false)
+    now = System.os_time(:second)
+    timestamp = Integer.to_string(now)
+
+    [
+      {"webhook-id", id},
+      {"webhook-timestamp", timestamp},
+      {"webhook-signature", "v1," <> signature(secret, "#{id}.#{timestamp}.#{body}")}
+    ]
+  end
+
   @doc "Returns the request's id: its `Idempotency-Key`, its `webhook-id`, or a SHA-256 of its body."
   @spec id(request()) :: String.t()
   def id(%{headers: headers, body: body}) do

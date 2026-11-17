@@ -32,7 +32,7 @@ defmodule Wardrik.Operations.Types do
 
   @snapshots ~w(agent.read agent.define agent.clear)
   @decided ~w(agent.decide agent.approve agent.deny)
-  @answered_nothing ~w(agent.cancel agent.forget agent.kill agent.file_delete hook.deliver
+  @answered_nothing ~w(agent.cancel agent.forget agent.kill agent.file_delete hook.broker hook.deliver
                        hook.deliver_with_secret secrets.put secrets.delete
                        connections.disconnect)
   @triggers ~w(agent.trigger_set agent.trigger_remove)

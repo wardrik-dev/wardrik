@@ -12,7 +12,7 @@ defmodule WardrikDaemon.Config do
   alias WardrikDaemon.Config.Rest
   alias WardrikDaemon.Dirs
 
-  @wardrik [:deployment, :idle_timeout, :retention, :triggers, :agents]
+  @wardrik [:deployment, :idle_timeout, :retention, :triggers, :agents, :broker]
 
   @schema [
             org: [type: :string, default: "default", doc: "The deployment's org."],

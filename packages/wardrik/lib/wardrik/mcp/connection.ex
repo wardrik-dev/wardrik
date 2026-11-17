@@ -130,6 +130,19 @@ defmodule Wardrik.MCP.Connection do
     :ok
   end
 
+  @doc "Stops the connections to the server `name` that act for `who`."
+  @spec close(atom(), String.t(), String.t()) :: :ok
+  def close(mcp, name, who) do
+    registry = registry(mcp)
+    supervisor = supervisor(mcp)
+
+    for {pid, _hash} <- Registry.lookup(registry, {:connection, name, who}) do
+      DynamicSupervisor.terminate_child(supervisor, pid)
+    end
+
+    :ok
+  end
+
   # Each client tells every handler, so a connection heeds its own client's notices alone: it
   # runs in the client that told.
   @spec handle_event([atom()], map(), map(), {pid(), GenServer.name()}) :: :ok

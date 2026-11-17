@@ -795,6 +795,31 @@ defmodule WardrikDaemon.ConfigTest do
     assert slack[:req_options] == [receive_timeout: 5000]
   end
 
+  test "reads a credential broker, with its secret from the environment", context do
+    yaml = """
+    broker:
+      url: https://broker.internal/credentials
+      secret: "${BROKER_SECRET}"
+      credentials: [gmail, github]
+    """
+
+    write(context, "config.yaml", yaml)
+    env = Map.put(context.env, "BROKER_SECRET", "whsec_s3cret")
+
+    dirs = Dirs.new(context.env)
+    assert {:ok, config} = Config.read(dirs, env)
+
+    assert Enum.sort(config.wardrik[:broker]) == [
+             credentials: ["gmail", "github"],
+             req_options: [],
+             secret: "whsec_s3cret",
+             url: "https://broker.internal/credentials"
+           ]
+
+    assert {:error, why} = read(context, "broker: {url: https://broker.internal}\n")
+    assert why =~ "broker"
+  end
+
   test "starts no OAuth without oauth, and checks keys before the vault opens", context do
     assert {:ok, %Config{oauth: nil}} = read(context, "org: acme\n")
 

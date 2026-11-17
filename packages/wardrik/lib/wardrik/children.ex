@@ -8,6 +8,7 @@ defmodule Wardrik.Children do
       [{Wardrik.Store, wardrik.store}] ++
         vault(wardrik) ++
         oauth(wardrik) ++
+        broker(wardrik) ++
         mcp(wardrik) ++
         [
           events(wardrik),
@@ -20,6 +21,9 @@ defmodule Wardrik.Children do
         channels(wardrik) ++
         listeners(wardrik) ++
         [{Wardrik.Delegation, wardrik}]
+
+  defp broker(%Wardrik{broker: nil}), do: []
+  defp broker(wardrik), do: [{Wardrik.Credentials.Broker, wardrik}]
 
   defp vault(%Wardrik{vault_keys: []}), do: []
 

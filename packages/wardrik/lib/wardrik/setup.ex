@@ -7,12 +7,14 @@ defmodule Wardrik.Setup do
     name = Keyword.fetch!(opts, :name)
     store = store(name, opts[:store])
     vault = Module.concat(name, Vault)
+    credentials = opts[:credentials] || vaulted(opts[:vault_keys], {Wardrik.Vault, vault})
 
     %Wardrik{
       name: name,
       store: store,
       vault_keys: opts[:vault_keys],
-      credentials: opts[:credentials] || vaulted(opts[:vault_keys], {Wardrik.Vault, vault}),
+      credentials: brokered(opts[:broker], name, credentials),
+      broker: broker(opts[:broker], credentials),
       key_source: opts[:key_source],
       grants: opts[:grants] || grants(opts[:oauth], Module.concat(name, OAuth)),
       oauth: oauth(opts[:oauth], opts[:vault_keys]),
@@ -178,6 +180,13 @@ defmodule Wardrik.Setup do
     do: raise(ArgumentError, "Give Wardrik :vault_keys to seal what people sign in with.")
 
   defp oauth(oauth, _keys), do: oauth
+
+  # A broker answers its credentials, and hands the rest to what would answer without it.
+  defp brokered(nil, _name, credentials), do: credentials
+  defp brokered(_broker, name, _credentials), do: {Wardrik.Credentials.Broker, name}
+
+  defp broker(nil, _credentials), do: nil
+  defp broker(broker, credentials), do: Map.new([fallback: credentials] ++ broker)
 
   defp vaulted([], _entry), do: nil
   defp vaulted(_keys, entry), do: entry

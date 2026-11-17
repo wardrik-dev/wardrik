@@ -105,7 +105,7 @@ defmodule WardrikProtocolTest do
                agent.trigger_remove agent.trigger_set agents.cancel agents.forget agents.list
                audit.list channel.deliver connections.connect connections.disconnect connections.list
                deployment.nodes deployment.reload deployment.runtime events.head events.list
-               hook.deliver
+               hook.broker hook.deliver
                hook.deliver_with_secret interrupts.list notify_targets.add notify_targets.list notify_targets.remove providers.add providers.list providers.remove secrets.delete secrets.list secrets.put servers.add servers.list servers.remove
              )
 
@@ -166,6 +166,7 @@ defmodule WardrikProtocolTest do
       for {path, id} <- [
             {"/v1/hooks/{agent}/{trigger}", "hook.deliver"},
             {"/v1/hooks/{agent}/{trigger}/{secret}", "hook.deliver_with_secret"},
+            {"/v1/broker", "hook.broker"},
             {"/v1/channels/{channel}/{path}", "channel.deliver"}
           ] do
         assert %{"content" => %{"*/*" => %{}}} = paths[path]["post"]["requestBody"]
@@ -183,6 +184,7 @@ defmodule WardrikProtocolTest do
     end
 
     defp path_input("channel.deliver"), do: %{"channel" => "slack", "path" => "events"}
+    defp path_input("hook.broker"), do: %{}
     defp path_input("hook.deliver"), do: %{"agent" => "agt_1", "trigger" => "gh"}
 
     defp path_input("hook.deliver_with_secret"),

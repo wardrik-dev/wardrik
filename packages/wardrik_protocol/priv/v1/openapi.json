@@ -1646,6 +1646,40 @@
         }
       }
     },
+    "/v1/broker": {
+      "post": {
+        "operationId": "hook.broker",
+        "summary": "Take a change from the credential broker",
+        "description": "Takes a signed change from the deployment's credential broker. granted carries on the calls waiting on a credential. revoked forgets its tokens and closes the MCP connections that use it. A request that fails the signature check, or a deployment with no broker, returns not_found.",
+        "tags": [
+          "Hooks"
+        ],
+        "x-wardrik-action": "hook.broker",
+        "x-wardrik-effect": "change",
+        "x-wardrik-subject": "hook",
+        "x-wardrik-input": {
+          "$ref": "urn:wardrik:schema:v1:hook_request"
+        },
+        "requestBody": {
+          "required": true,
+          "description": "The broker's request as it sent it, signed as Standard Webhooks specifies. Its body is {\"type\": \"granted\" or \"revoked\", \"credential\", \"principal\"}.",
+          "content": {
+            "*/*": {}
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Taken."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/deployment/reload": {
       "post": {
         "operationId": "deployment.reload",

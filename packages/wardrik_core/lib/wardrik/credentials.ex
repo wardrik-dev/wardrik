@@ -57,7 +57,7 @@ defmodule Wardrik.Credentials do
 
   def fetch(%Context{credentials: entry} = context, name) do
     {module, opts} = Context.entry(entry)
-    request = %Request{name: name, principal: Context.acting_for(context)}
+    request = request(context, name)
 
     request
     |> module.resolve(opts)
@@ -70,12 +70,24 @@ defmodule Wardrik.Credentials do
 
   def refused(%Context{credentials: entry} = context, name) do
     {module, opts} = Context.entry(entry)
-    request = %Request{name: name, principal: Context.acting_for(context)}
+    request = request(context, name)
 
     if Code.ensure_loaded?(module) and function_exported?(module, :refused, 2),
       do: module.refused(request, opts),
       else: :ok
   end
+
+  defp request(context, name) do
+    %Request{
+      name: name,
+      principal: Context.acting_for(context),
+      agent: context.agent_id,
+      call: call(context.step)
+    }
+  end
+
+  defp call({:tool_call, %Wardrik.ToolCall{id: id}}), do: id
+  defp call(_step), do: nil
 
   defp fetched({:authorize, url}, %Request{name: name, principal: principal}),
     do: {:park, %Authorization{url: url, credential: name, principal: principal}}

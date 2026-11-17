@@ -90,6 +90,7 @@ defmodule WardrikDaemon.Doctor do
 
   defp checks(config, dirs, env, opts) do
     [storage(config, dirs), vault(config, dirs, env), brave(config)] ++
+      broker(config.wardrik[:broker]) ++
       Enum.map(config.mcp, &WardrikDaemon.Doctor.MCP.check(&1, req_options(opts))) ++
       Enum.map(config.harnesses, &harness/1) ++
       Enum.map(config.checkouts, &checkout/1) ++
@@ -246,6 +247,18 @@ defmodule WardrikDaemon.Doctor do
        "config.yaml gives web_search no key. A key sealed with `wardrik vault put BRAVE_API_KEY --for api_key` works too, and this check can't see the vault"}
 
   defp brave(_config), do: {:ok, "brave", "web_search has a key"}
+
+  defp broker(nil), do: []
+
+  defp broker(opts) do
+    %URI{host: host, port: port} = URI.parse(opts[:url])
+    names = Enum.join(opts[:credentials], ", ")
+
+    case reachable(host, port) do
+      :ok -> [{:ok, "broker", "answers #{names} at #{host}:#{port}"}]
+      {:error, why} -> [{:fail, "broker", "doesn't answer at #{host}:#{port}: #{why}"}]
+    end
+  end
 
   defp harness({name, opts}) do
     command = Keyword.fetch!(opts, :command)
