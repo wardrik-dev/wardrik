@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.12 (2026-11-16)
+
+- A trigger's `ask_in` names the conversation each run asks the agent in.
+- `hook.broker` (`POST /v1/broker`): a credential broker reports a credential granted or
+  revoked.
+
 ## 0.1.0-rc.11 (2026-11-15)
 
 - `wardrik.evaluation.completed`: a judge model's answers, usage and cost.

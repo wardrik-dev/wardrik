@@ -144,8 +144,8 @@ defmodule Wardrik.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      sibling(:wardrik_core, "~> 0.1.0-rc.11"),
-      sibling(:wardrik_protocol, "~> 0.1.0-rc.11"),
+      sibling(:wardrik_core, "~> 0.1.0-rc.12"),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.12"),
       {:durable_server, "~> 0.1.7"},
       {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},

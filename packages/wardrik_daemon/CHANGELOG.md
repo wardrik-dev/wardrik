@@ -7,6 +7,8 @@
   `WardrikDaemon.Operations` and the docs' "Manage from an MCP client".
 - `wardrik doctor` lists each MCP server's tools. A server at a URL is asked with its headers,
   so a refused key fails the check.
+- `broker:` in `config.yaml` gives agents credentials from a service of your own. See the docs'
+  "Connect accounts".
 - Requires `wardrik` 0.1.0-rc.17.
 
 ## 0.1.0-rc.20 (2026-11-16)
