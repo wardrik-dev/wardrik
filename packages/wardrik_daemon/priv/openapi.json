@@ -55,6 +55,7 @@
           "Agents"
         ],
         "x-wardrik-action": "agent.read",
+        "x-wardrik-effect": "read",
         "x-wardrik-resource": "agent",
         "parameters": [
           {
@@ -94,6 +95,7 @@
           "Agents"
         ],
         "x-wardrik-action": "agent.create",
+        "x-wardrik-effect": "change",
         "x-wardrik-resource": "agent",
         "parameters": [
           {
@@ -148,6 +150,7 @@
           "Ceilings"
         ],
         "x-wardrik-action": "ceiling.read",
+        "x-wardrik-effect": "read",
         "x-wardrik-resource": "ceiling",
         "parameters": [
           {
@@ -189,6 +192,7 @@
           "Connections"
         ],
         "x-wardrik-action": "connection.connect",
+        "x-wardrik-effect": "change",
         "x-wardrik-resource": "connection",
         "parameters": [
           {
@@ -240,6 +244,7 @@
           "Tokens"
         ],
         "x-wardrik-action": "token.read",
+        "x-wardrik-effect": "read",
         "x-wardrik-resource": "token",
         "parameters": [],
         "responses": {
@@ -272,6 +277,7 @@
           "Tokens"
         ],
         "x-wardrik-action": "token.create",
+        "x-wardrik-effect": "change",
         "x-wardrik-resource": "token",
         "parameters": [],
         "requestBody": {
@@ -319,6 +325,7 @@
           "Tokens"
         ],
         "x-wardrik-action": "token.delete",
+        "x-wardrik-effect": "destructive",
         "x-wardrik-resource": "token",
         "parameters": [
           {
@@ -353,6 +360,7 @@
           "Tokens"
         ],
         "x-wardrik-action": "token.create",
+        "x-wardrik-effect": "change",
         "x-wardrik-resource": "token",
         "parameters": [],
         "responses": {

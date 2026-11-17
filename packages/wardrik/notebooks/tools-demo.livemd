@@ -1,7 +1,7 @@
 # Configure agent tools
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.16"}, {:kino, "~> 0.19"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.17"}, {:kino, "~> 0.19"}])
 ```
 
 ## Tools

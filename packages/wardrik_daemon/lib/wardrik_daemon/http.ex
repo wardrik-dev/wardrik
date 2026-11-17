@@ -17,10 +17,11 @@ defmodule WardrikDaemon.HTTP do
   | `POST /v1/connections/{provider}/pair` | finishes a browser sign-in with its code |
   | `GET`, `POST /v1/tokens`, `DELETE /v1/tokens/{id}` | tokens |
   | `POST /v1/tokens/web` | a sign-in link for the dashboard |
+  | `POST /mcp` | Wardrik's operations and these, as MCP tools; see `Wardrik.HTTP.MCP` |
   | `/web` | the dashboard; see `WardrikDaemon.Web` |
   | `GET /oauth/callback` | shows the code that finishes a browser sign-in |
 
-    * `priv/openapi.json` describes them. Bodies are checked against it.
+    * `priv/openapi.json` describes them. `WardrikDaemon.Operations` runs them.
     * `{owner}` is `acme`, `acme%2F%40jon` (a person) or `deployment`.
     * Tokens and permissions work as for Wardrik's routes. See `WardrikDaemon.Authenticator` and
       `WardrikDaemon.Authorizer`.
@@ -42,14 +43,10 @@ defmodule WardrikDaemon.HTTP do
   use Plug.Router, copy_opts_to_assign: :daemon
 
   alias Wardrik.Error
+  alias Wardrik.HTTP.MCP
   alias Wardrik.HTTP.Response
-  alias WardrikDaemon.AgentRecords
-  alias WardrikDaemon.Allowed
-  alias WardrikDaemon.Ceiling
   alias WardrikDaemon.Connections
-  alias WardrikDaemon.CreateAgent
-  alias WardrikDaemon.Owners
-  alias WardrikDaemon.Tokens
+  alias WardrikDaemon.Operations
 
   @own [:wardrik, :authenticator, :store, :orgs, :config, :web]
   @request_id Plug.RequestId.init(http_header: "request-id")
@@ -79,37 +76,19 @@ defmodule WardrikDaemon.HTTP do
   @spec openapi() :: map()
   def openapi, do: @openapi
 
-  @operations (for {path, methods} <- @openapi["paths"],
-                   {method, operation} <- methods,
-                   into: %{} do
-                 parameters =
-                   for %{"$ref" => "#/components/parameters/" <> name} <-
-                         Map.get(operation, "parameters", []),
-                       parameter = @openapi["components"]["parameters"][name],
-                       do: %{name: parameter["name"], in: parameter["in"]}
-
-                 {operation["operationId"],
-                  %{
-                    id: operation["operationId"],
-                    method: method,
-                    path: path,
-                    parameters: parameters
-                  }}
-               end)
-
   @doc """
   Returns the daemon's operation `id`, with its `:method`, `:path` and `:parameters`, or `nil`.
 
       %{method: "post", path: "/v1/tokens"} =
         WardrikDaemon.HTTP.operation("tokens.create")
   """
-  @spec operation(String.t()) :: map() | nil
-  def operation(id), do: Map.get(@operations, id)
+  @spec operation(String.t()) :: Operations.operation() | nil
+  def operation(id), do: Operations.get(id)
 
   @doc "Returns the daemon's own routes, as `{method, path}` in OpenAPI's form."
   @spec routes() :: [{String.t(), String.t()}]
   def routes,
-    do: for(%{method: method, path: path} <- Map.values(@operations), do: {method, path})
+    do: for(%{method: method, path: path} <- Operations.list(), do: {method, path})
 
   @impl Plug
   def init(opts) do
@@ -130,93 +109,55 @@ defmodule WardrikDaemon.HTTP do
   plug :match
   plug :dispatch
 
-  # Each agent is listed only where the caller may read it, so they learn of no other.
   get "/v1/owners/:owner/agents" do
-    conn =
-      conn
-      |> Plug.RequestId.call(@request_id)
-      |> Plug.Conn.fetch_query_params()
-
-    daemon = conn.assigns.daemon
-
-    with {:ok, scope} <- authenticated(conn, daemon),
-         :ok <- Allowed.named(owner),
-         :ok <- Allowed.kept(owner, daemon.orgs) do
-      agents =
-        for record <- AgentRecords.in_org(daemon.store, Owners.org(owner)),
-            conn.query_params["name"] in [nil, record.name],
-            match?({:ok, _read}, Wardrik.run(scope, "agent.read", %{"agent" => record.id})),
-            do: record(record)
-
-      answer(conn, 200, %{"agents" => agents})
-    else
-      {:error, %Error{} = error} -> Response.error(conn, error)
-    end
+    run_operation(conn, "agents.find", %{"owner" => owner})
   end
 
   post "/v1/owners/:owner/agents" do
-    served(conn, owner, {"agent.create", :agents}, fn scope ->
-      with {:ok, input} <- json(conn),
-           {:ok, record} <- CreateAgent.create(conn.assigns.daemon, scope, {owner, input}),
-           do: {:ok, 201, record(record)}
-    end)
+    run_operation(conn, "agents.create", %{"owner" => owner})
   end
 
   get "/v1/owners/:owner/ceilings" do
-    served(conn, owner, {"ceiling.read", :ceiling}, fn _scope ->
-      with {:ok, ceilings} <- Ceiling.list(conn.assigns.daemon, owner),
-           do: {:ok, 200, %{"ceilings" => ceilings}}
-    end)
+    run_operation(conn, "ceilings.list", %{"owner" => owner})
   end
 
   post "/v1/connections/:provider/pair" do
-    served(conn, {"connection.connect", &own_connections/1}, fn scope ->
-      with {:ok, %{"code" => code}} <- input(conn, "pairing_input"),
-           {:ok, connection} <-
-             Connections.pair(conn.assigns.daemon, scope.principal, {provider, code}),
-           do: {:ok, 200, connection}
-    end)
+    run_operation(conn, "connections.pair", %{"provider" => provider})
   end
 
   get "/v1/tokens" do
-    served(conn, {"token.read", {:token, "*"}}, fn _scope ->
-      tokens = Tokens.list(conn.assigns.daemon.store)
-      {:ok, 200, %{"tokens" => Enum.map(tokens, &Tokens.json/1)}}
-    end)
+    run_operation(conn, "tokens.list", %{})
   end
 
-  # The subject is checked as the resource, so a rule's names can say whom a token may act as.
   post "/v1/tokens" do
-    conn = Plug.RequestId.call(conn, @request_id)
-
-    with {:ok, scope} <- authenticated(conn, conn.assigns.daemon),
-         {:ok, input} <- input(conn, "token_input"),
-         :ok <- Allowed.authorized(scope, "token.create", {:token, input["subject"]}),
-         {:ok, created} <- Tokens.issue(conn.assigns.daemon.store, input) do
-      answer(conn, 201, created)
-    else
-      {:error, %Error{} = error} -> Response.error(conn, error)
-    end
+    run_operation(conn, "tokens.create", %{})
   end
 
   post "/v1/tokens/web" do
-    conn = Plug.RequestId.call(conn, @request_id)
-    daemon = conn.assigns.daemon
-
-    with {:ok, scope} <- authenticated(conn, daemon),
-         {:ok, input} <- optional(conn, "web_input"),
-         {:ok, url} <- WardrikDaemon.Web.sign_in(daemon, scope, agent: input["agent"]) do
-      answer(conn, 201, %{"url" => url})
-    else
-      {:error, %Error{} = error} -> Response.error(conn, error)
-    end
+    run_operation(conn, "tokens.web", %{})
   end
 
   delete "/v1/tokens/:id" do
-    served(conn, {"token.delete", {:token, id}}, fn _scope ->
-      :ok = Tokens.revoke(conn.assigns.daemon.store, id)
-      {:ok, 204, nil}
-    end)
+    run_operation(conn, "tokens.revoke", %{"id" => id})
+  end
+
+  # Wardrik's operations and the daemon's, as tools.
+  match "/mcp" do
+    conn = Plug.RequestId.call(conn, @request_id)
+    daemon = conn.assigns.daemon
+
+    case authenticate(conn, daemon) do
+      {:ok, scope} ->
+        own =
+          daemon
+          |> Operations.new(scope)
+          |> Operations.build_tools()
+
+        MCP.serve(conn, MCP.build_tools(scope) ++ own)
+
+      {:error, %Error{} = error} ->
+        Response.error(conn, error)
+    end
   end
 
   # The page can't tell who is at the browser, so it finishes nothing. See WardrikDaemon.Pairings.
@@ -277,58 +218,65 @@ defmodule WardrikDaemon.HTTP do
 
   # Who asks is checked first, so a route answers 401 to anyone without a token, whatever they
   # ask for.
-  defp served(conn, {action, resource}, run) do
-    conn = Plug.RequestId.call(conn, @request_id)
+  defp run_operation(conn, id, params) do
+    conn =
+      conn
+      |> Plug.RequestId.call(@request_id)
+      |> Plug.Conn.fetch_query_params()
 
-    with {:ok, scope} <- authenticated(conn, conn.assigns.daemon),
-         :ok <- Allowed.authorized(scope, action, resource(resource, scope)),
-         {:ok, status, body} <- run.(scope) do
-      answer(conn, status, body)
-    else
-      {:error, %Error{} = error} -> Response.error(conn, error)
-    end
-  end
-
-  # A caller's connections are their own, as the principal their token acts as.
-  defp own_connections(scope), do: {:connection, scope.principal.id}
-
-  defp resource(resource, scope) when is_function(resource, 1), do: resource.(scope)
-  defp resource(resource, _scope), do: resource
-
-  defp served(conn, owner, {action, kind}, run) do
-    conn = Plug.RequestId.call(conn, @request_id)
     daemon = conn.assigns.daemon
+    operation = Operations.get(id)
 
-    with {:ok, scope} <- authenticated(conn, daemon),
-         :ok <- Allowed.owned(daemon, scope, owner, {action, kind}),
-         {:ok, status, body} <- run.(scope) do
-      answer(conn, status, body)
+    with {:ok, scope} <- authenticate(conn, daemon),
+         {:ok, body} <- read_body_input(conn, operation.body),
+         input = Map.merge(body, Map.merge(read_query_input(conn, operation), params)),
+         operations = Operations.new(daemon, scope),
+         {:ok, output} <- Operations.run(operations, id, input) do
+      send_output(conn, operation.status, output)
     else
       {:error, %Error{} = error} -> Response.error(conn, error)
     end
   end
 
-  defp authenticated(conn, %{wardrik: wardrik, authenticator: {module, opts}}) do
-    request = %Wardrik.HTTP.Authenticator.Request{conn: conn, server: Wardrik, wardrik: wardrik}
-    module.authenticate(request, opts)
-  end
+  defp read_query_input(conn, %{parameters: parameters}),
+    do:
+      for(
+        %{in: "query", name: name} <- parameters,
+        Map.has_key?(conn.query_params, name),
+        into: %{},
+        do: {name, conn.query_params[name]}
+      )
 
-  defp input(conn, schema) do
-    with {:ok, input} <- json(conn), do: checked(schema, input)
+  defp read_body_input(_conn, :none), do: {:ok, %{}}
+
+  defp read_body_input(conn, :required) do
+    with {:ok, body, _conn} <- Plug.Conn.read_body(conn),
+         {:ok, %{} = input} <- JSON.decode(body) do
+      {:ok, input}
+    else
+      _unread -> {:error, Error.new(:invalid_request, "Send the body as JSON.")}
+    end
   end
 
   # A body that may be left out, as nothing or as {}.
-  defp optional(conn, schema) do
+  defp read_body_input(conn, :optional) do
     case Plug.Conn.read_body(conn) do
       {:ok, "", _conn} -> {:ok, %{}}
-      {:ok, body, _conn} -> decoded(schema, JSON.decode(body))
+      {:ok, _body, _conn} = read -> decode_body(read)
     end
   end
 
-  defp decoded(schema, {:ok, %{} = input}), do: checked(schema, input)
+  defp decode_body({:ok, body, _conn}) do
+    case JSON.decode(body) do
+      {:ok, %{} = input} -> {:ok, input}
+      _unread -> {:error, Error.new(:invalid_request, "Send the body as JSON.")}
+    end
+  end
 
-  defp decoded(_schema, _unread),
-    do: {:error, Error.new(:invalid_request, "Send the body as JSON.")}
+  defp authenticate(conn, %{wardrik: wardrik, authenticator: {module, opts}}) do
+    request = %Wardrik.HTTP.Authenticator.Request{conn: conn, server: Wardrik, wardrik: wardrik}
+    module.authenticate(request, opts)
+  end
 
   @doc "Validates `input` against one of the daemon's input schemas, for example `server_input`."
   @spec checked(String.t(), map()) :: {:ok, map()} | {:error, Error.t()}
@@ -343,18 +291,6 @@ defmodule WardrikDaemon.HTTP do
   @spec schema(String.t()) :: map()
   def schema(name), do: Map.fetch!(@openapi["components"]["schemas"], name)
 
-  defp json(conn) do
-    with {:ok, body, _conn} <- Plug.Conn.read_body(conn),
-         {:ok, input} <- JSON.decode(body) do
-      {:ok, input}
-    else
-      _unread -> {:error, Error.new(:invalid_request, "Send the body as JSON.")}
-    end
-  end
-
-  defp record(record),
-    do: %{"id" => record.id, "name" => record.name, "org" => record.org, "owner" => record.owner}
-
-  defp answer(conn, status, nil), do: Plug.Conn.send_resp(conn, status, "")
-  defp answer(conn, status, body), do: Response.json(conn, status, body)
+  defp send_output(conn, status, nil), do: Plug.Conn.send_resp(conn, status, "")
+  defp send_output(conn, status, body), do: Response.json(conn, status, body)
 end

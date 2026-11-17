@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0-rc.21 (2026-11-16)
+
+- The daemon serves its HTTP API as MCP tools at `/mcp`: Wardrik's operations and its own, such
+  as `agents_create` and `tokens_create`. Connect Claude Code with a token. See
+  `WardrikDaemon.Operations` and the docs' "Manage from an MCP client".
+- `wardrik doctor` lists each MCP server's tools. A server at a URL is asked with its headers,
+  so a refused key fails the check.
+- Requires `wardrik` 0.1.0-rc.17.
+
 ## 0.1.0-rc.20 (2026-11-16)
 
 - The web chat shows the calls waiting for approval across agents, and what the agent does now.

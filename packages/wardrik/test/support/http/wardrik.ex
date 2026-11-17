@@ -34,7 +34,9 @@ defmodule Wardrik.Test.HTTP do
 
   @doc "Returns `Wardrik.HTTP`'s options for the test's Wardrik, with `opts`."
   def http(context, opts \\ []),
-    do: [wardrik: context.wardrik, authenticator: {Wardrik.Test.HTTP.Authenticator, []}] ++ opts
+    do:
+      [wardrik: context.wardrik, authenticator: {Wardrik.Test.HTTP.Authenticator, []}] ++
+        Map.get(context, :http, []) ++ opts
 
   def answers(context, responses), do: Wardrik.Testing.Model.answer(context.fake, responses)
 
