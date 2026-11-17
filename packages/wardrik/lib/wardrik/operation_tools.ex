@@ -67,17 +67,12 @@ defmodule Wardrik.OperationTools do
   defp tool(me, operation) do
     Tool.new!(
       name: String.replace(operation.id, ".", "_"),
-      description: described(operation),
+      description: Wardrik.HTTP.MCP.Tool.build_description(operation),
       schema: operation.input,
       run: fn args, _context -> run(me, operation.id, args) end,
       annotations: annotations(operation.effect)
     )
   end
-
-  defp described(%{summary: summary, description: nil}), do: summary <> "."
-
-  defp described(%{summary: summary, description: description}),
-    do: summary <> ". " <> description
 
   defp annotations("read"), do: [read_only: true, idempotent: true]
   defp annotations("destructive"), do: [gated: true, destructive: true]

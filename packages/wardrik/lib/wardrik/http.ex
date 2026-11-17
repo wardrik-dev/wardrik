@@ -23,6 +23,8 @@ defmodule Wardrik.HTTP do
     * `:authenticator` - required. The `Wardrik.HTTP.Authenticator` that turns requests into scopes.
     * `:principal` - `{module, function, args}` that returns who is at the browser on sign-in
       pages. Without it, no sign-in finishes.
+    * `:mcp` - `true` to serve the operations as MCP tools at `/mcp`. Off by default. See
+      `Wardrik.HTTP.MCP`.
     * `:keepalive` - see `Wardrik.HTTP.Endpoint`.
 
   As a child it takes Bandit's options, such as `:port`, and needs `:bandit` in your deps.

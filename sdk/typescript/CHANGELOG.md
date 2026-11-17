@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.10 (2026-11-16)
+
+- `ask_in` on trigger definitions.
+
 ## 0.1.0-rc.9 (2026-11-15)
 
 - `EvaluationCompletedData` for `wardrik.evaluation.completed`.

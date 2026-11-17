@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.12 (2026-11-16)
+
+- `Wardrik.Credentials.Request` carries the `agent` whose tool asks, and the tool `call`, or
+  `nil` outside one.
+
 ## 0.1.0-rc.11 (2026-11-16)
 
 - Several Wardrik instances can run on one node, each with its own store. `:prefix` sets where an

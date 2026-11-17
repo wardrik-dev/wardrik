@@ -21,6 +21,12 @@ defmodule Wardrik.HTTP.Endpoint do
                 "`{module, function, args}` returning the `{plug, opts}` that serves sign-in " <>
                   "pages, or `nil`."
             ],
+            mcp: [
+              type: :boolean,
+              default: false,
+              doc:
+                "Whether to serve the operations as MCP tools at `/mcp`. See `Wardrik.HTTP.MCP`."
+            ],
             keepalive: [
               type: :pos_integer,
               default: 15_000,
@@ -68,6 +74,7 @@ defmodule Wardrik.HTTP.Endpoint do
   | the same, with `Accept: text/event-stream` | streaming operations, as server-sent events |
   | `GET /v1/openapi.json` | the OpenAPI document |
   | `GET /v1/workers` | the tool workers' WebSocket. See `Wardrik.HTTP.Worker`. |
+  | `POST /mcp` | the operations as MCP tools, with `mcp: true`. See `Wardrik.HTTP.MCP`. |
   | `POST /v1/channels/{channel}/{path}` | a chat app's request, relayed to the channel and back |
   | `/oauth/*` | sign-in pages, from `:sign_in` |
 
@@ -83,10 +90,11 @@ defmodule Wardrik.HTTP.Endpoint do
   alias Wardrik.HTTP.Authenticator
   alias Wardrik.HTTP.EventStream
   alias Wardrik.HTTP.Input
+  alias Wardrik.HTTP.MCP
   alias Wardrik.HTTP.Response
   alias Wardrik.HTTP.Routes
 
-  @own [:server, :authenticator, :sign_in, :keepalive]
+  @own [:server, :authenticator, :sign_in, :mcp, :keepalive]
   @request_id Plug.RequestId.init(http_header: "request-id")
 
   @doc "Returns a child spec that serves with Bandit. Other options go to Bandit."
@@ -121,6 +129,13 @@ defmodule Wardrik.HTTP.Endpoint do
       WebSockAdapter.upgrade(conn, Wardrik.HTTP.Worker, worker, [])
     else
       {:error, :upgrade_required} -> upgrade_required(conn)
+      {:error, %Error{} = error} -> Response.error(conn, error)
+    end
+  end
+
+  defp serve(%Plug.Conn{path_info: ["mcp"]} = conn, %{mcp: true} = settings) do
+    case authenticate(conn, settings) do
+      {:ok, scope} -> MCP.serve(conn, MCP.build_tools(scope))
       {:error, %Error{} = error} -> Response.error(conn, error)
     end
   end

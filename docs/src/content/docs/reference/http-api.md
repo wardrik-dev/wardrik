@@ -21,6 +21,7 @@ curl $WARDRIK_URL/v1/agents -H "Authorization: Bearer $WARDRIK_TOKEN"
 - `GET /v1/openapi.json` returns the OpenAPI 3.1 document for the library's routes.
   The daemon's own routes (`/v1/owners/...`, `/v1/connections`, `/v1/tokens`) are in `wardrik_daemon`'s
   `priv/openapi.json`.
+- `POST /mcp` serves every route as an MCP tool. See [Manage from an MCP client](/run/mcp-clients/).
 - See [Use the HTTP API](/build/http-api/) for a step-by-step guide.
 
 ## Errors

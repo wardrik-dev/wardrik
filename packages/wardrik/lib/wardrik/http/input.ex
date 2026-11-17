@@ -26,13 +26,17 @@ defmodule Wardrik.HTTP.Input do
          do: {:ok, %{"body" => raw, "headers" => Map.new(conn.req_headers)}, conn}
   end
 
-  defp body(%Plug.Conn{body_params: %Unfetched{}} = conn, _operation) do
+  defp body(conn, _operation), do: read_json(conn)
+
+  @doc "Returns the body of `conn`, a JSON object, or `%{}` if it's empty."
+  @spec read_json(Plug.Conn.t()) :: {:ok, map(), Plug.Conn.t()} | {:error, Error.t()}
+  def read_json(%Plug.Conn{body_params: %Unfetched{}} = conn) do
     conn
     |> raw()
     |> decoded()
   end
 
-  defp body(conn, _operation) do
+  def read_json(conn) do
     case BodyReader.kept(conn) do
       nil -> {:ok, conn.body_params, conn}
       raw -> decoded({:ok, raw, conn})

@@ -69,6 +69,46 @@ defmodule WardrikDaemon.HTTPTest do
     assert response.body["error"]["message"] == "There's no route here."
   end
 
+  test "serves Wardrik's operations and its own as MCP tools", context do
+    mcp = fn method, params ->
+      Req.post!(context.url <> "/mcp",
+        json: %{"jsonrpc" => "2.0", "id" => 1, "method" => method, "params" => params},
+        auth: {:bearer, admin_secret(context)},
+        retry: false
+      ).body
+    end
+
+    names = for tool <- mcp.("tools/list", %{})["result"]["tools"], do: tool["name"]
+
+    assert Enum.all?(
+             ~w(agents_create agents_find tokens_create agent_ask agent_approve),
+             &(&1 in names)
+           )
+
+    create =
+      mcp.("tools/call", %{
+        "name" => "agents_create",
+        "arguments" => %{"owner" => "payments", "name" => "notes", "model" => model()}
+      })
+
+    assert %{"isError" => false, "structuredContent" => %{"id" => id, "name" => "notes"}} =
+             create["result"]
+
+    found =
+      mcp.("tools/call", %{"name" => "agents_find", "arguments" => %{"owner" => "payments"}})
+
+    assert %{"agents" => [%{"id" => ^id}]} = found["result"]["structuredContent"]
+
+    read = mcp.("tools/call", %{"name" => "agent_definition", "arguments" => %{"agent" => id}})
+    assert read["result"]["structuredContent"]["definition"]["model"] == model()
+
+    refused = mcp.("tools/call", %{"name" => "tokens_revoke", "arguments" => %{}})
+    assert %{"isError" => true} = refused["result"]
+
+    response = Req.post!(context.url <> "/mcp", json: %{}, retry: false)
+    assert response.status == 401
+  end
+
   defp admin_secret(context) do
     {:ok, %{secret: secret}} =
       WardrikDaemon.Tokens.create(context.daemon_store,

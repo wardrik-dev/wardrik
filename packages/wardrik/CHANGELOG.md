@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0-rc.17 (2026-11-16)
+
+- `Wardrik.HTTP` takes `mcp: true` to serve every operation people call as an MCP tool at
+  `/mcp`, for clients such as Claude Code. It's off by default. Each call runs in the request's
+  scope, as its HTTP route does. See `Wardrik.HTTP.MCP`.
+- `:broker` asks a service of your own for credentials, in place of the vault. Requests are
+  signed both ways. See `Wardrik.Credentials.Broker`.
+- A trigger an agent sets itself from a conversation answers in that conversation.
+- Requires `wardrik_core` 0.1.0-rc.12 and `wardrik_protocol` 0.1.0-rc.12.
+
 ## 0.1.0-rc.16 (2026-11-16)
 
 - `Wardrik.Testing.Model` is a model for tests. It serves the Chat Completions API on a port of
