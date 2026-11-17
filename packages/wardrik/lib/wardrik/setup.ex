@@ -13,8 +13,8 @@ defmodule Wardrik.Setup do
       name: name,
       store: store,
       vault_keys: opts[:vault_keys],
-      credentials: brokered(opts[:broker], name, credentials),
-      broker: broker(opts[:broker], credentials),
+      credentials: choose_credentials(opts[:broker], name, credentials),
+      broker: build_broker_settings(opts[:broker], credentials),
       key_source: opts[:key_source],
       grants: opts[:grants] || grants(opts[:oauth], Module.concat(name, OAuth)),
       oauth: oauth(opts[:oauth], opts[:vault_keys]),
@@ -182,11 +182,11 @@ defmodule Wardrik.Setup do
   defp oauth(oauth, _keys), do: oauth
 
   # A broker answers its credentials, and hands the rest to what would answer without it.
-  defp brokered(nil, _name, credentials), do: credentials
-  defp brokered(_broker, name, _credentials), do: {Wardrik.Credentials.Broker, name}
+  defp choose_credentials(nil, _name, credentials), do: credentials
+  defp choose_credentials(_broker, name, _credentials), do: {Wardrik.Credentials.Broker, name}
 
-  defp broker(nil, _credentials), do: nil
-  defp broker(broker, credentials), do: Map.new([fallback: credentials] ++ broker)
+  defp build_broker_settings(nil, _credentials), do: nil
+  defp build_broker_settings(broker, credentials), do: Map.new([fallback: credentials] ++ broker)
 
   defp vaulted([], _entry), do: nil
   defp vaulted(_keys, entry), do: entry

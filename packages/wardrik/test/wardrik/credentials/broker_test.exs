@@ -76,13 +76,13 @@ defmodule Wardrik.Credentials.BrokerTest do
     Broker.refused(request, wardrik.name)
   end
 
-  defp signed(change) do
+  defp sign_change(change) do
     body = JSON.encode!(change)
     headers = Webhook.sign(@secret, body)
     [body: body, headers: Map.new(headers)]
   end
 
-  defp models(responses) do
+  defp stub_models(responses) do
     {:ok, queue} = Agent.start_link(fn -> responses end)
 
     stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
@@ -92,7 +92,7 @@ defmodule Wardrik.Credentials.BrokerTest do
 
   test "parks a call on the broker's link, and carries on once the broker says it's granted",
        %{wardrik: wardrik, scope: scope, answering: answering, asked: asked} do
-    models([calling([call("call_1", "mail", %{})]), answer("Done.")])
+    stub_models([calling([call("call_1", "mail", %{})]), answer("Done.")])
     answering.([%{authorize: "https://broker.test/connect/mail"}, %{token: "tok"}])
 
     {:ok, _agent} =
@@ -112,7 +112,7 @@ defmodule Wardrik.Credentials.BrokerTest do
     assert :ok =
              Wardrik.Hook.broker(
                scope,
-               signed(%{type: "granted", credential: "mail", principal: "acme/@maria"})
+               sign_change(%{type: "granted", credential: "mail", principal: "acme/@maria"})
              )
 
     assert %{"data" => %{"status" => "ok"}} = until("wardrik.tool_call.completed")
@@ -160,14 +160,14 @@ defmodule Wardrik.Credentials.BrokerTest do
 
     assert resolve(wardrik, "mail") == {:ok, "kept"}
 
-    revoked = signed(%{type: "revoked"})
+    revoked = sign_change(%{type: "revoked"})
     forged = Keyword.put(revoked, :body, ~s({"type":"granted"}))
     assert {:error, %Wardrik.Error{type: :not_found}} = Wardrik.Hook.broker(scope, forged)
 
     assert :ok =
              Wardrik.Hook.broker(
                scope,
-               signed(%{type: "revoked", credential: "mail", principal: "acme/@maria"})
+               sign_change(%{type: "revoked", credential: "mail", principal: "acme/@maria"})
              )
 
     assert resolve(wardrik, "mail") == {:error, "Maria left."}

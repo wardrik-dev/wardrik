@@ -90,7 +90,7 @@ defmodule WardrikDaemon.Doctor do
 
   defp checks(config, dirs, env, opts) do
     [storage(config, dirs), vault(config, dirs, env), brave(config)] ++
-      broker(config.wardrik[:broker]) ++
+      check_broker(config.wardrik[:broker]) ++
       Enum.map(config.mcp, &WardrikDaemon.Doctor.MCP.check(&1, req_options(opts))) ++
       Enum.map(config.harnesses, &harness/1) ++
       Enum.map(config.checkouts, &checkout/1) ++
@@ -248,9 +248,9 @@ defmodule WardrikDaemon.Doctor do
 
   defp brave(_config), do: {:ok, "brave", "web_search has a key"}
 
-  defp broker(nil), do: []
+  defp check_broker(nil), do: []
 
-  defp broker(opts) do
+  defp check_broker(opts) do
     %URI{host: host, port: port} = URI.parse(opts[:url])
     names = Enum.join(opts[:credentials], ", ")
 

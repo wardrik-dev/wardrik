@@ -74,7 +74,10 @@ defmodule Wardrik.Credentials.Broker do
   @doc false
   @spec child_spec(Wardrik.t()) :: Supervisor.child_spec()
   def child_spec(wardrik),
-    do: %{id: __MODULE__, start: {GenServer, :start_link, [__MODULE__, table(wardrik.name)]}}
+    do: %{
+      id: __MODULE__,
+      start: {GenServer, :start_link, [__MODULE__, build_table_name(wardrik.name)]}
+    }
 
   @impl GenServer
   def init(table) do
@@ -88,8 +91,8 @@ defmodule Wardrik.Credentials.Broker do
     settings = wardrik.broker
 
     if name in settings.credentials,
-      do: brokered(request, wardrik),
-      else: fallback(settings.fallback, :resolve, request)
+      do: fetch_from_broker(request, wardrik),
+      else: call_fallback(settings.fallback, :resolve, request)
   end
 
   @impl Wardrik.Credentials
@@ -100,12 +103,12 @@ defmodule Wardrik.Credentials.Broker do
     settings = wardrik.broker
 
     if name in settings.credentials do
-      table = table(wardrik.name)
-      :ets.delete(table, key(request))
-      :ets.insert(table, {{:refused, key(request)}})
+      table = build_table_name(wardrik.name)
+      :ets.delete(table, build_cache_key(request))
+      :ets.insert(table, {{:refused, build_cache_key(request)}})
       :ok
     else
-      fallback(settings.fallback, :refused, request)
+      call_fallback(settings.fallback, :refused, request)
     end
   end
 
@@ -118,14 +121,14 @@ defmodule Wardrik.Credentials.Broker do
   def deliver(%Wardrik{broker: nil}, _request, _now), do: {:error, :not_found}
 
   def deliver(%Wardrik{} = wardrik, request, now) do
-    with {:ok, secret} <- secret(wardrik),
+    with {:ok, secret} <- fetch_secret(wardrik),
          :ok <- Webhook.verify(request, verify: :standard, secret: secret, now: now),
-         {:ok, change} <- change(request.body) do
-      changed(wardrik, change)
+         {:ok, change} <- decode_change(request.body) do
+      apply_change(wardrik, change)
     end
   end
 
-  defp change(body) do
+  defp decode_change(body) do
     case JSON.decode(body) do
       {:ok, %{"type" => type, "credential" => name, "principal" => id}}
       when type in ["granted", "revoked"] and is_binary(name) and is_binary(id) ->
@@ -136,37 +139,37 @@ defmodule Wardrik.Credentials.Broker do
     end
   end
 
-  defp changed(wardrik, {"granted", name, principal}) do
-    forget(wardrik, name, principal)
+  defp apply_change(wardrik, {"granted", name, principal}) do
+    forget_tokens(wardrik, name, principal)
     Wardrik.SignIns.granted(name, principal, Wardrik.agents(wardrik))
   end
 
-  defp changed(wardrik, {"revoked", name, principal}) do
-    forget(wardrik, name, principal)
+  defp apply_change(wardrik, {"revoked", name, principal}) do
+    forget_tokens(wardrik, name, principal)
     mcp = Wardrik.mcp(wardrik)
     Wardrik.MCP.disconnect(mcp, credential: name, principal: principal.id)
   end
 
-  defp forget(wardrik, name, %Principal{id: id}) do
-    table = table(wardrik.name)
+  defp forget_tokens(wardrik, name, %Principal{id: id}) do
+    table = build_table_name(wardrik.name)
     :ets.match_delete(table, {{name, id, :_}, :_, :_})
   end
 
-  defp brokered(%Request{principal: nil}, _wardrik), do: {:error, :no_principal}
+  defp fetch_from_broker(%Request{principal: nil}, _wardrik), do: {:error, :no_principal}
 
-  defp brokered(request, wardrik) do
-    table = table(wardrik.name)
-    key = key(request)
+  defp fetch_from_broker(request, wardrik) do
+    table = build_table_name(wardrik.name)
+    key = build_cache_key(request)
     now = System.monotonic_time(:second)
 
     case :ets.lookup(table, key) do
       [{^key, token, expires}] when expires > now -> {:ok, token}
-      _missing -> asked(request, wardrik, table, now)
+      _missing -> ask_broker(request, wardrik, table, now)
     end
   end
 
-  defp asked(request, wardrik, table, now) do
-    refused = :ets.take(table, {:refused, key(request)}) != []
+  defp ask_broker(request, wardrik, table, now) do
+    refused = :ets.take(table, {:refused, build_cache_key(request)}) != []
 
     body =
       JSON.encode!(%{
@@ -177,16 +180,16 @@ defmodule Wardrik.Credentials.Broker do
         refused: refused
       })
 
-    with {:ok, secret} <- secret(wardrik),
-         {:ok, answer} <- post(wardrik.broker, secret, body) do
-      answered(answer, request, table, now)
+    with {:ok, secret} <- fetch_secret(wardrik),
+         {:ok, answer} <- post_to_broker(wardrik.broker, secret, body) do
+      handle_answer(answer, request, table, now)
     end
   end
 
-  defp answered(%{"token" => token} = answer, request, table, now) when is_binary(token) do
+  defp handle_answer(%{"token" => token} = answer, request, table, now) when is_binary(token) do
     case answer["expires_in"] do
       seconds when is_integer(seconds) and seconds > 0 ->
-        :ets.insert(table, {key(request), token, now + seconds})
+        :ets.insert(table, {build_cache_key(request), token, now + seconds})
 
       _uncached ->
         :ok
@@ -195,16 +198,16 @@ defmodule Wardrik.Credentials.Broker do
     {:ok, token}
   end
 
-  defp answered(%{"authorize" => url}, _request, _table, _now) when is_binary(url),
+  defp handle_answer(%{"authorize" => url}, _request, _table, _now) when is_binary(url),
     do: {:authorize, url}
 
-  defp answered(%{"error" => message}, _request, _table, _now) when is_binary(message),
+  defp handle_answer(%{"error" => message}, _request, _table, _now) when is_binary(message),
     do: {:error, message}
 
-  defp answered(_answer, _request, _table, _now),
+  defp handle_answer(_answer, _request, _table, _now),
     do: {:error, "The credential broker's answer has no token, authorize or error."}
 
-  defp post(settings, secret, body) do
+  defp post_to_broker(settings, secret, body) do
     options =
       Keyword.merge(
         [
@@ -228,19 +231,19 @@ defmodule Wardrik.Credentials.Broker do
     end
   end
 
-  defp secret(%Wardrik{broker: %{secret: secret}} = wardrik) do
+  defp fetch_secret(%Wardrik{broker: %{secret: secret}} = wardrik) do
     case Wardrik.Vault.Lookup.resolved(wardrik, "broker", secret: secret) do
       [secret: value] when is_binary(value) -> {:ok, value}
       [secret: nil] -> {:error, "The deployment hasn't sealed the credential broker's secret."}
     end
   end
 
-  defp fallback(nil, :resolve, %Request{name: name}),
+  defp call_fallback(nil, :resolve, %Request{name: name}),
     do: {:error, "No credentials to give #{name}."}
 
-  defp fallback(nil, :refused, _request), do: :ok
+  defp call_fallback(nil, :refused, _request), do: :ok
 
-  defp fallback(entry, callback, request) do
+  defp call_fallback(entry, callback, request) do
     {module, opts} = Wardrik.Context.entry(entry)
 
     cond do
@@ -255,8 +258,8 @@ defmodule Wardrik.Credentials.Broker do
     end
   end
 
-  defp key(%Request{name: name, principal: %Principal{id: id}, agent: agent}),
+  defp build_cache_key(%Request{name: name, principal: %Principal{id: id}, agent: agent}),
     do: {name, id, agent}
 
-  defp table(name), do: Module.concat(name, Broker)
+  defp build_table_name(name), do: Module.concat(name, Broker)
 end
