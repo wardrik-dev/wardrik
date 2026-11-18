@@ -379,6 +379,7 @@ channels:
 | `client_id`, `client_secret`, `redirect_uri` | for a Slack app installed in many workspaces |
 | `domains` | email domain to org; `ana@acme.com` acts as `user:acme/@ana` |
 | `members` | member ID to user; wins over `domains` |
+| `direct` | the agent, by name, that answers direct messages to the app; none unless set |
 | `offering`, `deciding` | messages for a room with no agent, and for a member who can't approve |
 
 - The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are reserved.

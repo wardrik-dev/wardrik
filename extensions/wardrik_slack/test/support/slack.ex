@@ -181,6 +181,15 @@ defmodule WardrikSlack.Test do
   defp reply(_method, _params), do: %{ok: true}
 end
 
+defmodule WardrikSlack.Test.Assistant do
+  @moduledoc "Answers every member's direct messages with the agent `:agent`, as your app might."
+
+  @behaviour Wardrik.Chat.Direct
+
+  @impl Wardrik.Chat.Direct
+  def agent(%Wardrik.Chat.Direct.Request{}, opts), do: {:ok, Keyword.fetch!(opts, :agent)}
+end
+
 defmodule WardrikSlack.Test.Members do
   @moduledoc "Knows the Slack members of `:members` as their users, as your app's identities would."
 

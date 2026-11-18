@@ -133,6 +133,45 @@ defmodule WardrikSlackTest do
     end
   end
 
+  describe "direct messages" do
+    @describetag slack: [direct: {WardrikSlack.Test.Assistant, agent: "agt_triage"}]
+
+    setup context do
+      define(context.owner, "agt_triage", channels: ["slack"])
+      :ok
+    end
+
+    test "answers each in its thread, unmentioned, and marks the message", context do
+      event(
+        context,
+        message("how much Barolo is left?", "2.1", channel: "D1", channel_type: "im")
+      )
+
+      assert_receive {:slack, "reactions.add", %{"name" => "eyes", "timestamp" => "2.1"}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{
+                        "channel" => "D1",
+                        "thread_ts" => "2.1",
+                        "text" => "Answered: how much Barolo is left?"
+                      }},
+                     1_000
+    end
+
+    @tag slack: [direct: nil]
+    test "says so where no agent answers them", context do
+      event(context, message("hi", "2.2", channel: "D1", channel_type: "im"))
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{
+                        "channel" => "D1",
+                        "thread_ts" => "2.2",
+                        "text" => ":warning: No agent answers direct messages here."
+                      }},
+                     1_000
+    end
+  end
+
   describe "threads" do
     setup context do
       define(context.owner, "agt_triage",
@@ -161,11 +200,11 @@ defmodule WardrikSlackTest do
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
 
-    test "leaves alone edits, bots, direct messages and what isn't for it", context do
+    test "leaves alone edits, bots, group direct messages and what isn't for it", context do
       event(context, message("hi", "1.1"))
       event(context, message("<@UBOT> hi", "1.2", subtype: "message_changed"))
       event(context, message("<@UBOT> hi", "1.3", bot_id: "B1"))
-      event(context, message("<@UBOT> hi", "1.4", channel_type: "im"))
+      event(context, message("<@UBOT> hi", "1.4", channel_type: "mpim"))
       event(context, message("<@UBOT> hi", "1.5", user: "UBOT"))
 
       refute_receive {:slack, "reactions.add", _params}, 200

@@ -8,10 +8,12 @@ defmodule Wardrik.Chat.Inbound do
     * `:sender` - a `Wardrik.Chat.Member`.
     * `:text` - the text, without any mention of the bot.
     * `:mentioned?` - whether it mentioned the bot. `false` unless set.
+    * `:direct?` - whether it was sent to the bot directly, as a direct message. The channel's
+      `:direct` agent answers it. `false` unless set.
   """
 
   @enforce_keys [:room, :id, :sender, :text]
-  defstruct [:room, :thread, :id, :sender, :text, mentioned?: false]
+  defstruct [:room, :thread, :id, :sender, :text, mentioned?: false, direct?: false]
 
   @type t() :: %__MODULE__{
           room: String.t(),
@@ -19,6 +21,7 @@ defmodule Wardrik.Chat.Inbound do
           id: String.t(),
           sender: Wardrik.Chat.Member.t(),
           text: String.t(),
-          mentioned?: boolean()
+          mentioned?: boolean(),
+          direct?: boolean()
         }
 end

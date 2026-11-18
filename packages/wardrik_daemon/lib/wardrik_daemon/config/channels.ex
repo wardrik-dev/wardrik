@@ -15,6 +15,7 @@ defmodule WardrikDaemon.Config.Channels do
       and `identities`.
     * `domains` maps email domains to orgs, and `members` member IDs to users. See
       `WardrikDaemon.ChannelMembers`.
+    * `direct` names the agent that answers direct messages. See `WardrikDaemon.Direct`.
     * Without `token`, a token per workspace is kept in the vault.
     * A channel serves the deployment's org unless `orgs` says otherwise.
   """
@@ -22,7 +23,7 @@ defmodule WardrikDaemon.Config.Channels do
   alias WardrikDaemon.Config.Options
 
   @types %{"slack" => WardrikSlack}
-  @managed [:owner, :installations, :identities]
+  @managed [:owner, :installations, :identities, :direct]
 
   @members [
     members: [
@@ -36,6 +37,10 @@ defmodule WardrikDaemon.Config.Channels do
          {:custom, WardrikDaemon.ChannelMembers, :org, []}},
       default: %{},
       doc: "The org each email domain's members are users in, as `ana@acme.com` is `acme/@ana`."
+    ],
+    direct: [
+      type: {:custom, __MODULE__, :agent_name, []},
+      doc: "The agent, by name, that answers direct messages. None unless set."
     ]
   ]
 
@@ -60,7 +65,10 @@ defmodule WardrikDaemon.Config.Channels do
       identities =
         {WardrikDaemon.ChannelMembers, members: members[:members], domains: members[:domains]}
 
-      {:ok, {adapter, build_installations(opts) ++ [owner: org, identities: identities] ++ opts}}
+      {:ok,
+       {adapter,
+        build_installations(opts) ++
+          [owner: org, identities: identities] ++ direct(members[:direct]) ++ opts}}
     end
   end
 
@@ -71,6 +79,17 @@ defmodule WardrikDaemon.Config.Channels do
     do:
       Options.public(Wardrik.Chat.Channel.schema(), @managed) ++
         Options.public(adapter.schema(), @managed) ++ @members
+
+  @doc false
+  @spec agent_name(term()) :: {:ok, String.t()} | {:error, String.t()}
+  def agent_name(name) do
+    if WardrikDaemon.AgentRecords.name?(name),
+      do: {:ok, name},
+      else: {:error, "is an agent's name: letters, digits, _, . and -, at most 64"}
+  end
+
+  defp direct(nil), do: []
+  defp direct(name), do: [direct: {WardrikDaemon.Direct, name: name}]
 
   defp build_installations(opts) do
     if is_binary(opts[:token]), do: [], else: [installations: :stored]
