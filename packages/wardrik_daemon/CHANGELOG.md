@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.22 (2026-11-17)
+
+- An MCP server in `config.yaml` with a `credential` may leave out `url` when its credential
+  gives each user's URL, as a broker can. `wardrik doctor` says so. See the docs' "Connect
+  accounts".
+- Requires `wardrik` 0.1.0-rc.18 and `wardrik_rest` 0.1.0-rc.4.
+
 ## 0.1.0-rc.21 (2026-11-16)
 
 - The daemon serves its HTTP API as MCP tools at `/mcp`: Wardrik's operations and its own, such

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0-rc.18 (2026-11-17)
+
+- An MCP server's credential may be a `Wardrik.Credentials.Endpoint`. Its `url` replaces the
+  server's, and its `headers` are sent with the server's own. A server whose credential always
+  gives a URL may leave its own `url` out.
+- `Wardrik.Credentials.Broker` takes `url`, `headers` and `expires_in` in an answer.
+- A sign-in flow that ends as it is asked for its URL starts again, once.
+- Requires `wardrik_core` 0.1.0-rc.13.
+
 ## 0.1.0-rc.17 (2026-11-16)
 
 - `Wardrik.HTTP` takes `mcp: true` to serve every operation people call as an MCP tool at

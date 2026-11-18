@@ -5,7 +5,7 @@
 Paste this into IEx, with your Anthropic key:
 
 ```elixir
-Mix.install([{:wardrik_core, "~> 0.1.0-rc.12"}])
+Mix.install([{:wardrik_core, "~> 0.1.0-rc.13"}])
 System.put_env("ANTHROPIC_API_KEY", "sk-ant-...")
 
 children = [
