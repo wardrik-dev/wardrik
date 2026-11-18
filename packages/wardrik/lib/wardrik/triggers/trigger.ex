@@ -19,7 +19,9 @@ defmodule Wardrik.Triggers.Trigger do
     * `at` - a single time, as `"2026-11-17T09:00"` in `timezone`, or `"2026-11-17T17:00:00Z"`
       with an offset and no `timezone`. It runs once.
     * `webhook` - `%{"secret" => "${NAME}", "verify" => "shared"}`. `verify` is `"shared"`
-      (default) or `"standard"`. See `Wardrik.Triggers.Webhook`.
+      (default) or `"standard"`. `when` asks the agent only about requests whose JSON body
+      matches: conditions as a policy writes them, as `"action = completed"`, or a list of them,
+      any of which matches. See `Wardrik.Triggers.Webhook`.
     * `prompt` - what the agent is asked.
     * `prompt_file` - a file the agent is told to read and follow.
     * `name` - no `/`, `:` or whitespace. Defaults to `trigger-1`, `trigger-2`, ... by position.
@@ -58,7 +60,8 @@ defmodule Wardrik.Triggers.Trigger do
           clock: Clock.t() | nil,
           prompt: String.t() | nil,
           prompt_file: String.t() | nil,
-          webhook: %{secret: String.t(), verify: :shared | :standard} | nil,
+          webhook:
+            %{secret: String.t(), verify: :shared | :standard, conditions: [String.t()]} | nil,
           ask_in: String.t() | nil,
           timezone: String.t(),
           overlap: :skip | :queue | :settle,
@@ -68,7 +71,7 @@ defmodule Wardrik.Triggers.Trigger do
         }
 
   @typedoc "How a run went. Matches the protocol's `trigger.fired` status."
-  @type status() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
+  @type status() :: :asked | :nothing_new | :unmatched | :busy | :no_agent | :missed | :failed
 
   @keys ~w(name every at timezone prompt prompt_file overlap missed jitter feed webhook ask_in)
   @overlaps %{"skip" => :skip, "queue" => :queue, "settle" => :settle}
@@ -160,10 +163,36 @@ defmodule Wardrik.Triggers.Trigger do
 
   defp webhook(%{"secret" => "${" <> _rest = secret} = fields) do
     with {:ok, verify} <- choice(fields, "verify", @verifies, :shared),
-         do: {:ok, %{secret: secret, verify: verify}}
+         {:ok, conditions} <- conditions(Map.get(fields, "when", [])),
+         do: {:ok, %{secret: secret, verify: verify, conditions: conditions}}
   end
 
   defp webhook(_fields), do: {:error, "a webhook names its secret, as ${NAME}"}
+
+  defp conditions(text) when is_binary(text), do: conditions([text])
+
+  defp conditions(texts) when is_list(texts) do
+    texts
+    |> Enum.map(&condition/1)
+    |> Wardrik.Policy.Read.all()
+  end
+
+  defp conditions(_when), do: {:error, "a webhook's when is conditions, or a list of them"}
+
+  defp condition(text) when is_binary(text) do
+    case Wardrik.Policy.Condition.parse(text) do
+      {:ok, _conditions} ->
+        {:ok, text}
+
+      :resource ->
+        {:error, "a webhook's when #{inspect(text)} isn't conditions, as action = opened"}
+
+      {:error, why} ->
+        {:error, "a webhook's when #{why}"}
+    end
+  end
+
+  defp condition(_text), do: {:error, "a webhook's when is conditions, or a list of them"}
 
   defp clock(nil, nil, nil), do: {:error, "a trigger has every, at, or a webhook"}
   defp clock(nil, nil, _webhook), do: {:ok, nil}
@@ -222,6 +251,9 @@ defmodule Wardrik.Triggers.Trigger do
 
   defp webhook_json(nil), do: nil
 
-  defp webhook_json(%{secret: secret, verify: verify}),
+  defp webhook_json(%{secret: secret, verify: verify, conditions: []}),
     do: %{"secret" => secret, "verify" => Atom.to_string(verify)}
+
+  defp webhook_json(%{secret: secret, verify: verify, conditions: conditions}),
+    do: %{"secret" => secret, "verify" => Atom.to_string(verify), "when" => conditions}
 end

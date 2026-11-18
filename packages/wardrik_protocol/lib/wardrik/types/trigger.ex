@@ -33,10 +33,11 @@ end
 defmodule Wardrik.Trigger.Webhook do
   @moduledoc """
   A trigger's webhook. `secret` is a credential's name, as `${NAME}`. `verify` is `:shared` or
-  `:standard`.
+  `:standard`. `conditions` are the `when` conditions a request's body matches before the agent
+  is asked: conditions as a policy writes them, or a list of them, any of which matches.
   """
 
   use Wardrik.Type,
     schema: ["trigger_definition", "properties", "webhook"],
-    fields: [secret: "secret", verify: {"verify", [:shared, :standard]}]
+    fields: [secret: "secret", verify: {"verify", [:shared, :standard]}, conditions: "when"]
 end

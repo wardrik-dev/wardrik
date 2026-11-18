@@ -1892,6 +1892,10 @@ export interface TriggerDefinition {
      * How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared.
      */
     verify?: "shared" | "standard";
+    /**
+     * Conditions on the request's JSON body, as a policy writes them, such as "action = completed, workflow_run.conclusion = failure", or a list of them, any of which matches. A request that doesn't match is answered without asking the agent.
+     */
+    when?: string | string[];
   };
   [k: string]: unknown;
 }
@@ -2616,7 +2620,7 @@ export interface TriggerFiredData {
   trigger: {
     name: string;
   };
-  status: "asked" | "nothing_new" | "busy" | "no_agent" | "missed" | "failed";
+  status: "asked" | "nothing_new" | "unmatched" | "busy" | "no_agent" | "missed" | "failed";
 }
 /**
  * Someone removed one of an agent's triggers.

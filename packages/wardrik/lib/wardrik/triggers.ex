@@ -174,7 +174,8 @@ defmodule Wardrik.Triggers do
         request: %{body: body, headers: headers}
       )
 
-    * `:ok` - asked, or already asked about this request.
+    * `:ok` - asked, already asked about this request, or its body doesn't match the webhook's
+      `when`.
     * `{:error, :not_found}` - no such webhook trigger, or the request fails to verify.
     * `{:error, status}` - the agent wasn't asked, as `:busy`.
   """

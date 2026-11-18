@@ -58,6 +58,35 @@ defmodule Wardrik.Triggers.TriggerTest do
              Trigger.decode(%{"every" => "30m", "prompt_file" => "HEARTBEAT.md"})
   end
 
+  test "reads a webhook's conditions, one or a list, and says which don't read" do
+    decode = fn match ->
+      Trigger.decode(%{"webhook" => %{"secret" => "${HOOK}", "when" => match}, "prompt" => "Go."})
+    end
+
+    assert {:ok, %Trigger{webhook: %{conditions: ["action = opened"]}} = opened} =
+             decode.("action = opened")
+
+    assert %{"webhook" => %{"when" => ["action = opened"]}} = Trigger.encode(opened)
+
+    assert {:ok,
+            %Trigger{webhook: %{conditions: ["action = opened", "pull_request.draft = false"]}}} =
+             decode.(["action = opened", "pull_request.draft = false"])
+
+    assert {:ok, %Trigger{webhook: %{conditions: []}} = plain} =
+             Trigger.decode(%{"webhook" => %{"secret" => "${HOOK}"}, "prompt" => "Go."})
+
+    refute Map.has_key?(Trigger.encode(plain)["webhook"], "when")
+
+    assert {:error, "a webhook's when \"opened\" isn't conditions, as action = opened"} =
+             decode.("opened")
+
+    assert {:error, "a webhook's when compares size with \"big\"" <> _} =
+             decode.("size > big")
+
+    assert {:error, "a webhook's when is conditions, or a list of them"} =
+             decode.(%{"action" => "opened"})
+  end
+
   test "reads a single time, which queues by default and keeps its time as given" do
     fields = %{"at" => "2026-11-17T09:00", "timezone" => "America/Los_Angeles", "prompt" => "Go."}
 

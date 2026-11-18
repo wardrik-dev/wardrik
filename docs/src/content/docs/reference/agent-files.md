@@ -222,7 +222,7 @@ triggers:
 | `missed` | `run_once` | `run_once` or `skip` runs missed while the daemon was down |
 | `jitter` | `0` | maximum random delay in seconds |
 | `feed` | | RSS or Atom URLs; sends only when a feed has new entries |
-| `webhook` | | instead of `every`: `secret`, and `verify` (`shared` or `standard`) |
+| `webhook` | | instead of `every`: `secret`, `verify` (`shared` or `standard`), and `when`, [conditions](/build/triggers/#filter-requests) on the body |
 
 A webhook trigger receives requests at [`POST /v1/hooks/{agent}/{trigger}`](/reference/http-api/#deliver-a-webhook).
 

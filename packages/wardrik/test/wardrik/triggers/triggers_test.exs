@@ -389,7 +389,15 @@ defmodule Wardrik.TriggersTest do
             "prompt" => "Triage it."
           },
           %{"name" => "signed", "webhook" => %{"secret" => "${MISSING}"}, "prompt" => "Go."},
-          %{"name" => "daily", "every" => "1d", "prompt" => "Go."}
+          %{"name" => "daily", "every" => "1d", "prompt" => "Go."},
+          %{
+            "name" => "ci",
+            "webhook" => %{
+              "secret" => "${HOOK_SECRET}",
+              "when" => ["action = completed, run.conclusion = failure", "action = requested"]
+            },
+            "prompt" => "A run failed."
+          }
         ])
     end
 
@@ -449,6 +457,23 @@ defmodule Wardrik.TriggersTest do
                )
 
       refute_received {:asked, _agent, _prompt, _opts}
+    end
+
+    test "asks only about a request whose body matches its conditions", %{triggers: triggers} do
+      deliver = fn body ->
+        Wardrik.Triggers.deliver(triggers, agent_id: @agent, name: "ci", request: hook(body))
+      end
+
+      assert :ok = deliver.(~s({"action":"completed","run":{"conclusion":"success"}}))
+      assert_receive {:fired, @agent, "ci", :unmatched}
+      assert :ok = deliver.("not json")
+      assert_receive {:fired, @agent, "ci", :unmatched}
+      refute_received {:asked, _agent, _prompt, _opts}
+
+      assert :ok = deliver.(~s({"action":"completed","run":{"conclusion":"FAILURE"}}))
+      assert_receive {:asked, @agent, "A run failed.\n\n" <> _body, _opts}
+      assert :ok = deliver.(~s({"action":"requested"}))
+      assert_receive {:asked, @agent, _prompt, _opts}
     end
 
     @tag answer: :busy
