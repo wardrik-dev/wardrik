@@ -48,6 +48,7 @@ defmodule WardrikCore.MixProject do
   defp docs do
     [
       main: "readme",
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       extras: [
         "README.md",
         "pages/running-agents.md",

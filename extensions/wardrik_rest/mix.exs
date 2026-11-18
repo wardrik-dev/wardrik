@@ -9,7 +9,11 @@ defmodule WardrikRest.MixProject do
       description:
         "Tools for agents from an HTTP API's description, such as a Google Discovery document, with its sign-in and keys.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
+      docs: [
+        main: "readme",
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+        extras: ["README.md", "CHANGELOG.md"]
+      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),

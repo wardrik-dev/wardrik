@@ -2,7 +2,7 @@ defmodule WardrikDaemon.Web.Pages do
   @moduledoc """
   The daemon's own pages in the dashboard: ceilings, tokens and the configuration. The
   dashboard's settings pages read the daemon's servers, secrets, notify targets, OAuth apps and
-  connections. See `WardrikDaemon.Web.Router`.
+  connections.
   """
   use WardrikWeb.Extension
 

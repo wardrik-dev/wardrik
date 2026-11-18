@@ -9,7 +9,11 @@ defmodule WardrikGateway.MixProject do
       description:
         "Rate limits, circuit breakers and model failover for agents' model calls, as Wardrik middleware.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
+      docs: [
+        main: "readme",
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+        extras: ["README.md", "CHANGELOG.md"]
+      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),

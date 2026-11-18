@@ -9,7 +9,11 @@ defmodule WardrikLua.MixProject do
       description:
         "Lua 5.3 for agents: a sealed sandbox, and the run_lua tool that runs code an agent writes in it.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
+      docs: [
+        main: "readme",
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+        extras: ["README.md", "CHANGELOG.md"]
+      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),

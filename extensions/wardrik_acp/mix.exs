@@ -9,7 +9,11 @@ defmodule WardrikACP.MixProject do
       description:
         "Coding agents such as Claude Code, as tools WardrikCore agents call, over ACP.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "guides/getting-started.md", "CHANGELOG.md"]],
+      docs: [
+        main: "readme",
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+        extras: ["README.md", "guides/getting-started.md", "CHANGELOG.md"]
+      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       # The peer runs in a VM of its own, which coverage doesn't see.

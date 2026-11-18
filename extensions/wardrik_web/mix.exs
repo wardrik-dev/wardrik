@@ -8,7 +8,11 @@ defmodule WardrikWeb.MixProject do
       elixir: "~> 1.20",
       description: "A web dashboard for Wardrik's operators, mounted in a Phoenix router.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
+      docs: [
+        main: "readme",
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+        extras: ["README.md", "CHANGELOG.md"]
+      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       # The router macro and the extension's __using__ run at compile time. Test support isn't shipped.
