@@ -110,7 +110,7 @@ used for the request).
 | `wardrik.file.written` | `agent`, `file` | a person or app wrote one of the agent's files, or the agent wrote a digest |
 | `wardrik.file.removed` | `agent`, `file` | a person or app deleted one of the agent's files |
 | `wardrik.notice.held` | `agent`, `probability`, `send` | a judge held a finished turn's answer back from the agent's notify targets |
-| `wardrik.trigger.fired` | `trigger`, `status` | a trigger ran; `status` is `asked`, `nothing_new`, `busy`, `no_agent`, `missed` or `failed` |
+| `wardrik.trigger.fired` | `trigger`, `status` | a trigger ran; `status` is `asked`, `nothing_new`, `unmatched`, `busy`, `no_agent`, `missed` or `failed` |
 | `wardrik.room.bound` | `channel`, `room`, `agent`, `answers` | a chat room was bound to an agent, replying on `mentions` or `everything` |
 | `wardrik.room.unbound` | `channel`, `room` | a chat room was unbound |
 | `wardrik.events.dropped` | `after`, `oldest` | the log was trimmed past your cursor; sent only to you, never stored |

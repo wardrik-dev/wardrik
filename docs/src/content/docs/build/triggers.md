@@ -112,7 +112,26 @@ https://agents.acme.example/v1/hooks/agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN/issues
 - The secret belongs to the agent's owner, stored `--for signing_secret`.
 - A request that fails verification returns `404`. The daemon must be reachable at `base_url`. See
   [Public HTTPS access](/run/public-address/).
-- Each request costs a model call. Subscribe only to the events you need.
+- Each request costs a model call. Subscribe only to the events you need, and filter the rest
+  with `when`.
+
+### Filter requests
+
+`when` asks the agent only about requests whose JSON body matches. Write the conditions as a
+[policy](/reference/policies/#patterns) does. A list matches if any entry matches.
+
+```yaml
+triggers:
+  - name: ci
+    webhook:
+      secret: ${CI_HOOK_SECRET}
+      when: "action = completed, workflow_run.conclusion = failure"
+    prompt: A CI run failed. Its event is below.
+```
+
+- A request that doesn't match returns `202` and makes no model call. Its
+  [`wardrik.trigger.fired`](/reference/events/) event has status `unmatched`.
+- A body that isn't JSON matches nothing.
 
 ## Change triggers
 

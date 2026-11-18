@@ -12,7 +12,7 @@ allowed = [
   vault: [:store],
   oauth: [:vault, :store],
   mcp: [:store],
-  triggers: [:store],
+  triggers: [:policy, :store],
   workspace: [:store],
   http: [],
   chat: [:event_log, :vault, :store],

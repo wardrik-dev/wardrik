@@ -94,6 +94,20 @@
             "standard"
           ],
           "description": "How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared."
+        },
+        "when": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Conditions on the request's JSON body, as a policy writes them, such as \"action = completed, workflow_run.conclusion = failure\", or a list of them, any of which matches. A request that doesn't match is answered without asking the agent."
         }
       },
       "description": "Use instead of every. An external service sends requests to the trigger. Each request runs the agent once."

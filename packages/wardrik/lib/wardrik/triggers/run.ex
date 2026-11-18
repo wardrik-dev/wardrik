@@ -54,9 +54,16 @@ defmodule Wardrik.Triggers.Run do
          :ok <- verify(settings, agent_id, trigger, webhook, request) do
       id = Webhook.id(request)
 
-      if id in Map.get(record, "delivered", []),
-        do: :ok,
-        else: deliver(settings, agent_id, trigger, id, request)
+      cond do
+        id in Map.get(record, "delivered", []) ->
+          :ok
+
+        Webhook.matches?(request, webhook.conditions) ->
+          deliver(settings, agent_id, trigger, id, request)
+
+        true ->
+          pass_over(settings, agent_id, trigger)
+      end
     else
       %Trigger{} -> {:error, :not_found}
       {:error, :not_found} -> {:error, :not_found}
@@ -199,6 +206,16 @@ defmodule Wardrik.Triggers.Run do
       {:ok, secret} -> {:ok, secret}
       :error -> {:error, "its secret #{named} isn't held"}
     end
+  end
+
+  defp pass_over(settings, agent_id, trigger) do
+    fire(
+      settings,
+      %Target.Fired{agent: agent_id, trigger: trigger.name, status: :unmatched},
+      trigger
+    )
+
+    :ok
   end
 
   defp deliver(settings, agent_id, trigger, id, request) do

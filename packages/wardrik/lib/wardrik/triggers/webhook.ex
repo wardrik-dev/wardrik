@@ -80,6 +80,31 @@ defmodule Wardrik.Triggers.Webhook do
     ]
   end
 
+  @doc """
+  Returns `true` if `request`'s JSON body matches any of `conditions`, or there are none.
+
+  Each is conditions as a policy writes them, comma-separated, all of which must hold.
+
+      Wardrik.Triggers.Webhook.matches?(request, ["action = completed, workflow_run.conclusion = failure"])
+
+  A condition on a value that isn't compared, such as an object, holds. A body that isn't JSON
+  matches no conditions.
+  """
+  @spec matches?(request(), [String.t()]) :: boolean()
+  def matches?(_request, []), do: true
+
+  def matches?(%{body: body}, conditions) do
+    case JSON.decode(body) do
+      {:ok, %{} = fields} -> Enum.any?(conditions, &holds?(&1, fields))
+      _not_an_object -> false
+    end
+  end
+
+  defp holds?(text, fields) do
+    {:ok, conditions} = Wardrik.Policy.Condition.parse(text)
+    Wardrik.Policy.Condition.check_conditions(conditions, fields) != false
+  end
+
   @doc "Returns the request's id: its `Idempotency-Key`, its `webhook-id`, or a SHA-256 of its body."
   @spec id(request()) :: String.t()
   def id(%{headers: headers, body: body}) do
