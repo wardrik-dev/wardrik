@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.4 (2026-11-17)
+
+- A credential that gives a URL to connect to is refused, with why: only MCP servers take one.
+- Requires `wardrik_core` 0.1.0-rc.13.
+
 ## 0.1.0-rc.3 (2026-11-16)
 
 - A refused token is reported with `Wardrik.Credentials.report_refusal/2`.

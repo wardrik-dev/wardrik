@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.13 (2026-11-17)
+
+- `Wardrik.Credentials.Endpoint` is a credential that also says where to connect: a `url` and
+  `headers` beside the token. Return it from `resolve/2` when each person or agent reaches a
+  service at an address of its own.
+
 ## 0.1.0-rc.12 (2026-11-16)
 
 - `Wardrik.Credentials.Request` carries the `agent` whose tool asks, and the tool `call`, or
