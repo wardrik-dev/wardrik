@@ -451,6 +451,12 @@ defmodule WardrikRestTest do
 
       no_key = %{context() | keys: {__MODULE__.BrokenKeys, []}}
       assert metadata.run.(%{}, no_key) == {:error, "ga4 can't read its PROJECT key: :locked"}
+
+      endpoint = %Wardrik.Credentials.Endpoint{url: "https://tenant.test/mcp"}
+      routed = context(tokens: [endpoint], keys: %{"PROJECT" => "p"})
+
+      assert {:error, "ga4 can't sign in with google: it gives a URL" <> _} =
+               metadata.run.(%{}, routed)
     end
   end
 

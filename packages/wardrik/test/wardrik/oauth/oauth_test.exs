@@ -279,6 +279,32 @@ defmodule Wardrik.OAuthTest do
       refute Wardrik.OAuth.signing_in?(oauth, "github", @jon)
     end
 
+    @tag polls: [%{"error" => "authorization_pending"}]
+    test "starts again when the sign-in it finds ends before it answers", %{
+      vault: vault,
+      oauth: oauth
+    } do
+      github = credential("github", @jon)
+      assert {:authorize, first} = Wardrik.Vault.resolve(github, vault)
+
+      [{pid, _value}] =
+        oauth
+        |> Module.concat(Registry)
+        |> Registry.lookup({:flow, "github", "user:jon"})
+
+      :ok = :sys.suspend(pid)
+      send(pid, :expire)
+      1 = :erlang.trace(pid, true, [:receive])
+      asking = Task.async(fn -> Wardrik.Vault.resolve(github, vault) end)
+      assert_receive {:trace, ^pid, :receive, {:"$gen_call", _from, :url}}
+      ref = Process.monitor(pid)
+      :ok = :sys.resume(pid)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert {:authorize, again} = Task.await(asking)
+      assert again != first
+    end
+
     @tag polls: [%{"error" => "access_denied"}]
     test "ends when the principal refuses", %{vault: vault} do
       github = credential("github", @jon)

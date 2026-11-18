@@ -73,9 +73,18 @@ defmodule WardrikRest.Call do
 
   defp fetch(%__MODULE__{api: api, context: context}, {:credential, name}) do
     case Credentials.fetch(context, name) do
-      {:ok, token} -> {:ok, to_string(token)}
-      {:park, authorization} -> {:park, authorization}
-      {:error, reason} -> {:error, "#{api.name} can't sign in with #{name}: #{text(reason)}"}
+      {:ok, %Wardrik.Credentials.Endpoint{}} ->
+        {:error,
+         "#{api.name} can't sign in with #{name}: it gives a URL to connect to, which only MCP servers take."}
+
+      {:ok, token} ->
+        {:ok, to_string(token)}
+
+      {:park, authorization} ->
+        {:park, authorization}
+
+      {:error, reason} ->
+        {:error, "#{api.name} can't sign in with #{name}: #{text(reason)}"}
     end
   end
 

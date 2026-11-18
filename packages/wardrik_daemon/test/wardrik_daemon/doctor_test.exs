@@ -190,6 +190,7 @@ defmodule WardrikDaemon.DoctorTest do
       refused: {url: "http://127.0.0.1:#{port}/refused"}
       sealed: {url: "http://127.0.0.1:#{port}/mcp", headers: {x-api-key: "${SEALED_KEY}"}}
       github: {url: "http://127.0.0.1:#{port}/mcp", credential: github}
+      routed: {credential: routed}
     """)
 
     checks = run(context.env)
@@ -207,6 +208,9 @@ defmodule WardrikDaemon.DoctorTest do
 
     assert [{:ok, github}] = find_check(checks, "mcp github")
     assert github =~ "each user's account reaches it"
+
+    assert [{:ok, routed}] = find_check(checks, "mcp routed")
+    assert routed =~ "the credential routed gives each user's URL"
   end
 
   test "says whether the credential broker answers", context do
