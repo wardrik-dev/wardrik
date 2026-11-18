@@ -67,6 +67,7 @@ defmodule Wardrik.MixProject do
   defp docs do
     [
       main: "readme",
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       extras: [
         "README.md",
         "notebooks/tour-demo.livemd",

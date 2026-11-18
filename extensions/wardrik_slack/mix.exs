@@ -9,7 +9,11 @@ defmodule WardrikSlack.MixProject do
       description:
         "Wardrik in Slack: agents answer in threads, and ask there, with Approve and Deny, before a call they can't make alone.",
       package: package(),
-      docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
+      docs: [
+        main: "readme",
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+        extras: ["README.md", "CHANGELOG.md"]
+      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       test_coverage: [ignore_modules: [~r/^Wardrik\.Test\./]],
