@@ -367,6 +367,27 @@ defmodule WardrikDaemon.DoctorTest do
              find_check(run(context.env), "env")
   end
 
+  test "finds an agent's notify targets in config.yaml, and says when one isn't there", context do
+    write(context, "config.yaml", """
+    org: acme
+    defaults: {model: "anthropic:claude-sonnet-4-5"}
+    notify:
+      targets:
+        audit: {webhook: {url: https://hooks.acme.test/wardrik}}
+    """)
+
+    write(context, "agents/watch.md", "---\nnotify: {to: [audit], on: [failed]}\n---\nWatch.\n")
+    assert [{:ok, "1 agent file and 0 policies read"}] = find_check(run(context.env), "agents")
+
+    write(context, "agents/lost.md", "---\nnotify: nowhere\n---\nWatch.\n")
+
+    assert [
+             {:fail,
+              "lost.md: There's no notify target nowhere here, nor a channel that posts in it."}
+           ] =
+             find_check(run(context.env), "agents")
+  end
+
   test "stops after a config that doesn't read, and says how the command did", context do
     write(context, "config.yaml", "nope: 1\n")
     assert [{:ok, "env", _none}, {:fail, "config", why}] = run(context.env)

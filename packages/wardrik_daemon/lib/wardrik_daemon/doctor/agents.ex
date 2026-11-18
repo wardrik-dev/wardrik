@@ -125,6 +125,7 @@ defmodule WardrikDaemon.Doctor.Agents do
           WardrikDaemon.Rest.capabilities(WardrikDaemon.Doctor, daemon, config),
       mcp: config.mcp,
       channels: config.channels,
+      notify: config.notify,
       defaults: config.defaults,
       policies: Map.to_list(policies),
       authorizer: {WardrikDaemon.Authorizer, %{access: config.access, store: daemon}},
