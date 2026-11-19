@@ -165,7 +165,9 @@ defmodule WardrikSlackTest do
     test "quote the message a reply answers, once, in a thread no agent answers in", context do
       event(context, message("why?", "3.2", channel: "D1", channel_type: "im", thread_ts: "3.1"))
 
-      assert_receive {:slack, "conversations.replies", %{"channel" => "D1", "ts" => "3.1"}}, 1_000
+      assert_receive {:slack, "conversations.replies",
+                      %{"channel" => "D1", "ts" => "3.1", "include_all_metadata" => "true"}},
+                     1_000
 
       assert_receive {:slack, "chat.postMessage",
                       %{"thread_ts" => "3.1", "text" => "Answered: " <> answered}},
@@ -173,7 +175,8 @@ defmodule WardrikSlackTest do
 
       assert answered ==
                "This replies in the thread of this message:\n" <>
-                 "> `agt_triage` stopped with an error: :crash\n\nwhy?"
+                 "> *triage* stopped with an error: :crash\n" <>
+                 "It's a notice about triage (agt_triage), from its main conversation.\n\nwhy?"
 
       event(context, message("and?", "3.3", channel: "D1", channel_type: "im", thread_ts: "3.1"))
 
@@ -385,6 +388,38 @@ defmodule WardrikSlackTest do
                      1_000
 
       refute Map.has_key?(posted, "thread_ts")
+    end
+
+    test "names the agent, with its ID in small text, and carries the notice as metadata",
+         context do
+      notice = %Wardrik.Notice{
+        agent: "agt_digest",
+        name: "digest",
+        conversation: "daily",
+        kind: :failed,
+        at: ~U[2026-11-19 10:00:00Z],
+        reason: "It timed out."
+      }
+
+      notification = %Wardrik.Channel.Notification{workspace: "T1", room: "#news", notice: notice}
+      assert WardrikSlack.notify(notification, context.options) == :ok
+
+      assert_receive {:slack, "chat.postMessage", posted}, 1_000
+      assert posted["text"] == ":warning: *digest* stopped with an error: It timed out."
+      assert %{"elements" => [%{"text" => "`agt_digest`"}]} = List.last(posted["blocks"])
+
+      assert posted["metadata"] == %{
+               "event_type" => "turn_failed",
+               "event_payload" => %{
+                 "event" => "turn_failed",
+                 "agent" => "agt_digest",
+                 "name" => "digest",
+                 "conversation" => "daily",
+                 "at" => "2026-11-19T10:00:00Z",
+                 "calls" => [],
+                 "reason" => "It timed out."
+               }
+             }
     end
 
     test "posts no notice of a turn in one of its threads, which shows it", context do

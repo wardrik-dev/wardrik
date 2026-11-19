@@ -167,7 +167,19 @@ defmodule WardrikSlack.Test do
   defp reply("chat.postMessage", _params), do: %{ok: true, ts: "9.9"}
 
   defp reply("conversations.replies", %{"ts" => ts}),
-    do: %{ok: true, messages: [%{ts: ts, text: "`agt_triage` stopped with an error: :crash"}]}
+    do: %{
+      ok: true,
+      messages: [
+        %{
+          ts: ts,
+          text: "*triage* stopped with an error: :crash",
+          metadata: %{
+            event_type: "turn_failed",
+            event_payload: %{agent: "agt_triage", name: "triage", reason: ":crash"}
+          }
+        }
+      ]
+    }
 
   defp reply("apps.connections.open", _params), do: %{ok: false, error: "invalid_auth"}
   defp reply("auth.test", _params), do: %{ok: true, user: "wardrik", team: "Acme"}

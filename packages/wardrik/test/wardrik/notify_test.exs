@@ -298,6 +298,29 @@ defmodule Wardrik.NotifyTest do
       assert is_binary(reason)
     end
 
+    test "names the agent as its definition shows it, with no name where it has none", %{
+      scope: scope
+    } do
+      model({:error, :boom})
+      {:ok, _agent} = define(scope, "audit", %{"display_name" => "Triage"})
+      ask(scope)
+      assert_receive {:told, "audit", %Notice{agent: "acme/triage", name: "Triage"}}
+
+      {:ok, _agent} = define(scope, "audit", %{}, "acme/other")
+      ask(scope, "acme/other")
+      assert_receive {:told, "audit", %Notice{agent: "acme/other", name: nil}}
+    end
+
+    @tag defaults: %{"display_name" => "Everyone"}
+    test "names the agent as its defaults do, where its definition gives no name", %{
+      scope: scope
+    } do
+      model({:error, :boom})
+      {:ok, _agent} = define(scope, "audit")
+      ask(scope)
+      assert_receive {:told, "audit", %Notice{name: "Everyone"}}
+    end
+
     test "tells what a turn answered only where on asks for it", %{scope: scope} do
       model({:ok, answer("All quiet.")})
       {:ok, _agent} = define(scope, "audit")

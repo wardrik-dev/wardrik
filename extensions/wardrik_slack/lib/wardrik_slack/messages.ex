@@ -47,11 +47,13 @@ defmodule WardrikSlack.Messages do
       |> String.trim()
 
     thread = select_thread(event["thread_ts"], ts)
+    parent = fetch_thread_parent(workspace, event, thread)
 
     inbound = %Inbound{
       room: room,
       thread: thread,
-      parent: fetch_thread_parent(workspace, event, thread),
+      parent: parent["text"],
+      parent_notice: read_notice_payload(parent),
       id: ts,
       sender: sender(workspace, event["user"]),
       text: said,
@@ -78,15 +80,26 @@ defmodule WardrikSlack.Messages do
   defp fetch_thread_parent(workspace, %{"channel_type" => "im", "channel" => room}, thread)
        when is_binary(thread) do
     with false <- Wardrik.Chat.Rooms.started?(workspace, room: room, thread: thread),
-         {:ok, %{"messages" => [%{"text" => text} | _replies]}} <-
-           API.read_in(workspace, "conversations.replies", %{channel: room, ts: thread, limit: 1}) do
-      text
+         {:ok, %{"messages" => [parent | _replies]}} <-
+           API.read_in(workspace, "conversations.replies", %{
+             channel: room,
+             ts: thread,
+             limit: 1,
+             include_all_metadata: true
+           }) do
+      parent
     else
-      _none -> nil
+      _none -> %{}
     end
   end
 
-  defp fetch_thread_parent(_workspace, _event, _thread), do: nil
+  defp fetch_thread_parent(_workspace, _event, _thread), do: %{}
+
+  defp read_notice_payload(%{"metadata" => %{"event_type" => type, "event_payload" => payload}}) do
+    if type in Wardrik.Notice.list_events(), do: payload
+  end
+
+  defp read_notice_payload(_parent), do: nil
 
   defp select_thread(nil, _ts), do: nil
   defp select_thread(ts, ts), do: nil

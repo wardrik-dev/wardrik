@@ -221,15 +221,30 @@ defmodule Wardrik.Chat do
 
   defp prepend_parent_quote(%Inbound{parent: nil, text: text}), do: text
 
-  defp prepend_parent_quote(%Inbound{parent: parent, text: text}) do
+  defp prepend_parent_quote(%Inbound{parent: parent, parent_notice: notice, text: text}) do
     quoted =
       parent
       |> String.slice(0, @quoted_parent_length)
       |> String.split("\n")
       |> Enum.map_join("\n", &("> " <> &1))
 
-    "This replies in the thread of this message:\n" <> quoted <> "\n\n" <> text
+    "This replies in the thread of this message:\n" <>
+      quoted <> describe_notice_origin(notice) <> "\n\n" <> text
   end
+
+  # A chat app may drop a payload's empty keys, so name and conversation may be missing.
+  defp describe_notice_origin(%{"agent" => agent} = notice),
+    do:
+      "\nIt's a notice about #{label_notice_agent(notice["name"], agent)}, from " <>
+        "#{describe_notice_conversation(notice["conversation"])}."
+
+  defp describe_notice_origin(nil), do: ""
+
+  defp label_notice_agent(nil, agent), do: agent
+  defp label_notice_agent(name, agent), do: "#{name} (#{agent})"
+
+  defp describe_notice_conversation(nil), do: "its main conversation"
+  defp describe_notice_conversation(conversation), do: "its conversation #{conversation}"
 
   defp waiting?(scope, agent, conversation),
     do:

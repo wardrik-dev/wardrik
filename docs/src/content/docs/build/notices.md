@@ -80,6 +80,8 @@ Reference the webhook in an agent file with `notify: alerts`.
 {
   "event": "turn_parked",
   "agent": "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN",
+  "name": "ops-watch",
+  "conversation": null,
   "at": "2026-10-01T12:04:09.611Z",
   "calls": [
     {
@@ -112,6 +114,10 @@ const ok =
 
 - `event` is `turn_parked`, `turn_failed` or `turn_finished`, also sent as the `x-wardrik-event`
   header.
+- `name` is the agent's `display_name`, or its name in `agents/` or the API. `conversation` is
+  `null` for the agent's main conversation.
+- In Slack, a notice shows the agent's name, with its ID in small text. The message carries
+  this payload as its metadata.
 - Delivery is at least once. Deduplicate by `agent`, `event` and `at`.
 - The signature covers the body only. Use `at` to reject replays.
 - Transient failures are retried. `notify.retries` configures it.
