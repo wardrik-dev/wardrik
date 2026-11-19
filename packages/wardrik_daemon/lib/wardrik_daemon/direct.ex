@@ -15,7 +15,11 @@ defmodule WardrikDaemon.Direct do
   alias WardrikDaemon.AgentRecords
 
   @impl Wardrik.Chat.Direct
-  def agent(%Wardrik.Chat.Direct.Request{}, opts) do
+  def agent(%Wardrik.Chat.Direct.Request{}, opts), do: fetch_agent(opts)
+
+  @doc "Returns the ID of the agent `opts` name, in the org they give."
+  @spec fetch_agent(keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def fetch_agent(opts) do
     name = Keyword.fetch!(opts, :name)
     store = Keyword.fetch!(opts, :store)
     org = Keyword.fetch!(opts, :org)
@@ -27,19 +31,21 @@ defmodule WardrikDaemon.Direct do
   end
 
   @doc """
-  Gives each channel's `direct` the store and the org it finds its agent in. `org` is the
+  Gives each channel's `direct` the daemon and the org it finds its agent in. `org` is the
   deployment's.
   """
-  @spec place(keyword(), Wardrik.Store.t(), String.t()) :: keyword()
-  def place(channels, store, org) do
+  @spec place(keyword(), WardrikDaemon.CreateAgent.daemon(), String.t()) :: keyword()
+  def place(channels, daemon, org) do
     for {name, {adapter, opts}} <- channels do
       {name,
-       {adapter, Keyword.replace_lazy(opts, :direct, &locate(&1, store, serving(opts, org)))}}
+       {adapter, Keyword.replace_lazy(opts, :direct, &locate(&1, daemon, serving(opts, org)))}}
     end
   end
 
-  defp locate({__MODULE__, opts}, store, org), do: {__MODULE__, opts ++ [store: store, org: org]}
-  defp locate(direct, _store, _org), do: direct
+  defp locate({module, opts}, daemon, org) when module in [__MODULE__, __MODULE__.Members],
+    do: {module, opts ++ [store: daemon.store, wardrik: daemon.wardrik, org: org]}
+
+  defp locate(direct, _daemon, _org), do: direct
 
   defp serving(opts, org) do
     case Keyword.fetch!(opts, :owner) do

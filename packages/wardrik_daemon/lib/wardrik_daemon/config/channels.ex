@@ -15,7 +15,8 @@ defmodule WardrikDaemon.Config.Channels do
       and `identities`.
     * `domains` maps email domains to orgs, and `members` member IDs to users. See
       `WardrikDaemon.ChannelMembers`.
-    * `direct` names the agent that answers direct messages. See `WardrikDaemon.Direct`.
+    * `direct` names the agent that answers direct messages, or with `per: member` the agent each
+      member's own is made from. See `WardrikDaemon.Direct` and `WardrikDaemon.Direct.Members`.
     * Without `token`, a token per workspace is kept in the vault.
     * A channel serves the deployment's org unless `orgs` says otherwise.
   """
@@ -39,8 +40,9 @@ defmodule WardrikDaemon.Config.Channels do
       doc: "The org each email domain's members are users in, as `ana@acme.com` is `acme/@ana`."
     ],
     direct: [
-      type: {:custom, __MODULE__, :agent_name, []},
-      doc: "The agent, by name, that answers direct messages. None unless set."
+      type: {:custom, __MODULE__, :direct, []},
+      doc:
+        "The agent, by name, that answers direct messages, or `{agent: NAME, per: member}` for an agent per member. None unless set."
     ]
   ]
 
@@ -68,7 +70,7 @@ defmodule WardrikDaemon.Config.Channels do
       {:ok,
        {adapter,
         build_installations(opts) ++
-          [owner: org, identities: identities] ++ direct(members[:direct]) ++ opts}}
+          [owner: org, identities: identities] ++ place_direct(members[:direct]) ++ opts}}
     end
   end
 
@@ -81,15 +83,23 @@ defmodule WardrikDaemon.Config.Channels do
         Options.public(adapter.schema(), @managed) ++ @members
 
   @doc false
-  @spec agent_name(term()) :: {:ok, String.t()} | {:error, String.t()}
-  def agent_name(name) do
+  @spec direct(term()) :: {:ok, {module(), keyword()}} | {:error, String.t()}
+  def direct(%{"agent" => name, "per" => "member"} = direct) when map_size(direct) == 2,
+    do: answer_with(WardrikDaemon.Direct.Members, name)
+
+  def direct(name) when is_binary(name), do: answer_with(WardrikDaemon.Direct, name)
+
+  def direct(_other),
+    do: {:error, "is an agent's name, or {agent: NAME, per: member} for an agent per member"}
+
+  defp answer_with(module, name) do
     if WardrikDaemon.AgentRecords.name?(name),
-      do: {:ok, name},
+      do: {:ok, {module, name: name}},
       else: {:error, "is an agent's name: letters, digits, _, . and -, at most 64"}
   end
 
-  defp direct(nil), do: []
-  defp direct(name), do: [direct: {WardrikDaemon.Direct, name: name}]
+  defp place_direct(nil), do: []
+  defp place_direct(direct), do: [direct: direct]
 
   defp build_installations(opts) do
     if is_binary(opts[:token]), do: [], else: [installations: :stored]

@@ -52,7 +52,7 @@ defmodule WardrikDaemon.DirectTest do
 
     channels =
       config.channels
-      |> Direct.place(context.store, config.org)
+      |> Direct.place(%{wardrik: :w, store: context.store}, config.org)
       |> Map.new()
 
     assert {WardrikSlack, quiet} = channels["quiet"]
@@ -73,6 +73,67 @@ defmodule WardrikDaemon.DirectTest do
 
     assert Direct.agent(request(), opts) ==
              {:error, "There's no agent assistant to answer direct messages."}
+  end
+
+  test "makes each member an agent of their own from the one direct names, once", context do
+    write(context, "config.yaml", """
+    org: acme
+    http: {port: #{free_port()}}
+    web: {enabled: false}
+    defaults: {model: #{model()}}
+    channels: {slack: {type: slack, token: x, signing_secret: x}}
+    """)
+
+    write(context, "agents/assistant.md", """
+    ---
+    description: Helps.
+    channels: [slack]
+    triggers: [{name: daily, every: 1d, prompt: Look around.}]
+    ---
+    You help.
+    """)
+
+    context = start_daemon(context)
+    opts = [name: "assistant", store: context.daemon_store, wardrik: context.wardrik, org: "acme"]
+
+    assert {:ok, id} = Direct.Members.agent(request(), opts)
+    assert {:ok, ^id} = Direct.Members.agent(request(), opts)
+
+    assert {:ok, %{owner: "acme/@ana", name: "assistant.ana"}} =
+             AgentRecords.fetch(context.daemon_store, id)
+
+    assert {:ok, %{"definition" => definition}} =
+             Wardrik.run(context.admin, "agent.definition", %{"agent" => id})
+
+    assert %{"description" => "Helps.", "channels" => ["slack"]} = definition
+    refute Map.has_key?(definition, "triggers")
+
+    {:ok, assistant} = AgentRecords.fetch_by_name(context.daemon_store, "acme", "assistant")
+
+    assert {:ok, %{"definition" => %{"triggers" => [_daily]}}} =
+             Wardrik.run(context.admin, "agent.definition", %{"agent" => assistant.id})
+
+    admin = %{request() | principal: %Wardrik.Principal{id: "admin"}}
+    assert Direct.Members.agent(admin, opts) == {:ok, assistant.id}
+  end
+
+  test "reads an agent per member from config.yaml", context do
+    assert {:ok, config} =
+             read(
+               context,
+               "channels: {slack: {type: slack, token: x, direct: {agent: assistant, per: member}}}"
+             )
+
+    assert {WardrikSlack, opts} = Map.new(config.channels)["slack"]
+    assert opts[:direct] == {Direct.Members, name: "assistant"}
+
+    assert {:error, why} =
+             read(
+               context,
+               "channels: {slack: {type: slack, token: x, direct: {agent: assistant, per: room}}}"
+             )
+
+    assert why =~ "per: member"
   end
 
   test "refuses a name no agent could have", context do
