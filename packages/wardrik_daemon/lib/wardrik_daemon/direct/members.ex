@@ -26,14 +26,14 @@ defmodule WardrikDaemon.Direct.Members do
   @kept_back ["triggers", "notify"]
 
   @impl Wardrik.Chat.Direct
-  def agent(%Wardrik.Chat.Direct.Request{principal: %{id: owner}} = request, opts) do
+  def find_agent(%Wardrik.Chat.Direct.Request{principal: %{id: owner}} = request, opts) do
     case Owners.person(owner) do
-      nil -> Direct.agent(request, opts)
-      person -> find_agent(opts, owner, Keyword.fetch!(opts, :name) <> "." <> person)
+      nil -> Direct.find_agent(request, opts)
+      person -> find_or_create_agent(opts, owner, Keyword.fetch!(opts, :name) <> "." <> person)
     end
   end
 
-  defp find_agent(opts, owner, name) do
+  defp find_or_create_agent(opts, owner, name) do
     case AgentRecords.fetch_by_name(opts[:store], Owners.org(owner), name) do
       {:ok, %{owner: ^owner, id: id}} -> {:ok, id}
       {:ok, _other} -> {:error, "Another agent is called #{name}, so you can't have yours."}
@@ -53,7 +53,7 @@ defmodule WardrikDaemon.Direct.Members do
       {:ok, record.id}
     else
       # Two first messages at once: the other made it.
-      {:error, %Error{type: :conflict}} -> find_agent(opts, owner, name)
+      {:error, %Error{type: :conflict}} -> find_or_create_agent(opts, owner, name)
       {:error, %Error{message: message}} -> {:error, message}
       {:error, message} -> {:error, message}
     end

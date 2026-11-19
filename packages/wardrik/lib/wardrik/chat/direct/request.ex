@@ -1,6 +1,6 @@
 defmodule Wardrik.Chat.Direct.Request do
   @moduledoc """
-  The member `c:Wardrik.Chat.Direct.agent/2` finds an agent for.
+  The member `c:Wardrik.Chat.Direct.find_agent/2` finds an agent for.
 
       %Wardrik.Chat.Direct.Request{
         channel: "slack",

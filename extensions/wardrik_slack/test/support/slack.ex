@@ -187,7 +187,7 @@ defmodule WardrikSlack.Test.Assistant do
   @behaviour Wardrik.Chat.Direct
 
   @impl Wardrik.Chat.Direct
-  def agent(%Wardrik.Chat.Direct.Request{}, opts), do: {:ok, Keyword.fetch!(opts, :agent)}
+  def find_agent(%Wardrik.Chat.Direct.Request{}, opts), do: {:ok, Keyword.fetch!(opts, :agent)}
 end
 
 defmodule WardrikSlack.Test.Members do

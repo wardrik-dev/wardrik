@@ -15,7 +15,7 @@ defmodule WardrikDaemon.Direct do
   alias WardrikDaemon.AgentRecords
 
   @impl Wardrik.Chat.Direct
-  def agent(%Wardrik.Chat.Direct.Request{}, opts), do: fetch_agent(opts)
+  def find_agent(%Wardrik.Chat.Direct.Request{}, opts), do: fetch_agent(opts)
 
   @doc "Returns the ID of the agent `opts` name, in the org they give."
   @spec fetch_agent(keyword()) :: {:ok, String.t()} | {:error, String.t()}
@@ -38,7 +38,8 @@ defmodule WardrikDaemon.Direct do
   def place(channels, daemon, org) do
     for {name, {adapter, opts}} <- channels do
       {name,
-       {adapter, Keyword.replace_lazy(opts, :direct, &locate(&1, daemon, serving(opts, org)))}}
+       {adapter,
+        Keyword.replace_lazy(opts, :direct, &locate(&1, daemon, resolve_owner(opts, org)))}}
     end
   end
 
@@ -47,7 +48,7 @@ defmodule WardrikDaemon.Direct do
 
   defp locate(direct, _daemon, _org), do: direct
 
-  defp serving(opts, org) do
+  defp resolve_owner(opts, org) do
     case Keyword.fetch!(opts, :owner) do
       "*" -> org
       owner -> owner

@@ -37,7 +37,7 @@ defmodule WardrikDaemon.Config.MCP do
     {transport, own} = Map.split(server, @transport)
 
     with :ok <- manage(own, path),
-         {:ok, transport} <- transport(transport, Map.has_key?(own, "credential"), path),
+         {:ok, transport} <- build_transport(transport, Map.has_key?(own, "credential"), path),
          {:ok, own} <-
            own
            |> rename()
@@ -68,22 +68,22 @@ defmodule WardrikDaemon.Config.MCP do
 
   defp rename(own), do: own
 
-  defp transport(%{"url" => _url, "command" => _command}, _credential, path),
+  defp build_transport(%{"url" => _url, "command" => _command}, _credential, path),
     do: {:error, "#{path}: has a url or a command, not both"}
 
-  defp transport(%{"url" => url} = server, _credential, _path),
+  defp build_transport(%{"url" => url} = server, _credential, _path),
     do: {:ok, {:streamable_http, url: url, headers: Map.get(server, "headers", %{})}}
 
-  defp transport(%{"command" => command} = server, _credential, _path),
+  defp build_transport(%{"command" => command} = server, _credential, _path),
     do:
       {:ok,
        {:stdio,
         command: command, args: Map.get(server, "args", []), env: Map.get(server, "env", %{})}}
 
-  defp transport(server, true, _path),
+  defp build_transport(server, true, _path),
     do: {:ok, {:streamable_http, headers: Map.get(server, "headers", %{})}}
 
-  defp transport(_server, false, path),
+  defp build_transport(_server, false, path),
     do:
       {:error,
        "#{path}: has a command to run it, a url to reach it at, or a credential that gives the url"}

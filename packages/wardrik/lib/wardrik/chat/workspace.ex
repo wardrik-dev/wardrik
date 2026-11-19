@@ -74,7 +74,7 @@ defmodule Wardrik.Chat.Workspace do
            workspace: workspace.installation.workspace,
            principal: principal
          },
-         {:ok, agent} <- module.agent(request, opts) do
+         {:ok, agent} <- module.find_agent(request, opts) do
       case offer(acting(workspace, principal, %{}), workspace, agent) do
         [_offer] -> {:ok, agent}
         [] -> {:error, "The agent that answers direct messages isn't offered in #{channel.name}."}

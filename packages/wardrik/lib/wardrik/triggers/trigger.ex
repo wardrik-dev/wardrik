@@ -133,7 +133,7 @@ defmodule Wardrik.Triggers.Trigger do
       "missed" => Atom.to_string(trigger.missed),
       "jitter" => if(trigger.jitter > 0, do: trigger.jitter),
       "feed" => if(trigger.feeds != [], do: trigger.feeds),
-      "webhook" => webhook_json(trigger.webhook),
+      "webhook" => encode_webhook(trigger.webhook),
       "ask_in" => trigger.ask_in
     }
 
@@ -163,23 +163,23 @@ defmodule Wardrik.Triggers.Trigger do
 
   defp webhook(%{"secret" => "${" <> _rest = secret} = fields) do
     with {:ok, verify} <- choice(fields, "verify", @verifies, :shared),
-         {:ok, conditions} <- conditions(Map.get(fields, "when", [])),
+         {:ok, conditions} <- parse_conditions(Map.get(fields, "when", [])),
          do: {:ok, %{secret: secret, verify: verify, conditions: conditions}}
   end
 
   defp webhook(_fields), do: {:error, "a webhook names its secret, as ${NAME}"}
 
-  defp conditions(text) when is_binary(text), do: conditions([text])
+  defp parse_conditions(text) when is_binary(text), do: parse_conditions([text])
 
-  defp conditions(texts) when is_list(texts) do
+  defp parse_conditions(texts) when is_list(texts) do
     texts
-    |> Enum.map(&condition/1)
+    |> Enum.map(&parse_condition/1)
     |> Wardrik.Policy.Read.all()
   end
 
-  defp conditions(_when), do: {:error, "a webhook's when is conditions, or a list of them"}
+  defp parse_conditions(_when), do: {:error, "a webhook's when is conditions, or a list of them"}
 
-  defp condition(text) when is_binary(text) do
+  defp parse_condition(text) when is_binary(text) do
     case Wardrik.Policy.Condition.parse(text) do
       {:ok, _conditions} ->
         {:ok, text}
@@ -192,7 +192,7 @@ defmodule Wardrik.Triggers.Trigger do
     end
   end
 
-  defp condition(_text), do: {:error, "a webhook's when is conditions, or a list of them"}
+  defp parse_condition(_text), do: {:error, "a webhook's when is conditions, or a list of them"}
 
   defp clock(nil, nil, nil), do: {:error, "a trigger has every, at, or a webhook"}
   defp clock(nil, nil, _webhook), do: {:ok, nil}
@@ -249,11 +249,11 @@ defmodule Wardrik.Triggers.Trigger do
   defp feed([_ | _], {:at, _at}), do: {:error, "a trigger with at has no feed"}
   defp feed(_feeds, _clock), do: :ok
 
-  defp webhook_json(nil), do: nil
+  defp encode_webhook(nil), do: nil
 
-  defp webhook_json(%{secret: secret, verify: verify, conditions: []}),
+  defp encode_webhook(%{secret: secret, verify: verify, conditions: []}),
     do: %{"secret" => secret, "verify" => Atom.to_string(verify)}
 
-  defp webhook_json(%{secret: secret, verify: verify, conditions: conditions}),
+  defp encode_webhook(%{secret: secret, verify: verify, conditions: conditions}),
     do: %{"secret" => secret, "verify" => Atom.to_string(verify), "when" => conditions}
 end

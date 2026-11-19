@@ -360,7 +360,7 @@ defmodule Wardrik.ChatTest do
   end
 
   describe "direct messages" do
-    defp direct(text, id, opts \\ []) do
+    defp build_direct_message(text, id, opts \\ []) do
       %Inbound{
         room: "D1",
         thread: opts[:thread],
@@ -377,7 +377,7 @@ defmodule Wardrik.ChatTest do
       conversation = {"agt_triage", "#{context.channel.name}.T1.D1.2.1"}
 
       assert {:asked, ^conversation} =
-               Wardrik.Chat.answer_inbound(context.workspace, direct("Hi", "2.1"))
+               Wardrik.Chat.answer_inbound(context.workspace, build_direct_message("Hi", "2.1"))
 
       assert_receive {:asked, ^conversation, "Hi", "ana"}
 
@@ -387,11 +387,14 @@ defmodule Wardrik.ChatTest do
       assert {:asked, ^conversation} =
                Wardrik.Chat.answer_inbound(
                  context.workspace,
-                 direct("More", "2.2", thread: "2.1")
+                 build_direct_message("More", "2.2", thread: "2.1")
                )
 
       assert {:asked, {"agt_triage", other}} =
-               Wardrik.Chat.answer_inbound(context.workspace, direct("Again", "2.3"))
+               Wardrik.Chat.answer_inbound(
+                 context.workspace,
+                 build_direct_message("Again", "2.3")
+               )
 
       assert other != elem(conversation, 1)
       assert Rooms.get(context.workspace, "D1") == nil
@@ -399,7 +402,11 @@ defmodule Wardrik.ChatTest do
 
     @tag direct: %{"ana" => "agt_triage", "jon" => "agt_elsewhere"}
     test "tell whoever they can't answer why", context do
-      answer = &Wardrik.Chat.answer_inbound(context.workspace, direct("Hi", "3.1", sender: &1))
+      answer =
+        &Wardrik.Chat.answer_inbound(
+          context.workspace,
+          build_direct_message("Hi", "3.1", sender: &1)
+        )
 
       assert answer.(@maria) == {:error, "You have no assistant yet."}
 
@@ -414,7 +421,7 @@ defmodule Wardrik.ChatTest do
     end
 
     test "aren't answered where the channel names no agent for them", context do
-      assert Wardrik.Chat.answer_inbound(context.workspace, direct("Hi", "4.1")) ==
+      assert Wardrik.Chat.answer_inbound(context.workspace, build_direct_message("Hi", "4.1")) ==
                {:error, "No agent answers direct messages here."}
     end
   end

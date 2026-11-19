@@ -56,7 +56,7 @@ defmodule Wardrik.Chat.Test.Assistants do
   @behaviour Wardrik.Chat.Direct
 
   @impl Wardrik.Chat.Direct
-  def agent(%Wardrik.Chat.Direct.Request{principal: %{id: id}}, opts) do
+  def find_agent(%Wardrik.Chat.Direct.Request{principal: %{id: id}}, opts) do
     agents = Keyword.fetch!(opts, :agents)
 
     case Map.fetch(agents, id) do
@@ -94,8 +94,8 @@ defmodule Wardrik.Chat.Test do
 
   def deciders(_test, _request), do: :ok
 
-  defp direct(%{direct: agents}), do: {Wardrik.Chat.Test.Assistants, agents: agents}
-  defp direct(_context), do: nil
+  defp build_direct(%{direct: agents}), do: {Wardrik.Chat.Test.Assistants, agents: agents}
+  defp build_direct(_context), do: nil
 
   def start_channel(context) do
     n = System.unique_integer([:positive])
@@ -128,7 +128,7 @@ defmodule Wardrik.Chat.Test do
       token: "xoxb-test",
       owner: "acme",
       identities: {Wardrik.Chat.Test.Members, members: @members},
-      direct: direct(context),
+      direct: build_direct(context),
       test: self(),
       refusals: refusals
     ]

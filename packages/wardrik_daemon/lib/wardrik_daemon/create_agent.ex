@@ -38,7 +38,7 @@ defmodule WardrikDaemon.CreateAgent do
   def create(daemon, scope, {owner, input}, opts \\ []) do
     with :ok <- an_owner_of_agents(owner),
          {:ok, %{"name" => name} = input} <- valid(input),
-         {:ok, record} <- record(daemon, {owner, name}, opts[:from]),
+         {:ok, record} <- create_record(daemon, {owner, name}, opts[:from]),
          {:ok, _snapshot} <- define(daemon, scope, record, Map.delete(input, "name")),
          do: {:ok, record}
   end
@@ -124,7 +124,7 @@ defmodule WardrikDaemon.CreateAgent do
 
   defp an_owner_of_agents(_owner), do: :ok
 
-  defp record(%{wardrik: wardrik, store: store}, {owner, name}, from) do
+  defp create_record(%{wardrik: wardrik, store: store}, {owner, name}, from) do
     # A file's agent keeps its name, defined or not yet; a reload forgets it with its file.
     replaces = &(not AgentRecords.file?(&1) and Agents.gone?([wardrik: wardrik], &1))
 
