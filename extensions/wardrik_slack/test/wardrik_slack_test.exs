@@ -156,6 +156,36 @@ defmodule WardrikSlackTest do
                         "text" => "Answered: how much Barolo is left?"
                       }},
                      1_000
+
+      assert_receive {:slack, "reactions.add",
+                      %{"name" => "white_check_mark", "timestamp" => "2.1"}},
+                     1_000
+    end
+
+    test "quote the message a reply answers, once, in a thread no agent answers in", context do
+      event(context, message("why?", "3.2", channel: "D1", channel_type: "im", thread_ts: "3.1"))
+
+      assert_receive {:slack, "conversations.replies", %{"channel" => "D1", "ts" => "3.1"}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"thread_ts" => "3.1", "text" => "Answered: " <> answered}},
+                     1_000
+
+      assert answered ==
+               "This replies in the thread of this message:\n" <>
+                 "> `agt_triage` stopped with an error: :crash\n\nwhy?"
+
+      event(context, message("and?", "3.3", channel: "D1", channel_type: "im", thread_ts: "3.1"))
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"thread_ts" => "3.1", "text" => "Answered: and?"}},
+                     1_000
+
+      assert_receive {:slack, "reactions.add",
+                      %{"name" => "white_check_mark", "timestamp" => "3.3"}},
+                     1_000
+
+      refute_received {:slack, "conversations.replies", _params}
     end
 
     @tag slack: [direct: nil]

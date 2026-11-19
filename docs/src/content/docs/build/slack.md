@@ -177,6 +177,8 @@ channels:
 - The agent must list the channel in its file, as `channels: [slack]`.
 - It answers every direct message in a thread of its own, without a mention. Replies in the
   thread continue that conversation.
+- A reply under a notice goes to this agent too, with the notice quoted. Ask it to change the
+  agent the notice is about, such as how often it runs.
 - It runs as the member who sent the message, and only they can approve its calls.
 - Each member's threads are their own conversations, but they share the agent's files and
   digests, as rooms do.
@@ -228,7 +230,9 @@ or grant an approver role to the Slack users who should review them.
 If the app was invited while the daemon was down, `/remove @Wardrik` and invite it again. Then
 check:
 
-- **Event Subscriptions** shows the request URL as verified;
+- **Event Subscriptions** has **Enable Events** on, and shows the request URL as verified;
+- the request URLs under **Event Subscriptions** and **Interactivity & Shortcuts** are the
+  daemon's, not `agents.example.com`, and each page's changes are saved;
 - `wardrik doctor` verifies the tokens with Slack;
 - `wardrik logs`.
 
