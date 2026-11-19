@@ -18,6 +18,8 @@ wardrik version
 - Without `WARDRIK_VERSION`, it installs the latest release, including pre-releases.
 - The new release installs next to the old one. The running daemon continues using the previous release until restarted.
 - To roll back, run the script with `WARDRIK_VERSION` set to the previous release, and restart.
+- A service installed by 0.1.0-rc.23 or earlier runs the release it was installed from, not the
+  newest. Run `wardrik service install` once to point it at the newest.
 
 In Docker, start a new container with the same volumes:
 
