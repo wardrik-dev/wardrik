@@ -78,7 +78,12 @@ defmodule WardrikDaemon.ConfigTest do
              {"notes", [transport: {:stdio, command: "npx", args: ["-y", "notes"], env: %{}}]}
            ] = config.mcp
 
-    assert github == [credential_name: "github", only: ["list_commits"], timeout: 30_000]
+    assert github == [
+             credential_name: "deployment:github",
+             only: ["list_commits"],
+             timeout: 30_000
+           ]
+
     assert [{"github", provider}] = config.oauth[:providers]
     assert provider[:flow] == :device
     assert provider[:client_id] == "Iv1"
@@ -399,6 +404,38 @@ defmodule WardrikDaemon.ConfigTest do
              "core" => [path: Path.expand("~/src/core"), base: "HEAD", fetch: false],
              "billing" => [path: Path.expand("~/src/billing"), base: "origin/main", fetch: true]
            }
+  end
+
+  test "signs an API's and a server's credential in with the provider of that name", context do
+    assert {:ok, config} =
+             read(context, """
+             oauth:
+               providers:
+                 github: {issuer: https://github.com/login/oauth, client_id: x, flow: device}
+             mcp:
+               github: {url: https://api.githubcopilot.com/mcp/, credential: github}
+               linear: {url: https://mcp.linear.app/mcp, credential: linear}
+             rest:
+               actions:
+                 openapi: https://raw.example.test/github.json
+                 base_url: https://api.github.com
+                 schemes: {token: bearer, other: bearer}
+                 auth: {token: {credential: github}, other: {credential: linear}}
+                 headers: {x-key: {key: KEY}}
+             """)
+
+    servers = Map.new(config.mcp)
+    assert servers["github"][:credential_name] == "deployment:github"
+    assert servers["linear"][:credential_name] == "linear"
+
+    assert [{"actions", %Config.Rest{options: opts}}] = config.rest
+
+    assert opts[:auth] == %{
+             "token" => {:credential, "deployment:github"},
+             "other" => {:credential, "linear"}
+           }
+
+    assert opts[:headers] == %{"x-key" => {:key, "KEY"}}
   end
 
   test "reads HTTP APIs, with where each secret comes from", context do

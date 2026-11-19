@@ -552,9 +552,49 @@ defmodule WardrikDaemon.Config do
       }
 
       with {:ok, oauth} <- OAuth.read(opts[:oauth], base_url(config) <> "/oauth"),
-           do: {:ok, %{config | oauth: oauth}}
+           do: {:ok, refer_credentials(%{config | oauth: oauth})}
     end
   end
+
+  # Wardrik signs in with the app a reference names, so a credential written as one of oauth's
+  # providers becomes the deployment's app of that name. Other credentials are secrets or a
+  # broker's, by their own names.
+  defp refer_credentials(%__MODULE__{oauth: nil} = config), do: config
+
+  defp refer_credentials(%__MODULE__{oauth: oauth} = config) do
+    references =
+      Map.new(oauth[:providers], fn {name, _opts} ->
+        {name, Wardrik.OAuth.Apps.reference(%{owner: Wardrik.Owned.deployment(), name: name})}
+      end)
+
+    %{
+      config
+      | mcp: Enum.map(config.mcp, &refer_server(&1, references)),
+        rest: Enum.map(config.rest, &refer_api(&1, references))
+    }
+  end
+
+  defp refer_server({name, opts}, references) do
+    {name, Keyword.replace_lazy(opts, :credential_name, &Map.get(references, &1, &1))}
+  end
+
+  defp refer_api({name, %Rest{options: opts} = api}, references) do
+    opts =
+      Enum.reduce([:auth, :headers], opts, fn key, opts ->
+        Keyword.replace_lazy(
+          opts,
+          key,
+          &Map.new(&1, fn source -> refer_source(source, references) end)
+        )
+      end)
+
+    {name, %{api | options: opts}}
+  end
+
+  defp refer_source({place, {:credential, name}}, references),
+    do: {place, {:credential, Map.get(references, name, name)}}
+
+  defp refer_source(source, _references), do: source
 
   defp declare(orgs, org), do: [org | Map.keys(orgs) -- ["*"]]
 
