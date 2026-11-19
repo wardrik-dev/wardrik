@@ -367,7 +367,8 @@ defmodule Wardrik.ChatTest do
         id: id,
         sender: Keyword.get(opts, :sender, @ana),
         text: text,
-        direct?: true
+        direct?: true,
+        parent: opts[:parent]
       }
     end
 
@@ -398,6 +399,17 @@ defmodule Wardrik.ChatTest do
 
       assert other != elem(conversation, 1)
       assert Rooms.get(context.workspace, "D1") == nil
+    end
+
+    @tag direct: %{"ana" => "agt_triage"}
+    test "are asked with the message they reply to quoted", context do
+      inbound = direct("Why?", "5.2", thread: "5.1", parent: "It failed.\nTwice.")
+
+      assert {:asked, _conversation} = Wardrik.Chat.answer_inbound(context.workspace, inbound)
+
+      assert_receive {:asked, _conversation,
+                      "This replies in the thread of this message:\n> It failed.\n> Twice.\n\nWhy?",
+                      "ana"}
     end
 
     @tag direct: %{"ana" => "agt_triage", "jon" => "agt_elsewhere"}

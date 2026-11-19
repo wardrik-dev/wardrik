@@ -166,6 +166,9 @@ defmodule WardrikSlack.Test do
 
   defp reply("chat.postMessage", _params), do: %{ok: true, ts: "9.9"}
 
+  defp reply("conversations.replies", %{"ts" => ts}),
+    do: %{ok: true, messages: [%{ts: ts, text: "`agt_triage` stopped with an error: :crash"}]}
+
   defp reply("apps.connections.open", _params), do: %{ok: false, error: "invalid_auth"}
   defp reply("auth.test", _params), do: %{ok: true, user: "wardrik", team: "Acme"}
 

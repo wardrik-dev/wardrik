@@ -46,9 +46,12 @@ defmodule WardrikSlack.Messages do
       |> String.replace(mention, "")
       |> String.trim()
 
+    thread = select_thread(event["thread_ts"], ts)
+
     inbound = %Inbound{
       room: room,
-      thread: thread(event["thread_ts"], ts),
+      thread: thread,
+      parent: fetch_thread_parent(workspace, event, thread),
       id: ts,
       sender: sender(workspace, event["user"]),
       text: said,
@@ -70,9 +73,24 @@ defmodule WardrikSlack.Messages do
     end
   end
 
-  defp thread(nil, _ts), do: nil
-  defp thread(ts, ts), do: nil
-  defp thread(thread, _ts), do: thread
+  # A direct message in a thread no agent answers in, such as one under a notice, is asked with
+  # the message that started the thread. A failed read asks without it.
+  defp fetch_thread_parent(workspace, %{"channel_type" => "im", "channel" => room}, thread)
+       when is_binary(thread) do
+    with false <- Wardrik.Chat.Rooms.started?(workspace, room: room, thread: thread),
+         {:ok, %{"messages" => [%{"text" => text} | _replies]}} <-
+           API.read_in(workspace, "conversations.replies", %{channel: room, ts: thread, limit: 1}) do
+      text
+    else
+      _none -> nil
+    end
+  end
+
+  defp fetch_thread_parent(_workspace, _event, _thread), do: nil
+
+  defp select_thread(nil, _ts), do: nil
+  defp select_thread(ts, ts), do: nil
+  defp select_thread(thread, _ts), do: thread
 
   @doc "Swaps :eyes: for :white_check_mark: on the answered messages `ids`."
   @spec mark_answered(Workspace.t(), String.t(), [String.t()]) :: :ok

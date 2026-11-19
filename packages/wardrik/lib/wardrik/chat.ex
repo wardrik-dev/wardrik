@@ -70,6 +70,8 @@ defmodule Wardrik.Chat do
   alias Wardrik.Chat.Workspace
   alias Wardrik.Error
 
+  @quoted_parent_length 2_000
+
   @doc """
   Posts `outbound` in its thread. `{:skip, why}` declines it, as for a notice its thread already
   shows. An error has it tried again later.
@@ -158,7 +160,8 @@ defmodule Wardrik.Chat do
 
   The agent is asked when the message mentions the bot, when the room answers every message, or
   when it replies in a thread the agent answers in. A direct message is answered by the agent the
-  channel's `:direct` names for its sender, in a thread of its own.
+  channel's `:direct` names for its sender, in a thread of its own. An `inbound` with a `:parent`,
+  such as a reply under a notice, is asked with the parent quoted.
 
     * `{:asked, {agent, conversation}}` - asked.
     * `:ignored` - no agent answers it.
@@ -202,7 +205,10 @@ defmodule Wardrik.Chat do
          :ok <- Replies.follow(workspace, held),
          waiting? = waiting?(scope, agent, conversation),
          {:ok, _message} <-
-           Wardrik.Agent.ask(scope, agent, [content: inbound.text, id: inbound.id],
+           Wardrik.Agent.ask(
+             scope,
+             agent,
+             [content: prepend_parent_quote(inbound), id: inbound.id],
              conversation: conversation
            ) do
       if waiting?, do: Replies.remind(workspace, held)
@@ -211,6 +217,18 @@ defmodule Wardrik.Chat do
       {:error, %Error{message: message}} -> {:error, message}
       {:error, why} -> {:error, why}
     end
+  end
+
+  defp prepend_parent_quote(%Inbound{parent: nil, text: text}), do: text
+
+  defp prepend_parent_quote(%Inbound{parent: parent, text: text}) do
+    quoted =
+      parent
+      |> String.slice(0, @quoted_parent_length)
+      |> String.split("\n")
+      |> Enum.map_join("\n", &("> " <> &1))
+
+    "This replies in the thread of this message:\n" <> quoted <> "\n\n" <> text
   end
 
   defp waiting?(scope, agent, conversation),

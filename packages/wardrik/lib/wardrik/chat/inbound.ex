@@ -4,6 +4,8 @@ defmodule Wardrik.Chat.Inbound do
 
     * `:room` - the room it was posted in.
     * `:thread` - the thread it replies in, or `nil` if it starts one.
+    * `:parent` - the text of the message that started `:thread`, when no agent answers in that
+      thread yet, such as a notice. The agent is asked with it quoted. `nil` unless set.
     * `:id` - unique in its room. A message passed twice is answered once.
     * `:sender` - a `Wardrik.Chat.Member`.
     * `:text` - the text, without any mention of the bot.
@@ -13,11 +15,12 @@ defmodule Wardrik.Chat.Inbound do
   """
 
   @enforce_keys [:room, :id, :sender, :text]
-  defstruct [:room, :thread, :id, :sender, :text, mentioned?: false, direct?: false]
+  defstruct [:room, :thread, :parent, :id, :sender, :text, mentioned?: false, direct?: false]
 
   @type t() :: %__MODULE__{
           room: String.t(),
           thread: String.t() | nil,
+          parent: String.t() | nil,
           id: String.t(),
           sender: Wardrik.Chat.Member.t(),
           text: String.t(),
