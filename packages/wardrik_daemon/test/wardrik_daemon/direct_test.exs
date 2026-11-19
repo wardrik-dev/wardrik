@@ -18,7 +18,7 @@ defmodule WardrikDaemon.DirectTest do
     |> Map.put(:store, Wardrik.Store.scope(store, "wardrik_daemon"))
   end
 
-  defp read(context, text) do
+  defp read_config_with(context, text) do
     write(context, "config.yaml", text)
 
     context.env
@@ -26,7 +26,7 @@ defmodule WardrikDaemon.DirectTest do
     |> Config.read(context.env)
   end
 
-  defp request,
+  defp build_request,
     do: %Request{
       channel: "slack",
       workspace: "T1",
@@ -36,7 +36,7 @@ defmodule WardrikDaemon.DirectTest do
   test "answers a channel's direct messages with the agent it names, in the org it serves",
        context do
     assert {:ok, config} =
-             read(context, """
+             read_config_with(context, """
              org: acme
              orgs: {growth: {channels: [team]}}
              channels:
@@ -62,7 +62,7 @@ defmodule WardrikDaemon.DirectTest do
     agent = fn name ->
       {WardrikSlack, opts} = channels[name]
       {module, direct} = Keyword.fetch!(opts, :direct)
-      module.agent(request(), direct)
+      module.find_agent(build_request(), direct)
     end
 
     assert agent.("slack") == {:ok, acme.id}
@@ -72,7 +72,7 @@ defmodule WardrikDaemon.DirectTest do
   test "says when the agent it names isn't there", context do
     opts = [name: "assistant", store: context.store, org: "acme"]
 
-    assert Direct.agent(request(), opts) ==
+    assert Direct.find_agent(build_request(), opts) ==
              {:error, "There's no agent assistant to answer direct messages."}
   end
 
@@ -97,8 +97,8 @@ defmodule WardrikDaemon.DirectTest do
     context = start_daemon(context)
     opts = [name: "assistant", store: context.daemon_store, wardrik: context.wardrik, org: "acme"]
 
-    assert {:ok, id} = Direct.Members.agent(request(), opts)
-    assert {:ok, ^id} = Direct.Members.agent(request(), opts)
+    assert {:ok, id} = Direct.Members.find_agent(build_request(), opts)
+    assert {:ok, ^id} = Direct.Members.find_agent(build_request(), opts)
 
     assert {:ok, %{owner: "acme/@ana", name: "assistant.ana"}} =
              AgentRecords.fetch(context.daemon_store, id)
@@ -114,8 +114,8 @@ defmodule WardrikDaemon.DirectTest do
     assert {:ok, %{"definition" => %{"triggers" => [_daily]}}} =
              Wardrik.run(context.admin, "agent.definition", %{"agent" => assistant.id})
 
-    admin = %{request() | principal: %Wardrik.Principal{id: "admin"}}
-    assert Direct.Members.agent(admin, opts) == {:ok, assistant.id}
+    admin = %{build_request() | principal: %Wardrik.Principal{id: "admin"}}
+    assert Direct.Members.find_agent(admin, opts) == {:ok, assistant.id}
   end
 
   test "defines members' agents again when the agent they're made from is", context do
@@ -131,10 +131,10 @@ defmodule WardrikDaemon.DirectTest do
 
     context = start_daemon(context)
     opts = [name: "assistant", store: context.daemon_store, wardrik: context.wardrik, org: "acme"]
-    ben = %{request() | principal: %Wardrik.Principal{id: "acme/@ben"}}
+    ben = %{build_request() | principal: %Wardrik.Principal{id: "acme/@ben"}}
 
-    assert {:ok, ana} = Direct.Members.agent(request(), opts)
-    assert {:ok, ben} = Direct.Members.agent(ben, opts)
+    assert {:ok, ana} = Direct.Members.find_agent(build_request(), opts)
+    assert {:ok, ben} = Direct.Members.find_agent(ben, opts)
     assert {:ok, nil} = Wardrik.run(context.admin, "agent.forget", %{"agent" => ben})
 
     write(context, "agents/assistant.md", """
@@ -159,7 +159,7 @@ defmodule WardrikDaemon.DirectTest do
 
   test "reads an agent per member from config.yaml", context do
     assert {:ok, config} =
-             read(
+             read_config_with(
                context,
                "channels: {slack: {type: slack, token: x, direct: {agent: assistant, per: member}}}"
              )
@@ -168,7 +168,7 @@ defmodule WardrikDaemon.DirectTest do
     assert opts[:direct] == {Direct.Members, name: "assistant"}
 
     assert {:error, why} =
-             read(
+             read_config_with(
                context,
                "channels: {slack: {type: slack, token: x, direct: {agent: assistant, per: room}}}"
              )
@@ -178,7 +178,10 @@ defmodule WardrikDaemon.DirectTest do
 
   test "refuses a name no agent could have", context do
     assert {:error, why} =
-             read(context, "channels: {slack: {type: slack, token: x, direct: \"a b\"}}")
+             read_config_with(
+               context,
+               "channels: {slack: {type: slack, token: x, direct: \"a b\"}}"
+             )
 
     assert why =~ "channels.slack"
     assert why =~ "is an agent's name"

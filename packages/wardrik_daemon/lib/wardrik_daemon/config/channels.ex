@@ -40,7 +40,7 @@ defmodule WardrikDaemon.Config.Channels do
       doc: "The org each email domain's members are users in, as `ana@acme.com` is `acme/@ana`."
     ],
     direct: [
-      type: {:custom, __MODULE__, :direct, []},
+      type: {:custom, __MODULE__, :parse_direct, []},
       doc:
         "The agent, by name, that answers direct messages, or `{agent: NAME, per: member}` for an agent per member. None unless set."
     ]
@@ -83,13 +83,13 @@ defmodule WardrikDaemon.Config.Channels do
         Options.public(adapter.schema(), @managed) ++ @members
 
   @doc false
-  @spec direct(term()) :: {:ok, {module(), keyword()}} | {:error, String.t()}
-  def direct(%{"agent" => name, "per" => "member"} = direct) when map_size(direct) == 2,
+  @spec parse_direct(term()) :: {:ok, {module(), keyword()}} | {:error, String.t()}
+  def parse_direct(%{"agent" => name, "per" => "member"} = direct) when map_size(direct) == 2,
     do: answer_with(WardrikDaemon.Direct.Members, name)
 
-  def direct(name) when is_binary(name), do: answer_with(WardrikDaemon.Direct, name)
+  def parse_direct(name) when is_binary(name), do: answer_with(WardrikDaemon.Direct, name)
 
-  def direct(_other),
+  def parse_direct(_other),
     do: {:error, "is an agent's name, or {agent: NAME, per: member} for an agent per member"}
 
   defp answer_with(module, name) do

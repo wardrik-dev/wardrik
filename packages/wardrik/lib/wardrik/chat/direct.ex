@@ -8,7 +8,7 @@ defmodule Wardrik.Chat.Direct do
         @behaviour Wardrik.Chat.Direct
 
         @impl true
-        def agent(%Wardrik.Chat.Direct.Request{principal: principal}, _opts) do
+        def find_agent(%Wardrik.Chat.Direct.Request{principal: principal}, _opts) do
           case MyApp.Assistants.for(principal.id) do
             %MyApp.Assistant{agent_id: id} -> {:ok, id}
             nil -> {:error, "You have no assistant yet."}
@@ -24,5 +24,5 @@ defmodule Wardrik.Chat.Direct do
   alias Wardrik.Chat.Direct.Request
 
   @doc "Returns the ID of the agent that answers the request's member, or what to tell them."
-  @callback agent(Request.t(), opts :: term()) :: {:ok, String.t()} | {:error, String.t()}
+  @callback find_agent(Request.t(), opts :: term()) :: {:ok, String.t()} | {:error, String.t()}
 end
