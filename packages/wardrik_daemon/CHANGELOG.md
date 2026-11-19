@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-rc.23 (2026-11-19)
+
+- A channel's `direct` names the agent that answers direct messages to the app. With
+  `{agent: NAME, per: member}`, each member gets an agent of their own made from it on their
+  first message, and `wardrik reload` defines theirs again when it changes. See the docs' Slack
+  page.
+- A `credential` that names an `oauth` provider signs in with that provider, for MCP servers and
+  REST APIs alike.
+- `wardrik doctor` finds the notify targets `config.yaml` declares.
+- Requires `wardrik` 0.1.0-rc.19 and `wardrik_slack` 0.1.0-rc.7.
+
 ## 0.1.0-rc.22 (2026-11-17)
 
 - An MCP server in `config.yaml` with a `credential` may leave out `url` when its credential

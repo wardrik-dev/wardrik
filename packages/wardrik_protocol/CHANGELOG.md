@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.13 (2026-11-19)
+
+- A webhook trigger's `when`: conditions on the request, as a policy's, that a request must match
+  for the agent to be asked.
+- `trigger.fired` says `unmatched` for a request that didn't match.
+
 ## 0.1.0-rc.12 (2026-11-16)
 
 - A trigger's `ask_in` names the conversation each run asks the agent in.

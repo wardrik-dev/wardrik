@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-rc.19 (2026-11-19)
+
+- A channel's `:direct` answers direct messages to the app: a `Wardrik.Chat.Direct` names the
+  agent for each member, and the agent answers each message in a thread of its own, as the
+  member. `Wardrik.Chat.Inbound` has `direct?`.
+- A webhook trigger's `when` asks the agent only about requests that match its conditions.
+- Requires `wardrik_core` 0.1.0-rc.14 and `wardrik_protocol` 0.1.0-rc.13.
+
 ## 0.1.0-rc.18 (2026-11-17)
 
 - An MCP server's credential may be a `Wardrik.Credentials.Endpoint`. Its `url` replaces the

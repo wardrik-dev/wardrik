@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.14 (2026-11-19)
+
+- A tool that answers a list that isn't content parts, as a REST endpoint returning an array, is
+  shown it as JSON. It crashed the turn before.
+
 ## 0.1.0-rc.13 (2026-11-17)
 
 - `Wardrik.Credentials.Endpoint` is a credential that also says where to connect: a `url` and
