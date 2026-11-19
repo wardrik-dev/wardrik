@@ -230,6 +230,18 @@ defmodule WardrikCore.ToolRunnerTest do
              ToolRunner.messages(results, [])
   end
 
+  test "messages/2 answers a list as JSON, and content parts as they are" do
+    part = ReqLLM.Message.ContentPart.text("seen")
+
+    results = [
+      {call("1", "echo"), {:ok, [%{"id" => 1}, %{"id" => 2}]}},
+      {call("2", "echo"), {:ok, [part]}}
+    ]
+
+    assert [%{content: [%{text: json}]}, %{content: [^part]}] = ToolRunner.messages(results, [])
+    assert JSON.decode!(json) == [%{"id" => 1}, %{"id" => 2}]
+  end
+
   test "a tool reports on its step through the context, even when it fails", %{context: context} do
     enrich = fn _args, context -> {:ok, "found", Context.measure(context, :usd, 0.01)} end
     charge = fn _args, context -> {:error, "declined", Context.measure(context, :usd, 0.02)} end
