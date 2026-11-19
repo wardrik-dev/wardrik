@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.11 (2026-11-19)
+
+- `when` on webhook trigger definitions, and the `unmatched` status of `TriggerFiredData`.
+
 ## 0.1.0-rc.10 (2026-11-16)
 
 - `ask_in` on trigger definitions.

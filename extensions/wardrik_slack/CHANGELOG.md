@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.7 (2026-11-19)
+
+- Direct messages to the app (`im`) are taken as direct, for the channel's `:direct`. Group DMs
+  are still ignored. The manifest adds `im:history`, `message.im` and a writable messages tab.
+- Requires `wardrik` 0.1.0-rc.19.
+
 ## 0.1.0-rc.6 (2026-11-16)
 
 - **Upgrading:** functions are named for what they do. `WardrikSlack.Install.installed/3` is
