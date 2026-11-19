@@ -183,6 +183,21 @@ channels:
 - The app needs the `im:history` scope and the `message.im` event, as in the manifest above. An app
   made from an older manifest needs both added, and installing again.
 
+### An agent per member
+
+Give each member an agent of their own, made from the one `direct` names:
+
+```yaml
+    direct: {agent: assistant, per: member}
+```
+
+- On Ana's first direct message, the daemon makes `assistant.ana`, owned by her, and defines it as
+  `assistant` is then. Her next messages go to it.
+- It has `assistant`'s instructions, tools and policy, but not its triggers or notices. Its files
+  and digests are hers alone.
+- A change to `assistant` later doesn't reach agents made from it.
+- A member who isn't a person, as `user:admin`, is answered by `assistant` itself.
+
 ## Approvals
 
 A pending call shows its tool, the policy message and its arguments, with **Approve**, **Deny**

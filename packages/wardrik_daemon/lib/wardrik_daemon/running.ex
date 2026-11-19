@@ -74,7 +74,12 @@ defmodule WardrikDaemon.Running do
           store: store,
           vault_keys: keys,
           mcp: config.mcp,
-          channels: WardrikDaemon.Direct.place(config.channels, daemon, config.org),
+          channels:
+            WardrikDaemon.Direct.place(
+              config.channels,
+              %{wardrik: name, store: daemon},
+              config.org
+            ),
           notify: config.notify,
           defaults: config.defaults,
           prices: config.prices,
