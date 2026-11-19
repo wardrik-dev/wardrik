@@ -157,7 +157,8 @@ defmodule Wardrik.Chat do
   Asks the room's agent `inbound`, and posts the reply in its thread.
 
   The agent is asked when the message mentions the bot, when the room answers every message, or
-  when it replies in a thread the agent answers in.
+  when it replies in a thread the agent answers in. A direct message is answered by the agent the
+  channel's `:direct` names for its sender, in a thread of its own.
 
     * `{:asked, {agent, conversation}}` - asked.
     * `:ignored` - no agent answers it.
@@ -165,6 +166,15 @@ defmodule Wardrik.Chat do
   """
   @spec answer_inbound(Workspace.t(), Inbound.t()) ::
           {:asked, {String.t(), String.t()}} | :ignored | {:error, String.t()}
+  def answer_inbound(%Workspace{} = workspace, %Inbound{direct?: true} = inbound) do
+    thread = inbound.thread || inbound.id
+
+    with {:ok, agent} <- Workspace.find_direct_agent(workspace, inbound.sender) do
+      binding = %Binding{room: inbound.room, agent: agent, answers: :everything}
+      ask(workspace, binding, inbound, thread)
+    end
+  end
+
   def answer_inbound(%Workspace{} = workspace, %Inbound{} = inbound) do
     thread = inbound.thread || inbound.id
 

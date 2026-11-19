@@ -1,11 +1,12 @@
 defmodule WardrikSlack.Messages do
   @moduledoc """
-  Passes messages posted in Slack channels to `Wardrik.Chat.answer_inbound/2`, and reacts to them.
+  Passes messages posted in Slack channels, and direct messages to the app, to
+  `Wardrik.Chat.answer_inbound/2`, and reacts to them.
 
     * A message the agent takes gets :eyes:, then :white_check_mark: once it's answered.
     * A message the agent couldn't take gets a reply in its thread saying why.
 
-  Ignores edits, deletions, bots, direct messages, and people from another workspace.
+  Ignores edits, deletions, bots, group direct messages, and people from another workspace.
   """
 
   alias Wardrik.Chat.Inbound
@@ -32,7 +33,7 @@ defmodule WardrikSlack.Messages do
 
   defp posted?(%Workspace{installation: installation}, event, bot) do
     event["subtype"] in @posted and is_nil(event["bot_id"]) and event["user"] != bot and
-      event["channel_type"] in ["channel", "group"] and
+      event["channel_type"] in ["channel", "group", "im"] and
       (event["user_team"] || event["team"] || installation.workspace) == installation.workspace
   end
 
@@ -51,7 +52,8 @@ defmodule WardrikSlack.Messages do
       id: ts,
       sender: sender(workspace, event["user"]),
       text: said,
-      mentioned?: String.contains?(text, mention)
+      mentioned?: String.contains?(text, mention),
+      direct?: event["channel_type"] == "im"
     }
 
     case Wardrik.Chat.answer_inbound(workspace, inbound) do

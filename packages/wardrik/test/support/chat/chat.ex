@@ -50,6 +50,22 @@ defmodule Wardrik.Chat.Test.Members do
   def identify(_request, _opts), do: {:error, "Nobody here knows you yet."}
 end
 
+defmodule Wardrik.Chat.Test.Assistants do
+  @moduledoc "Answers each user's direct messages with the agent `:agents` names for them."
+
+  @behaviour Wardrik.Chat.Direct
+
+  @impl Wardrik.Chat.Direct
+  def agent(%Wardrik.Chat.Direct.Request{principal: %{id: id}}, opts) do
+    agents = Keyword.fetch!(opts, :agents)
+
+    case Map.fetch(agents, id) do
+      {:ok, agent} -> {:ok, agent}
+      :error -> {:error, "You have no assistant yet."}
+    end
+  end
+end
+
 defmodule Wardrik.Chat.Test do
   @moduledoc "Runs a chat channel for a test, over a real store and events, on the test's own server."
 
@@ -77,6 +93,9 @@ defmodule Wardrik.Chat.Test do
   end
 
   def deciders(_test, _request), do: :ok
+
+  defp direct(%{direct: agents}), do: {Wardrik.Chat.Test.Assistants, agents: agents}
+  defp direct(_context), do: nil
 
   def start_channel(context) do
     n = System.unique_integer([:positive])
@@ -109,6 +128,7 @@ defmodule Wardrik.Chat.Test do
       token: "xoxb-test",
       owner: "acme",
       identities: {Wardrik.Chat.Test.Members, members: @members},
+      direct: direct(context),
       test: self(),
       refusals: refusals
     ]

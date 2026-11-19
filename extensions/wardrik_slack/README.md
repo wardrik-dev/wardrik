@@ -19,7 +19,7 @@ features:
   app_home:
     home_tab_enabled: false
     messages_tab_enabled: true
-    messages_tab_read_only_enabled: true
+    messages_tab_read_only_enabled: false
   bot_user:
     display_name: Wardrik
     always_online: true
@@ -32,6 +32,7 @@ oauth_config:
       - chat:write.public
       - groups:history
       - groups:read
+      - im:history
       - reactions:write
       - users:read
       - users:read.email
@@ -44,6 +45,7 @@ settings:
       - member_joined_channel
       - message.channels
       - message.groups
+      - message.im
       - tokens_revoked
   interactivity:
     is_enabled: true
@@ -72,6 +74,7 @@ settings:
       - member_joined_channel
       - message.channels
       - message.groups
+      - message.im
       - tokens_revoked
   interactivity:
     is_enabled: true

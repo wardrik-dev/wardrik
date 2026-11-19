@@ -57,7 +57,7 @@ features:
   app_home:
     home_tab_enabled: false
     messages_tab_enabled: true
-    messages_tab_read_only_enabled: true
+    messages_tab_read_only_enabled: false
   bot_user:
     display_name: Wardrik
     always_online: true
@@ -70,6 +70,7 @@ oauth_config:
       - chat:write.public
       - groups:history
       - groups:read
+      - im:history
       - reactions:write
       - users:read
       - users:read.email
@@ -83,6 +84,7 @@ settings:
       - member_joined_channel
       - message.channels
       - message.groups
+      - message.im
       - tokens_revoked
   interactivity:
     is_enabled: true
@@ -157,6 +159,29 @@ Use a separate app per daemon. Slack spreads events across all of an app's conne
 - :eyes: means the agent received the message. :white_check_mark: means it replied.
 - The thread's status shows the agent's current activity.
 - To post notices in a channel, set `notify: "slack:#updates"`. See [Send notifications](/build/notices/).
+
+## Direct messages
+
+Name the agent that answers direct messages to the app:
+
+```yaml title="~/.config/wardrik/config.yaml"
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
+    domains: {acme.com: acme}
+    direct: assistant
+```
+
+- The agent must list the channel in its file, as `channels: [slack]`.
+- It answers every direct message in a thread of its own, without a mention. Replies in the
+  thread continue that conversation.
+- It runs as the member who sent the message, and only they can approve its calls.
+- Each member's threads are their own conversations, but they share the agent's files and
+  digests, as rooms do.
+- The app needs the `im:history` scope and the `message.im` event, as in the manifest above. An app
+  made from an older manifest needs both added, and installing again.
 
 ## Approvals
 

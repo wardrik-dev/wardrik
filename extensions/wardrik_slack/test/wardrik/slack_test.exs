@@ -153,11 +153,11 @@ defmodule Wardrik.Slack.PackageTest do
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
 
-    test "leaves alone edits, bots, direct messages and what isn't for it", context do
+    test "leaves alone edits, bots, group direct messages and what isn't for it", context do
       event(context, message("hi", "1.1"))
       event(context, message("<@UBOT> hi", "1.2", subtype: "message_changed"))
       event(context, message("<@UBOT> hi", "1.3", bot_id: "B1"))
-      event(context, message("<@UBOT> hi", "1.4", channel_type: "im"))
+      event(context, message("<@UBOT> hi", "1.4", channel_type: "mpim"))
       event(context, message("<@UBOT> hi", "1.5", user: "UBOT"))
 
       refute_receive {:slack, "reactions.add", _params}, 200

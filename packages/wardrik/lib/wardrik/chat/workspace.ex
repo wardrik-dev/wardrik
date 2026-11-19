@@ -14,6 +14,7 @@ defmodule Wardrik.Chat.Workspace do
   alias Wardrik.Channel.Installation
   alias Wardrik.Chat.Answer
   alias Wardrik.Chat.Channel
+  alias Wardrik.Chat.Direct
   alias Wardrik.Chat.Member
   alias Wardrik.Chat.Offer
   alias Wardrik.Principal
@@ -55,6 +56,31 @@ defmodule Wardrik.Chat.Workspace do
   @spec identify(t(), Member.t()) :: {:ok, Principal.t()} | {:error, String.t()}
   def identify(%__MODULE__{channel: channel, installation: installation}, %Member{} = member),
     do: Channel.identify(channel, installation.workspace, member)
+
+  @doc """
+  Returns the agent that answers `member`'s direct messages, as the channel's `:direct` says, or
+  what to tell them. The agent must be offered in the channel.
+  """
+  @spec find_direct_agent(t(), Member.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def find_direct_agent(%__MODULE__{channel: %Channel{direct: nil}}, _member),
+    do: {:error, "No agent answers direct messages here."}
+
+  def find_direct_agent(%__MODULE__{channel: channel} = workspace, %Member{} = member) do
+    {module, opts} = channel.direct
+
+    with {:ok, principal} <- identify(workspace, member),
+         request = %Direct.Request{
+           channel: channel.name,
+           workspace: workspace.installation.workspace,
+           principal: principal
+         },
+         {:ok, agent} <- module.agent(request, opts) do
+      case offer(acting(workspace, principal, %{}), workspace, agent) do
+        [_offer] -> {:ok, agent}
+        [] -> {:error, "The agent that answers direct messages isn't offered in #{channel.name}."}
+      end
+    end
+  end
 
   defp acting(%__MODULE__{channel: channel, installation: installation}, principal, context) do
     Wardrik.Scope.new(channel.server,

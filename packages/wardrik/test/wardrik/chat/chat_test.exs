@@ -359,6 +359,66 @@ defmodule Wardrik.ChatTest do
     def identify(request, _opts), do: {:ok, %Wardrik.Principal{id: request.email}}
   end
 
+  describe "direct messages" do
+    defp direct(text, id, opts \\ []) do
+      %Inbound{
+        room: "D1",
+        thread: opts[:thread],
+        id: id,
+        sender: Keyword.get(opts, :sender, @ana),
+        text: text,
+        direct?: true
+      }
+    end
+
+    @tag direct: %{"ana" => "agt_triage", "jon" => "agt_elsewhere"}
+    test "are answered by the sender's agent, every message, each in a thread of its own",
+         context do
+      conversation = {"agt_triage", "#{context.channel.name}.T1.D1.2.1"}
+
+      assert {:asked, ^conversation} =
+               Wardrik.Chat.answer_inbound(context.workspace, direct("Hi", "2.1"))
+
+      assert_receive {:asked, ^conversation, "Hi", "ana"}
+
+      assert_receive {:delivered,
+                      %Outbound{room: "D1", thread: "2.1", body: {:reply, "Answered: Hi", _ids}}}
+
+      assert {:asked, ^conversation} =
+               Wardrik.Chat.answer_inbound(
+                 context.workspace,
+                 direct("More", "2.2", thread: "2.1")
+               )
+
+      assert {:asked, {"agt_triage", other}} =
+               Wardrik.Chat.answer_inbound(context.workspace, direct("Again", "2.3"))
+
+      assert other != elem(conversation, 1)
+      assert Rooms.get(context.workspace, "D1") == nil
+    end
+
+    @tag direct: %{"ana" => "agt_triage", "jon" => "agt_elsewhere"}
+    test "tell whoever they can't answer why", context do
+      answer = &Wardrik.Chat.answer_inbound(context.workspace, direct("Hi", "3.1", sender: &1))
+
+      assert answer.(@maria) == {:error, "You have no assistant yet."}
+
+      assert answer.(@jon) ==
+               {:error,
+                "The agent that answers direct messages isn't offered in #{context.channel.name}."}
+
+      assert answer.(%Member{id: "U9", name: "stranger"}) ==
+               {:error, "Nobody here knows you yet."}
+
+      refute_received {:asked, _conversation, _text, _sender}
+    end
+
+    test "aren't answered where the channel names no agent for them", context do
+      assert Wardrik.Chat.answer_inbound(context.workspace, direct("Hi", "4.1")) ==
+               {:error, "No agent answers direct messages here."}
+    end
+  end
+
   test "your app's identities see the member's email address", context do
     channel = %{context.workspace.channel | identities: {ByEmail, []}}
     member = %Member{id: "U9", name: "maria", email: "maria@acme.com"}

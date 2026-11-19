@@ -38,6 +38,14 @@ defmodule Wardrik.Chat.Channel do
       `{module, opts}`. A member it doesn't know can't ask or decide.
       """
     ],
+    direct: [
+      type: {:or, [:mod_arg, nil]},
+      default: nil,
+      doc: """
+      The `Wardrik.Chat.Direct` that says which agent answers each member's direct messages, as
+      `{module, opts}`. Without it, direct messages aren't answered.
+      """
+    ],
     offering: [type: :string, doc: "What a room with no agent is told."],
     deciding: [type: :string, doc: "What a member who may not decide is told."],
     server: [type: :atom, required: true, doc: false],
@@ -63,7 +71,7 @@ defmodule Wardrik.Chat.Channel do
     :deciding,
     :options
   ]
-  defstruct [vault: nil] ++ @enforce_keys
+  defstruct [vault: nil, direct: nil] ++ @enforce_keys
 
   @type t() :: %__MODULE__{
           name: String.t(),
@@ -75,6 +83,7 @@ defmodule Wardrik.Chat.Channel do
           store: Wardrik.Store.t(),
           installations: {module(), term()},
           identities: {module(), term()},
+          direct: {module(), term()} | nil,
           offering: String.t(),
           deciding: String.t(),
           options: keyword()
@@ -106,6 +115,7 @@ defmodule Wardrik.Chat.Channel do
       store: store,
       installations: store(installations, vault, store),
       identities: own[:identities],
+      direct: own[:direct],
       offering: Keyword.get(own, :offering, offering(name)),
       deciding: Keyword.get(own, :deciding, deciding()),
       options: options
