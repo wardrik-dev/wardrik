@@ -187,6 +187,8 @@ defmodule WardrikCore.ToolRunner do
     end
   end
 
+  defp answer(:ok, [%ReqLLM.Message.ContentPart{} | _parts] = parts), do: parts
+  defp answer(:ok, output) when is_list(output), do: %ReqLLM.ToolResult{output: output}
   defp answer(:ok, output), do: output
 
   defp answer(:error, %ReqLLM.ToolResult{output: reason} = result),
