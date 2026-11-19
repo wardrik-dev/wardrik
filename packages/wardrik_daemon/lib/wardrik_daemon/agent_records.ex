@@ -2,10 +2,11 @@ defmodule WardrikDaemon.AgentRecords do
   @moduledoc """
   Keeps a record of each agent the daemon made.
 
-      %{id: "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", org: "acme", owner: "acme/@jon", name: "notes", source: :file}
+      %{id: "agt_01JF8X5RQ2M3V9ZK0B7Y4T6WHN", org: "acme", owner: "acme/@jon", name: "notes", source: :file, from: nil}
 
     * IDs are `agt_` and a `WardrikDaemon.ULID`. Nothing is read from them.
     * `source` is `:file` for an agent an agent file declares, `:api` for one made through the API.
+    * `from` is the ID of the agent it's defined from, as a member's own agent is, or `nil`.
     * A name is unique in its org. Once an agent is gone, its name is free and a new agent of
       that name gets a new ID.
   """
@@ -22,7 +23,8 @@ defmodule WardrikDaemon.AgentRecords do
           org: String.t(),
           owner: String.t(),
           name: String.t(),
-          source: :file | :api
+          source: :file | :api,
+          from: String.t() | nil
         }
 
   @doc "Returns whether `name` is an agent's name: letters, digits, `_`, `.` and `-`, at most 64."
@@ -73,8 +75,16 @@ defmodule WardrikDaemon.AgentRecords do
     for {_key, record, _vsn} <- Wardrik.Store.entries(store, name_key(org, "")), do: record
   end
 
+  @doc "Returns the records of the agents defined from the agent `id`."
+  @spec list_made_from(Wardrik.Store.t(), String.t()) :: [t()]
+  def list_made_from(store, id) do
+    store = records(store)
+    for {_key, %{from: ^id} = record, _vsn} <- Wardrik.Store.entries(store, "agents/"), do: record
+  end
+
   @doc """
-  Mints an ID for agent `:name`, owned by `:owner`, from `:source`, and records it.
+  Mints an ID for agent `:name`, owned by `:owner`, from `:source`, and records it. `:from` is the
+  agent it's defined from, if any.
 
   Returns `{:error, {:taken, record}}` if the name is taken in the org, unless `:replaces`
   returns `true` for that record.
@@ -83,6 +93,7 @@ defmodule WardrikDaemon.AgentRecords do
           owner: String.t(),
           name: String.t(),
           source: :file | :api,
+          from: String.t() | nil,
           replaces: (t() -> boolean())
         ) :: {:ok, t()} | {:error, {:taken, t()}}
   def create(store, args) do
@@ -96,7 +107,8 @@ defmodule WardrikDaemon.AgentRecords do
       org: Owners.org(owner),
       owner: owner,
       name: name,
-      source: Keyword.fetch!(args, :source)
+      source: Keyword.fetch!(args, :source),
+      from: Keyword.get(args, :from)
     }
 
     with :ok <- claim(store, name_key(record.org, name), record, replaces) do
@@ -195,16 +207,27 @@ defmodule WardrikDaemon.AgentRecords do
       "org" => record.org,
       "owner" => record.owner,
       "name" => record.name,
-      "source" => Atom.to_string(record.source)
+      "source" => Atom.to_string(record.source),
+      "from" => record.from
     }
   end
 
   @impl Wardrik.Format
-  def load(1, %{"id" => id, "org" => org, "owner" => owner, "name" => name, "source" => source})
+  def load(
+        1,
+        %{"id" => id, "org" => org, "owner" => owner, "name" => name, "source" => source} = record
+      )
       when source in ["file", "api"],
       do:
         {:ok,
-         %{id: id, org: org, owner: owner, name: name, source: String.to_existing_atom(source)}}
+         %{
+           id: id,
+           org: org,
+           owner: owner,
+           name: name,
+           source: String.to_existing_atom(source),
+           from: record["from"]
+         }}
 
   defp records(store), do: Wardrik.Store.scope(store, "agent_records", format: __MODULE__)
 

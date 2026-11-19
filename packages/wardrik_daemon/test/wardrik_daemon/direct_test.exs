@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.DirectTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
   import WardrikDaemon.Test
 
   alias Wardrik.Chat.Direct.Request
@@ -115,6 +116,45 @@ defmodule WardrikDaemon.DirectTest do
 
     admin = %{request() | principal: %Wardrik.Principal{id: "admin"}}
     assert Direct.Members.agent(admin, opts) == {:ok, assistant.id}
+  end
+
+  test "defines members' agents again when the agent they're made from is", context do
+    write(context, "config.yaml", """
+    org: acme
+    http: {port: #{free_port()}}
+    web: {enabled: false}
+    defaults: {model: #{model()}}
+    channels: {slack: {type: slack, token: x, signing_secret: x}}
+    """)
+
+    write(context, "agents/assistant.md", "---\nchannels: [slack]\n---\nYou help.\n")
+
+    context = start_daemon(context)
+    opts = [name: "assistant", store: context.daemon_store, wardrik: context.wardrik, org: "acme"]
+    ben = %{request() | principal: %Wardrik.Principal{id: "acme/@ben"}}
+
+    assert {:ok, ana} = Direct.Members.agent(request(), opts)
+    assert {:ok, ben} = Direct.Members.agent(ben, opts)
+    assert {:ok, nil} = Wardrik.run(context.admin, "agent.forget", %{"agent" => ben})
+
+    write(context, "agents/assistant.md", """
+    ---
+    channels: [slack]
+    triggers: [{name: daily, every: 1d, prompt: Look around.}]
+    ---
+    You help, briefly.
+    """)
+
+    capture_log(fn -> assert {:ok, _nodes} = Wardrik.Deployment.reload(context.admin) end)
+
+    assert {:ok, %{"definition" => definition}} =
+             Wardrik.run(context.admin, "agent.definition", %{"agent" => ana})
+
+    assert definition["instructions"] =~ "briefly"
+    refute Map.has_key?(definition, "triggers")
+
+    assert {:error, %Wardrik.Error{type: :not_found}} =
+             Wardrik.run(context.admin, "agent.definition", %{"agent" => ben})
   end
 
   test "reads an agent per member from config.yaml", context do

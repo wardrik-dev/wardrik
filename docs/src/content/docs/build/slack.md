@@ -191,11 +191,14 @@ Give each member an agent of their own, made from the one `direct` names:
     direct: {agent: assistant, per: member}
 ```
 
-- On Ana's first direct message, the daemon makes `assistant.ana`, owned by her, and defines it as
-  `assistant` is then. Her next messages go to it.
+- On Ana's first direct message, the daemon makes `assistant.ana`, owned by her. Her next messages
+  go to it.
 - It has `assistant`'s instructions, tools and policy, but not its triggers or notices. Its files
   and digests are hers alone.
-- A change to `assistant` later doesn't reach agents made from it.
+- `wardrik reload` defines every member's agent again from `assistant.md`, so a change to the file,
+  as a tool taken away, reaches them all.
+- If `assistant.md` is removed, members' agents keep their last definition.
+- To start a member over, forget their agent. Their next message makes a new one.
 - A member who isn't a person, as `user:admin`, is answered by `assistant` itself.
 
 ## Approvals
