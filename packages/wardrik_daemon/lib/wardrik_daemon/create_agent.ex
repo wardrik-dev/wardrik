@@ -30,13 +30,15 @@ defmodule WardrikDaemon.CreateAgent do
 
   @doc """
   Makes the agent `input` describes (`name` plus its definition) for `owner`. The caller checks access.
+
+    * `:from` - the ID of the agent it's defined from. See `AgentRecords`.
   """
-  @spec create(daemon(), Wardrik.Scope.t(), {String.t(), map()}) ::
+  @spec create(daemon(), Wardrik.Scope.t(), {String.t(), map()}, from: String.t()) ::
           {:ok, AgentRecords.t()} | {:error, Error.t()}
-  def create(daemon, scope, {owner, input}) do
+  def create(daemon, scope, {owner, input}, opts \\ []) do
     with :ok <- an_owner_of_agents(owner),
          {:ok, %{"name" => name} = input} <- valid(input),
-         {:ok, record} <- record(daemon, owner, name),
+         {:ok, record} <- record(daemon, {owner, name}, opts[:from]),
          {:ok, _snapshot} <- define(daemon, scope, record, Map.delete(input, "name")),
          do: {:ok, record}
   end
@@ -122,11 +124,17 @@ defmodule WardrikDaemon.CreateAgent do
 
   defp an_owner_of_agents(_owner), do: :ok
 
-  defp record(%{wardrik: wardrik, store: store}, owner, name) do
+  defp record(%{wardrik: wardrik, store: store}, {owner, name}, from) do
     # A file's agent keeps its name, defined or not yet; a reload forgets it with its file.
     replaces = &(not AgentRecords.file?(&1) and Agents.gone?([wardrik: wardrik], &1))
 
-    case AgentRecords.create(store, owner: owner, name: name, source: :api, replaces: replaces) do
+    case AgentRecords.create(store,
+           owner: owner,
+           name: name,
+           source: :api,
+           from: from,
+           replaces: replaces
+         ) do
       {:ok, record} ->
         {:ok, record}
 

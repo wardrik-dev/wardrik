@@ -77,7 +77,15 @@ defmodule WardrikDaemon.AgentRecordsTest do
   test "reads who holds a name from its claim, before that record reaches this node", %{
     store: store
   } do
-    holder = %{id: "agt_elsewhere", org: "acme", owner: "acme", name: "notes", source: :file}
+    holder = %{
+      id: "agt_elsewhere",
+      org: "acme",
+      owner: "acme",
+      name: "notes",
+      source: :file,
+      from: nil
+    }
+
     records = Wardrik.Store.scope(store, "agent_records", format: AgentRecords)
     {:ok, _vsn} = Wardrik.Store.put(records, "agent_names/acme/notes", holder, if_vsn: nil)
 

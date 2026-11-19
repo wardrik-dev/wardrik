@@ -7,8 +7,9 @@ defmodule WardrikDaemon.Direct.Members do
         slack: {type: slack, ..., direct: {agent: assistant, per: member}}
 
     * Ana's agent is `assistant.ana`, owned by `acme/@ana`, in her org.
-    * It's defined as `assistant` is when it's made, without its triggers or notices. A change to
-      `assistant` after that doesn't reach it.
+    * It's defined as `assistant` is, without its triggers or notices. A reload that defines
+      `assistant` defines it again, so a change to `assistant.md` reaches every member's agent.
+    * If `assistant.md` is removed, members' agents keep their last definition.
     * A member who isn't a person, as `user:admin`, is answered by `assistant` itself.
   """
 
@@ -47,13 +48,47 @@ defmodule WardrikDaemon.Direct.Members do
     with {:ok, template} <- Direct.fetch_agent(opts),
          {:ok, %{"definition" => definition}} <-
            Wardrik.run(scope, "agent.definition", %{"agent" => template}),
-         {:ok, record} <- CreateAgent.create(daemon, scope, {owner, copy(definition, name)}) do
+         {:ok, record} <-
+           CreateAgent.create(daemon, scope, {owner, copy(definition, name)}, from: template) do
       {:ok, record.id}
     else
       # Two first messages at once: the other made it.
       {:error, %Error{type: :conflict}} -> find_agent(opts, owner, name)
       {:error, %Error{message: message}} -> {:error, message}
       {:error, message} -> {:error, message}
+    end
+  end
+
+  @doc """
+  Defines each agent made from the agent `template` again, from its definition now. Returns what
+  went wrong, for the log.
+
+    * `:wardrik` - the Wardrik.
+    * `:store` - where agents' records are kept.
+  """
+  @spec follow(keyword(), String.t()) :: [String.t()]
+  def follow(opts, template) do
+    scope = Agents.scope(opts)
+
+    case Wardrik.run(scope, "agent.definition", %{"agent" => template}) do
+      {:ok, %{"definition" => definition}} ->
+        for record <- AgentRecords.list_made_from(opts[:store], template),
+            not Agents.gone?(opts, record),
+            problem = define_again(scope, record, definition),
+            problem != :ok,
+            do: problem
+
+      {:error, _undefined} ->
+        []
+    end
+  end
+
+  defp define_again(scope, record, definition) do
+    definition = Map.drop(definition, @kept_back)
+
+    case Wardrik.run(scope, "agent.define", Map.put(definition, "agent", record.id)) do
+      {:ok, _snapshot} -> :ok
+      {:error, %Error{message: message}} -> "didn't define #{record.name} again: #{message}"
     end
   end
 

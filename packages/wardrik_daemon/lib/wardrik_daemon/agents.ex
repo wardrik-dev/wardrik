@@ -7,6 +7,7 @@ defmodule WardrikDaemon.Agents do
     * if `config.yaml` or `policies/` changed, the daemon restarts.
     * a changed file's agent gets its new definition and keeps its ID.
     * a removed file's agent is forgotten.
+    * agents made from a file's agent, as members' own are, are defined again from it.
     * a file that doesn't read keeps its last definition, and the log says why.
     * a file can't take a name another agent of its org has, nor change its agent's owner.
     * nodes reloading at once give a new file one agent: the first to claim its name.
@@ -59,7 +60,12 @@ defmodule WardrikDaemon.Agents do
     gone = Enum.uniq(claimed) -- Map.values(declared)
 
     {:ok, _vsn} = Wardrik.Store.put(opts[:store], @key, declared)
-    problems = Enum.map(read, &define(opts, &1)) ++ Enum.map(gone, &forget(opts, &1))
+
+    problems =
+      Enum.map(read, &define(opts, &1)) ++
+        Enum.map(gone, &forget(opts, &1)) ++
+        Enum.flat_map(read, &follow(opts, &1))
+
     for problem <- problems, problem != :ok, do: log(problem)
   end
 
@@ -155,6 +161,12 @@ defmodule WardrikDaemon.Agents do
         "didn't define #{record.name}. #{path}: #{why}"
     end
   end
+
+  # Members' own agents follow the agent they were made from.
+  defp follow(opts, {_path, {:ok, record, _definition}}),
+    do: WardrikDaemon.Direct.Members.follow(opts, record.id)
+
+  defp follow(_opts, {_path, {:error, _why}}), do: []
 
   defp start_over(%{"reset" => reset}, record, path),
     do: "started #{record.name} over. #{path}: #{Enum.join(reset, " ")}"
