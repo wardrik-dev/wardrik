@@ -107,6 +107,9 @@ case "${1:-help}" in
   service)
     case "${2:-}" in
       install)
+        # Through install.sh's current link, so the service runs the release installed last.
+        serving="$root"
+        [ ! -L "$(dirname "$root")/current" ] || serving="$(dirname "$root")/current"
         mkdir -p "$(dirname "$unit")"
         cat > "$unit" <<UNIT
 [Unit]
@@ -114,7 +117,7 @@ Description=Wardrik
 After=network-online.target
 
 [Service]
-ExecStart=$root/bin/wardrik serve
+ExecStart=$serving/bin/wardrik serve
 Restart=on-failure
 $( [ "$unit_file" = "wardrik.service" ] || echo "Environment=WARDRIK_NODE=%i")
 
