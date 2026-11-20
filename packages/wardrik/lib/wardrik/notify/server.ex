@@ -90,8 +90,9 @@ defmodule Wardrik.Notify.Server do
          merged = Map.merge(defaults, definition),
          %Notify.Route{to: to, on: on, judge: judge} <- Notify.route(merged),
          true <- notice.kind in on,
-         :send <- Notify.Judge.decide(state.wardrik, notice, judge),
-         do: Enum.each(to, &tell(state, &1, notice))
+         named = %{notice | name: merged["display_name"]},
+         :send <- Notify.Judge.decide(state.wardrik, named, judge),
+         do: Enum.each(to, &tell(state, &1, named))
 
     state
   end
@@ -105,7 +106,7 @@ defmodule Wardrik.Notify.Server do
         :ok
 
       {:ok, {:skip, why}} ->
-        Logger.warning("#{notice.agent} notifies #{name}, #{why}.")
+        Logger.warning("#{label_agent(notice)} notifies #{name}, #{why}.")
 
       {:spent, {:error, reason}, _tries} ->
         Logger.warning(couldnt(name, notice, reason) <> "; giving up.")
@@ -131,7 +132,10 @@ defmodule Wardrik.Notify.Server do
     do: Logger.warning(couldnt(name, notice, reason) <> "; trying again.")
 
   defp couldnt(name, notice, reason),
-    do: "Couldn't tell #{name} that #{notice.agent} #{notice.kind}: #{inspect(reason)}"
+    do: "Couldn't tell #{name} that #{label_agent(notice)} #{notice.kind}: #{inspect(reason)}"
+
+  defp label_agent(%Notice{name: nil, agent: agent}), do: agent
+  defp label_agent(%Notice{name: name}), do: name
 
   defp agent(%Wardrik.Event{agent: agent, conversation: conversation}), do: {agent, conversation}
 end

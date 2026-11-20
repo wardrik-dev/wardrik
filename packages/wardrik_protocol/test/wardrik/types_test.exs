@@ -54,16 +54,19 @@ defmodule Wardrik.TypesTest do
 
     notice = %Wardrik.Notice{
       agent: "acme/triage",
+      name: "triage",
       kind: :parked,
       at: ~U[2026-11-01 00:00:00Z],
       calls: [%{interrupt: interrupt, arguments: %{"text" => "hi"}}]
     }
 
     assert Wardrik.Notice.kinds() == [:parked, :failed, :finished]
+    assert Wardrik.Notice.list_events() == ["turn_parked", "turn_failed", "turn_finished"]
 
     assert %{
              "event" => "turn_parked",
              "agent" => "acme/triage",
+             "name" => "triage",
              "at" => "2026-11-01T00:00:00Z",
              "calls" => [
                %{

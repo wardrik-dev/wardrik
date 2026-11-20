@@ -368,7 +368,8 @@ defmodule Wardrik.ChatTest do
         sender: Keyword.get(opts, :sender, @ana),
         text: text,
         direct?: true,
-        parent: opts[:parent]
+        parent: opts[:parent],
+        parent_notice: opts[:parent_notice]
       }
     end
 
@@ -403,13 +404,32 @@ defmodule Wardrik.ChatTest do
 
     @tag direct: %{"ana" => "agt_triage"}
     test "are asked with the message they reply to quoted", context do
-      inbound = direct("Why?", "5.2", thread: "5.1", parent: "It failed.\nTwice.")
+      inbound = build_direct_message("Why?", "5.2", thread: "5.1", parent: "It failed.\nTwice.")
 
       assert {:asked, _conversation} = Wardrik.Chat.answer_inbound(context.workspace, inbound)
 
       assert_receive {:asked, _conversation,
                       "This replies in the thread of this message:\n> It failed.\n> Twice.\n\nWhy?",
                       "ana"}
+    end
+
+    @tag direct: %{"ana" => "agt_triage"}
+    test "are told which agent and conversation a notice they reply to is about", context do
+      notice = %{"agent" => "agt_digest", "name" => "digest", "conversation" => "daily"}
+
+      inbound =
+        build_direct_message("Why?", "6.2",
+          thread: "6.1",
+          parent: "digest stopped.",
+          parent_notice: notice
+        )
+
+      assert {:asked, _conversation} = Wardrik.Chat.answer_inbound(context.workspace, inbound)
+
+      assert_receive {:asked, _conversation,
+                      "This replies in the thread of this message:\n> digest stopped.\n" <>
+                        "It's a notice about digest (agt_digest), from its conversation daily." <>
+                        "\n\nWhy?", "ana"}
     end
 
     @tag direct: %{"ana" => "agt_triage", "jon" => "agt_elsewhere"}

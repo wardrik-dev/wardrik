@@ -96,6 +96,11 @@ defmodule WardrikDaemon.ResolverTest do
              resolve(context, "growth/@cy", "cy-leads")
   end
 
+  test "shows people the agent's name, where its definition gives none", context do
+    assert {:ok, %Resolved{defaults: %{"display_name" => "refunds"}}} =
+             resolve(context, "payments", "refunds")
+  end
+
   test "acts for the agent's owner: its person, or its org", context do
     assert {:ok, %Resolved{principal: %Principal{id: "payments/@ana"}}} =
              resolve(context, "payments/@ana", "ana-refunds")

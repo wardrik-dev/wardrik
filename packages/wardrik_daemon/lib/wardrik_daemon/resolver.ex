@@ -3,6 +3,7 @@ defmodule WardrikDaemon.Resolver do
   Says what each agent gets. It's the daemon's `Wardrik.Resolver`.
 
     * The agent acts for its owner, from its record. An agent with no record gets nothing.
+    * It shows people its record's name, unless its definition gives a `display_name`.
     * It's held to `"*"`'s policy and its org's, and their shared budgets. See `WardrikDaemon.Orgs`.
     * It reaches its owner's MCP server of each name, else the one its owner may use as
       `WardrikDaemon.Authorizer` allows, else the deployment's that serves its org. It reaches
@@ -28,6 +29,7 @@ defmodule WardrikDaemon.Resolver do
       {:ok,
        %Resolved{
          principal: %Principal{id: owner},
+         defaults: %{"display_name" => record.name},
          policy: settings.policy,
          middleware: middleware(opts.store, org, settings.ceilings),
          servers: servers(opts, owner, org),
