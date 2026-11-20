@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.8 (2026-11-19)
+
+- Notices name the agent by its display name, with its ID in small text under it. Each carries
+  the notice's JSON payload as Slack message metadata.
+- A reply in a thread brings the thread's first message, and its notice payload, to the agent.
+- Requires `wardrik` 0.1.0-rc.20.
+
 ## 0.1.0-rc.7 (2026-11-19)
 
 - Direct messages to the app (`im`) are taken as direct, for the channel's `:direct`. Group DMs

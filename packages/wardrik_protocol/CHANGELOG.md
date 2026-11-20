@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.14 (2026-11-19)
+
+- `Wardrik.Notice` has `name`, the agent's display name, and its JSON payload carries it.
+  `Wardrik.Notice.list_events/0` returns each notice kind's event type.
+
 ## 0.1.0-rc.13 (2026-11-19)
 
 - A webhook trigger's `when`: conditions on the request, as a policy's, that a request must match

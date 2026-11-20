@@ -24,10 +24,10 @@ wardrik version
 In Docker, start a new container with the same volumes:
 
 ```sh
-docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.23
+docker pull ghcr.io/wardrik-dev/wardrik:0.1.0-rc.24
 docker rm -f wardrik
 docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
-  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.23
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik:0.1.0-rc.24
 ```
 
 A release reads everything an earlier one stored: each stored value carries its format's version,

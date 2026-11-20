@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0-rc.20 (2026-11-19)
+
+- A notice carries the agent's `display_name` as `name`.
+- `Wardrik.Chat.Inbound` has `parent`, the text of the message a reply is under, and
+  `parent_notice`, the notice payload that message carried. A reply under a notice asks with the
+  message quoted and names the agent and conversation it's about.
+- **Upgrading:** the `Wardrik.Chat.Direct` callback `agent/2` is `find_agent/2`.
+- Requires `wardrik_protocol` 0.1.0-rc.14.
+
 ## 0.1.0-rc.19 (2026-11-19)
 
 - A channel's `:direct` answers direct messages to the app: a `Wardrik.Chat.Direct` names the

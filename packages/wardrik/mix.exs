@@ -4,7 +4,7 @@ defmodule Wardrik.MixProject do
   def project do
     [
       app: :wardrik,
-      version: "0.1.0-rc.19",
+      version: "0.1.0-rc.20",
       elixir: "~> 1.20",
       description:
         "Agents, governed: rules the model can't rewrite, approvals, budgets, and a record of what they did.",
@@ -146,7 +146,7 @@ defmodule Wardrik.MixProject do
   defp deps do
     [
       sibling(:wardrik_core, "~> 0.1.0-rc.14"),
-      sibling(:wardrik_protocol, "~> 0.1.0-rc.13"),
+      sibling(:wardrik_protocol, "~> 0.1.0-rc.14"),
       {:durable_server, "~> 0.1.7"},
       {:req, "~> 0.7"},
       {:ekv, "~> 0.4.8"},

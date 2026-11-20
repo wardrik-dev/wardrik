@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.24 (2026-11-19)
+
+- An agent's `display_name` defaults to its name, so notices name it.
+- A reply under a notice in Slack goes to the channel's `direct` agent, with the notice quoted.
+- `wardrik service install` runs the release `install.sh` installed last.
+- Requires `wardrik` 0.1.0-rc.20 and `wardrik_slack` 0.1.0-rc.8.
+
 ## 0.1.0-rc.23 (2026-11-19)
 
 - A channel's `direct` names the agent that answers direct messages to the app. With
