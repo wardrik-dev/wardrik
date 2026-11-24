@@ -36,6 +36,24 @@ notify: {to: ["slack:#updates"], on: [finished]}    # a room, without a target
 - A target is available to the deployment's org. List it under `orgs.<org>.notify` for others.
 - Notices are never sent to another org's room.
 
+## Answer nothing
+
+An agent that answers `NO_REPLY` sends no notice for that turn. Tell an agent on a trigger to
+answer it when a run finds nothing worth telling:
+
+```yaml
+# in an agent file
+notify: {to: [ops], on: [parked, failed, finished]}
+triggers:
+  - name: pulse
+    every: 2h
+    prompt: Check for failed runs. If there are none, answer NO_REPLY.
+```
+
+- The answer stays in the agent's history.
+- `NO_REPLY` must be the whole answer. Code or bold around it is ignored.
+- It costs nothing more, and works with any model. Use a judge for answers that need weighing.
+
 ## Judge finished turns
 
 A judge decides whether each finished turn's answer is sent. Use it for agents that run on

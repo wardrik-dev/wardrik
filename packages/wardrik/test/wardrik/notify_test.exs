@@ -257,6 +257,21 @@ defmodule Wardrik.NotifyTest do
       assert_receive {:told, "audit", %Notice{kind: :finished}}
     end
 
+    test "tells no one of an answer of NO_REPLY, and doesn't judge it", %{scope: scope} do
+      judging(yes(0.9))
+      model({:ok, answer("`NO_REPLY`\n")})
+      {:ok, _agent} = define(scope, @judged)
+      ask(scope)
+      until("wardrik.run.completed")
+      model({:ok, answer("The site is down.")})
+      ask(scope)
+
+      assert_receive {:told, "audit", %Notice{kind: :finished, text: "The site is down."}}
+      assert_received {:judged, {:step, "notify"}, _args}
+      refute_received {:judged, _step, _args}
+      refute_received {:told, _target, %Notice{kind: :finished}}
+    end
+
     test "never judges a failed turn", %{scope: scope} do
       judging(yes(0.0))
       model({:error, :boom})

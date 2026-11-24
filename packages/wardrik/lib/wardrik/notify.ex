@@ -35,6 +35,7 @@ defmodule Wardrik.Notify do
       notify: %{to: ["ops"], on: ["finished"], judge: %{question: "Would the owner want this now?"}}
 
     * `on` defaults to `["parked", "failed"]`.
+    * A finished turn that answers `NO_REPLY` is told to no one. See `Wardrik.Reply.quiet?/1`.
     * `judge` asks `model` (default `"typesafe:jev-latest"`) the `question` about each finished
       turn's answer and the conversation's digest. The answer is sent if the probability of yes is
       at least `send` (default `0.5`). Otherwise it is held and `wardrik.notice.held` is recorded.
