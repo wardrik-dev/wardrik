@@ -445,58 +445,7 @@ export interface AgentDefinition {
   /**
    * Triggers that run the agent. Each trigger has a prompt or a prompt_file. Defining the agent again replaces all its triggers. To change one trigger, use PUT or DELETE /v1/agents/{key}/triggers/{trigger}. A scheduled trigger has every and an optional timezone. A feed trigger has feed. A webhook trigger has webhook, with its secret and verification method. It receives requests at POST /v1/hooks/{key}/{trigger}.
    */
-  triggers?: {
-    /**
-     * The trigger name. Defaults to trigger-1, trigger-2 and so on, by position in the list.
-     */
-    name?: string;
-    /**
-     * A cron expression, or an interval such as 30m.
-     */
-    every?: string;
-    /**
-     * The IANA time zone for a cron expression in every, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval.
-     */
-    timezone?: string;
-    /**
-     * The prompt sent to the agent on each run.
-     */
-    prompt?: string;
-    /**
-     * Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files.
-     */
-    prompt_file?: string;
-    /**
-     * What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run.
-     */
-    overlap?: "skip" | "queue" | "settle";
-    /**
-     * What to do about runs missed while the server was down.
-     */
-    missed?: "run_once" | "skip";
-    /**
-     * A random delay of up to this many seconds before each run.
-     */
-    jitter?: number;
-    /**
-     * An RSS or Atom feed URL, or a list of them. The agent runs only when a feed has new entries, which are added below the prompt. The first check records the current entries without running the agent.
-     */
-    feed?: string | string[];
-    /**
-     * Use instead of every. An external service sends requests to the trigger. Each request runs the agent once.
-     */
-    webhook?: {
-      /**
-       * The shared secret, as a reference, for example ${NAME}.
-       */
-      secret: string;
-      /**
-       * How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared.
-       */
-      verify?: "shared" | "standard";
-    };
-    [k: string]: unknown;
-  }[];
+  triggers?: TriggerDefinition[];
   /**
    * Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to, on and judge. Chat rooms are in the workspace that the resolver sets for the channel.
    */
@@ -534,6 +483,77 @@ export interface AgentDefinition {
    * Names of the chat channels the agent can reply in.
    */
   channels?: string[];
+}
+/**
+ * A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. A one-off trigger has at, runs once, and is then removed. Add timezone for cron expressions and times outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for at and webhooks), missed run_once and jitter 0.
+ */
+export interface TriggerDefinition {
+  /**
+   * The trigger name, taken from the path.
+   */
+  name?: string;
+  /**
+   * A cron expression, or an interval such as 30m.
+   */
+  every?: string;
+  /**
+   * Use instead of every. A single time to run once, as 2026-11-17T09:00, read in timezone, or with an offset, as 2026-11-17T17:00:00Z, and no timezone. The trigger is removed after it runs. Setting a time that has passed is refused.
+   */
+  at?: string;
+  /**
+   * The IANA time zone for a cron expression in every, or for at, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval.
+   */
+  timezone?: string;
+  /**
+   * When the trigger runs next, in its time zone. agent.trigger_set returns it. A webhook, or an at that has run, has none.
+   */
+  next_at?: string;
+  /**
+   * The prompt sent to the agent on each run.
+   */
+  prompt?: string;
+  /**
+   * Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files.
+   */
+  prompt_file?: string;
+  /**
+   * The conversation each run asks the agent in, as an agent's conversation ID. Leave it out to ask in the agent's own conversation. An agent's self_schedule and self_trigger_set set it to the conversation they are called from, so a follow-up asked for in a chat thread answers in that thread.
+   */
+  ask_in?: string;
+  /**
+   * What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run.
+   */
+  overlap?: "skip" | "queue" | "settle";
+  /**
+   * What to do about runs missed while the server was down.
+   */
+  missed?: "run_once" | "skip";
+  /**
+   * A random delay of up to this many seconds before each run.
+   */
+  jitter?: number;
+  /**
+   * An RSS or Atom feed URL, or a list of them. The agent runs only when a feed has new entries, which are added below the prompt. The first check records the current entries without running the agent.
+   */
+  feed?: string | string[];
+  /**
+   * Use instead of every. An external service sends requests to the trigger. Each request runs the agent once.
+   */
+  webhook?: {
+    /**
+     * The shared secret, as a reference, for example ${NAME}.
+     */
+    secret: string;
+    /**
+     * How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared.
+     */
+    verify?: "shared" | "standard";
+    /**
+     * Conditions on the request's JSON body, as a policy writes them, such as "action = completed, workflow_run.conclusion = failure", or a list of them, any of which matches. A request that doesn't match is answered without asking the agent.
+     */
+    when?: string | string[];
+  };
+  [k: string]: unknown;
 }
 /**
  * A file in an agent's workspace, without its content.
@@ -1827,77 +1847,6 @@ export interface Timeline {
    * Where the log stood, to follow it from.
    */
   cursor: string;
-}
-/**
- * A trigger, with a prompt or a prompt_file. agent.trigger_set and agent.trigger_remove return it with its name. A scheduled trigger has every. A one-off trigger has at, runs once, and is then removed. Add timezone for cron expressions and times outside UTC. A feed trigger has feed, with one or more RSS or Atom feeds. A webhook trigger has webhook instead of every. Set its secret as ${NAME} and verify to shared or standard. It receives requests at POST /v1/hooks/{agent}/{trigger}. The defaults are overlap settle (queue for at and webhooks), missed run_once and jitter 0.
- */
-export interface TriggerDefinition {
-  /**
-   * The trigger name, taken from the path.
-   */
-  name?: string;
-  /**
-   * A cron expression, or an interval such as 30m.
-   */
-  every?: string;
-  /**
-   * Use instead of every. A single time to run once, as 2026-11-17T09:00, read in timezone, or with an offset, as 2026-11-17T17:00:00Z, and no timezone. The trigger is removed after it runs. Setting a time that has passed is refused.
-   */
-  at?: string;
-  /**
-   * The IANA time zone for a cron expression in every, or for at, such as Europe/Berlin. Defaults to Etc/UTC. Not used with an interval.
-   */
-  timezone?: string;
-  /**
-   * When the trigger runs next, in its time zone. agent.trigger_set returns it. A webhook, or an at that has run, has none.
-   */
-  next_at?: string;
-  /**
-   * The prompt sent to the agent on each run.
-   */
-  prompt?: string;
-  /**
-   * Use instead of prompt. A file in the agent's workspace. Each run asks the agent to read the file and follow its instructions. The agent's tools must include files.
-   */
-  prompt_file?: string;
-  /**
-   * The conversation each run asks the agent in, as an agent's conversation ID. Leave it out to ask in the agent's own conversation. An agent's self_schedule and self_trigger_set set it to the conversation they are called from, so a follow-up asked for in a chat thread answers in that thread.
-   */
-  ask_in?: string;
-  /**
-   * What happens if the agent is busy when the trigger fires. skip skips the run. queue runs it after the current turn. settle cancels a turn that is waiting for an approval and runs. If the turn isn't waiting for an approval, settle skips the run.
-   */
-  overlap?: "skip" | "queue" | "settle";
-  /**
-   * What to do about runs missed while the server was down.
-   */
-  missed?: "run_once" | "skip";
-  /**
-   * A random delay of up to this many seconds before each run.
-   */
-  jitter?: number;
-  /**
-   * An RSS or Atom feed URL, or a list of them. The agent runs only when a feed has new entries, which are added below the prompt. The first check records the current entries without running the agent.
-   */
-  feed?: string | string[];
-  /**
-   * Use instead of every. An external service sends requests to the trigger. Each request runs the agent once.
-   */
-  webhook?: {
-    /**
-     * The shared secret, as a reference, for example ${NAME}.
-     */
-    secret: string;
-    /**
-     * How requests are verified. With shared, the request sends the secret as a bearer token or as the last path segment of the URL. With standard, the request is signed as the Standard Webhooks spec describes. Defaults to shared.
-     */
-    verify?: "shared" | "standard";
-    /**
-     * Conditions on the request's JSON body, as a policy writes them, such as "action = completed, workflow_run.conclusion = failure", or a list of them, any of which matches. A request that doesn't match is answered without asking the agent.
-     */
-    when?: string | string[];
-  };
-  [k: string]: unknown;
 }
 /**
  * What the agent is doing changed, on the span of the event that changed it. Live: never stored.
