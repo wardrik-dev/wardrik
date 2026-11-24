@@ -396,9 +396,10 @@ notify:
   targets:
     ops: {channel: slack, room: "#ops"}
     audit: {webhook: {url: https://hooks.example.com/wardrik, secret: "${WEBHOOK_SECRET}"}}
+    assistant: {agent: assistant}
 ```
 
-- A target is a room (`channel`, `room`) or a `webhook` (`url`, `secret`).
+- A target is a room (`channel`, `room`), a `webhook` (`url`, `secret`), or an `agent`: the agent of that name in the notifying agent's org.
 - A target name can't contain `:`.
 - `retries` sets notice retries; default `{attempts: 3, max_wait: 10000}`.
 - Orgs and users add their own webhooks over the [HTTP API](/reference/http-api/#add-a-notify-target).

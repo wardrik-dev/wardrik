@@ -88,12 +88,19 @@ defmodule Wardrik.Notify.Server do
            }),
          defaults = Map.merge(state.wardrik.defaults, resolved.defaults),
          merged = Map.merge(defaults, definition),
-         %Notify.Route{to: to, on: on, judge: judge} <- Notify.route(merged),
-         true <- notice.kind in on,
-         false <- quiet?(notice),
-         named = %{notice | name: merged["display_name"]},
-         :send <- Notify.Judge.decide(state.wardrik, named, judge),
-         do: Enum.each(to, &tell(state, &1, named))
+         false <- quiet?(notice) do
+      named = %{notice | name: merged["display_name"]}
+
+      targets =
+        for route <- Notify.routes(merged),
+            notice.kind in route.on,
+            Notify.Judge.decide(state.wardrik, named, route.judge) == :send,
+            to <- route.to,
+            uniq: true,
+            do: to
+
+      Enum.each(targets, &tell(state, &1, named))
+    end
 
     state
   end

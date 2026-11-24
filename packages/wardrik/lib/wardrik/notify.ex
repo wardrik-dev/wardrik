@@ -33,7 +33,10 @@ defmodule Wardrik.Notify do
       notify: ["ops", "slack:#updates"]
       notify: %{to: ["ops"], on: ["finished"]}
       notify: %{to: ["ops"], on: ["finished"], judge: %{question: "Would the owner want this now?"}}
+      notify: [%{to: ["ops"], on: ["parked", "failed"]}, %{to: ["lead"], on: ["finished"]}]
 
+    * A list of routes sends each route's events to its own targets. A target two routes name is
+      told once.
     * `on` defaults to `["parked", "failed"]`.
     * A finished turn that answers `NO_REPLY` is told to no one. See `Wardrik.Reply.quiet?/1`.
     * `judge` asks `model` (default `"typesafe:jev-latest"`) the `question` about each finished
@@ -142,21 +145,23 @@ defmodule Wardrik.Notify do
   end
 
   @doc """
-  Returns the route in `definition`'s `notify`, or `nil`.
+  Returns the routes in `definition`'s `notify`.
 
-      Wardrik.Notify.route(%{"notify" => "ops"})
-      #=> %Wardrik.Notify.Route{to: ["ops"], on: [:parked, :failed], judge: nil}
+      Wardrik.Notify.routes(%{"notify" => "ops"})
+      #=> [%Wardrik.Notify.Route{to: ["ops"], on: [:parked, :failed], judge: nil}]
   """
-  @spec route(map()) :: Route.t() | nil
-  def route(%{"notify" => %{"to" => to} = notify}) do
-    kinds = Map.get(notify, "on", ~w(parked failed))
-    %Route{to: List.wrap(to), on: Enum.map(kinds, &kind/1), judge: Judge.read(notify["judge"])}
+  @spec routes(map()) :: [Route.t()]
+  def routes(%{"notify" => notify}), do: read_routes(notify)
+  def routes(_definition), do: []
+
+  defp read_routes(%{} = route), do: [read_route(route)]
+  defp read_routes([%{} | _routes] = routes), do: Enum.map(routes, &read_route/1)
+  defp read_routes(to), do: [%Route{to: List.wrap(to), on: [:parked, :failed]}]
+
+  defp read_route(%{"to" => to} = route) do
+    kinds = Map.get(route, "on", ~w(parked failed))
+    %Route{to: List.wrap(to), on: Enum.map(kinds, &kind/1), judge: Judge.read(route["judge"])}
   end
-
-  def route(%{"notify" => to}) when is_binary(to) or is_list(to),
-    do: %Route{to: List.wrap(to), on: [:parked, :failed]}
-
-  def route(_definition), do: nil
 
   defp kind("parked"), do: :parked
   defp kind("failed"), do: :failed
@@ -167,10 +172,10 @@ defmodule Wardrik.Notify do
   """
   @spec check(Wardrik.t(), Wardrik.Resolved.notify(), map()) :: :ok | {:error, Error.t()}
   def check(wardrik, notify, definition) do
-    case route(definition) do
-      nil -> :ok
-      %{to: to} -> Enum.find_value(to, :ok, &refuse(wardrik, notify, &1))
-    end
+    definition
+    |> routes()
+    |> Enum.flat_map(& &1.to)
+    |> Enum.find_value(:ok, &refuse(wardrik, notify, &1))
   end
 
   defp refuse(wardrik, notify, name) do

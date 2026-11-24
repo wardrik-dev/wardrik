@@ -263,67 +263,17 @@
           }
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "to"
-          ],
-          "properties": {
-            "to": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              ],
-              "description": "Notification targets defined by the resolver, or chat rooms such as slack:#updates."
-            },
-            "on": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "parked",
-                  "failed",
-                  "finished"
-                ]
-              },
-              "description": "The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed."
-            },
-            "judge": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "question"
-              ],
-              "properties": {
-                "question": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "A yes-or-no question about a finished turn's answer, such as whether the owner would want it now."
-                },
-                "send": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1,
-                  "description": "Send the answer when the probability of yes is at least this. Defaults to 0.5."
-                },
-                "model": {
-                  "type": "string",
-                  "description": "The model that answers. Defaults to typesafe:jev-latest."
-                }
-              },
-              "description": "Asks a model whether to send each finished turn's answer. Held answers are recorded as wardrik.notice.held. Parked and failed turns are always sent."
-            }
-          }
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/notify_route"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wardrik:schema:v1:defs#/$defs/notify_route"
+          },
+          "minItems": 1
         }
       ],
-      "description": "Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to, on and judge. Chat rooms are in the workspace that the resolver sets for the channel."
+      "description": "Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, a route with to, on and judge, or a list of routes, each sending its own events to its own targets. Chat rooms are in the workspace that the resolver sets for the channel."
     },
     "channels": {
       "type": "array",

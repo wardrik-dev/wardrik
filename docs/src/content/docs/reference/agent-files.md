@@ -232,10 +232,14 @@ A webhook trigger receives requests at [`POST /v1/hooks/{agent}/{trigger}`](/ref
 notify: ops
 notify: [ops, "slack:#updates"]
 notify: {to: [ops], on: [parked, failed, finished]}
+notify:
+  - {to: [ops], on: [parked, failed]}
+  - {to: [assistant], on: [finished]}
 ```
 
 - A target is a name from `config.yaml`'s [`notify`](/reference/config/#notify), a webhook added for the owner, or a room as `channel:room`.
 - `on` defaults to `[parked, failed]`.
+- A list of routes sends each route's events to its own targets. A target in two routes is told once.
 
 ```yaml
 notify:

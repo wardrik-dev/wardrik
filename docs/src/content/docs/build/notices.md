@@ -13,6 +13,7 @@ notify:
   targets:
     ops: {channel: slack, room: "#ops"}
     audit: {webhook: {url: https://hooks.example.com/wardrik, secret: "${WEBHOOK_SECRET}"}}
+    assistant: {agent: assistant}
 ```
 
 ```yaml
@@ -35,6 +36,28 @@ notify: {to: ["slack:#updates"], on: [finished]}    # a room, without a target
 - Slack destinations use the workspace connected to the agent’s owner or organization.
 - A target is available to the deployment's org. List it under `orgs.<org>.notify` for others.
 - Notices are never sent to another org's room.
+
+## Report to an agent
+
+An `agent` target sends each notice to that agent as a message. It answers as it sees fit, and
+its own `notify` decides what people hear. Send workers' answers to one assistant, and approvals
+and failures to people:
+
+```yaml title="~/.config/wardrik/config.yaml"
+notify:
+  targets:
+    me: {channel: slack, room: U012AB3CD}
+    assistant: {agent: assistant}
+defaults:
+  notify:
+    - {to: [me], on: [parked, failed]}
+    - {to: [assistant], on: [finished]}
+```
+
+- The agent is the one of that name in the notifying agent's org.
+- The message starts `From agent NAME (ID):` and carries the notifying conversation's labels.
+- An agent never notifies itself.
+- An answer of `NO_REPLY` reaches no agent. See [Answer nothing](#answer-nothing).
 
 ## Answer nothing
 

@@ -512,6 +512,67 @@
       "maxLength": 255,
       "pattern": "^\\P{Cc}+$",
       "description": "A conversation's ID, as your app chose it. A conversation runs on its agent's definition, with a history of its own. Left out for the agent's own history."
+    },
+    "notify_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "to"
+      ],
+      "properties": {
+        "to": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Notification targets defined by the resolver, or chat rooms such as slack:#updates."
+        },
+        "on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "parked",
+              "failed",
+              "finished"
+            ]
+          },
+          "description": "The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed."
+        },
+        "judge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "question"
+          ],
+          "properties": {
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "description": "A yes-or-no question about a finished turn's answer, such as whether the owner would want it now."
+            },
+            "send": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Send the answer when the probability of yes is at least this. Defaults to 0.5."
+            },
+            "model": {
+              "type": "string",
+              "description": "The model that answers. Defaults to typesafe:jev-latest."
+            }
+          },
+          "description": "Asks a model whether to send each finished turn's answer. Held answers are recorded as wardrik.notice.held. Parked and failed turns are always sent."
+        }
+      },
+      "description": "A notify route: the targets to send to, the events that send, and a judge for finished turns."
     }
   }
 }

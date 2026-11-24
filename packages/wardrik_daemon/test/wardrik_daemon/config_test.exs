@@ -238,6 +238,7 @@ defmodule WardrikDaemon.ConfigTest do
       retries: {attempts: 5, max_wait: 20000}
       targets:
         ops: {channel: slack, room: "#ops"}
+        lead: {agent: assistant}
         audit:
           webhook:
             url: https://hooks.example.com/wardrik
@@ -253,6 +254,7 @@ defmodule WardrikDaemon.ConfigTest do
                req_options: [retry: false],
                secret: "shh",
                url: "https://hooks.example.com/wardrik"}},
+             {"lead", {WardrikDaemon.NotifyAgent, name: "assistant"}},
              {"ops", {Wardrik.Notify.Room, channel: "slack", room: "#ops"}}
            ]
 
@@ -269,6 +271,8 @@ defmodule WardrikDaemon.ConfigTest do
            "notify.targets.ops: unknown options [:approvers]"},
           {~s({webhook: {url: x, method: put}}),
            "notify.targets.ops.webhook: unknown options [:method], valid options are: [:url, :secret, :req_options]"},
+          {~s({agent: assistant, room: x}), "notify.targets.ops: is a room"},
+          {~s({agent: 1}), "notify.targets.ops.agent: invalid value for :name option"},
           {~s({email: x}), "notify.targets.ops: is a room"},
           {"1", "notify.targets.ops: is a room"}
         ] do
