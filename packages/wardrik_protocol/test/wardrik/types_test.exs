@@ -45,6 +45,14 @@ defmodule Wardrik.TypesTest do
              definition.triggers
   end
 
+  test "takes NO_REPLY alone, in code or bold, as an answer to tell no one" do
+    for text <- ["NO_REPLY", " `NO_REPLY`\n", "**NO_REPLY**", "NO_REPLY."],
+        do: assert(Wardrik.Reply.quiet?(text))
+
+    for text <- ["", "No reply.", "NO_REPLY: the site is down.", "Down. NO_REPLY"],
+        do: refute(Wardrik.Reply.quiet?(text))
+  end
+
   test "reads an interrupt with the arguments of the call a person decides on" do
     interrupt =
       Wardrik.Interrupt.from_json(%{

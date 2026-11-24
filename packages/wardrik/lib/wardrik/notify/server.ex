@@ -90,12 +90,16 @@ defmodule Wardrik.Notify.Server do
          merged = Map.merge(defaults, definition),
          %Notify.Route{to: to, on: on, judge: judge} <- Notify.route(merged),
          true <- notice.kind in on,
+         false <- quiet?(notice),
          named = %{notice | name: merged["display_name"]},
          :send <- Notify.Judge.decide(state.wardrik, named, judge),
          do: Enum.each(to, &tell(state, &1, named))
 
     state
   end
+
+  defp quiet?(%Notice{kind: :finished, text: text}), do: Wardrik.Reply.quiet?(text)
+  defp quiet?(_notice), do: false
 
   defp tell(state, name, notice) do
     case Retry.run(state.wardrik.notify.retries, fn -> attempt(state, name, notice) end,
