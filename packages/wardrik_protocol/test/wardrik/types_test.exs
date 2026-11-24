@@ -29,6 +29,22 @@ defmodule Wardrik.TypesTest do
            )
   end
 
+  test "takes every field a trigger takes in a definition's triggers" do
+    definition =
+      Wardrik.Definition.new!(
+        triggers: [
+          %{
+            name: "ci",
+            prompt: "A run failed.",
+            webhook: %{secret: "${HOOK_SECRET}", when: "action = completed"}
+          }
+        ]
+      )
+
+    assert [%Wardrik.Trigger{webhook: %Wardrik.Trigger.Webhook{conditions: "action = completed"}}] =
+             definition.triggers
+  end
+
   test "reads an interrupt with the arguments of the call a person decides on" do
     interrupt =
       Wardrik.Interrupt.from_json(%{
