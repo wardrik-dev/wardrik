@@ -57,7 +57,8 @@ defmodule WardrikDaemon.NotifyAgentTest do
     Wardrik.Testing.Model.answer(context.fake, [answer("Two new posts."), answer("Noted.")])
 
     wardrik = Wardrik.Instance.fetch!(context.wardrik)
-    :ok = Wardrik.EventLog.subscribe(Wardrik.events(wardrik), :all)
+    events = Wardrik.events(wardrik)
+    :ok = Wardrik.EventLog.subscribe(events, :all)
     watcher = id(context, "acme", "watcher")
     # Asked as its schedule asks, for no one: a turn someone asked for answers them instead.
     {:ok, pid} = Wardrik.Operations.Running.ensure_awake(wardrik, watcher)
