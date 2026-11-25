@@ -68,7 +68,8 @@ defmodule Wardrik.NotifyTest do
          secret: {:secret, "HOOK_SECRET"},
          req_options: [plug: {Req.Test, __MODULE__}]},
       ops: {Wardrik.Notify.Room, channel: "board", room: "#ops"},
-      lead: {Wardrik.Notify.Agent, agent: "acme/lead"}
+      lead: {Wardrik.Notify.Agent, agent: "acme/lead"},
+      reports: {Wardrik.Notify.Agent, agent: "acme/lead", conversation: "reports"}
     ]
 
     wardrik =
@@ -393,6 +394,20 @@ defmodule Wardrik.NotifyTest do
       :sys.get_state(notifier)
 
       refute_received {Wardrik.EventLog, {"acme/lead", _conversation},
+                       %{"type" => "wardrik.message.created"}}
+    end
+
+    test "tells another agent in the conversation its target names", %{scope: scope} do
+      model({:ok, answer("The site is down.")})
+      {:ok, _lead} = define(scope, "audit", %{}, "acme/lead")
+      {:ok, _triage} = define(scope, %{"to" => "reports", "on" => ["finished"]})
+      ask(scope)
+
+      assert_receive {Wardrik.EventLog, {"acme/lead", "reports"},
+                      %{"type" => "wardrik.message.created"}},
+                     5_000
+
+      refute_received {Wardrik.EventLog, {"acme/lead", nil},
                        %{"type" => "wardrik.message.created"}}
     end
 

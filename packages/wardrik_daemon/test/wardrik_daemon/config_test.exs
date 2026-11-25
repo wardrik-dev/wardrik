@@ -239,6 +239,7 @@ defmodule WardrikDaemon.ConfigTest do
       targets:
         ops: {channel: slack, room: "#ops"}
         lead: {agent: assistant}
+        reports: {agent: assistant, conversation: reports}
         audit:
           webhook:
             url: https://hooks.example.com/wardrik
@@ -255,7 +256,8 @@ defmodule WardrikDaemon.ConfigTest do
                secret: "shh",
                url: "https://hooks.example.com/wardrik"}},
              {"lead", {WardrikDaemon.NotifyAgent, name: "assistant"}},
-             {"ops", {Wardrik.Notify.Room, channel: "slack", room: "#ops"}}
+             {"ops", {Wardrik.Notify.Room, channel: "slack", room: "#ops"}},
+             {"reports", {WardrikDaemon.NotifyAgent, conversation: "reports", name: "assistant"}}
            ]
 
     assert config.notify[:retries] == [attempts: 5, max_wait: 20_000]

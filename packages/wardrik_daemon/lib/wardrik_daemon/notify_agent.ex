@@ -1,5 +1,11 @@
 defmodule WardrikDaemon.NotifyAgent do
-  @options [name: [type: :string, required: true, doc: "The name of the agent it tells."]]
+  @options [
+    name: [type: :string, required: true, doc: "The name of the agent it tells."],
+    conversation: [
+      type: :string,
+      doc: "The conversation of the agent it asks in. Its main conversation unless set."
+    ]
+  ]
 
   # The moduledoc lists the options from the schema above.
   # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
@@ -9,6 +15,7 @@ defmodule WardrikDaemon.NotifyAgent do
       notify:
         targets:
           assistant: {agent: assistant}
+          reports: {agent: assistant, conversation: reports}
 
   ## Options
 

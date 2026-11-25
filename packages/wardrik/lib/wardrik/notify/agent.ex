@@ -1,6 +1,10 @@
 defmodule Wardrik.Notify.Agent do
   @options [
-    agent: [type: :string, required: true, doc: "The ID of the agent it tells."]
+    agent: [type: :string, required: true, doc: "The ID of the agent it tells."],
+    conversation: [
+      type: :string,
+      doc: "The conversation of the agent it asks in. Its main conversation unless set."
+    ]
   ]
 
   # The moduledoc lists the options from the schema above.
@@ -18,6 +22,9 @@ defmodule Wardrik.Notify.Agent do
     * The message is asked as a trigger asks, with the notifying conversation's labels, so the
       agent treats it as outside content when the notifying agent read any.
     * A notice of the agent itself is skipped.
+    * `conversation` keeps the messages out of the conversation people have with the agent:
+
+          lead: {Wardrik.Notify.Agent, agent: "agt_lead", conversation: "reports"}
 
   ## Options
 
@@ -44,7 +51,7 @@ defmodule Wardrik.Notify.Agent do
     wardrik = Wardrik.Instance.fetch!(opts[:wardrik])
     labels = Wardrik.Delegation.conversation_labels(wardrik, {notice.agent, notice.conversation})
 
-    with {:ok, pid} <- Running.ensure_awake(wardrik, target),
+    with {:ok, pid} <- Running.ensure_awake(wardrik, {target, opts[:conversation]}),
          do: WardrikCore.ask(pid, message_text(notice), metadata(labels))
   end
 

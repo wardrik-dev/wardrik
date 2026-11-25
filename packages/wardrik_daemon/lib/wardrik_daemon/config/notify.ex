@@ -8,11 +8,13 @@ defmodule WardrikDaemon.Config.Notify do
           ops: {channel: slack, room: "#ops"}
           audit: {webhook: {url: https://hooks.example.com/wardrik, secret: "${WEBHOOK_SECRET}"}}
           assistant: {agent: assistant}
+          reports: {agent: assistant, conversation: reports}
 
     * `notify` takes `Wardrik.Notify`'s options.
     * A target is a room (`Wardrik.Notify.Room`'s options, `channel` from `channels`), a
       `webhook` (`Wardrik.Notify.Webhook`'s options), or an `agent`, by name, in the notifying
-      agent's org (`WardrikDaemon.NotifyAgent`).
+      agent's org (`WardrikDaemon.NotifyAgent`), asked in its main conversation or the one
+      `conversation` names.
     * A target's name can't hold `:`.
     * Targets serve the deployment's org unless `orgs` says otherwise.
     * Orgs and people add their own webhooks. See Wardrik's `notify_targets.*` operations.
@@ -83,8 +85,20 @@ defmodule WardrikDaemon.Config.Notify do
          do: {:ok, {Webhook, opts}}
   end
 
-  defp build_target(%{"agent" => name} = target, _channels, path) when map_size(target) == 1 do
-    with {:ok, opts} <- Options.validate(%{"name" => name}, NotifyAgent.schema(), "#{path}.agent"),
+  defp build_target(%{"agent" => name} = target, _channels, path) do
+    case Map.split(target, ["agent", "conversation"]) do
+      {named, others} when map_size(others) == 0 ->
+        build_agent_target(Map.delete(named, "agent"), name, path)
+
+      _more ->
+        {:error, "#{path}: is a room, with channel and room, a webhook, with url, or an agent"}
+    end
+  end
+
+  defp build_agent_target(options, name, path) do
+    named = Map.put(options, "name", name)
+
+    with {:ok, opts} <- Options.validate(named, NotifyAgent.schema(), "#{path}.agent"),
          do: {:ok, {NotifyAgent, opts}}
   end
 
