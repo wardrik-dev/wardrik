@@ -58,6 +58,8 @@ defaults:
 ```
 
 - The agent is the one of that name in the notifying agent's org.
+- `conversation` notifies it in a conversation of its own, apart from people's:
+  `assistant: {agent: assistant, conversation: reports}`.
 - The message starts `From agent NAME (ID):` and carries the notifying conversation's labels.
 - An agent never notifies itself.
 - An answer of `NO_REPLY` reaches no agent. See [Answer nothing](#answer-nothing).
@@ -65,7 +67,7 @@ defaults:
 ## Answer nothing
 
 An agent that answers `NO_REPLY` sends no notice for that turn. Tell an agent on a trigger to
-answer it when a run finds nothing worth telling:
+answer it when a run finds nothing worth a notice:
 
 ```yaml
 # in an agent file

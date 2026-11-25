@@ -399,7 +399,7 @@ notify:
     assistant: {agent: assistant}
 ```
 
-- A target is a room (`channel`, `room`), a `webhook` (`url`, `secret`), or an `agent`: the agent of that name in the notifying agent's org.
+- A target is a room (`channel`, `room`), a `webhook` (`url`, `secret`), or an `agent`: the agent of that name in the notifying agent's org, notified in its main conversation or the one `conversation` names.
 - A target name can't contain `:`.
 - `retries` sets notice retries; default `{attempts: 3, max_wait: 10000}`.
 - Orgs and users add their own webhooks over the [HTTP API](/reference/http-api/#add-a-notify-target).
