@@ -42,7 +42,7 @@ defmodule Wardrik.Operations.Agent do
   def ask(scope, input) do
     key = Running.key(input)
 
-    with {:ok, pid} <- Running.awake(scope.wardrik, key) do
+    with {:ok, pid} <- Running.ensure_awake(scope.wardrik, key) do
       message_id = input["id"] || message_id()
       events = Wardrik.events(scope.wardrik)
       cursor = Wardrik.EventLog.head(events, [key])
@@ -57,7 +57,7 @@ defmodule Wardrik.Operations.Agent do
     key = Running.key(input)
 
     with :ok <- Snapshot.check_known(scope.wardrik, key),
-         {:ok, pid} <- Running.awake(scope.wardrik, key),
+         {:ok, pid} <- Running.ensure_awake(scope.wardrik, key),
          :ok <- waiting_on(pid, key, decisions),
          :ok <- resume(pid, decisions, scope) do
       {:ok, %{"decisions" => Enum.map(decisions, &handle_decide/1)}}
@@ -89,7 +89,7 @@ defmodule Wardrik.Operations.Agent do
   def authorization(scope, %{"interrupt" => interrupt} = input) do
     key = Running.key(input)
 
-    with {:ok, pid} <- Running.awake(scope.wardrik, key) do
+    with {:ok, pid} <- Running.ensure_awake(scope.wardrik, key) do
       case sign_in(WardrikCore.get_parked(pid), interrupt) do
         %Authorization{url: url} ->
           {:ok, %{"url" => url}}
