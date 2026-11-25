@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.0-rc.9 (2026-11-25)
+
+- While an agent works, the thread streams each step of the run with Slack's agent streaming.
+  Where streaming isn't available, one message is edited instead.
+- Each reply has thumbs up and down buttons, recorded with `Wardrik.Chat.rate/2`.
+- Slack's agent experience: opening the Messages tab suggests the channel's prompts, and Stop
+  stops the run. The app's manifest needs `agent_view`, the `assistant:write` scope, and the
+  `app_home_opened` and `agent_session_stopped` events.
+- A reply shows the questions its run suggested: as buttons under it in a channel, or as the
+  Messages tab's suggested prompts in a direct message.
+- The Home tab shows a member's agents and the calls waiting for a decision, each linked to its
+  thread. The `home` option names your own page, or `false` to leave the tab alone. The
+  manifest needs `home_tab_enabled: true`.
+- Requires `wardrik` 0.1.0-rc.23.
+
 ## 0.1.0-rc.8 (2026-11-19)
 
 - Notices name the agent by its display name, with its ID in small text under it. Each carries

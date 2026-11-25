@@ -113,7 +113,7 @@ Then `/invite @Wardrik` into a channel and ask `@Wardrik what time is it?`. Appr
 Application integration fragments: first configure a [Wardrik runtime](https://hexdocs.pm/wardrik/running-wardrik.html) named `MyApp.AgentRuntime`.
 
 ```elixir
-{:wardrik_slack, "~> 0.1.0-rc.8"}
+{:wardrik_slack, "~> 0.1.0-rc.9"}
 ```
 
 In `config/runtime.exs`:

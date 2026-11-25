@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.13 (2026-11-25)
+
+- Types for the `wardrik.run.rated` and `wardrik.prompts.suggested` events.
+
 ## 0.1.0-rc.12 (2026-11-24)
 
 - `AgentDefinition.triggers` is `TriggerDefinition[]`, and `notify` takes a list of routes.
