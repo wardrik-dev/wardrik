@@ -65,10 +65,12 @@ defmodule Wardrik.Chat do
   alias Wardrik.Chat.Channel
   alias Wardrik.Chat.Inbound
   alias Wardrik.Chat.Outbound
+  alias Wardrik.Chat.Rating
   alias Wardrik.Chat.Replies
   alias Wardrik.Chat.Rooms
   alias Wardrik.Chat.Workspace
   alias Wardrik.Error
+  alias Wardrik.EventLog.Encoder.Value
 
   @quoted_parent_length 2_000
 
@@ -295,4 +297,61 @@ defmodule Wardrik.Chat do
 
   defp give(_key, nil), do: []
   defp give(key, value), do: [{key, value}]
+
+  @doc """
+  Returns the prompts to suggest to `member` as they start a conversation, from the channel's
+  `:prompts`.
+
+      Wardrik.Chat.suggest_prompts(workspace, %Wardrik.Chat.Member{id: "U024BE7LH"})
+      #=> ["What can you do?", "What did you work on today?", ...]
+  """
+  @spec suggest_prompts(Workspace.t(), Wardrik.Chat.Member.t()) :: [String.t()]
+  def suggest_prompts(%Workspace{channel: channel, installation: installation}, member) do
+    {module, opts} = channel.prompts
+
+    request = %Wardrik.Chat.Prompts.Request{
+      channel: channel.name,
+      workspace: installation.workspace,
+      member: member.id
+    }
+
+    module.suggest(request, opts)
+  end
+
+  @doc """
+  Records a member's rating of a run's answer, as `wardrik.run.rated` in the conversation's log.
+
+      Wardrik.Chat.rate(workspace, %Wardrik.Chat.Rating{
+        member: member,
+        agent: "agt_01JF8X5RQ2",
+        conversation: "slack.T0123.C024BE91L.1696.1234",
+        run: "a1b2c3",
+        rating: :negative
+      })
+      #=> :ok
+
+  A member may rate a conversation they may read. Returns `{:error, message}` to tell them
+  otherwise. Ratings are kept for later review, such as evaluations; the agent isn't told.
+  """
+  @spec rate(Workspace.t(), Rating.t()) :: :ok | {:error, String.t()}
+  def rate(%Workspace{channel: channel} = workspace, %Rating{} = rating) do
+    with {:ok, scope} <- Workspace.member_scope(workspace, rating.member),
+         {:ok, _read} <- read_rated(scope, rating) do
+      data = %{
+        "run" => %{"id" => rating.run},
+        "rating" => Atom.to_string(rating.rating),
+        "rated_by" => Value.principal(scope.principal)
+      }
+
+      log = {rating.agent, rating.conversation}
+      Wardrik.EventLog.append(channel.events, log, {"run.rated", "runs/" <> rating.run, data})
+    end
+  end
+
+  defp read_rated(scope, %Rating{agent: agent, conversation: conversation}) do
+    case Wardrik.Agent.read(scope, agent, give(:conversation, conversation)) do
+      {:ok, read} -> {:ok, read}
+      {:error, _refused} -> {:error, "You may not rate this agent's answers."}
+    end
+  end
 end

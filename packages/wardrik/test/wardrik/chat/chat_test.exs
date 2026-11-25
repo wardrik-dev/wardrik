@@ -12,6 +12,7 @@ defmodule Wardrik.ChatTest do
   alias Wardrik.Chat.Member
   alias Wardrik.Chat.Offer
   alias Wardrik.Chat.Outbound
+  alias Wardrik.Chat.Rating
   alias Wardrik.Chat.Rooms
   alias Wardrik.Chat.Step
   alias Wardrik.Chat.Test.Chat
@@ -431,6 +432,90 @@ defmodule Wardrik.ChatTest do
 
     @impl Wardrik.Chat.Identities
     def identify(request, _opts), do: {:ok, %Wardrik.Principal{id: request.email}}
+  end
+
+  describe "prompts" do
+    defmodule Suggests do
+      @behaviour Wardrik.Chat.Prompts
+
+      @impl true
+      def suggest(request, test: test) do
+        send(test, {:suggesting, request})
+        ["Plan my week"]
+      end
+    end
+
+    test "are Wardrik's own unless the channel names others", context do
+      assert Wardrik.Chat.suggest_prompts(context.workspace, @ana) ==
+               Wardrik.Chat.Prompts.defaults()
+    end
+
+    test "are asked of the channel's prompts for the member starting a conversation", context do
+      channel = %{context.channel | prompts: {Suggests, test: self()}}
+      workspace = %{context.workspace | channel: channel}
+
+      assert Wardrik.Chat.suggest_prompts(workspace, @ana) == ["Plan my week"]
+
+      assert_received {:suggesting,
+                       %Wardrik.Chat.Prompts.Request{workspace: "T1", member: "U3", channel: name}}
+
+      assert name == channel.name
+    end
+  end
+
+  describe "ratings" do
+    setup context do
+      Rooms.join(context.workspace, "C1")
+      :ok
+    end
+
+    defp rating(context, member, rating),
+      do: %Rating{
+        member: member,
+        agent: "agt_triage",
+        conversation: "#{context.channel.name}.T1.C1.1.1",
+        run: "r1",
+        rating: rating
+      }
+
+    test "name the run a reply answers", context do
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
+      conversation = "#{context.channel.name}.T1.C1.1.1"
+
+      assert_receive {:delivered,
+                      %Outbound{
+                        body: {:reply, "Answered: Hi", _},
+                        agent: "agt_triage",
+                        conversation: ^conversation,
+                        run: "r1"
+                      }}
+    end
+
+    test "are kept in the conversation's log, with who rated", context do
+      assert Wardrik.Chat.rate(context.workspace, rating(context, @maria, :negative)) == :ok
+
+      {:ok, %{events: events}} =
+        Wardrik.EventLog.page(context.events, [conversation(context, "1.1")])
+
+      assert [
+               %{
+                 "type" => "wardrik.run.rated",
+                 "subject" => "runs/r1",
+                 "data" => %{
+                   "run" => %{"id" => "r1"},
+                   "rating" => "negative",
+                   "rated_by" => %{"id" => "maria"}
+                 }
+               }
+             ] = events
+    end
+
+    test "are refused from a member your app doesn't know", context do
+      stranger = %Member{id: "U9", name: "stranger"}
+
+      assert Wardrik.Chat.rate(context.workspace, rating(context, stranger, :positive)) ==
+               {:error, "Nobody here knows you yet."}
+    end
   end
 
   describe "direct messages" do

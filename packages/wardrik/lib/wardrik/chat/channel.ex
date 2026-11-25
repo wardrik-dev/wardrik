@@ -46,6 +46,13 @@ defmodule Wardrik.Chat.Channel do
       `{module, opts}`. Without it, direct messages aren't answered.
       """
     ],
+    prompts: [
+      type: :mod_arg,
+      doc: """
+      The `Wardrik.Chat.Prompts` that says which prompts to suggest when a member starts a
+      conversation, as `{module, opts}`. `Wardrik.Chat.Prompts.defaults/0` unless set.
+      """
+    ],
     offering: [type: :string, doc: "What a room with no agent is told."],
     deciding: [type: :string, doc: "What a member who may not decide is told."],
     reasoning: [
@@ -75,6 +82,7 @@ defmodule Wardrik.Chat.Channel do
     :offering,
     :deciding,
     :reasoning,
+    :prompts,
     :options
   ]
   defstruct [vault: nil, direct: nil] ++ @enforce_keys
@@ -93,6 +101,7 @@ defmodule Wardrik.Chat.Channel do
           offering: String.t(),
           deciding: String.t(),
           reasoning: boolean(),
+          prompts: {module(), term()},
           options: keyword()
         }
 
@@ -126,6 +135,12 @@ defmodule Wardrik.Chat.Channel do
       offering: Keyword.get(own, :offering, offering(name)),
       deciding: Keyword.get(own, :deciding, deciding()),
       reasoning: own[:reasoning],
+      prompts:
+        Keyword.get(
+          own,
+          :prompts,
+          {Wardrik.Chat.Prompts.Fixed, prompts: Wardrik.Chat.Prompts.defaults()}
+        ),
       options: options
     }
   end

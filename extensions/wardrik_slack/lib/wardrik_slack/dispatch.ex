@@ -5,9 +5,11 @@ defmodule WardrikSlack.Dispatch do
   | Slack sends                              | Handled by               |
   | ---------------------------------------- | ------------------------ |
   | a message                                | `WardrikSlack.Messages`  |
+  | a conversation started in the agent pane | `WardrikSlack.Assistant` |
   | the bot joining or leaving a channel     | `WardrikSlack.Rooms`     |
   | a room's button or menu                  | `WardrikSlack.Rooms`     |
   | a waiting call's button                  | `WardrikSlack.Answers`   |
+  | a reply's feedback button                | `WardrikSlack.Feedback`  |
   | `app_uninstalled` or `tokens_revoked`    | forgets the workspace    |
 
   Anything from a workspace the channel isn't added to is logged and ignored.
@@ -15,6 +17,8 @@ defmodule WardrikSlack.Dispatch do
 
   alias Wardrik.Chat.Channel
   alias WardrikSlack.Answers
+  alias WardrikSlack.Assistant
+  alias WardrikSlack.Feedback
   alias WardrikSlack.Messages
   alias WardrikSlack.Rooms
 
@@ -28,7 +32,7 @@ defmodule WardrikSlack.Dispatch do
   end
 
   def event(channel, %{"team_id" => team, "event" => %{"type" => type} = event} = callback) do
-    handler = if type == "message", do: Messages, else: Rooms
+    handler = event_handler(type)
     within(channel, team, &handler.event(&1, event, bot(callback)))
   end
 
@@ -40,11 +44,19 @@ defmodule WardrikSlack.Dispatch do
         channel,
         %{"team" => %{"id" => team}, "actions" => [%{"action_id" => action} | _rest]} = payload
       ) do
-    handler = if String.starts_with?(action, "wardrik_room"), do: Rooms, else: Answers
+    handler = press_handler(action)
     within(channel, team, &handler.answer(&1, payload))
   end
 
   def interactive(_channel, _payload), do: :ignored
+
+  defp event_handler("message"), do: Messages
+  defp event_handler("assistant_thread_started"), do: Assistant
+  defp event_handler(_room_event), do: Rooms
+
+  defp press_handler("wardrik_room" <> _rest), do: Rooms
+  defp press_handler("wardrik_feedback"), do: Feedback
+  defp press_handler(_call_button), do: Answers
 
   defp bot(%{"authorizations" => [%{"user_id" => bot} | _rest]}), do: bot
   defp bot(_callback), do: nil

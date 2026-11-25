@@ -325,7 +325,7 @@ defmodule Wardrik.Chat.Replies.Server do
   defp mark_shown(state, conversation),
     do: put_in(state.shown[conversation], System.monotonic_time(:millisecond))
 
-  defp deliver(state, {_agent, conversation}, body, run) do
+  defp deliver(state, {agent, conversation}, body, run) do
     case workspace(state) do
       {:ok, %Workspace{channel: channel, installation: installation} = workspace} ->
         outbound = %Outbound{
@@ -334,7 +334,10 @@ defmodule Wardrik.Chat.Replies.Server do
           thread: Workspace.thread(workspace, room: state.room, conversation: conversation),
           body: body,
           progress: run[:progress],
-          asker: run[:asker]
+          asker: run[:asker],
+          agent: agent,
+          conversation: conversation,
+          run: run[:id]
         }
 
         channel.adapter.deliver(outbound, channel)

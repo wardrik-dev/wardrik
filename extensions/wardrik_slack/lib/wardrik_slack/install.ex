@@ -43,7 +43,7 @@ defmodule WardrikSlack.Install do
   alias WardrikSlack.API
 
   @authorize "https://slack.com/oauth/v2/authorize"
-  @scopes ~w(channels:history channels:read chat:write chat:write.public groups:history
+  @scopes ~w(assistant:write channels:history channels:read chat:write chat:write.public groups:history
              groups:read reactions:write users:read users:read.email)
   @expires 600
 

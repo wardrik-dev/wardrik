@@ -54,6 +54,8 @@ display_information:
   name: Wardrik
   description: Agents that answer in threads, and ask before they act.
 features:
+  assistant_view:
+    assistant_description: Agents that answer here, and ask before they act.
   app_home:
     home_tab_enabled: false
     messages_tab_enabled: true
@@ -64,6 +66,7 @@ features:
 oauth_config:
   scopes:
     bot:
+      - assistant:write
       - channels:history
       - channels:read
       - chat:write
@@ -79,6 +82,7 @@ settings:
     request_url: https://agents.example.com/v1/channels/slack/events
     bot_events:
       - app_uninstalled
+      - assistant_thread_started
       - channel_left
       - group_left
       - member_joined_channel
@@ -161,6 +165,9 @@ Use a separate app per daemon. Slack spreads events across all of an app's conne
   reasoning under it, each tool call, and each retry with its wait. A step that runs quietly shows
   how long it has run. The reply follows that message.
 - Set `reasoning: false` on the channel to leave the reasoning out.
+- Each reply has thumbs up and down buttons. A press is kept as
+  [`wardrik.run.rated`](/reference/events/) in the conversation's log, for later review and
+  evaluations. The agent isn't told.
 - Slack ends a streamed message after 10 minutes. A longer run, or one started by a trigger or
   notice, lists its steps in a message it edits instead.
 - To post notices in a channel, set `notify: "slack:#updates"`. See [Send notifications](/build/notices/).
@@ -189,6 +196,25 @@ channels:
   digests, as rooms do.
 - The app needs the `im:history` scope and the `message.im` event, as in the manifest above. An app
   made from an older manifest needs both added, and installing again.
+
+### The agent pane
+
+With the `assistant:write` scope, the `assistant_view` feature and the `assistant_thread_started`
+event, as in the manifest above, Slack labels the app as an agent and opens it from the top bar.
+Each conversation there is a direct-message thread, answered as above.
+
+When a conversation starts, Slack suggests up to four prompts. Wardrik suggests its own unless
+the channel names others, or `[]` for none:
+
+```yaml
+    prompts: ["What's on my plate today?", "Summarize #support this week"]
+```
+
+An app that embeds Wardrik can pick prompts per member as each conversation starts, with a
+`Wardrik.Chat.Prompts` module as the channel's `prompts` option.
+
+An app made from an older manifest keeps working without these, and gains the pane once they're
+added and the app is installed again.
 
 ### An agent per member
 

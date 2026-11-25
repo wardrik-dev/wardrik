@@ -2362,6 +2362,22 @@ export interface RunInterruptedData {
   interrupts: Interrupt[];
 }
 /**
+ * A person rated a run's answer, such as with a thumbs up or down in a chat app.
+ */
+export interface RunRatedData {
+  run: {
+    /**
+     * The run's ID, as its run.completed gives it.
+     */
+    id: string;
+  };
+  /**
+   * Whether the answer helped.
+   */
+  rating: "positive" | "negative";
+  rated_by: Principal;
+}
+/**
  * An interrupted run carried on.
  */
 export interface RunResumedData {
@@ -2643,6 +2659,7 @@ export interface EventData {
   "wardrik.run.deadline_exceeded": RunDeadlineExceededData;
   "wardrik.run.failed": RunFailedData;
   "wardrik.run.interrupted": RunInterruptedData;
+  "wardrik.run.rated": RunRatedData;
   "wardrik.run.resumed": RunResumedData;
   "wardrik.run.started": RunStartedData;
   "wardrik.secret.removed": SecretRemovedData;
