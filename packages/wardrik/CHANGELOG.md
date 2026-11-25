@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc.22 (2026-11-25)
+
+- A finished turn someone asked for sends no notice, since it already answered them. Finished
+  notices come from turns a trigger or another agent's notice started.
+- `Wardrik.Notify.Agent` takes `conversation`, the conversation it notifies the agent in.
+
 ## 0.1.0-rc.21 (2026-11-24)
 
 - A finished turn that answers `NO_REPLY` sends no notice.

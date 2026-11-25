@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.26 (2026-11-25)
+
+- A finished turn someone asked for, in Slack, the web or the CLI, sends no notice. Finished
+  notices come from schedules, webhooks, feeds and other agents' notices.
+- An agent notify target takes `conversation`: `{agent: assistant, conversation: reports}`.
+- Requires `wardrik` 0.1.0-rc.22.
+
 ## 0.1.0-rc.25 (2026-11-24)
 
 - `wardrik init` asks how much agents do without asking (`balanced`, `careful` or
