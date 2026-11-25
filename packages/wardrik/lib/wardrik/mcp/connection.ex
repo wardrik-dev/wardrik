@@ -209,6 +209,9 @@ defmodule Wardrik.MCP.Connection do
   def terminate(_reason, state) do
     handler = handler(state)
     :telemetry.detach(handler)
+    # The client is linked, not supervised: stop it here, so its name is free for the
+    # connection that replaces this one.
+    disconnect(state)
   end
 
   defp handle_open(server, who, token) do
