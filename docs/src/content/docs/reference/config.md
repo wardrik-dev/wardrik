@@ -382,7 +382,7 @@ channels:
 | `direct` | the agent, by name, that answers direct messages to the app, or `{agent: NAME, per: member}` for an agent per member made from it; none unless set |
 | `offering`, `deciding` | messages for a room with no agent, and for a member who can't approve |
 | `reasoning` | whether a thread shows the model's reasoning while the agent works; `true` unless set |
-| `prompts` | the prompts suggested when a member starts a conversation with the app, as in Slack's agent pane, which shows the first four; Wardrik's own unless set, `[]` for none |
+| `prompts` | the prompts suggested when a member starts a conversation with the app, as when Slack's Messages tab opens, which shows the first four; Wardrik's own unless set, `[]` for none |
 
 - The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are reserved.
 - Members without a `domains` or `members` mapping receive an access-denied message.

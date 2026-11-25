@@ -393,6 +393,19 @@ defmodule WardrikDaemon.AuthorizerTest do
                {:error, :not_found}
     end
 
+    test "a member stops a turn they asked for, or as their user's bindings allow",
+         %{access: access} do
+      cancel = [action: "agent.cancel", resource: {:agent, "payments/triage"}]
+
+      assert decide(access, member("payments/@dee", %{asked_by: "payments/@ana"}) ++ cancel) ==
+               {:error, :forbidden}
+
+      assert decide(access, member("payments/@dee", %{asked_by: "payments/@dee"}) ++ cancel) ==
+               :ok
+
+      assert decide(access, member("payments/@ana", %{}) ++ cancel) == :ok
+    end
+
     test "a member asks and reads as their user's bindings allow", %{access: access} do
       read = [action: "agent.read", resource: {:agent, "payments/triage"}]
       ask = [action: "agent.ask", resource: {:agent, "payments/triage"}]

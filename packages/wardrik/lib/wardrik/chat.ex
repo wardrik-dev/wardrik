@@ -299,6 +299,43 @@ defmodule Wardrik.Chat do
   defp give(key, value), do: [{key, value}]
 
   @doc """
+  Stops the run under way in `:thread` of `:room`, as `member`, such as when they press a chat
+  app's Stop button. The run's thread is told it stopped.
+
+      Wardrik.Chat.stop(workspace, member, room: "D024BE91L", thread: "1696.1234")
+      #=> :ok
+
+  Your authorizer decides with who asked for the run in the scope's context, as `:asked_by`.
+  Returns `:not_running` if the thread has no run under way, or `{:error, message}` to tell the
+  member why they may not stop it.
+  """
+  @spec stop(Workspace.t(), Wardrik.Chat.Member.t(), room: String.t(), thread: String.t()) ::
+          :ok | :not_running | {:error, String.t()}
+  def stop(workspace, member, opts) do
+    room = Keyword.fetch!(opts, :room)
+
+    conversation =
+      Workspace.conversation(workspace, room: room, thread: Keyword.fetch!(opts, :thread))
+
+    with {:ok, run} <- Replies.find_run(workspace, room: room, conversation: conversation),
+         {:ok, scope} <- Workspace.member_scope(workspace, member, asked_by: run.asked_by) do
+      scope
+      |> Wardrik.Agent.cancel(run.agent, conversation: conversation)
+      |> handle_stop()
+    else
+      :error -> :not_running
+      {:error, why} -> {:error, why}
+    end
+  end
+
+  defp handle_stop(:ok), do: :ok
+
+  defp handle_stop({:error, %Error{type: type}}) when type in [:forbidden, :not_found],
+    do: {:error, "Only whoever asked may stop it."}
+
+  defp handle_stop({:error, %Error{message: message}}), do: {:error, message}
+
+  @doc """
   Returns the prompts to suggest to `member` as they start a conversation, from the channel's
   `:prompts`.
 

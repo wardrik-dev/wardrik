@@ -1,7 +1,7 @@
 defmodule Wardrik.Chat.Prompts do
   @moduledoc """
   Says which prompts to suggest when a member starts a conversation with the app, such as in
-  Slack's agent pane. It's asked each time one starts, so the prompts can follow your app's data.
+  Slack's Messages tab. It's asked each time, so the prompts can follow your app's data.
 
       slack: {WardrikSlack, ..., prompts: {MyApp.ChatPrompts, []}}
 

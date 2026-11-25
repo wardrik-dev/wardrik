@@ -18,7 +18,7 @@ defmodule WardrikDaemon.Authorizer do
     * Removing a secret, MCP server, webhook, OAuth app, connection or token is `delete`.
     * A chat member acts as the user `WardrikDaemon.ChannelMembers` maps them to. They may only
       `ask`, `read`, `events` and decide, on the agents of the workspace's owner. Whoever asked
-      for a turn may always decide its calls.
+      for a turn may always decide its calls, and stop it.
     * Tokens are in no org: only a binding in `"*"` on `token` reaches them. Only the admin makes
       a token for `user:admin`.
     * An agent the daemon has no record of is not found. See `WardrikDaemon.AgentRecords`.
@@ -36,7 +36,7 @@ defmodule WardrikDaemon.Authorizer do
 
   @admin Access.admin()
   @member ~w(ask read events)
-  @deciding ~w(decide approve deny)
+  @asker_may ~w(decide approve deny cancel)
 
   @uses ~w(secret.use provider.use mcp_server.use notify_target.use)
   @held [:secret, :mcp_server, :notify_target, :provider, :ceiling, :agents]
@@ -203,7 +203,7 @@ defmodule WardrikDaemon.Authorizer do
   defp member(verb, request, opts) when verb in @member, do: as_user(request, opts)
 
   defp member(verb, %Request{principal: principal, context: context} = request, opts)
-       when verb in @deciding do
+       when verb in @asker_may do
     if context[:asked_by] == principal.id, do: :ok, else: as_user(request, opts)
   end
 

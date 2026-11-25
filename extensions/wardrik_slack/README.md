@@ -16,8 +16,8 @@ display_information:
   name: Wardrik
   description: Agents that answer in threads, and ask before they act.
 features:
-  assistant_view:
-    assistant_description: Agents that answer here, and ask before they act.
+  agent_view:
+    agent_description: Agents that answer here, and ask before they act.
   app_home:
     home_tab_enabled: false
     messages_tab_enabled: true
@@ -42,8 +42,9 @@ oauth_config:
 settings:
   event_subscriptions:
     bot_events:
+      - agent_session_stopped
+      - app_home_opened
       - app_uninstalled
-      - assistant_thread_started
       - channel_left
       - group_left
       - member_joined_channel
@@ -72,8 +73,9 @@ settings:
   event_subscriptions:
     request_url: https://agents.example.com/v1/channels/slack/events
     bot_events:
+      - agent_session_stopped
+      - app_home_opened
       - app_uninstalled
-      - assistant_thread_started
       - channel_left
       - group_left
       - member_joined_channel

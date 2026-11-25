@@ -36,21 +36,26 @@ defmodule Wardrik.Chat.Workspace do
   def scope(%__MODULE__{installation: installation} = workspace),
     do: acting(workspace, %Principal{id: installation.owner}, %{})
 
-  @doc "Returns `member`'s scope, or what to tell them if your app doesn't know them."
-  @spec member_scope(t(), Member.t()) :: {:ok, Wardrik.Scope.t()} | {:error, String.t()}
-  def member_scope(workspace, member) do
-    with {:ok, principal} <- identify(workspace, member),
-         do: {:ok, acting(workspace, principal, %{})}
-  end
+  @doc """
+  Returns `member`'s scope, or what to tell them if your app doesn't know them.
 
-  @doc "Returns `member_scope/2` for the answer's member, with `:asked_by` in its context."
-  @spec deciding_scope(t(), Answer.t()) :: {:ok, Wardrik.Scope.t()} | {:error, String.t()}
-  def deciding_scope(workspace, %Answer{member: member, asked_by: asked_by}) do
-    known = if asked_by, do: %{asked_by: asked_by}, else: %{}
+  `:asked_by` is the ID of who asked for the turn the member acts on, for your authorizer to let
+  them decide its calls or stop it.
+  """
+  @spec member_scope(t(), Member.t(), keyword()) ::
+          {:ok, Wardrik.Scope.t()} | {:error, String.t()}
+  def member_scope(workspace, member, opts \\ []) do
+    opts = Keyword.validate!(opts, [:asked_by])
+    known = if opts[:asked_by], do: %{asked_by: opts[:asked_by]}, else: %{}
 
     with {:ok, principal} <- identify(workspace, member),
          do: {:ok, acting(workspace, principal, known)}
   end
+
+  @doc "Returns `member_scope/3` for the answer's member, with who asked for the turn."
+  @spec deciding_scope(t(), Answer.t()) :: {:ok, Wardrik.Scope.t()} | {:error, String.t()}
+  def deciding_scope(workspace, %Answer{member: member, asked_by: asked_by}),
+    do: member_scope(workspace, member, asked_by: asked_by)
 
   @doc "Returns who `member` is in your app, or what to tell them if unknown."
   @spec identify(t(), Member.t()) :: {:ok, Principal.t()} | {:error, String.t()}
