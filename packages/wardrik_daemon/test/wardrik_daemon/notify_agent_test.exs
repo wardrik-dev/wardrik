@@ -56,14 +56,13 @@ defmodule WardrikDaemon.NotifyAgentTest do
   test "tells the agent of the name in the notifying agent's org", context do
     Wardrik.Testing.Model.answer(context.fake, [answer("Two new posts."), answer("Noted.")])
 
-    events =
-      context.wardrik
-      |> Wardrik.Instance.fetch!()
-      |> Wardrik.events()
-
+    wardrik = Wardrik.Instance.fetch!(context.wardrik)
+    events = Wardrik.events(wardrik)
     :ok = Wardrik.EventLog.subscribe(events, :all)
     watcher = id(context, "acme", "watcher")
-    {:ok, _reply} = Wardrik.Agent.reply(context.admin, watcher, "Look.")
+    # Asked as its schedule asks, for no one: a turn someone asked for answers them instead.
+    {:ok, pid} = Wardrik.Operations.Running.ensure_awake(wardrik, watcher)
+    :ok = WardrikCore.ask(pid, "Look.", %{trigger: "check"})
 
     assert [%{"content" => content}] = receive_message(id(context, "acme", "assistant"))
 

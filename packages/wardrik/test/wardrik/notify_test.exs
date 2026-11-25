@@ -1,10 +1,10 @@
-defmodule Wardrik.Test.Told do
-  @moduledoc "A notify target that tells the test each notice, and answers what the test set."
+defmodule Wardrik.Test.Notified do
+  @moduledoc "A notify target that sends the test each notice, and answers what the test set."
   @behaviour Wardrik.Notify
 
   @impl Wardrik.Notify
   def deliver(notice, opts) do
-    send(opts[:test], {:told, opts[:target], notice})
+    send(opts[:test], {:notified, opts[:target], notice})
     answer(opts[:answers])
   end
 
@@ -13,7 +13,7 @@ defmodule Wardrik.Test.Told do
 end
 
 defmodule Wardrik.Test.Board do
-  @moduledoc "A channel that tells the test each notice posted in a room."
+  @moduledoc "A channel that sends the test each notice posted in a room."
   @behaviour Wardrik.Channel
 
   @impl Wardrik.Channel
@@ -61,7 +61,7 @@ defmodule Wardrik.NotifyTest do
     {:ok, answers} = Agent.start_link(fn -> Map.get(context, :answers, []) end)
 
     targets = [
-      audit: {Wardrik.Test.Told, test: self(), answers: context[:answers] && answers},
+      audit: {Wardrik.Test.Notified, test: self(), answers: context[:answers] && answers},
       hook:
         {Wardrik.Notify.Webhook,
          url: "https://hooks.example.com/wardrik",
@@ -115,8 +115,13 @@ defmodule Wardrik.NotifyTest do
 
   defp model(answer), do: stub(ReqLLM, :stream_text, fn _model, _messages, _opts -> answer end)
 
-  defp ask(scope, agent \\ "acme/triage"),
-    do: run!(scope, "agent.ask", %{"agent" => agent, "content" => "Go"})
+  # Asks as a trigger does, for no one: a turn someone asked for answers them, and notifies no one
+  # else.
+  defp trigger(scope, agent \\ "acme/triage") do
+    wardrik = Wardrik.Instance.fetch!(scope.wardrik)
+    {:ok, pid} = Wardrik.Operations.Running.ensure_awake(wardrik, agent)
+    WardrikCore.ask(pid, "Go", %{trigger: "check"})
+  end
 
   defp start_hook do
     test = self()
@@ -202,7 +207,7 @@ defmodule Wardrik.NotifyTest do
       judging(yes(0.2))
       model({:ok, answer("Nothing new.")})
       {:ok, _agent} = define(scope, @judged)
-      ask(scope)
+      trigger(scope)
 
       assert_receive {:judged, {:step, "notify"}, args}
       assert args[:model] == "typesafe:jev-latest"
@@ -219,7 +224,7 @@ defmodule Wardrik.NotifyTest do
       assert %{"probability" => 0.2, "send" => 0.7, "agent" => %{"id" => "acme/triage"}} =
                held["data"]
 
-      refute_received {:told, _target, _notice}
+      refute_received {:notified, _target, _notice}
       assert Wardrik.Spending.today(wardrik, "acme/triage")["usd"] >= 0.01
     end
 
@@ -238,7 +243,7 @@ defmodule Wardrik.NotifyTest do
 
       model({:ok, answer("Nothing new.")})
       {:ok, _agent} = define(scope, @judged)
-      ask(scope)
+      trigger(scope)
 
       evaluated = until("wardrik.evaluation.completed")
 
@@ -258,53 +263,55 @@ defmodule Wardrik.NotifyTest do
       judging(yes(0.9))
       model({:ok, answer("The site is down.")})
       {:ok, _agent} = define(scope, @judged)
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :finished, text: "The site is down."}}
+      assert_receive {:notified, "audit", %Notice{kind: :finished, text: "The site is down."}}
     end
 
     test "sends an answer the judge can't judge", %{scope: scope} do
       judging({:error, :down})
       model({:ok, answer("The site is down.")})
       {:ok, _agent} = define(scope, @judged)
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :finished}}
+      assert_receive {:notified, "audit", %Notice{kind: :finished}}
     end
 
-    test "tells no one of an answer of NO_REPLY, and doesn't judge it", %{scope: scope} do
+    test "notifies no one of an answer of NO_REPLY, and doesn't judge it", %{scope: scope} do
       judging(yes(0.9))
       model({:ok, answer("`NO_REPLY`\n")})
       {:ok, _agent} = define(scope, @judged)
-      ask(scope)
+      trigger(scope)
       until("wardrik.run.completed")
       model({:ok, answer("The site is down.")})
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :finished, text: "The site is down."}}
+      assert_receive {:notified, "audit", %Notice{kind: :finished, text: "The site is down."}}
       assert_received {:judged, {:step, "notify"}, _args}
       refute_received {:judged, _step, _args}
-      refute_received {:told, _target, %Notice{kind: :finished}}
+      refute_received {:notified, _target, %Notice{kind: :finished}}
     end
 
     test "never judges a failed turn", %{scope: scope} do
       judging(yes(0.0))
       model({:error, :boom})
       {:ok, _agent} = define(scope, @judged)
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :failed}}
+      assert_receive {:notified, "audit", %Notice{kind: :failed}}
       refute_received {:judged, _step, _args}
     end
   end
 
   describe "notices" do
-    test "tells of a turn that waits on a person, with each call's arguments", %{scope: scope} do
+    test "notifies of a turn that waits on a person, with each call's arguments", %{scope: scope} do
       model({:ok, calling([call("call_1", "echo", %{text: "hi"})])})
       {:ok, _agent} = define(scope, "audit")
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :parked, agent: "acme/triage", calls: [call]}}
+      assert_receive {:notified, "audit",
+                      %Notice{kind: :parked, agent: "acme/triage", calls: [call]}}
+
       assert %{interrupt: %Wardrik.Interrupt{name: "echo"}, arguments: %{"text" => "hi"}} = call
 
       # Defining checks the agent may use the deployment's target, as the agent's principal.
@@ -319,12 +326,12 @@ defmodule Wardrik.NotifyTest do
       refute Enum.any?(asked, &(&1.principal.id == "wardrik:notify"))
     end
 
-    test "tells of a turn that failed", %{scope: scope} do
+    test "notifies of a turn that failed", %{scope: scope} do
       model({:error, :boom})
       {:ok, _agent} = define(scope, "audit")
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :failed, reason: reason}}
+      assert_receive {:notified, "audit", %Notice{kind: :failed, reason: reason}}
       assert is_binary(reason)
     end
 
@@ -333,12 +340,12 @@ defmodule Wardrik.NotifyTest do
     } do
       model({:error, :boom})
       {:ok, _agent} = define(scope, "audit", %{"display_name" => "Triage"})
-      ask(scope)
-      assert_receive {:told, "audit", %Notice{agent: "acme/triage", name: "Triage"}}
+      trigger(scope)
+      assert_receive {:notified, "audit", %Notice{agent: "acme/triage", name: "Triage"}}
 
       {:ok, _agent} = define(scope, "audit", %{}, "acme/other")
-      ask(scope, "acme/other")
-      assert_receive {:told, "audit", %Notice{agent: "acme/other", name: nil}}
+      trigger(scope, "acme/other")
+      assert_receive {:notified, "audit", %Notice{agent: "acme/other", name: nil}}
     end
 
     @tag defaults: %{"display_name" => "Everyone"}
@@ -347,11 +354,11 @@ defmodule Wardrik.NotifyTest do
     } do
       model({:error, :boom})
       {:ok, _agent} = define(scope, "audit")
-      ask(scope)
-      assert_receive {:told, "audit", %Notice{name: "Everyone"}}
+      trigger(scope)
+      assert_receive {:notified, "audit", %Notice{name: "Everyone"}}
     end
 
-    test "sends each route's events to its own targets, telling a target once", %{
+    test "sends each route's events to its own targets, notifying a target once", %{
       scope: scope,
       wardrik: wardrik
     } do
@@ -364,23 +371,23 @@ defmodule Wardrik.NotifyTest do
       ]
 
       {:ok, _agent} = define(scope, routes)
-      ask(scope)
-      assert_receive {:told, "audit", %Notice{kind: :failed}}
-      # The notifier tells each target in the one cast, so it's done once it answers.
+      trigger(scope)
+      assert_receive {:notified, "audit", %Notice{kind: :failed}}
+      # The notifier notifies each target in the one cast, so it's done once it answers.
       notifier = Server.name(wardrik.name)
       :sys.get_state(notifier)
-      refute_received {:told, _target, _notice}
+      refute_received {:notified, _target, _notice}
       refute_received {:posted, _channel, _workspace, _room, _notice}
     end
 
-    test "tells another agent, as a message from the agent, and never the agent itself", %{
+    test "notifies another agent, as a message from the agent, and never the agent itself", %{
       scope: scope,
       wardrik: wardrik
     } do
       model({:ok, answer("The site is down.")})
       {:ok, _lead} = define(scope, %{"to" => "lead", "on" => ["finished"]}, %{}, "acme/lead")
       {:ok, _triage} = define(scope, %{"to" => "lead", "on" => ["finished"]})
-      ask(scope)
+      trigger(scope)
 
       assert %{"parts" => [%{"content" => content}]} = receive_message("acme/lead")
 
@@ -406,17 +413,35 @@ defmodule Wardrik.NotifyTest do
       end
     end
 
-    test "tells what a turn answered only where on asks for it", %{scope: scope} do
+    test "notifies of what a turn answered only where on asks for it", %{scope: scope} do
       model({:ok, answer("All quiet.")})
       {:ok, _agent} = define(scope, "audit")
-      ask(scope)
+      trigger(scope)
       until("wardrik.run.completed")
-      refute_received {:told, _target, _notice}
+      refute_received {:notified, _target, _notice}
 
       {:ok, _agent} = define(scope, %{"to" => "audit", "on" => ["finished"]})
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :finished, text: "All quiet."}}
+      assert_receive {:notified, "audit", %Notice{kind: :finished, text: "All quiet."}}
+    end
+
+    test "notifies no one that a turn someone asked for finished, since it answered them", %{
+      scope: scope
+    } do
+      model({:ok, answer("Done.")})
+      {:ok, _agent} = define(scope, %{"to" => "audit", "on" => ["failed", "finished"]})
+      run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Go"})
+      until("wardrik.run.completed")
+      trigger(scope)
+
+      assert_receive {:notified, "audit", %Notice{kind: :finished, text: "Done."}}
+      refute_received {:notified, _target, _notice}
+
+      model({:error, :boom})
+      run!(scope, "agent.ask", %{"agent" => "acme/triage", "content" => "Go"})
+
+      assert_receive {:notified, "audit", %Notice{kind: :failed}}
     end
 
     @tag defaults: %{"notify" => "audit"}
@@ -426,19 +451,19 @@ defmodule Wardrik.NotifyTest do
       {:ok, _agent} =
         Wardrik.run(scope, "agent.define", %{"agent" => "acme/triage", "model" => @model})
 
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :failed, agent: "acme/triage"}}
+      assert_receive {:notified, "audit", %Notice{kind: :failed, agent: "acme/triage"}}
     end
 
     @tag answers: [{:error, :down}, :ok]
     test "tries a failed delivery again", %{scope: scope} do
       model({:error, :boom})
       {:ok, _agent} = define(scope, "audit")
-      ask(scope)
+      trigger(scope)
 
-      assert_receive {:told, "audit", %Notice{kind: :failed}}
-      assert_receive {:told, "audit", %Notice{kind: :failed}}
+      assert_receive {:notified, "audit", %Notice{kind: :failed}}
+      assert_receive {:notified, "audit", %Notice{kind: :failed}}
     end
 
     test "posts in a channel's room, in the workspace the agent's resolver gives", %{
@@ -446,7 +471,7 @@ defmodule Wardrik.NotifyTest do
     } do
       model({:error, :boom})
       {:ok, _agent} = define(scope, ["board:#updates", "ops"])
-      ask(scope)
+      trigger(scope)
 
       assert_receive {:posted, "board", "W1", "#updates", %Notice{kind: :failed}}
       assert_receive {:posted, "board", "W1", "#ops", %Notice{kind: :failed}}
@@ -480,7 +505,7 @@ defmodule Wardrik.NotifyTest do
 
       model({:error, :boom})
       {:ok, _agent} = define(scope, "hook")
-      ask(scope)
+      trigger(scope)
 
       assert_receive {:hooked, headers, body}
       assert headers["x-wardrik-event"] == "turn_failed"
@@ -505,7 +530,7 @@ defmodule Wardrik.NotifyTest do
 
       model({:ok, calling([call("call_1", "echo", %{text: "hi"})])})
       {:ok, _agent} = define(scope, "hook")
-      ask(scope)
+      trigger(scope)
 
       assert_receive {:hooked, 500, _body}
       assert_receive {:hooked, 200, %{"event" => "turn_parked", "calls" => [call]}}
@@ -572,7 +597,7 @@ defmodule Wardrik.NotifyTest do
 
       wardrik =
         giving(wardrik, %{
-          "mine" => {Wardrik.Test.Told, test: self()},
+          "mine" => {Wardrik.Test.Notified, test: self()},
           "hook" =>
             {Wardrik.Notify.Webhook,
              url: "https://hooks.acme.test/wardrik",
@@ -582,14 +607,14 @@ defmodule Wardrik.NotifyTest do
         })
 
       assert :ok = Wardrik.Notify.deliver(wardrik, "mine", fail())
-      assert_received {:told, "mine", %Notice{agent: "acme/triage"}}
+      assert_received {:notified, "mine", %Notice{agent: "acme/triage"}}
 
       assert :ok = Wardrik.Notify.deliver(wardrik, "hook", fail())
       assert_received {:hooked, "hooks.acme.test", headers, body}
       assert headers["x-wardrik-signature"] == Wardrik.Notify.Webhook.sign("acme-shh", body)
 
       assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "audit", fail())
-      refute_received {:told, "audit", _notice}
+      refute_received {:notified, "audit", _notice}
 
       route = %{"notify" => ["mine", "ops"]}
       {:ok, resolved} = Wardrik.Resolver.resolve_current(wardrik, "acme/triage")

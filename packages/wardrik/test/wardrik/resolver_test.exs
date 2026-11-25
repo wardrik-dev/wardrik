@@ -8,12 +8,12 @@ defmodule Wardrik.Test.Resolver do
 end
 
 defmodule Wardrik.Test.Heard do
-  @moduledoc "A notify target that tells the test each notice."
+  @moduledoc "A notify target that sends the test each notice."
   @behaviour Wardrik.Notify
 
   @impl Wardrik.Notify
   def deliver(notice, opts) do
-    send(opts[:test], {:told, opts[:target], notice})
+    send(opts[:test], {:notified, opts[:target], notice})
     :ok
   end
 end
@@ -127,12 +127,12 @@ defmodule Wardrik.ResolverTest do
 
     notice = %Notice{agent: @scout, kind: :failed, at: DateTime.utc_now()}
     assert Wardrik.Notify.deliver(wardrik, "alerts", notice) == :ok
-    assert_receive {:told, "audit", ^notice}
+    assert_receive {:notified, "audit", ^notice}
 
     set(resolved, @scout, {:ok, %Resolved{}})
     assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "alerts", notice)
     assert {:skip, _why} = Wardrik.Notify.deliver(wardrik, "audit", notice)
-    refute_received {:told, _target, _notice}
+    refute_received {:notified, _target, _notice}
   end
 
   test "an agent that doesn't resolve isn't started or defined, with the reason", %{

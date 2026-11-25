@@ -37,7 +37,7 @@ defmodule Wardrik.OwnerNotifyTargetsTest do
         store: store,
         vault_keys: [Wardrik.Vault.generate_key()],
         egress: &Wardrik.Egress.any/1,
-        notify: [targets: [audit: {Wardrik.Test.Told, test: self()}]]
+        notify: [targets: [audit: {Wardrik.Test.Notified, test: self()}]]
       )
 
     start_supervised!({Wardrik.Store, store})
@@ -73,7 +73,7 @@ defmodule Wardrik.OwnerNotifyTargetsTest do
     assert {:ok, [%Wardrik.NotifyTarget{name: "ops", url: "https://hooks.test/ops"}]} =
              Wardrik.NotifyTargets.list(scope, "acme")
 
-    assert {:ok, [%Wardrik.NotifyTarget{name: "audit", source: :config, kind: "told"}]} =
+    assert {:ok, [%Wardrik.NotifyTarget{name: "audit", source: :config, kind: "notified"}]} =
              Wardrik.NotifyTargets.list(scope, "deployment")
 
     assert {:error, %Wardrik.Error{type: :invalid_request}} =
