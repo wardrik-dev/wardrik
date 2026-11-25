@@ -141,6 +141,36 @@ defmodule WardrikSlackTest do
       :ok
     end
 
+    test "offers the next steps as the Messages tab's prompts in a direct message", context do
+      event(context, message("echo hi", "2.1", channel: "D1", channel_type: "im"))
+
+      log = {"agt_triage", "slack.T1.D1.2.1"}
+      suggested = {"prompts.suggested", "agents/agt_triage", %{"prompts" => ["Send it"]}}
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"text" => "Waiting" <> _, "blocks" => blocks}},
+                     1_000
+
+      :ok = Wardrik.EventLog.append(context.events, log, suggested)
+
+      [%{"elements" => [approve | _deny]}] =
+        for %{"type" => "actions"} = block <- blocks, do: block
+
+      press(
+        context,
+        build_press("wardrik_approve", %{value: approve["value"]}, "U3", name: "ana")
+      )
+
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Done.", "blocks" => blocks}}, 1_000
+      refute Enum.any?(blocks, &(&1["block_id"] == "wardrik_prompts"))
+
+      assert_receive {:slack, "assistant.threads.setSuggestedPrompts",
+                      %{"channel_id" => "D1", "prompts" => [%{"message" => "Send it"}]} = params},
+                     1_000
+
+      refute Map.has_key?(params, "thread_ts")
+    end
+
     test "answers each in its thread, unmentioned, and marks the message", context do
       event(
         context,
@@ -331,6 +361,69 @@ defmodule WardrikSlackTest do
       event(context, message("<@UBOT> hi", "1.5", user: "UBOT"))
 
       refute_receive {:slack, "reactions.add", _params}, 200
+    end
+
+    defp approve_with_next_steps(context, thread, prompts) do
+      log = {"agt_triage", "slack.T1.C1.#{thread}"}
+      suggested = {"prompts.suggested", "agents/agt_triage", %{"prompts" => prompts}}
+      :ok = Wardrik.EventLog.append(context.events, log, suggested)
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"text" => "Waiting" <> _, "blocks" => blocks}},
+                     1_000
+
+      [%{"elements" => [approve | _deny]}] =
+        for %{"type" => "actions"} = block <- blocks, do: block
+
+      press(
+        context,
+        build_press("wardrik_approve", %{value: approve["value"]}, "U1", name: "maria")
+      )
+    end
+
+    test "offers the next steps a run suggested as buttons under its reply", context do
+      event(context, message("<@UBOT> echo hi", "1.1"))
+      approve_with_next_steps(context, "1.1", ["Send it", "Not yet"])
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{
+                        "text" => "Done.",
+                        "blocks" => [
+                          %{"type" => "markdown"},
+                          %{
+                            "type" => "actions",
+                            "block_id" => "wardrik_prompts",
+                            "elements" => [
+                              %{"action_id" => "wardrik_prompt:0", "value" => "Send it"},
+                              %{"action_id" => "wardrik_prompt:1", "value" => "Not yet"}
+                            ]
+                          },
+                          %{"type" => "context_actions"}
+                        ]
+                      } = reply},
+                     1_000
+
+      press(context, %{
+        type: "block_actions",
+        user: %{id: "U3", username: "ana"},
+        channel: %{id: "C1"},
+        response_url: "https://hooks.slack.com/actions/1",
+        actions: [%{action_id: "wardrik_prompt:0", value: "Send it"}],
+        message: %{thread_ts: "1.1", text: "Done.", blocks: reply["blocks"]}
+      })
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"thread_ts" => "1.1", "text" => "<@U3> asked: Send it"}},
+                     1_000
+
+      assert_receive {:slack, {:respond, _path},
+                      %{
+                        "replace_original" => true,
+                        "blocks" => [_markdown, %{"type" => "context_actions"}]
+                      }},
+                     1_000
+
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Answered: Send it"}}, 1_000
     end
 
     test "asks in the thread about a call, and says who decided", context do

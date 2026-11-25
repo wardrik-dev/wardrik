@@ -356,6 +356,25 @@ defmodule Wardrik.ChatTest do
       assert_receive {:delivered, %Outbound{body: {:reply, "Done.", ["1.1"]}}}
     end
 
+    test "carries the next steps the run suggested with its reply", context do
+      log = {context.waiting.agent, context.waiting.conversation}
+      suggested = {"prompts.suggested", "agents/x", %{"prompts" => ["Send it"]}}
+      :ok = Wardrik.EventLog.append(context.events, log, suggested)
+
+      answer = %Answer{
+        member: @maria,
+        agent: context.waiting.agent,
+        conversation: context.waiting.conversation,
+        interrupt: "call_1",
+        decision: {:approve, nil}
+      }
+
+      assert {:ok, _decision} = Wardrik.Chat.decide(context.workspace, answer)
+
+      assert_receive {:delivered,
+                      %Outbound{body: {:reply, "Done.", ["1.1"]}, prompts: ["Send it"]}}
+    end
+
     test "lets whoever asked decide, and nobody else", context do
       %Waiting{agent: agent, conversation: conversation, asked_by: asked_by} = context.waiting
 

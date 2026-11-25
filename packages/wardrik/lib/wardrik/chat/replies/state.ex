@@ -27,7 +27,8 @@ defmodule Wardrik.Chat.Replies.State do
           asked_by: String.t() | nil,
           asker: String.t() | nil,
           progress: String.t() | nil,
-          steps: [Step.t()]
+          steps: [Step.t()],
+          prompts: [String.t()]
         }
 
   @typedoc "A conversation, as the agent's ID and the conversation's."
@@ -85,6 +86,7 @@ defmodule Wardrik.Chat.Replies.State do
             "asked_by" => run.asked_by,
             "asker" => run.asker,
             "progress" => run.progress,
+            "prompts" => run.prompts,
             "steps" => Enum.map(run.steps, &dump_step/1)
           }
         end
@@ -94,7 +96,7 @@ defmodule Wardrik.Chat.Replies.State do
   @doc """
   Restores the state from `dump/1`'s result, as version `vsn` saved it.
 
-  Version 2 kept no askers and no progress.
+  Version 2 kept no askers and no progress, and version 3 no suggested prompts.
   """
   @spec load(pos_integer(), map()) :: t()
   def load(2, dumped) do
@@ -109,6 +111,11 @@ defmodule Wardrik.Chat.Replies.State do
   end
 
   def load(3, dumped) do
+    runs = Enum.map(dumped["runs"], &Map.put(&1, "prompts", []))
+    load(4, %{dumped | "runs" => runs})
+  end
+
+  def load(4, dumped) do
     %__MODULE__{
       workspace: dumped["workspace"],
       room: dumped["room"],
@@ -125,7 +132,8 @@ defmodule Wardrik.Chat.Replies.State do
              asked_by: run["asked_by"],
              asker: run["asker"],
              progress: run["progress"],
-             steps: Enum.map(run["steps"], &load_step/1)
+             steps: Enum.map(run["steps"], &load_step/1),
+             prompts: run["prompts"]
            }}
         end)
     }
@@ -220,7 +228,8 @@ defmodule Wardrik.Chat.Replies.State do
       asked_by: first_found(asked, answering),
       asker: first_found(askers, answering),
       progress: nil,
-      steps: []
+      steps: [],
+      prompts: []
     }
 
     {:none,
@@ -288,6 +297,12 @@ defmodule Wardrik.Chat.Replies.State do
 
   defp handle_take(state, conversation, "subagent.failed", %{data: data}),
     do: end_step(state, conversation, subagent_step_id(data), Map.put(data, "status", "error"))
+
+  defp handle_take(state, conversation, "prompts.suggested", %{data: %{"prompts" => prompts}}) do
+    if Map.has_key?(state.runs, conversation),
+      do: {:none, put_in(state.runs[conversation].prompts, prompts)},
+      else: {:none, state}
+  end
 
   defp handle_take(state, conversation, "run.completed", %{data: %{"messages" => messages}}),
     do:

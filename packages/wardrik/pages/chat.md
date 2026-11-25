@@ -58,6 +58,57 @@ Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
 - Each thread is its own conversation, such as `"slack.T0123.C024BE91L.1696.1234"`.
 - Calls the agent waits on are posted in the thread to approve or deny.
 
+## Next steps
+
+A reply can include a few questions the person might ask next. In a Slack channel they're buttons
+under the reply. In a direct message they're the suggested prompts on the Messages tab. When
+someone presses one, the agent gets that question as if they had typed it.
+
+Wardrik doesn't decide what to suggest. Your own `Wardrik.Middleware` does, by calling
+`Wardrik.Chat.Prompts.suggest_next/2` during the run. Each call is recorded as a
+`wardrik.prompts.suggested` event in the conversation's log. If a run calls it more than once, the
+reply shows the latest list.
+
+The middleware below gives the model a `suggest_next_steps` tool and handles the tool's calls
+itself, so the model chooses the questions:
+
+```elixir
+defmodule MyApp.NextSteps do
+  @behaviour Wardrik.Middleware
+
+  @tool "suggest_next_steps"
+
+  @impl true
+  def call(%Wardrik.Context{step: :generate} = context, next, _opts),
+    do: next.(%{context | tools: offer(context.tools)})
+
+  def call(%Wardrik.Context{step: {:tool_call, %{name: @tool} = call}} = context, _next, _opts) do
+    :ok = Wardrik.Chat.Prompts.suggest_next(context, call.arguments["prompts"])
+    {:ok, %{context | response: {:ok, "They'll see these with your reply."}}}
+  end
+
+  def call(context, next, _opts), do: next.(context)
+
+  defp offer(tools) do
+    if Enum.any?(tools, &(&1.name == @tool)), do: tools, else: [tool() | tools]
+  end
+
+  defp tool do
+    Wardrik.Tool.new!(
+      name: @tool,
+      description:
+        "Suggest up to four short things the person might ask you next. Call it once, " <>
+          "just before your final answer.",
+      schema: [prompts: [type: {:list, :string}, required: true]],
+      run: fn _args, _context -> {:ok, "Shown."} end
+    )
+  end
+end
+```
+
+Add it to an agent with `middleware: [MyApp.NextSteps]`. Your policy decides whether the model may
+call `suggest_next_steps`, as it does for any other tool, so allow the tool by name.
+
 ## Access
 
 Your authorizer decides what chat members may read, ask and decide. Requests from a chat have

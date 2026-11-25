@@ -305,6 +305,7 @@ defmodule Wardrik.CorpusTest do
             asked_by: "U1",
             asker: "U1",
             progress: "1696.5678",
+            prompts: ["Send it"],
             steps: [
               %Wardrik.Chat.Step{
                 id: "msg_3",
@@ -319,7 +320,7 @@ defmodule Wardrik.CorpusTest do
         }
     }
 
-    stored = %StoredState{vsn: 3, state: Replies.State.dump(room), meta: %Meta{}}
+    stored = %StoredState{vsn: 4, state: Replies.State.dump(room), meta: %Meta{}}
     {:ok, _put} = Durable.put_object(backend, "wardrik/replies/T1/C1", stored, [])
   end
 end
