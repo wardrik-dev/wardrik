@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.0-rc.25 (2026-11-24)
+
+- `wardrik init` asks how much agents do without asking (`balanced`, `careful` or
+  `hands-off`) as it writes a first `config.yaml`, and writes it as `policies/<answer>.yaml` and
+  `defaults.policy`. `--set approvals=NAME` answers it; without a terminal it's `balanced`.
+- The assistant `init` writes uses `defaults.policy`, and its check answers `NO_REPLY` when
+  nothing needs a person.
+- A notify target in `config.yaml` can be an agent, `{agent: NAME}`, found in the notifying
+  agent's org.
+- Agent files take a webhook's `when`.
+- Requires `wardrik` 0.1.0-rc.21.
+
 ## 0.1.0-rc.24 (2026-11-19)
 
 - An agent's `display_name` defaults to its name, so notices name it.

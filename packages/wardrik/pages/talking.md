@@ -7,7 +7,7 @@
 Answers come from the model, so set your Anthropic key.
 
 ```elixir
-Mix.install([{:wardrik, "~> 0.1.0-rc.20"}])
+Mix.install([{:wardrik, "~> 0.1.0-rc.21"}])
 
 # Allows everything. Your app's authorizer decides who may do what.
 defmodule MyApp.AllowAll do

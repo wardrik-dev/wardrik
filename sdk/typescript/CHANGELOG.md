@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-rc.12 (2026-11-24)
+
+- `AgentDefinition.triggers` is `TriggerDefinition[]`, and `notify` takes a list of routes.
+
 ## 0.1.0-rc.11 (2026-11-19)
 
 - `when` on webhook trigger definitions, and the `unmatched` status of `TriggerFiredData`.

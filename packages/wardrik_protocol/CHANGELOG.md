@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc.15 (2026-11-24)
+
+- A definition's `triggers` refer to `trigger_definition`, so a webhook's `when` is taken in
+  definitions.
+- `notify` takes a list of routes; the route schema is `defs#/$defs/notify_route`.
+- `Wardrik.Reply.quiet?/1`: an answer of `NO_REPLY`.
+
 ## 0.1.0-rc.14 (2026-11-19)
 
 - `Wardrik.Notice` has `name`, the agent's display name, and its JSON payload carries it.
