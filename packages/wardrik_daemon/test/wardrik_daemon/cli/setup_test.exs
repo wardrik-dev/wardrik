@@ -29,6 +29,27 @@ defmodule WardrikDaemon.CLI.SetupTest do
     assert File.read!(log) == "start\nstart\nstart\n"
   end
 
+  test "asks how much agents do as it writes config.yaml, and never of one that's there",
+       context do
+    {context, _log} = script(context)
+    dir = context.env["WARDRIK_CONFIG_DIR"]
+    config = Path.join(dir, "config.yaml")
+    hands_off = Path.join(dir, "policies/hands-off.yaml")
+    File.rm!(config)
+    write(context, "env", "ANTHROPIC_API_KEY=sk\n")
+
+    assert {0, output} = wardrik(context, init() ++ ~w(--no-service --set approvals=careful))
+    assert output =~ "policies/careful.yaml"
+    assert {:ok, %{"defaults" => %{"policy" => "careful"}}} = YamlElixir.read_from_file(config)
+
+    assert {0, again} = wardrik(context, init() ++ ~w(--no-service --set approvals=hands-off))
+    assert again =~ "Nothing asked approvals"
+    refute File.exists?(hands_off)
+
+    File.rm!(config)
+    assert failing(context, init() ++ ~w(--set approvals=reckless)) =~ "approvals is one of"
+  end
+
   test "offers Claude Code where it finds it, and takes the answer without a terminal", context do
     {context, _log} = script(context)
     write(context, "env", "ANTHROPIC_API_KEY=sk\n")
@@ -150,7 +171,8 @@ defmodule WardrikDaemon.CLI.SetupTest do
              "tools: [#{Enum.join(Init.assistant_tools(), ", ")}]"
   end
 
-  test "writes an assistant that the daemon defines, and that makes workers", context do
+  test "writes an assistant that the daemon defines, and that makes workers without asking",
+       context do
     {context, _log} = script(context)
     config = Path.join(context.env["WARDRIK_CONFIG_DIR"], "config.yaml")
     File.rm!(config)
@@ -176,26 +198,24 @@ defmodule WardrikDaemon.CLI.SetupTest do
 
     assert front.context == ["MEMORY.md"]
     assert front.idle_timeout == :infinity
-    assert front.policy == %{"budget" => %{"tokens" => 2_000_000, "per" => "day"}}
+    assert front.policy == "balanced"
+
+    balanced = Path.join(context.env["WARDRIK_CONFIG_DIR"], "policies/balanced.yaml")
+    assert File.read!(balanced) =~ "agent_create"
+
     assert front.instructions =~ "You are Wardrik, the one place the people of this org come"
     assert front.instructions =~ "# Playbook"
 
-    # It makes a worker in its org, once a person approves.
+    # Balanced, the default unattended, lets it make a worker in its org without asking.
     door = id(context, "acme", "assistant")
     worker = %{"description" => "rivals-watch: watches rivals.", "instructions" => "Watch."}
 
     answers(context, [
-      calling("call_1", "agent_create", %{name: "rivals-watch", definition: worker})
+      calling("call_1", "agent_create", %{name: "rivals-watch", definition: worker}),
+      answer("Made it.")
     ])
 
-    assert {:waiting, [%{name: "agent_create"}]} =
-             Wardrik.Agent.reply(context.admin, door, "Watch our rivals.")
-
-    # A message after the approval is answered once the approved run is done.
-    answers(context, [answer("Made it."), answer("You're welcome.")])
-    approve = %{"agent" => door, "interrupt" => "call_1"}
-    assert {:ok, _approved} = Wardrik.run(context.admin, "agent.approve", approve)
-    assert {:ok, _reply} = Wardrik.Agent.reply(context.admin, door, "Thanks.")
+    assert {:ok, _reply} = Wardrik.Agent.reply(context.admin, door, "Watch our rivals.")
 
     assert {:ok, %Wardrik.Definition{instructions: "Watch."}, _problems} =
              Wardrik.Agent.definition(context.admin, id(context, "acme", "rivals-watch"))

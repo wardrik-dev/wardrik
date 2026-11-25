@@ -11,7 +11,8 @@ Create an agent that saves a note. Review the proposed file write before allowin
 curl -fsSL https://wardrik.dev/install.sh | sh
 ```
 
-The install goes on to `wardrik init`: choose a model provider and enter your API key. `init`
+The install goes on to `wardrik init`: choose a model provider, enter your API key, and choose how
+much agents do without asking you. `init`
 creates the configuration, starts the daemon, and offers to open the chat in your browser.
 For Docker or non-interactive setup, see [Install](/getting-started/install/).
 

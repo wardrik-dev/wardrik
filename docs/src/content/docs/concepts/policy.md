@@ -73,6 +73,20 @@ approval unless an `allow` rule matches; `default: allow` does not authorize the
 default: {read_only: allow, else: ask}   # by the tool's own read-only flag
 ```
 
+## Presets
+
+`wardrik init` asks how much agents do without asking you, and writes the answer as
+`policies/<answer>.yaml` and `defaults.policy` in `config.yaml`. Edit the file to change it.
+
+| Preset | Runs without asking | Asks you | Refused |
+| --- | --- | --- | --- |
+| `careful` | reads, search, the agent's own files | every gated tool, such as making a worker or sending mail | |
+| `balanced` | the above, and the assistant making, changing and asking its workers, even after outside content | gated tools that act outside Wardrik, such as sending mail or pushing code | deleting |
+| `hands-off` | every call, even after outside content | | deleting |
+
+- Each keeps a budget of 2,000,000 tokens a day per agent.
+- `balanced` is the default where no one answers, as with `--set` or without a terminal.
+
 ## Judges
 
 A judge uses a model to assess a tool call. Its estimated probability of a “yes” answer determines

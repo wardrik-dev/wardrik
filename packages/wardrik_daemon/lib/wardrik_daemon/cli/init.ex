@@ -13,6 +13,7 @@ defmodule WardrikDaemon.CLI.Init do
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.EnvFile
   alias WardrikDaemon.Setup
+  alias WardrikDaemon.Setup.Approvals
 
   @question "In two short sentences, and without calling a tool, say what you can do for me."
   @models %{anthropic: "claude-haiku-4-5"}
@@ -56,8 +57,9 @@ defmodule WardrikDaemon.CLI.Init do
          {:ok, provider, variable} <- provider(flags, cx),
          {:ok, model} <- model(flags, cx, provider),
          {:ok, key} <- key(flags, cx, variable),
-         wrote = write(cx, flags, "#{provider}:#{model}"),
-         {:ok, set_up, commands} <- set_up(cx, given, flags),
+         {:ok, configured, asked} <- configure(cx, given, flags, "#{provider}:#{model}"),
+         wrote = configured ++ write(cx),
+         {:ok, set_up, commands} <- set_up(cx, given, flags, asked),
          cx = %{Context.new(cx.env) | terminal: cx.terminal},
          seal = fn -> seal(cx, variable, key) end,
          :ok <- daemon(flags, cx, wrote ++ set_up, seal, key != nil or flags[:no_ask] != true),
@@ -67,12 +69,12 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  defp set_up(cx, given, flags) do
+  defp set_up(cx, given, flags, asked_before) do
     machine = Setup.Machine.new(cx.env, cx.dirs)
 
     with {:ok, changes, asked} <-
            Setup.plan(Setup.steps(), machine, Answers.answer(cx, given, flags)),
-         :ok <- warn_unasked(cx, Answers.list_unasked(given, asked)),
+         :ok <- warn_unasked(cx, Answers.list_unasked(given, asked_before ++ asked)),
          {:ok, done} <- Setup.apply(changes, cx.dirs) do
       for {said, path} when said in [:wrote, :kept] <- done,
           do: Context.puts(cx, say(said, path))
@@ -214,27 +216,57 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  defp write(cx, flags, model) do
+  # config.yaml is written once, with the policy the approvals question names; one that's there
+  # is kept as it is, and nothing is asked.
+  defp configure(cx, given, flags, model) do
+    path = Dirs.config(cx.dirs, "config.yaml")
+
+    if File.exists?(path) do
+      Context.puts(cx, say(:kept, path))
+      warn_unmodelled(cx, model)
+      {:ok, [], []}
+    else
+      write_config(cx, given, flags, model)
+    end
+  end
+
+  defp write_config(cx, given, flags, model) do
+    question = Approvals.question()
     search? = Map.has_key?(cx.env, "BRAVE_API_KEY")
+    org = Map.get(flags, :org, "default")
 
-    wrote =
-      for {name, text, mode} <- [
-            {"config.yaml", config(Map.get(flags, :org, "default"), model, search?), 0o644},
-            {"agents/assistant.md", assistant(), 0o644},
-            {"env", env(), 0o600}
-          ],
-          written?(cx, Dirs.config(cx.dirs, name), text, mode),
-          do: name
+    with {:ok, policy} <- Answers.answer(cx, given, flags).(question) do
+      {policy_path, policy_text} = Approvals.policy_file(policy)
 
-    unless "config.yaml" in wrote or modelled?(cx.dirs),
+      wrote =
+        for {name, text} <- [
+              {"config.yaml", config(org, model, policy, search?)},
+              {policy_path, policy_text}
+            ],
+            written?(cx, Dirs.config(cx.dirs, name), text, 0o644),
+            do: name
+
+      {:ok, wrote, [question.key]}
+    end
+  end
+
+  defp warn_unmodelled(cx, model) do
+    unless modelled?(cx.dirs),
       do:
         Context.puts(
           cx,
           "config.yaml names no default model, so the assistant has none. Add it:\n" <>
             "  defaults:\n    model: #{model}"
         )
+  end
 
-    wrote
+  defp write(cx) do
+    for {name, text, mode} <- [
+          {"agents/assistant.md", assistant(), 0o644},
+          {"env", env(), 0o600}
+        ],
+        written?(cx, Dirs.config(cx.dirs, name), text, mode),
+        do: name
   end
 
   defp modelled?(dirs) do
@@ -450,13 +482,15 @@ defmodule WardrikDaemon.CLI.Init do
       end) ++ ["\n"]
   end
 
-  defp config(org, model, search?) do
+  defp config(org, model, policy, search?) do
     """
     # What the daemon reads as it starts. Restart it after a change.
     org: #{org}
 
     defaults:
       model: #{model}
+      # How much agents do without asking you: policies/#{policy}.yaml.
+      policy: #{policy}
 
     http:
       port: 4747
@@ -515,9 +549,9 @@ defmodule WardrikDaemon.CLI.Init do
   @spec assistant_tools() :: [String.t()]
   def assistant_tools, do: @tools
 
-  # Every 6 hours it checks how things run, and proposes what needs a person as the call that does
-  # it, so it shows in approvals. Each check is a model call with its tools, tens of thousands of
-  # tokens.
+  # Every 6 hours it checks how things run, and fixes what its calls can. Each check is a model
+  # call with its tools, tens of thousands of tokens. Its policy is the default the approvals
+  # question writes.
   defp assistant do
     front_door = Application.app_dir(:wardrik_daemon, "priv/front_door.md")
 
@@ -526,15 +560,14 @@ defmodule WardrikDaemon.CLI.Init do
     description: "Turns what people ask for into work that runs."
     tools: [#{@listed}]
     context: [MEMORY.md]
-    policy: {budget: {tokens: 2000000, per: day}}
     idle_timeout: infinity
     triggers:
       - name: check
         every: 6h
         prompt: >-
           Check how things run: the runs of the workers you set up, calls that wait on a person,
-          the doctor's checks, and each node's memory. For each problem a call of yours can fix,
-          propose that call. Answer "All well." in one line when nothing needs a person.
+          the doctor's checks, and each node's memory. Fix what a call of yours can fix, and say
+          what you did and what needs a person. When nothing does, answer NO_REPLY.
     ---
     """ <> File.read!(front_door)
   end

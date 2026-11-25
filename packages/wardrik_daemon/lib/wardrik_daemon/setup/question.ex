@@ -9,12 +9,22 @@ defmodule WardrikDaemon.Setup.Question do
   Without a terminal, the answer is the one given, or else `--yes`.
   """
 
+  @behaviour WardrikDaemon.Setup.Ask
+
   @enforce_keys [:key, :label]
   defstruct [:key, :label, default: true]
 
   @type t() :: %__MODULE__{key: String.t(), label: String.t(), default: boolean()}
 
+  @impl WardrikDaemon.Setup.Ask
+  def ask_in_terminal(%__MODULE__{} = question),
+    do: Owl.IO.confirm(message: question.label, default: question.default)
+
+  @impl WardrikDaemon.Setup.Ask
+  def answer_unattended(%__MODULE__{}, flags), do: flags[:yes] == true
+
   @doc "Returns `given` as an answer to `question`, or why it isn't one."
+  @impl WardrikDaemon.Setup.Ask
   @spec cast(t(), term()) :: {:ok, boolean()} | {:error, String.t()}
   def cast(%__MODULE__{}, given) when is_boolean(given), do: {:ok, given}
 
