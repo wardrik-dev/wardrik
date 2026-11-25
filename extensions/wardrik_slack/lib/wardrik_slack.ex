@@ -54,7 +54,9 @@ defmodule WardrikSlack do
 
   ## In the thread
 
-    * While an agent works, the thread shows what it's doing.
+    * While an agent works, the thread shows each step it takes: each model call, with the end of
+      its reasoning, each tool call and each retry. A step that runs quietly shows how long it has
+      run. The reply ends the same message. See `WardrikSlack.Progress`.
     * A message the agent takes gets :eyes:, then :white_check_mark: once answered.
   """
 
@@ -67,6 +69,7 @@ defmodule WardrikSlack do
   alias WardrikSlack.API
   alias WardrikSlack.Blocks
   alias WardrikSlack.Messages
+  alias WardrikSlack.Progress
 
   @doc "Returns the options it takes beyond `Wardrik.Chat`'s, as a `NimbleOptions` schema."
   @spec schema() :: NimbleOptions.t()
@@ -172,7 +175,7 @@ defmodule WardrikSlack do
 
     if shown?(workspace, outbound),
       do: {:skip, "but its turn was in a Slack thread, which shows it"},
-      else: with({:ok, _posted} <- post_status(workspace, outbound), do: :ok)
+      else: post_status(workspace, outbound)
   end
 
   # A turn in one of the workspace's threads is answered there; its notice would repeat it.
@@ -181,39 +184,59 @@ defmodule WardrikSlack do
 
   defp shown?(_workspace, _outbound), do: false
 
-  defp post_status(workspace, %Outbound{room: room, thread: thread, body: {:status, label}}),
-    do:
-      API.post_in(workspace, "assistant.threads.setStatus", %{
-        channel_id: room,
-        thread_ts: thread,
-        status: label
-      })
+  defp post_status(workspace, %Outbound{body: {:progress, _steps}} = outbound),
+    do: Progress.show(workspace, outbound)
 
   defp post_status(workspace, %Outbound{room: room, body: {:stopped, answering}} = outbound) do
-    :ok = Messages.mark_stopped(workspace, room, answering)
-    post_status(workspace, %{outbound | body: {:status, ""}})
+    with {:ok, _finished} <- finish(workspace, outbound, nil),
+         do: Messages.mark_stopped(workspace, room, answering)
   end
 
   defp post_status(workspace, %Outbound{room: room, body: {:reply, text, answering}} = outbound) do
-    with {:ok, posted} <- message(workspace, outbound, reply(text)) do
-      :ok = Messages.mark_answered(workspace, room, answering)
-      {:ok, posted}
+    with :ok <- finish_with(workspace, outbound, reply_text(text), reply(text)),
+         do: Messages.mark_answered(workspace, room, answering)
+  end
+
+  defp post_status(workspace, %Outbound{body: {:waiting, calls}} = outbound) do
+    with {:ok, _finished} <- finish(workspace, outbound, nil),
+         do: post_message(workspace, outbound, WardrikSlack.Waiting.message(calls))
+  end
+
+  defp post_status(workspace, %Outbound{body: {:failed, reason}} = outbound) do
+    said = ":warning: It stopped with an error: #{reason}"
+    finish_with(workspace, outbound, said, %{text: said})
+  end
+
+  defp post_status(workspace, %Outbound{body: {:notice, notice}} = outbound),
+    do: post_message(workspace, outbound, WardrikSlack.Notices.message(notice))
+
+  defp post_status(workspace, %Outbound{body: {:said, text}} = outbound),
+    do: post_message(workspace, outbound, %{text: text, blocks: [Blocks.context(text)]})
+
+  defp finish(workspace, outbound, text) do
+    case Progress.finish(workspace, outbound, text) do
+      {:error, reason} -> {:error, reason}
+      finished -> {:ok, finished}
     end
   end
 
-  defp post_status(workspace, %Outbound{body: {:waiting, calls}} = outbound),
-    do: message(workspace, outbound, WardrikSlack.Waiting.message(calls))
+  # `text` ends the run's stream, or `message` is posted where there is none.
+  defp finish_with(workspace, outbound, text, message) do
+    case finish(workspace, outbound, text) do
+      {:ok, :finished} -> :ok
+      {:ok, :unfinished} -> post_message(workspace, outbound, message)
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-  defp post_status(workspace, %Outbound{body: {:failed, reason}} = outbound),
-    do: message(workspace, outbound, %{text: ":warning: It stopped with an error: #{reason}"})
+  defp post_message(workspace, outbound, message) do
+    with {:ok, _posted} <- message(workspace, outbound, message), do: :ok
+  end
 
-  defp post_status(workspace, %Outbound{body: {:notice, notice}} = outbound),
-    do: message(workspace, outbound, WardrikSlack.Notices.message(notice))
+  defp reply_text(""), do: "_It answered nothing._"
+  defp reply_text(text), do: text
 
-  defp post_status(workspace, %Outbound{body: {:said, text}} = outbound),
-    do: message(workspace, outbound, %{text: text, blocks: [Blocks.context(text)]})
-
-  defp reply(""), do: %{text: "_It answered nothing._"}
+  defp reply(""), do: %{text: reply_text("")}
   defp reply(text), do: %{text: Blocks.clip(text, 3_000), blocks: [Blocks.markdown(text)]}
 
   defp message(workspace, %Outbound{room: room, thread: nil}, message),

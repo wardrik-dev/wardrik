@@ -166,6 +166,17 @@ defmodule WardrikSlack.Test do
 
   defp reply("chat.postMessage", _params), do: %{ok: true, ts: "9.9"}
 
+  defp reply("chat.startStream", %{"thread_ts" => "3." <> _rest}),
+    do: %{ok: false, error: "not_allowed_token_type"}
+
+  defp reply("chat.startStream", _params), do: %{ok: true, ts: "9.8"}
+
+  defp reply("chat.appendStream", %{"ts" => "9.7"}),
+    do: %{ok: false, error: "message_not_in_streaming_state"}
+
+  defp reply("chat.stopStream", %{"ts" => "9.7"}),
+    do: %{ok: false, error: "message_not_in_streaming_state"}
+
   defp reply("conversations.replies", %{"ts" => ts}),
     do: %{
       ok: true,

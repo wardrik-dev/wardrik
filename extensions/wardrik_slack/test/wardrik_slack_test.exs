@@ -149,11 +149,20 @@ defmodule WardrikSlackTest do
 
       assert_receive {:slack, "reactions.add", %{"name" => "eyes", "timestamp" => "2.1"}}, 1_000
 
-      assert_receive {:slack, "chat.postMessage",
+      assert_receive {:slack, "chat.startStream",
+                      %{"channel" => "D1", "thread_ts" => "2.1", "recipient_user_id" => "U3"}},
+                     1_000
+
+      assert_receive {:slack, "chat.stopStream",
                       %{
                         "channel" => "D1",
-                        "thread_ts" => "2.1",
-                        "text" => "Answered: how much Barolo is left?"
+                        "ts" => "9.8",
+                        "chunks" => [
+                          %{
+                            "type" => "markdown_text",
+                            "text" => "Answered: how much Barolo is left?"
+                          }
+                        ]
                       }},
                      1_000
 
@@ -222,15 +231,65 @@ defmodule WardrikSlackTest do
 
       assert_receive {:slack, "reactions.add", %{"name" => "eyes", "timestamp" => "1.1"}}, 1_000
 
-      assert_receive {:slack, "chat.postMessage",
+      assert_receive {:slack, "chat.startStream",
                       %{
+                        "channel" => "C1",
                         "thread_ts" => "1.1",
-                        "text" => "Answered: how much Barolo is left?",
-                        "blocks" => [%{"type" => "markdown"}]
+                        "recipient_user_id" => "U3",
+                        "recipient_team_id" => "T1",
+                        "chunks" => [
+                          %{
+                            "type" => "task_update",
+                            "title" => "Thinking",
+                            "status" => "in_progress"
+                          }
+                        ]
+                      }},
+                     1_000
+
+      assert_receive {:slack, "chat.appendStream",
+                      %{"ts" => "9.8", "chunks" => [%{"status" => "complete"}]}},
+                     1_000
+
+      assert_receive {:slack, "chat.stopStream",
+                      %{
+                        "ts" => "9.8",
+                        "chunks" => [
+                          %{
+                            "type" => "markdown_text",
+                            "text" => "Answered: how much Barolo is left?"
+                          }
+                        ]
                       }},
                      1_000
 
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
+      refute_received {:slack, "chat.postMessage", %{"thread_ts" => "1.1"}}
+    end
+
+    test "shows its steps in a message it edits, where Slack won't stream", context do
+      event(context, message("<@UBOT> hi", "3.1"))
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{
+                        "thread_ts" => "3.1",
+                        "text" => "Working…",
+                        "blocks" => [
+                          %{"type" => "markdown", "text" => ":hourglass_flowing_sand: Thinking"}
+                        ]
+                      }},
+                     1_000
+
+      assert_receive {:slack, "chat.update",
+                      %{
+                        "ts" => "9.9",
+                        "blocks" => [%{"text" => ":white_check_mark: Thinking"}]
+                      }},
+                     1_000
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"thread_ts" => "3.1", "text" => "Answered: hi"}},
+                     1_000
     end
 
     test "leaves alone edits, bots, group direct messages and what isn't for it", context do
@@ -281,7 +340,10 @@ defmodule WardrikSlackTest do
       assert_receive {:slack, "chat.postMessage", %{"text" => "Approved by maria: Go ahead."}},
                      1_000
 
-      assert_receive {:slack, "chat.postMessage", %{"text" => "Done."}}, 1_000
+      assert_receive {:slack, "chat.stopStream",
+                      %{"chunks" => [%{"type" => "markdown_text", "text" => "Done."}]}},
+                     1_000
+
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
 
@@ -350,8 +412,6 @@ defmodule WardrikSlackTest do
       assert_receive {:slack, "reactions.remove", %{"name" => "eyes", "timestamp" => "1.1"}},
                      1_000
 
-      assert_receive {:slack, "assistant.threads.setStatus", %{"status" => ""}}, 1_000
-
       event(context, message("<@UBOT> fail again", "2.1"))
 
       assert_receive {:slack, "chat.postMessage",
@@ -367,6 +427,97 @@ defmodule WardrikSlackTest do
 
       press(context, build_press("wardrik_approve", %{value: "not json"}, "U3"))
       refute_receive {:slack, {:respond, _path}, _reply}, 200
+    end
+  end
+
+  describe "progress" do
+    setup context do
+      {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
+      %{workspace: workspace}
+    end
+
+    defp progress(workspace, progress, steps) do
+      outbound = %Wardrik.Chat.Outbound{
+        installation: workspace.installation,
+        room: "C1",
+        thread: "1.1",
+        body: {:progress, steps},
+        progress: progress,
+        asker: "U3"
+      }
+
+      WardrikSlack.deliver(outbound, workspace.channel)
+    end
+
+    test "shows how long a quiet step has run, its details, and a failed one", context do
+      since = DateTime.add(DateTime.utc_now(), -80)
+
+      steps = [
+        %Wardrik.Chat.Step{
+          id: "s1",
+          title: "Running search",
+          status: :failed,
+          details: "Timed out.",
+          since: since
+        },
+        %Wardrik.Chat.Step{
+          id: "s2",
+          title: "Thinking",
+          status: :running,
+          details: "Checking…",
+          since: since
+        }
+      ]
+
+      assert progress(context.workspace, "stream:9.8", steps) == :ok
+
+      assert_receive {:slack, "chat.appendStream",
+                      %{
+                        "ts" => "9.8",
+                        "chunks" => [
+                          %{"id" => "s1", "status" => "error", "details" => "Timed out."},
+                          %{
+                            "id" => "s2",
+                            "title" => "Thinking · 1m 20s",
+                            "details" => "Checking…"
+                          }
+                        ]
+                      }},
+                     1_000
+    end
+
+    test "moves to a message it edits once the stream has ended", context do
+      steps = [
+        %Wardrik.Chat.Step{
+          id: "s1",
+          title: "Thinking",
+          status: :running,
+          since: DateTime.utc_now()
+        }
+      ]
+
+      assert progress(context.workspace, "stream:9.7", steps) == {:ok, "message:9.9"}
+
+      assert_receive {:slack, "chat.postMessage", %{"thread_ts" => "1.1", "text" => "Working…"}},
+                     1_000
+
+      assert progress(context.workspace, "message:9.9", steps) == :ok
+      assert_receive {:slack, "chat.update", %{"ts" => "9.9"}}, 1_000
+    end
+
+    test "posts the reply on its own once the stream has ended", context do
+      outbound = %Wardrik.Chat.Outbound{
+        installation: context.workspace.installation,
+        room: "C1",
+        thread: "1.1",
+        body: {:reply, "Done.", ["1.1"]},
+        progress: "stream:9.7"
+      }
+
+      assert WardrikSlack.deliver(outbound, context.channel) == :ok
+
+      assert_receive {:slack, "chat.postMessage", %{"thread_ts" => "1.1", "text" => "Done."}},
+                     1_000
     end
   end
 
