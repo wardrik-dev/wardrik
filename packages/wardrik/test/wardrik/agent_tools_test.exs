@@ -374,7 +374,7 @@ defmodule Wardrik.AgentToolsTest do
     define(scope, "acme/@jon/notes", %{"model" => @model})
     define(scope, "globex/other", %{"model" => @model})
     wardrik = Wardrik.Instance.fetch!(scope.wardrik)
-    {:ok, _pid} = Wardrik.Operations.Running.awake(wardrik, {"acme/worker", "C1"})
+    {:ok, _pid} = Wardrik.Operations.Running.ensure_awake(wardrik, {"acme/worker", "C1"})
 
     context =
       Wardrik.Context.new(

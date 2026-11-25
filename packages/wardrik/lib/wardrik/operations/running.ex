@@ -27,10 +27,10 @@ defmodule Wardrik.Operations.Running do
   end
 
   @doc "Returns `agent`, waking it from its definition if needed, or a `not_found` error."
-  @spec awake(Wardrik.t(), agent()) :: {:ok, pid()} | {:error, Error.t()}
-  def awake(wardrik, agent) when is_binary(agent), do: awake(wardrik, {agent, nil})
+  @spec ensure_awake(Wardrik.t(), agent()) :: {:ok, pid()} | {:error, Error.t()}
+  def ensure_awake(wardrik, agent) when is_binary(agent), do: ensure_awake(wardrik, {agent, nil})
 
-  def awake(wardrik, key) do
+  def ensure_awake(wardrik, key) do
     case whereis(wardrik, key) do
       nil -> wake(wardrik, key)
       pid -> {:ok, pid}

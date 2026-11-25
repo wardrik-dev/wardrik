@@ -105,7 +105,7 @@ defmodule Wardrik.Operations.Lifecycle do
   def spawn(%Scope{wardrik: wardrik} = scope, %{"agent" => id}) do
     asleep? = Running.whereis(wardrik, id) == nil
 
-    with {:ok, _pid} <- Running.awake(wardrik, id) do
+    with {:ok, _pid} <- Running.ensure_awake(wardrik, id) do
       if asleep?, do: Changes.record(scope, type: "agent.spawned", agent: id)
       {:ok, %{"agent" => Snapshot.summary(wardrik, {id, nil})}}
     end
