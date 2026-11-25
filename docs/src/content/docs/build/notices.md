@@ -27,9 +27,12 @@ notify: {to: ["slack:#updates"], on: [finished]}    # a room, without a target
 | --- | --- |
 | `parked` | a turn pauses for approval; in Slack each call has **Approve** and **Deny** |
 | `failed` | a turn fails, with the error |
-| `finished` | a turn completes, with the reply |
+| `finished` | a turn nobody asked for completes, with the reply |
 
 `on` defaults to `[parked, failed]`.
+
+- `finished` is for turns a schedule, webhook, feed or another agent's notice started. A turn a
+  person or agent asked for already answered them, so its finish is sent to no one.
 
 - Turns started in Slack threads show replies, approvals, and failures in that thread, without
   a separate notification.

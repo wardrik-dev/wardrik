@@ -38,6 +38,8 @@ defmodule Wardrik.Notify do
     * A list of routes sends each route's events to its own targets. A target two routes name is
       told once.
     * `on` defaults to `["parked", "failed"]`.
+    * `finished` tells of turns nobody asked for: those a trigger or another agent's notice
+      started. A turn a person or agent asked for answered them, so it is told to no one.
     * A finished turn that answers `NO_REPLY` is told to no one. See `Wardrik.Reply.quiet?/1`.
     * `judge` asks `model` (default `"typesafe:jev-latest"`) the `question` about each finished
       turn's answer and the conversation's digest. The answer is sent if the probability of yes is

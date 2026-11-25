@@ -2,7 +2,9 @@ defmodule Wardrik.Notify.Server do
   @moduledoc false
 
   # Each node tells of the agents it runs. Their events reach it through `Wardrik.Notify.Sink`,
-  # in the order each agent wrote them.
+  # in the order each agent wrote them. A run someone asked for answers them where they asked,
+  # so its finish is told to no one: `sent` holds the messages that carry a sender until a run
+  # takes them, and `asked` the runs that took one, until they end.
 
   use GenServer
 
@@ -24,12 +26,25 @@ defmodule Wardrik.Notify.Server do
   @impl GenServer
   def init(wardrik) do
     {:ok, tasks} = Task.Supervisor.start_link()
-    {:ok, %{wardrik: wardrik, tasks: tasks}}
+    {:ok, %{wardrik: wardrik, tasks: tasks, sent: MapSet.new(), asked: MapSet.new()}}
   end
 
   @impl GenServer
   def handle_cast({:event, %Wardrik.Event{} = event}, state),
     do: {:noreply, take(state, agent(event), event)}
+
+  defp take(state, _agent, %{type: "wardrik.message.created", data: %{"sender" => _who} = data}),
+    do: %{state | sent: MapSet.put(state.sent, data["message"]["id"])}
+
+  defp take(state, _agent, %{type: "wardrik.message.created"}), do: state
+
+  defp take(state, _agent, %{type: "wardrik.run.started", data: %{"run" => run}}) do
+    ids = Map.get(run, "message_ids", [])
+    asked? = Enum.any?(ids, &MapSet.member?(state.sent, &1))
+    state = %{state | sent: Enum.reduce(ids, state.sent, &MapSet.delete(&2, &1))}
+
+    if asked?, do: %{state | asked: MapSet.put(state.asked, run["id"])}, else: state
+  end
 
   defp take(state, agent, %{type: "wardrik.run.interrupted", data: data} = event) do
     ids = Enum.map(data["interrupts"], & &1["id"])
@@ -40,16 +55,29 @@ defmodule Wardrik.Notify.Server do
     end
   end
 
-  defp take(state, agent, %{type: "wardrik.run.failed", data: data} = event),
-    do: handle_tell(state, agent, notice(event, :failed, reason: data["error"]["message"]))
+  defp take(state, agent, %{type: "wardrik.run.failed", data: data} = event) do
+    state
+    |> forget_run(data)
+    |> handle_tell(agent, notice(event, :failed, reason: data["error"]["message"]))
+  end
 
-  defp take(state, agent, %{type: "wardrik.run.completed", data: data} = event),
-    do:
-      handle_tell(
-        state,
-        agent,
-        notice(event, :finished, text: Wardrik.Reply.text(data["messages"]))
-      )
+  defp take(state, agent, %{type: "wardrik.run.completed", data: data} = event) do
+    if MapSet.member?(state.asked, data["run"]["id"]),
+      do: forget_run(state, data),
+      else:
+        handle_tell(
+          state,
+          agent,
+          notice(event, :finished, text: Wardrik.Reply.text(data["messages"]))
+        )
+  end
+
+  defp take(state, _agent, %{type: type, data: data})
+       when type in ["wardrik.run.cancelled", "wardrik.run.deadline_exceeded"],
+       do: forget_run(state, data)
+
+  defp forget_run(state, %{"run" => run}),
+    do: %{state | asked: MapSet.delete(state.asked, run["id"])}
 
   defp notice(event, kind, fields),
     do:

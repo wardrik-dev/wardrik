@@ -291,7 +291,10 @@ defmodule Wardrik.Slack.PackageTest do
     test "posts what a turn answered in the room the route names", context do
       define(context.owner, "acme/digest", notify: %{to: ["slack:#news"], on: ["finished"]})
       answers([answer("Three things happened.")])
-      {:ok, _message} = Wardrik.Agent.ask(context.owner, "acme/digest", content: "Go")
+      # Asked as its schedule asks, for no one: a turn someone asked for answers them instead.
+      wardrik = Wardrik.Instance.fetch!(context.owner.wardrik)
+      {:ok, pid} = Wardrik.Operations.Running.ensure_awake(wardrik, "acme/digest")
+      :ok = WardrikCore.ask(pid, "Go", %{trigger: "digest"})
 
       assert_receive {:slack, "chat.postMessage",
                       %{"channel" => "#news", "text" => "acme/digest: Three things happened."} =
