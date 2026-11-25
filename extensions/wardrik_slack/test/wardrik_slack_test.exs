@@ -29,7 +29,7 @@ defmodule WardrikSlackTest do
   end
 
   test "gives the options it takes beyond Wardrik.Chat's" do
-    assert {:ok, [req_options: [], app_token: "xapp-1"]} =
+    assert {:ok, [prompts: [], req_options: [], app_token: "xapp-1"]} =
              NimbleOptions.validate([app_token: "xapp-1"], WardrikSlack.schema())
   end
 
@@ -254,6 +254,50 @@ defmodule WardrikSlackTest do
       refute_received {:slack, "chat.postMessage", %{"thread_ts" => "1.1"}}
     end
 
+    test "puts feedback buttons under a reply, and keeps each press in the log", context do
+      event(context, message("<@UBOT> hi", "1.1"))
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{
+                        "text" => "Answered: hi",
+                        "blocks" => [
+                          %{"type" => "markdown"},
+                          %{
+                            "type" => "context_actions",
+                            "elements" => [
+                              %{
+                                "type" => "feedback_buttons",
+                                "action_id" => "wardrik_feedback",
+                                "negative_button" => %{"value" => negative}
+                              }
+                            ]
+                          }
+                        ]
+                      }},
+                     1_000
+
+      assert %{"g" => "agt_triage", "c" => "slack.T1.C1.1.1", "r" => "r1", "v" => "negative"} =
+               JSON.decode!(negative)
+
+      press(context, build_press("wardrik_feedback", %{value: negative}, "U9", name: "stranger"))
+
+      assert_receive {:slack, {:respond, _path},
+                      %{"response_type" => "ephemeral", "text" => "Nobody here knows you yet."}},
+                     1_000
+
+      press(context, build_press("wardrik_feedback", %{value: negative}, "U3", name: "ana"))
+
+      assert_receive {:slack, {:respond, _path},
+                      %{"response_type" => "ephemeral", "text" => "Thanks, noted."}},
+                     1_000
+
+      {:ok, %{events: events}} =
+        Wardrik.EventLog.page(context.events, [{"agt_triage", "slack.T1.C1.1.1"}])
+
+      assert [%{"data" => %{"rating" => "negative", "rated_by" => %{"id" => "ana"}}}] =
+               for(%{"type" => "wardrik.run.rated"} = event <- events, do: event)
+    end
+
     test "shows its steps in a message it edits, where Slack won't stream", context do
       event(context, message("<@UBOT> hi", "3.1"))
 
@@ -414,6 +458,39 @@ defmodule WardrikSlackTest do
 
       press(context, build_press("wardrik_approve", %{value: "not json"}, "U3"))
       refute_receive {:slack, {:respond, _path}, _reply}, 200
+    end
+  end
+
+  describe "the agent pane" do
+    @tag slack: [prompts: ["What's on my plate today?", "Summarize this channel"]]
+    test "suggests the channel's prompts when a conversation starts", context do
+      started = %{
+        type: "assistant_thread_started",
+        assistant_thread: %{user_id: "U3", channel_id: "D1", thread_ts: "5.1"}
+      }
+
+      event(context, started)
+
+      assert_receive {:slack, "assistant.threads.setSuggestedPrompts",
+                      %{
+                        "channel_id" => "D1",
+                        "thread_ts" => "5.1",
+                        "prompts" => [
+                          %{"title" => "What's on my plate today?"},
+                          %{"message" => "Summarize this channel"}
+                        ]
+                      }},
+                     1_000
+    end
+
+    test "suggests nothing where the channel names no prompts", context do
+      started = %{
+        type: "assistant_thread_started",
+        assistant_thread: %{user_id: "U3", channel_id: "D1", thread_ts: "5.1"}
+      }
+
+      event(context, started)
+      refute_receive {:slack, "assistant.threads.setSuggestedPrompts", _params}, 200
     end
   end
 

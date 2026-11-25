@@ -28,6 +28,14 @@ defmodule WardrikSlack do
               type: :keyword_list,
               default: [],
               doc: "Merged into every request to Slack."
+            ],
+            prompts: [
+              type: {:list, :string},
+              default: [],
+              doc: """
+              Up to four prompts suggested when a member starts a conversation in the app's agent
+              pane. None unless set. See `WardrikSlack.Assistant`.
+              """
             ]
           )
 
@@ -57,6 +65,8 @@ defmodule WardrikSlack do
     * While an agent works, the thread shows each step it takes: each model call, with the end of
       its reasoning, each tool call and each retry. A step that runs quietly shows how long it has
       run. The reply follows it. See `WardrikSlack.Progress`.
+    * Each reply has thumbs up and down buttons. A press is recorded as `wardrik.run.rated` in
+      the conversation's log. See `WardrikSlack.Feedback`.
     * A message the agent takes gets :eyes:, then :white_check_mark: once answered.
   """
 
@@ -195,7 +205,7 @@ defmodule WardrikSlack do
   defp post_status(workspace, %Outbound{room: room, body: {:reply, text, answering}} = outbound) do
     :ok = Progress.finish(workspace, outbound)
 
-    with :ok <- post_message(workspace, outbound, reply(text)),
+    with :ok <- post_message(workspace, outbound, reply(outbound, text)),
          do: Messages.mark_answered(workspace, room, answering)
   end
 
@@ -219,8 +229,14 @@ defmodule WardrikSlack do
     with {:ok, _posted} <- message(workspace, outbound, message), do: :ok
   end
 
-  defp reply(""), do: %{text: "_It answered nothing._"}
-  defp reply(text), do: %{text: Blocks.clip(text, 3_000), blocks: [Blocks.markdown(text)]}
+  defp reply(outbound, ""), do: reply(outbound, "_It answered nothing._")
+
+  defp reply(outbound, text),
+    do: %{text: Blocks.clip(text, 3_000), blocks: [Blocks.markdown(text) | feedback(outbound)]}
+
+  # A reply carries its run, except one whose run the room's saved state no longer holds.
+  defp feedback(%Outbound{run: nil}), do: []
+  defp feedback(outbound), do: [WardrikSlack.Feedback.block(outbound)]
 
   defp message(workspace, %Outbound{room: room, thread: nil}, message),
     do: API.post_in(workspace, "chat.postMessage", Map.put(message, :channel, room))

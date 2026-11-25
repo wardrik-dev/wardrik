@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:run.rated",
+  "title": "wardrik.run.rated",
+  "description": "A person rated a run's answer, such as with a thumbs up or down in a chat app.",
+  "type": "object",
+  "properties": {
+    "run": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The run's ID, as its run.completed gives it."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "rating": {
+      "type": "string",
+      "enum": [
+        "positive",
+        "negative"
+      ],
+      "description": "Whether the answer helped."
+    },
+    "rated_by": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "run",
+    "rating",
+    "rated_by"
+  ]
+}

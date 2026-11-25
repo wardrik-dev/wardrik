@@ -95,6 +95,7 @@ defmodule WardrikDaemon.ConfigTest do
              owner: "acme",
              identities:
                {WardrikDaemon.ChannelMembers, members: %{"U1" => "acme/@maria"}, domains: %{}},
+             prompts: [],
              req_options: [],
              reasoning: true,
              app_token: "xapp-1",

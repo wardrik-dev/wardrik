@@ -58,6 +58,7 @@ available only while connected.
 | `wardrik.run.interrupted` | `run`, `interrupts` | a turn paused for approval |
 | `wardrik.run.resumed` | `run` | a paused turn resumed |
 | `wardrik.run.deadline_exceeded` | `run`, `message_count` | a turn exceeded its `timeout` |
+| `wardrik.run.rated` | `run`, `rating`, `rated_by` | a person rated a turn's reply `positive` or `negative`, such as with a chat app's feedback buttons |
 | `wardrik.message.created` | `message`, `sender?` | a message was sent to the agent |
 | `wardrik.message.started` | `message`, `request`, `provider?`, `decided` | a model call started |
 | `wardrik.message.delta` | `message`, `delta` | text as it streams. **Live** |
