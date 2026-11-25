@@ -633,6 +633,63 @@ defmodule WardrikSlackTest do
     end
   end
 
+  describe "the Home tab" do
+    setup context do
+      define(context.owner, "agt_triage", channels: ["slack"], description: "Sorts the inbox.")
+      event(context, %{type: "member_joined_channel", user: "UBOT", channel: "C1", inviter: "U1"})
+      assert_receive {:slack, "chat.postMessage", %{"text" => ":wave:" <> _rest}}, 1_000
+      :ok
+    end
+
+    defp open_home(user \\ "U3"), do: %{type: "app_home_opened", user: user, tab: "home"}
+
+    defp texts(blocks), do: Enum.map(blocks, &(get_in(&1, ["text", "text"]) || ""))
+
+    test "shows the member's agents and the calls they wait on, linked to their threads",
+         context do
+      event(context, open_home())
+      assert_receive {:slack, "views.publish", %{"user_id" => "U3", "view" => view}}, 1_000
+      assert %{"type" => "home", "blocks" => blocks} = view
+
+      assert texts(blocks) == [
+               "Agents",
+               "*agt_triage* · Idle\nSorts the inbox.",
+               "Waiting for a decision",
+               "Nothing is waiting for a decision."
+             ]
+
+      event(context, message("<@UBOT> echo hi", "1.1"))
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Waiting" <> _}}, 1_000
+
+      event(context, open_home())
+      assert_receive {:slack, "views.publish", %{"view" => %{"blocks" => blocks}}}, 1_000
+
+      assert [_agents, agent, _waiting, call] = texts(blocks)
+      assert agent == "*agt_triage* · Waiting on 1 conversation\nSorts the inbox."
+      assert call =~ "`echo`"
+      assert call =~ "<https://acme.slack.com/archives/C1/p1.1|Open the thread to decide>"
+    end
+
+    test "tells a member nobody knows why there's nothing to show", context do
+      event(context, open_home("U9"))
+      assert_receive {:slack, "views.publish", %{"view" => %{"blocks" => blocks}}}, 1_000
+      assert texts(blocks) == ["Nobody here knows you yet."]
+    end
+
+    @tag slack: [home: {WardrikSlackTest.Home, greeting: "Hello"}]
+    test "shows the page the channel's :home names", context do
+      event(context, open_home())
+      assert_receive {:slack, "views.publish", %{"view" => %{"blocks" => blocks}}}, 1_000
+      assert ["Hello, U3", "Agents" | _rest] = texts(blocks)
+    end
+
+    @tag slack: [home: false]
+    test "leaves the tab alone when :home is false", context do
+      event(context, open_home())
+      refute_receive {:slack, "views.publish", _params}, 200
+    end
+  end
+
   describe "progress" do
     setup context do
       {:ok, workspace} = Wardrik.Chat.workspace(context.channel, "T1")
@@ -860,5 +917,17 @@ defmodule WardrikSlackTest do
       callback = %{type: "event_callback", team_id: "T1", event: %{type: "app_uninstalled"}}
       assert %{status: 200} = deliver(context, "events", JSON.encode!(callback))
     end
+  end
+end
+
+defmodule WardrikSlackTest.Home do
+  @moduledoc "Greets the member above the default page, as your app's own Home tab might."
+
+  @behaviour WardrikSlack.Home
+
+  @impl WardrikSlack.Home
+  def blocks(%WardrikSlack.Home.Request{member: member} = request, opts) do
+    [WardrikSlack.Blocks.section("#{opts[:greeting]}, #{member.id}")] ++
+      WardrikSlack.Home.Agents.blocks(request, [])
   end
 end
