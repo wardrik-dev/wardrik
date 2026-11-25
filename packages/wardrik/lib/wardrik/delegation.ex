@@ -165,7 +165,7 @@ defmodule Wardrik.Delegation do
     case Wardrik.Resolver.resolve_current(wardrik, from) do
       {:ok, %Wardrik.Resolved{principal: %Principal{} = principal}} ->
         scope = Wardrik.as(wardrik.name, principal, actor: {:agent, from})
-        {:ok, %{scope | labels: labels(wardrik, log)}}
+        {:ok, %{scope | labels: conversation_labels(wardrik, log)}}
 
       _none ->
         Logger.warning("#{from} acts for no one, so its answer isn't sent.")
@@ -173,7 +173,12 @@ defmodule Wardrik.Delegation do
     end
   end
 
-  defp labels(wardrik, log) do
+  @doc """
+  Returns the labels of the conversation `log` (`{agent, conversation}`), or `["outside"]` when
+  it isn't running, so what it sends is never trusted more than it was.
+  """
+  @spec conversation_labels(Wardrik.t(), Running.key()) :: [String.t()]
+  def conversation_labels(wardrik, log) do
     case Running.whereis(wardrik, log) do
       nil ->
         ["outside"]

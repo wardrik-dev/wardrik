@@ -1,7 +1,7 @@
 defmodule Wardrik.Notify.Route do
   @moduledoc """
   Where an agent's notices go (`:to`), which kinds are sent (`:on`), and what judges a finished
-  one (`:judge`). Read from a definition with `Wardrik.Notify.route/1`.
+  one (`:judge`). Read from a definition with `Wardrik.Notify.routes/1`.
   """
 
   @enforce_keys [:to, :on]

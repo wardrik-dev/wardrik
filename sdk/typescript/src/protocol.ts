@@ -275,6 +275,36 @@ export interface Spent {
   usd: number;
 }
 /**
+ * A notify route: the targets to send to, the events that send, and a judge for finished turns.
+ */
+export interface NotifyRoute {
+  /**
+   * Notification targets defined by the resolver, or chat rooms such as slack:#updates.
+   */
+  to: string | string[];
+  /**
+   * The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed.
+   */
+  on?: ("parked" | "failed" | "finished")[];
+  /**
+   * Asks a model whether to send each finished turn's answer. Held answers are recorded as wardrik.notice.held. Parked and failed turns are always sent.
+   */
+  judge?: {
+    /**
+     * A yes-or-no question about a finished turn's answer, such as whether the owner would want it now.
+     */
+    question: string;
+    /**
+     * Send the answer when the probability of yes is at least this. Defaults to 0.5.
+     */
+    send?: number;
+    /**
+     * The model that answers. Defaults to typesafe:jev-latest.
+     */
+    model?: string;
+  };
+}
+/**
  * One agent or conversation of agents.list.
  */
 export interface AgentSummary {
@@ -447,38 +477,9 @@ export interface AgentDefinition {
    */
   triggers?: TriggerDefinition[];
   /**
-   * Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, or an object with to, on and judge. Chat rooms are in the workspace that the resolver sets for the channel.
+   * Where to send a notification when the agent parks, fails or finishes. Use a target that the resolver defines, or a chat room like slack:#updates. You can also give a list of targets, a route with to, on and judge, or a list of routes, each sending its own events to its own targets. Chat rooms are in the workspace that the resolver sets for the channel.
    */
-  notify?:
-    | string
-    | string[]
-    | {
-        /**
-         * Notification targets defined by the resolver, or chat rooms such as slack:#updates.
-         */
-        to: string | string[];
-        /**
-         * The events that send a notification. The options are parked, failed and finished. Defaults to parked and failed.
-         */
-        on?: ("parked" | "failed" | "finished")[];
-        /**
-         * Asks a model whether to send each finished turn's answer. Held answers are recorded as wardrik.notice.held. Parked and failed turns are always sent.
-         */
-        judge?: {
-          /**
-           * A yes-or-no question about a finished turn's answer, such as whether the owner would want it now.
-           */
-          question: string;
-          /**
-           * Send the answer when the probability of yes is at least this. Defaults to 0.5.
-           */
-          send?: number;
-          /**
-           * The model that answers. Defaults to typesafe:jev-latest.
-           */
-          model?: string;
-        };
-      };
+  notify?: string | string[] | NotifyRoute | NotifyRoute[];
   /**
    * Names of the chat channels the agent can reply in.
    */

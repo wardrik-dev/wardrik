@@ -48,6 +48,7 @@ defmodule Wardrik.NotifyTest do
   import Wardrik.Test.Wardrik
 
   alias Wardrik.Notice
+  alias Wardrik.Notify.Server
 
   @model "anthropic:claude-haiku-4-5"
 
@@ -66,7 +67,8 @@ defmodule Wardrik.NotifyTest do
          url: "https://hooks.example.com/wardrik",
          secret: {:secret, "HOOK_SECRET"},
          req_options: [plug: {Req.Test, __MODULE__}]},
-      ops: {Wardrik.Notify.Room, channel: "board", room: "#ops"}
+      ops: {Wardrik.Notify.Room, channel: "board", room: "#ops"},
+      lead: {Wardrik.Notify.Agent, agent: "acme/lead"}
     ]
 
     wardrik =
@@ -133,20 +135,33 @@ defmodule Wardrik.NotifyTest do
 
   describe "routes" do
     test "reads a name, a list, and to and on" do
-      assert Wardrik.Notify.route(%{"notify" => "ops"}) ==
-               %Wardrik.Notify.Route{to: ["ops"], on: [:parked, :failed]}
+      assert Wardrik.Notify.routes(%{"notify" => "ops"}) ==
+               [%Wardrik.Notify.Route{to: ["ops"], on: [:parked, :failed]}]
 
-      assert Wardrik.Notify.route(%{"notify" => ["ops", "slack:#x"]}).to == ["ops", "slack:#x"]
+      assert [%{to: ["ops", "slack:#x"]}] =
+               Wardrik.Notify.routes(%{"notify" => ["ops", "slack:#x"]})
 
-      assert Wardrik.Notify.route(%{"notify" => %{"to" => "ops", "on" => ["finished"]}}) ==
-               %Wardrik.Notify.Route{to: ["ops"], on: [:finished]}
+      assert Wardrik.Notify.routes(%{"notify" => %{"to" => "ops", "on" => ["finished"]}}) ==
+               [%Wardrik.Notify.Route{to: ["ops"], on: [:finished]}]
 
       judged = %{"to" => "ops", "judge" => %{"question" => "Worth it?"}}
 
-      assert Wardrik.Notify.route(%{"notify" => judged}).judge ==
-               %{question: "Worth it?", send: 0.5, model: "typesafe:jev-latest"}
+      assert [%{judge: %{question: "Worth it?", send: 0.5, model: "typesafe:jev-latest"}}] =
+               Wardrik.Notify.routes(%{"notify" => judged})
 
-      assert Wardrik.Notify.route(%{}) == nil
+      assert Wardrik.Notify.routes(%{}) == []
+    end
+
+    test "reads a list of routes, each with its own targets and events" do
+      notify = [
+        %{"to" => "ops", "on" => ["parked", "failed"]},
+        %{"to" => ["lead"], "on" => ["finished"]}
+      ]
+
+      assert Wardrik.Notify.routes(%{"notify" => notify}) == [
+               %Wardrik.Notify.Route{to: ["ops"], on: [:parked, :failed]},
+               %Wardrik.Notify.Route{to: ["lead"], on: [:finished]}
+             ]
     end
 
     test "refuses a definition that routes nowhere here", %{
@@ -196,7 +211,7 @@ defmodule Wardrik.NotifyTest do
 
       # The judge's step runs inside the notifier's cast, so the notifier is done once it answers.
       until("wardrik.step.completed")
-      notifier = Wardrik.Notify.Server.name(wardrik.name)
+      notifier = Server.name(wardrik.name)
       :sys.get_state(notifier)
       assert %{"events" => events} = run!(scope, "audit.list", %{})
       held = Enum.find(events, &(&1["type"] == "wardrik.notice.held"))
@@ -334,6 +349,61 @@ defmodule Wardrik.NotifyTest do
       {:ok, _agent} = define(scope, "audit")
       ask(scope)
       assert_receive {:told, "audit", %Notice{name: "Everyone"}}
+    end
+
+    test "sends each route's events to its own targets, telling a target once", %{
+      scope: scope,
+      wardrik: wardrik
+    } do
+      model({:error, :boom})
+
+      routes = [
+        %{"to" => ["audit", "board:#ops"], "on" => ["finished"]},
+        %{"to" => "audit", "on" => ["failed"]},
+        %{"to" => "audit", "on" => ["failed"]}
+      ]
+
+      {:ok, _agent} = define(scope, routes)
+      ask(scope)
+      assert_receive {:told, "audit", %Notice{kind: :failed}}
+      # The notifier tells each target in the one cast, so it's done once it answers.
+      notifier = Server.name(wardrik.name)
+      :sys.get_state(notifier)
+      refute_received {:told, _target, _notice}
+      refute_received {:posted, _channel, _workspace, _room, _notice}
+    end
+
+    test "tells another agent, as a message from the agent, and never the agent itself", %{
+      scope: scope,
+      wardrik: wardrik
+    } do
+      model({:ok, answer("The site is down.")})
+      {:ok, _lead} = define(scope, %{"to" => "lead", "on" => ["finished"]}, %{}, "acme/lead")
+      {:ok, _triage} = define(scope, %{"to" => "lead", "on" => ["finished"]})
+      ask(scope)
+
+      assert %{"parts" => [%{"content" => content}]} = receive_message("acme/lead")
+
+      assert content ==
+               "From agent acme/triage:\nIt finished a turn, and answered:\nThe site is down."
+
+      until("wardrik.run.completed")
+      until("wardrik.run.completed")
+      notifier = Server.name(wardrik.name)
+      :sys.get_state(notifier)
+
+      refute_received {Wardrik.EventLog, {"acme/lead", _conversation},
+                       %{"type" => "wardrik.message.created"}}
+    end
+
+    defp receive_message(agent) do
+      receive do
+        {Wardrik.EventLog, {^agent, _conversation},
+         %{"type" => "wardrik.message.created"} = event} ->
+          event["data"]["message"]
+      after
+        5_000 -> flunk("#{agent} was sent no message.")
+      end
     end
 
     test "tells what a turn answered only where on asks for it", %{scope: scope} do
