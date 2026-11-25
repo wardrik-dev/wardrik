@@ -2249,11 +2249,11 @@ export interface NotifyTargetRemovedData {
   assumed_by?: AssumedBy;
 }
 /**
- * Middleware suggested next steps for a run's reply, for a chat app to offer as prompts.
+ * A middleware suggested questions the person might ask next. A chat app shows them with the run's reply.
  */
 export interface PromptsSuggestedData {
   /**
-   * What the member might ask next, in the order to show them.
+   * The questions, in the order to show them.
    */
   prompts: string[];
 }

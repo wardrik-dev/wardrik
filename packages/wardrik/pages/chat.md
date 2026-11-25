@@ -60,14 +60,17 @@ Wardrik.Agent.define(scope, "agt_01JF8X5RQ2",
 
 ## Next steps
 
-A run can suggest what to ask next. The chat app shows them with the reply: Slack's Messages tab
-takes them as its prompts, and a channel shows them as buttons under the reply. A press asks the
-agent that text, as whoever pressed it.
+A reply can include a few questions the person might ask next. In a Slack channel they're buttons
+under the reply. In a direct message they're the suggested prompts on the Messages tab. When
+someone presses one, the agent gets that question as if they had typed it.
 
-Wardrik keeps whatever `Wardrik.Chat.Prompts.suggest_next/2` is given as
-`wardrik.prompts.suggested` in the conversation's log; the last before the reply is shown. Which
-steps to suggest is up to your own `Wardrik.Middleware`. This one offers the model a tool, and
-answers its calls itself:
+Wardrik doesn't decide what to suggest. Your own `Wardrik.Middleware` does, by calling
+`Wardrik.Chat.Prompts.suggest_next/2` during the run. Each call is recorded as a
+`wardrik.prompts.suggested` event in the conversation's log. If a run calls it more than once, the
+reply shows the latest list.
+
+The middleware below gives the model a `suggest_next_steps` tool and handles the tool's calls
+itself, so the model chooses the questions:
 
 ```elixir
 defmodule MyApp.NextSteps do
@@ -103,8 +106,8 @@ defmodule MyApp.NextSteps do
 end
 ```
 
-Give it to an agent as `middleware: [MyApp.NextSteps]`. A policy decides its calls as any
-other's, so allow `suggest_next_steps` by name.
+Add it to an agent with `middleware: [MyApp.NextSteps]`. Your policy decides whether the model may
+call `suggest_next_steps`, as it does for any other tool, so allow the tool by name.
 
 ## Access
 

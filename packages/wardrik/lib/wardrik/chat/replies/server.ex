@@ -358,7 +358,7 @@ defmodule Wardrik.Chat.Replies.Server do
     end
   end
 
-  # Posts about no run, such as who decided a call, suggest nothing.
+  # Some posts aren't part of a run, such as a note of who decided a call. They have no prompts.
   defp run_prompts(%{prompts: prompts}), do: prompts
   defp run_prompts(nil), do: []
 

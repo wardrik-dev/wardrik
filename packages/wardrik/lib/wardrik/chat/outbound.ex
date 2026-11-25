@@ -26,8 +26,9 @@ defmodule Wardrik.Chat.Outbound do
   run, if any. Put them on a reply's feedback buttons, and pass them back in a
   `Wardrik.Chat.Rating` to `Wardrik.Chat.rate/2`.
 
-  `:prompts` are next steps the run suggested, in the order to show them: what the member might
-  ask next. Show them with a reply. `[]` if none. See `Wardrik.Chat.Prompts.suggest_next/2`.
+  `:prompts` are questions the member might ask next, suggested by the run and in the order to
+  show them. A chat app shows them with the reply. It's `[]` when the run suggested none. See
+  `Wardrik.Chat.Prompts.suggest_next/2`.
   """
 
   @enforce_keys [:installation, :room, :thread, :body]

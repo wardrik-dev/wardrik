@@ -166,9 +166,10 @@ Use a separate app per daemon. Slack spreads events across all of an app's conne
   reasoning under it, each tool call, and each retry with its wait. A step that runs quietly shows
   how long it has run. The reply follows that message.
 - Set `reasoning: false` on the channel to leave the reasoning out.
-- A reply can offer next steps: buttons under it in a channel, or the Messages tab's prompts in a
-  direct message. A press asks the agent that text. An app that embeds Wardrik suggests them
-  from its own middleware; see the `wardrik` chat guide.
+- A reply can include suggested next questions. In a channel they're buttons under the reply. In
+  a direct message they're the Messages tab's suggested prompts. Pressing one sends that question
+  to the agent. Wardrik doesn't choose the questions: an app that embeds Wardrik adds them with its
+  own middleware, as the chat guide in the `wardrik` package docs shows.
 - Each reply has thumbs up and down buttons. A press is kept as
   [`wardrik.run.rated`](/reference/events/) in the conversation's log, for later review and
   evaluations. The agent isn't told.

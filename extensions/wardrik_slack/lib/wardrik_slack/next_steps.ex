@@ -1,11 +1,10 @@
 defmodule WardrikSlack.NextSteps do
   @moduledoc """
-  Offers the next steps a run suggested with its reply. See `Wardrik.Chat.Prompts.suggest_next/2`.
+  Shows the questions a run suggested with its reply. See `Wardrik.Chat.Prompts.suggest_next/2`.
 
-    * In a direct message, such as the Messages tab of Slack's agent experience, they become the
-      tab's suggested prompts.
-    * In a channel, they're buttons under the reply. A press says in the thread what the member
-      asked, then asks the agent it as them.
+    * In a direct message, such as on the Messages tab, they're set as the suggested prompts.
+    * In a channel, they're buttons under the reply. When a member presses one, the thread gets a
+      message saying what they asked, and the agent gets the question as if they had typed it.
 
   Slack shows at most four.
   """
@@ -24,7 +23,7 @@ defmodule WardrikSlack.NextSteps do
   @block "wardrik_prompts"
   @label 75
 
-  @doc "Returns the blocks of next steps for a reply in a channel, or `[]` in a direct message."
+  @doc "Returns the buttons to show under a reply in a channel. Returns `[]` in a direct message."
   @spec blocks(Outbound.t()) :: [map()]
   def blocks(%Outbound{prompts: []}), do: []
   def blocks(%Outbound{room: "D" <> _direct}), do: []
@@ -45,8 +44,8 @@ defmodule WardrikSlack.NextSteps do
   end
 
   @doc """
-  Sets a direct message's suggested prompts to the reply's next steps. Does nothing in a channel,
-  or for a reply with none.
+  Sets a direct message's suggested prompts to the reply's questions. Does nothing in a channel,
+  or when the reply has no questions.
   """
   @spec suggest(Workspace.t(), Outbound.t()) :: :ok
   def suggest(workspace, %Outbound{room: "D" <> _direct = room, prompts: [_ | _] = prompts}) do
@@ -69,7 +68,7 @@ defmodule WardrikSlack.NextSteps do
 
   def suggest(_workspace, _outbound), do: :ok
 
-  @doc "Handles a press of a next step's button. Returns `:ignored` for anything else."
+  @doc "Handles a press of one of the question buttons. Returns `:ignored` for any other press."
   @spec answer(Workspace.t(), map()) :: :ok | :ignored
   def answer(
         workspace,
