@@ -43,7 +43,12 @@ wardrik init
 ```
 
 ```text
+How much should agents do without asking you?
+❯ Balanced: the assistant makes and runs its workers freely; sending, posting and pushing ask you
+  Careful: every change asks you, such as making a worker or sending mail
+  Hands-off: everything runs without asking, even after reading mail or the web, except deleting
 Wrote /home/me/.config/wardrik/config.yaml
+Wrote /home/me/.config/wardrik/policies/balanced.yaml
 Wrote /home/me/.config/wardrik/agents/assistant.md
 Wrote /home/me/.config/wardrik/env
 Run the daemon as a systemd user service? [Yn]:
@@ -54,11 +59,13 @@ Open the chat in your browser? [Yn]:
 
 | File | Contents |
 | --- | --- |
-| `config.yaml` | the org (`default`), default model, HTTP port, and the `roles` and `bindings` that allow the assistant to create agents |
+| `config.yaml` | the org (`default`), default model and policy, HTTP port, and the `roles` and `bindings` that allow the assistant to create agents |
+| `policies/<answer>.yaml` | the default policy: how much agents do without asking. See [Policy presets](/concepts/policy/#presets) |
 | `agents/assistant.md` | the [assistant](/build/assistant/) agent |
 | `env` | environment variables for the daemon, mode `600` |
 
-- `init` never overwrites a file, so it's safe to rerun.
+- `init` never overwrites a file, so it's safe to rerun. It asks how much agents do without
+  asking only as it writes `config.yaml`.
 - It offers what it finds on the machine, such as [Claude Code](/build/harnesses/) for coding. It
   never installs anything: it shows the commands to run.
 - The key is stored in the vault, unless `env` already sets it.
@@ -70,8 +77,10 @@ For non-interactive setup, pass flags instead:
 
 ```sh
 wardrik init --provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --no-service \
-  --set coding.claude=true
+  --set coding.claude=true --set approvals=careful
 ```
+
+Without a terminal, `approvals` is `balanced` unless `--set` names another.
 
 - `--set KEY=VALUE` answers an offer. `--answers FILE` reads the answers from YAML, or stdin with
   `-`.

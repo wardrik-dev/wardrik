@@ -1,12 +1,12 @@
 ---
 title: The assistant
-description: "Use the built-in assistant to create and manage agents, answer questions about Wardrik, and check how things run, with approval for changes."
+description: "Use the built-in assistant to create and manage agents, answer questions about Wardrik, and check how things run."
 sidebar:
   order: 0.5
 ---
 
-`wardrik init` creates an agent named `assistant`. Describe a task, then review the tool calls
-it proposes to create or configure agents. Changes require your approval.
+`wardrik init` creates an agent named `assistant`. Describe a task: it sets up the work and says
+what it did. Calls its [policy](/concepts/policy/#presets) asks for wait on you.
 
 ```sh
 wardrik ask assistant "Tell me when https://github.blog/changelog/feed/ has a new post"
@@ -22,6 +22,9 @@ I'll set up a watcher on that feed. Plan:
 Waiting on a person for 1 call:
   ? agent_create  call_8d2ebbfe28aa4ee1a269dee2
 ```
+
+Under the `careful` policy, making the agent waits on you. Under `balanced` and `hands-off`, it
+runs at once.
 
 ```sh
 wardrik approval approve assistant call_8d2ebbfe28aa4ee1a269dee2
@@ -40,7 +43,7 @@ wardrik trigger ls changelog-watch    # its triggers, and when each runs
 wardrik agent history changelog-watch # what it found
 ```
 
-Ask the assistant to list, change, or stop its tasks. Changes require approval.
+Ask the assistant to list, change, or stop its tasks.
 
 ## Ask it questions
 
@@ -62,7 +65,7 @@ wardrik ask assistant "Why did changelog-watch stop?"
 
 ## Set things up
 
-Ask it to add an MCP server, a notify target or an OAuth app. Each addition requires your approval.
+Ask it to add an MCP server, a notify target or an OAuth app. Each addition waits on you.
 It never sees or sets a secret's value: it answers the dashboard page and the command where you
 seal one:
 
@@ -81,9 +84,8 @@ CLI.
 ## The check
 
 Every 6 hours, its `check` trigger looks at its workers' runs, the calls waiting on a person, the
-doctor's checks and each node's memory. It answers "All well." when nothing needs you. When
-something does, it proposes the fix as a call that waits for your approval, so it shows in
-`wardrik approval ls`, the dashboard's Approvals page and any [notify target](/build/notices/).
+doctor's checks and each node's memory. It fixes what its calls can fix, and says what needs you.
+When nothing does, it answers `NO_REPLY`, which sends [no notice](/build/notices/#answer-nothing).
 Each check is a model call with the assistant's tools, often tens of thousands of tokens. Remove
 the trigger to stop it, or change `every`.
 
@@ -95,7 +97,6 @@ description: "Turns what people ask for into work that runs."
 tools: [self/*, agents/*, agent_create, ops/agent.runs, ops/agent.timeline, ops/agent.resolved,
   ops/interrupts.list, ops/deployment.runtime, settings, help, files, web_search, run_lua]
 context: [MEMORY.md]
-policy: {budget: {tokens: 2000000, per: day}}
 idle_timeout: infinity
 triggers:
   - name: check
@@ -112,7 +113,7 @@ You are Wardrik, the one place the people of this org come to get things done. â
   reads, not all of `ops/read`.
 - `settings` lists and adds MCP servers, notify targets and OAuth apps, and asks you to seal
   secrets. `help` answers from these docs and the deployment's own files.
-- Reads run without approval. Every change needs approval.
+- No `policy`: it uses `defaults.policy` from `config.yaml`, the answer to `init`'s question.
 - `files` gives it a workspace. `MEMORY.md` is loaded into every turn.
 - No `model`: it uses `defaults` from `config.yaml`.
 - Agents it creates inherit its policy and budget.
@@ -145,7 +146,6 @@ See [Organizations, roles, and tokens](/run/orgs/).
 - The body is its instructions, followed by a playbook of patterns that work. Edit it, then
   `wardrik reload`. `init` never overwrites the file. `wardrik doctor` names the tools an older
   file leaves out.
-- To message other agents without approval, allow the tool: `policy: {allow: [agent_ask], ...}`.
 - Add `channels: [slack]` to use it from [Slack](/build/slack/).
-- After it reads [untrusted content](/concepts/outside-content/), every change needs approval,
-  even if allowed.
+- After it reads [untrusted content](/concepts/outside-content/), a change waits on you unless
+  the policy's `allow_after` allows it, as `balanced` does for its worker tools.

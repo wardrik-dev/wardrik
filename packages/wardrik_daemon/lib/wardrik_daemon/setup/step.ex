@@ -35,7 +35,7 @@ defmodule WardrikDaemon.Setup.Step do
   @callback detect(Setup.Machine.t()) :: findings()
 
   @doc "Returns the questions to ask about what was found. `[]` asks none."
-  @callback questions(findings()) :: [Setup.Question.t()]
+  @callback questions(findings()) :: [Setup.question()]
 
   @doc "Returns the changes to make, given what was found and the answers, by question key."
   @callback plan(findings(), %{String.t() => term()}) :: [Setup.change()]

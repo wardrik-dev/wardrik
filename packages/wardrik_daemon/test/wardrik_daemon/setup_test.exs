@@ -6,6 +6,8 @@ defmodule WardrikDaemon.SetupTest do
   alias WardrikDaemon.CLI.Answers
   alias WardrikDaemon.Dirs
   alias WardrikDaemon.Setup
+  alias WardrikDaemon.Setup.Approvals
+  alias WardrikDaemon.Setup.Choice
   alias WardrikDaemon.Setup.ClaudeCode
   alias WardrikDaemon.Setup.Machine
   alias WardrikDaemon.Setup.Question
@@ -179,5 +181,37 @@ defmodule WardrikDaemon.SetupTest do
 
     assert Question.cast(question, "maybe") ==
              {:error, ~s(coding.claude is true or false, not "maybe".)}
+  end
+
+  test "casts a choice's answers, and answers one unattended with its default", context do
+    choice = Approvals.question()
+
+    assert Choice.cast(choice, "careful") == {:ok, "careful"}
+
+    assert Choice.cast(choice, "reckless") ==
+             {:error, ~s(approvals is one of balanced, careful, hands-off, not "reckless".)}
+
+    cx = WardrikDaemon.CLI.Context.new(context.env)
+    assert Answers.answer(cx, %{}, %{yes: true}).(choice) == {:ok, "balanced"}
+    assert Answers.answer(cx, %{"approvals" => "hands-off"}, %{}).(choice) == {:ok, "hands-off"}
+  end
+
+  test "writes approvals' policies the daemon reads, each refusing deletes", context do
+    dir = Path.join(context.root, "policies")
+    File.mkdir_p!(dir)
+
+    for {name, _label} <- Approvals.question().options do
+      {path, text} = Approvals.policy_file(name)
+      file = Path.join(context.root, path)
+      File.write!(file, text)
+    end
+
+    assert {:ok, %{"balanced" => balanced, "careful" => _careful, "hands-off" => hands_off}} =
+             WardrikDaemon.Policies.read(dir)
+
+    assert Wardrik.Policy.decide(balanced, "agent_create") == :allow
+    assert {:deny, _why} = Wardrik.Policy.decide(balanced, "mail__GMAIL_DELETE_MESSAGE")
+    assert Wardrik.Policy.decide(hands_off, "mail__GMAIL_SEND_EMAIL") == :allow
+    assert {:deny, _why} = Wardrik.Policy.decide(hands_off, "files__delete_file")
   end
 end

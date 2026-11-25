@@ -14,6 +14,7 @@ defmodule WardrikDaemon.Setup do
   """
 
   alias WardrikDaemon.Dirs
+  alias WardrikDaemon.Setup.Choice
   alias WardrikDaemon.Setup.Machine
   alias WardrikDaemon.Setup.Question
 
@@ -25,8 +26,11 @@ defmodule WardrikDaemon.Setup do
   @typedoc "What `apply/2` did with a change."
   @type done() :: {:wrote | :kept, Path.t()} | {:command, String.t(), String.t()}
 
+  @typedoc "A question a step asks: yes or no, or one answer out of several."
+  @type question() :: Question.t() | Choice.t()
+
   @typedoc "Answers a question, or says why it can't."
-  @type answer() :: (Question.t() -> {:ok, term()} | {:error, String.t()})
+  @type answer() :: (question() -> {:ok, term()} | {:error, String.t()})
 
   @steps [WardrikDaemon.Setup.ClaudeCode]
 
@@ -62,9 +66,9 @@ defmodule WardrikDaemon.Setup do
   end
 
   defp answer(questions, answer) do
-    Enum.reduce_while(questions, {:ok, %{}}, fn %Question{key: key} = question, {:ok, answers} ->
+    Enum.reduce_while(questions, {:ok, %{}}, fn question, {:ok, answers} ->
       case answer.(question) do
-        {:ok, value} -> {:cont, {:ok, Map.put(answers, key, value)}}
+        {:ok, value} -> {:cont, {:ok, Map.put(answers, question.key, value)}}
         error -> {:halt, error}
       end
     end)

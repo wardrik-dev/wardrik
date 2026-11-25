@@ -1,7 +1,8 @@
 defmodule WardrikDaemon.CLI.Answers do
   @moduledoc """
   Answers setup questions: from `--set KEY=VALUE` and `--answers FILE` first, then the terminal.
-  Without a terminal, a question no one answered takes `--yes`.
+  Without a terminal, a question no one answered takes its unattended answer: `--yes` for a yes
+  or no question, and its default for a choice.
 
       # bootstrap.yaml, for wardrik init --answers bootstrap.yaml, or --answers - on stdin
       coding:
@@ -10,7 +11,6 @@ defmodule WardrikDaemon.CLI.Answers do
 
   alias WardrikDaemon.CLI.Context
   alias WardrikDaemon.Setup
-  alias WardrikDaemon.Setup.Question
 
   @doc "Returns the answers `--set` and `--answers` give, by question key."
   @spec parse_given(map()) :: {:ok, %{String.t() => term()}} | {:error, String.t()}
@@ -56,18 +56,21 @@ defmodule WardrikDaemon.CLI.Answers do
   @doc "Returns a function that answers each question from `given`, the terminal, or `--yes`."
   @spec answer(Context.t(), %{String.t() => term()}, map()) :: Setup.answer()
   def answer(cx, given, flags) do
-    fn %Question{key: key} = question ->
-      case Map.fetch(given, key) do
-        {:ok, value} -> Question.cast(question, value)
+    fn question ->
+      case Map.fetch(given, question.key) do
+        {:ok, value} -> asker(question).cast(question, value)
         :error -> ask(cx, question, flags)
       end
     end
   end
 
   defp ask(%Context{terminal: %{input?: true}}, question, _flags),
-    do: {:ok, Owl.IO.confirm(message: question.label, default: question.default)}
+    do: {:ok, asker(question).ask_in_terminal(question)}
 
-  defp ask(_cx, _question, flags), do: {:ok, flags[:yes] == true}
+  defp ask(_cx, question, flags), do: {:ok, asker(question).answer_unattended(question, flags)}
+
+  # Each kind of question is a struct whose module implements WardrikDaemon.Setup.Ask.
+  defp asker(%module{}), do: module
 
   @doc "Returns a line for each given answer no question asked, as a typo in `--set` would be."
   @spec list_unasked(%{String.t() => term()}, [String.t()]) :: [String.t()]
