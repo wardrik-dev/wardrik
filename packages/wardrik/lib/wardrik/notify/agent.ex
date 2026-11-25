@@ -44,7 +44,7 @@ defmodule Wardrik.Notify.Agent do
     wardrik = Wardrik.Instance.fetch!(opts[:wardrik])
     labels = Wardrik.Delegation.conversation_labels(wardrik, {notice.agent, notice.conversation})
 
-    with {:ok, pid} <- Running.awake(wardrik, target),
+    with {:ok, pid} <- Running.ensure_awake(wardrik, target),
          do: WardrikCore.ask(pid, message_text(notice), metadata(labels))
   end
 
