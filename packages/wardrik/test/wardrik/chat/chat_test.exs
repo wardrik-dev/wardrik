@@ -776,6 +776,21 @@ defmodule Wardrik.ChatTest do
       refute Workspace.thread?(workspace, nil)
     end
 
+    test "finds the room and thread a conversation belongs to", context do
+      {:ok, workspace} =
+        Chat
+        |> Wardrik.Chat.channel(channel_options(context))
+        |> Wardrik.Chat.workspace("T1")
+
+      thread = Workspace.conversation(workspace, room: "C1", thread: "1696.1234")
+      assert {:ok, where} = Workspace.locate(workspace, thread)
+      assert where == [room: "C1", thread: "1696.1234"]
+      assert Workspace.conversation(workspace, where) == thread
+
+      assert Workspace.locate(workspace, "api-1") == :error
+      assert Workspace.locate(workspace, nil) == :error
+    end
+
     test "posts a notice in the room itself, in the workspace it names", context do
       notice = %Wardrik.Notice{
         agent: "agt_digest",

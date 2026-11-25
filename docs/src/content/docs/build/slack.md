@@ -57,7 +57,7 @@ features:
   agent_view:
     agent_description: Agents that answer here, and ask before they act.
   app_home:
-    home_tab_enabled: false
+    home_tab_enabled: true
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
@@ -222,6 +222,15 @@ answered as above.
   they may not, and the run carries on.
 - Switching an app to `agent_view` can't be undone. An app still on `assistant_view` keeps
   working: subscribe it to `assistant_thread_started` for its prompts.
+
+### Home tab
+
+The app's Home tab lists the agents a member can use in Slack, with what each is doing, and the
+calls waiting for a decision. Each call links to the thread where it can be approved or denied.
+The page is built each time the member opens the tab, and shows only what they may read.
+
+It needs `home_tab_enabled: true` and the `app_home_opened` event, as in the manifest above. An app
+that embeds Wardrik can show its own page with `WardrikSlack`'s `home` option.
 
 ### An agent per member
 

@@ -169,6 +169,26 @@ defmodule Wardrik.Chat.Workspace do
   end
 
   @doc """
+  Returns the room and thread that `conversation` belongs to. The reverse of `conversation/2`.
+
+      Wardrik.Chat.Workspace.locate(workspace, "slack.T0123.C024BE91L.1696.1234")
+      #=> {:ok, room: "C024BE91L", thread: "1696.1234"}
+
+  Returns `:error` when the conversation isn't a thread in one of the workspace's rooms, such as
+  an agent's main conversation.
+  """
+  @spec locate(t(), String.t() | nil) :: {:ok, room: String.t(), thread: String.t()} | :error
+  def locate(workspace, conversation) do
+    with true <- thread?(workspace, conversation),
+         rest = String.replace_prefix(conversation, prefix(workspace), ""),
+         [room, thread] when room != "" and thread != "" <- String.split(rest, ".", parts: 2) do
+      {:ok, room: room, thread: thread}
+    else
+      _elsewhere -> :error
+    end
+  end
+
+  @doc """
   Returns whether `conversation` is a thread in one of the workspace's rooms.
 
       Wardrik.Chat.Workspace.thread?(workspace, "slack.T0123.C024BE91L.1696.1234")
@@ -177,13 +197,11 @@ defmodule Wardrik.Chat.Workspace do
   @spec thread?(t(), String.t() | nil) :: boolean()
   def thread?(_workspace, nil), do: false
 
-  def thread?(%__MODULE__{channel: channel, installation: installation}, conversation),
-    do:
-      String.starts_with?(
-        conversation,
-        Enum.join([channel.name, installation.workspace, ""], ".")
-      )
+  def thread?(workspace, conversation),
+    do: String.starts_with?(conversation, prefix(workspace))
 
-  defp prefix(%__MODULE__{channel: channel, installation: installation}, room),
-    do: Enum.join([channel.name, installation.workspace, room, ""], ".")
+  defp prefix(%__MODULE__{channel: channel, installation: installation}),
+    do: Enum.join([channel.name, installation.workspace, ""], ".")
+
+  defp prefix(workspace, room), do: prefix(workspace) <> room <> "."
 end

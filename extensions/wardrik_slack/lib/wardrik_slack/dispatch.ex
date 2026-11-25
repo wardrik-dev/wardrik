@@ -5,6 +5,7 @@ defmodule WardrikSlack.Dispatch do
   | Slack sends                              | Handled by               |
   | ---------------------------------------- | ------------------------ |
   | a message                                | `WardrikSlack.Messages`  |
+  | the Home tab opened                      | `WardrikSlack.Home`      |
   | the Messages tab opened, or Stop pressed | `WardrikSlack.Assistant` |
   | the bot joining or leaving a channel     | `WardrikSlack.Rooms`     |
   | a room's button or menu                  | `WardrikSlack.Rooms`     |
@@ -20,6 +21,7 @@ defmodule WardrikSlack.Dispatch do
   alias WardrikSlack.Answers
   alias WardrikSlack.Assistant
   alias WardrikSlack.Feedback
+  alias WardrikSlack.Home
   alias WardrikSlack.Messages
   alias WardrikSlack.NextSteps
   alias WardrikSlack.Rooms
@@ -34,7 +36,7 @@ defmodule WardrikSlack.Dispatch do
   end
 
   def event(channel, %{"team_id" => team, "event" => %{"type" => type} = event} = callback) do
-    handler = event_handler(type)
+    handler = event_handler(type, event)
     within(channel, team, &handler.event(&1, event, bot(callback)))
   end
 
@@ -52,13 +54,14 @@ defmodule WardrikSlack.Dispatch do
 
   def interactive(_channel, _payload), do: :ignored
 
-  defp event_handler("message"), do: Messages
+  defp event_handler("message", _event), do: Messages
+  defp event_handler("app_home_opened", %{"tab" => "home"}), do: Home
 
-  defp event_handler(type)
+  defp event_handler(type, _event)
        when type in ~w(app_home_opened agent_session_stopped assistant_thread_started),
        do: Assistant
 
-  defp event_handler(_room_event), do: Rooms
+  defp event_handler(_room_event, _event), do: Rooms
 
   defp press_handler("wardrik_room" <> _rest), do: Rooms
   defp press_handler("wardrik_feedback"), do: Feedback

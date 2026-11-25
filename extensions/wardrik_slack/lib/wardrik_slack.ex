@@ -24,6 +24,13 @@ defmodule WardrikSlack do
               type: :string,
               doc: "Where Slack sends someone once they've added the app."
             ],
+            home: [
+              type: {:or, [{:tuple, [:atom, :any]}, {:in, [false]}]},
+              doc: """
+              The module and options that fill the app's Home tab, or `false` to leave it alone.
+              `{WardrikSlack.Home.Agents, []}` unless set. See `WardrikSlack.Home`.
+              """
+            ],
             req_options: [
               type: :keyword_list,
               default: [],
@@ -62,6 +69,11 @@ defmodule WardrikSlack do
     * Each reply has thumbs up and down buttons. A press is recorded as `wardrik.run.rated` in
       the conversation's log. See `WardrikSlack.Feedback`.
     * A message the agent takes gets :eyes:, then :white_check_mark: once answered.
+
+  ## Home tab
+
+  The app's Home tab shows the agents a member can use and the calls waiting for a decision,
+  each with a link to its thread. See `WardrikSlack.Home` to show your own page.
   """
 
   use Wardrik.Chat

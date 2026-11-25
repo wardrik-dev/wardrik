@@ -22,7 +22,8 @@ defmodule Wardrik.Testing.Server do
     * `:authorize` decides each operation and stream first.
     * An operation returns the protocol's example output, or `nil`.
     * The agent `missing` is never found.
-    * The `:offered` agents are listed and defined.
+    * The `:offered` agents are listed and defined. Conversations that wait on a person are
+      listed too.
     * `agent.read` says whether the conversation waits on a person.
     * A message is answered as `Wardrik.Testing.Script` says.
     * A stream with `"after" => "nope"` fails with `:invalid_request`.
@@ -168,12 +169,15 @@ defmodule Wardrik.Testing.Server do
     do: {:error, Error.new(:not_found, "There's no agent #{agent}.")}
 
   defp answer(%Scope{wardrik: name}, "agents.list", _input) do
-    agents =
-      for offered <- state(name).offered,
-          id = elem(offered, 0),
-          do: %{"id" => id}
+    %{offered: offered, held: held} = state(name)
+    agents = for offered <- offered, do: %{"id" => elem(offered, 0), "status" => "idle"}
 
-    {:ok, %{"agents" => agents}}
+    conversations =
+      for {{agent, conversation}, {status, _interrupts}} <- held,
+          conversation != nil,
+          do: %{"id" => agent, "conversation" => conversation, "status" => status}
+
+    {:ok, %{"agents" => agents ++ conversations}}
   end
 
   defp answer(%Scope{wardrik: name}, "agent.definition", %{"agent" => agent}) do

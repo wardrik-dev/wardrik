@@ -166,6 +166,9 @@ defmodule WardrikSlack.Test do
 
   defp reply("chat.postMessage", _params), do: %{ok: true, ts: "9.9"}
 
+  defp reply("chat.getPermalink", %{"channel" => room, "message_ts" => ts}),
+    do: %{ok: true, permalink: "https://acme.slack.com/archives/#{room}/p#{ts}"}
+
   defp reply("chat.startStream", %{"thread_ts" => "3." <> _rest}),
     do: %{ok: false, error: "not_allowed_token_type"}
 
