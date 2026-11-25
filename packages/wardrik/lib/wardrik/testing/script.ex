@@ -9,7 +9,7 @@ defmodule Wardrik.Testing.Script do
 
     * `echo` waits on the call `call_1`, to the `echo` tool with `%{"text" => "hi"}`.
     * `fail` fails with `"It broke."`.
-    * Anything else is answered `"Answered: "` followed by the message.
+    * Anything else is answered `"Answered: "` followed by the message, after one model call.
 
   ## Decisions
 
@@ -105,7 +105,20 @@ defmodule Wardrik.Testing.Script do
   defp turn(scope, conversation, text), do: answer(scope, conversation, "Answered: " <> text)
 
   defp answer(scope, conversation, text) do
-    messages = [%{"role" => "assistant", "parts" => [%{"type" => "text", "content" => text}]}]
+    parts = [%{"type" => "text", "content" => text}]
+    messages = [%{"role" => "assistant", "parts" => parts}]
+
+    write(scope, conversation, "message.started", %{
+      "message" => %{"id" => "msg_r1"},
+      "request" => %{"model" => "test"},
+      "decided" => %{"by" => "default"}
+    })
+
+    write(scope, conversation, "message.completed", %{
+      "message" => %{"id" => "msg_r1", "role" => "assistant", "parts" => parts},
+      "status" => "ok",
+      "duration_ms" => 0
+    })
 
     write(scope, conversation, "run.completed", %{
       "run" => %{"id" => "r1"},

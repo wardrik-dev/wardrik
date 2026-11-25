@@ -48,6 +48,11 @@ defmodule Wardrik.Chat.Channel do
     ],
     offering: [type: :string, doc: "What a room with no agent is told."],
     deciding: [type: :string, doc: "What a member who may not decide is told."],
+    reasoning: [
+      type: :boolean,
+      default: true,
+      doc: "Whether a thread shows the end of the model's reasoning while the agent works."
+    ],
     server: [type: :atom, required: true, doc: false],
     wardrik: [type: :atom, required: true, doc: false],
     events: [type: :atom, required: true, doc: false],
@@ -69,6 +74,7 @@ defmodule Wardrik.Chat.Channel do
     :identities,
     :offering,
     :deciding,
+    :reasoning,
     :options
   ]
   defstruct [vault: nil, direct: nil] ++ @enforce_keys
@@ -86,6 +92,7 @@ defmodule Wardrik.Chat.Channel do
           direct: {module(), term()} | nil,
           offering: String.t(),
           deciding: String.t(),
+          reasoning: boolean(),
           options: keyword()
         }
 
@@ -118,6 +125,7 @@ defmodule Wardrik.Chat.Channel do
       direct: own[:direct],
       offering: Keyword.get(own, :offering, offering(name)),
       deciding: Keyword.get(own, :deciding, deciding()),
+      reasoning: own[:reasoning],
       options: options
     }
   end

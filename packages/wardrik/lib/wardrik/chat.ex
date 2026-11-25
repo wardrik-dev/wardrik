@@ -73,10 +73,12 @@ defmodule Wardrik.Chat do
   @quoted_parent_length 2_000
 
   @doc """
-  Posts `outbound` in its thread. `{:skip, why}` declines it, as for a notice its thread already
-  shows. An error has it tried again later.
+  Posts `outbound` in its thread. `{:ok, progress}` names the message a run's progress is shown
+  in, for its later posts. `{:skip, why}` declines it, as for a notice its thread already shows.
+  An error has it tried again later, except for progress, which the next post brings up to date.
   """
-  @callback deliver(Outbound.t(), Channel.t()) :: :ok | {:skip, String.t()} | {:error, term()}
+  @callback deliver(Outbound.t(), Channel.t()) ::
+              :ok | {:ok, String.t()} | {:skip, String.t()} | {:error, term()}
 
   @doc "Returns extra children to run, such as a connection to the chat app. `[]` by default."
   @callback children(Channel.t()) :: [Supervisor.child_spec() | {module(), term()}]
@@ -202,7 +204,7 @@ defmodule Wardrik.Chat do
 
     with {:ok, scope} <- Workspace.member_scope(workspace, inbound.sender),
          :ok <- Rooms.start(workspace, room: room, thread: thread),
-         :ok <- Replies.follow(workspace, held),
+         :ok <- Replies.follow(workspace, held ++ [message: inbound.id, asker: inbound.sender.id]),
          waiting? = waiting?(scope, agent, conversation),
          {:ok, _message} <-
            Wardrik.Agent.ask(

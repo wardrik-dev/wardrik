@@ -13,6 +13,7 @@ defmodule Wardrik.ChatTest do
   alias Wardrik.Chat.Offer
   alias Wardrik.Chat.Outbound
   alias Wardrik.Chat.Rooms
+  alias Wardrik.Chat.Step
   alias Wardrik.Chat.Test.Chat
   alias Wardrik.Chat.Waiting
   alias Wardrik.Chat.Workspace
@@ -179,9 +180,82 @@ defmodule Wardrik.ChatTest do
       refute_receive {:delivered, %Outbound{body: {:failed, "x"}}}, 50
     end
 
-    test "shows what the agent is doing while it works", context do
+    test "shows each step of a run, for whoever asked, then ends with the reply", context do
       Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
-      assert_receive {:delivered, %Outbound{body: {:status, "is thinking…"}}}
+
+      assert_receive {:delivered,
+                      %Outbound{
+                        body: {:progress, [%Step{title: "Thinking", status: :running}]},
+                        progress: nil,
+                        asker: "U3"
+                      }}
+
+      assert_receive {:delivered,
+                      %Outbound{
+                        body: {:progress, [%Step{title: "Thinking", status: :done}]},
+                        progress: "progress-1.1"
+                      }}
+
+      assert_receive {:delivered,
+                      %Outbound{body: {:reply, "Answered: Hi", ["1.1"]}, progress: "progress-1.1"}}
+    end
+
+    test "shows a step's progress again while it runs quietly", context do
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
+      assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
+
+      log = conversation(context, "1.1")
+      run = %{"run" => %{"id" => "r2", "message_ids" => []}}
+      :ok = Wardrik.EventLog.append(context.events, log, {"run.started", "runs/r2", run})
+
+      started = %{
+        "message" => %{"id" => "msg_2"},
+        "request" => %{"model" => "test"},
+        "decided" => %{"by" => "default"}
+      }
+
+      :ok =
+        Wardrik.EventLog.append(
+          context.events,
+          log,
+          {"message.started", "messages/msg_2", started}
+        )
+
+      assert_receive {:delivered, %Outbound{body: {:progress, [%Step{id: "msg_2"}]}}}
+
+      replies = Module.concat([context.name, "Channels", context.channel.name, "Replies"])
+      {pid, _meta} = DurableServer.Supervisor.lookup(replies, "T1/C1")
+      send(pid, {:beat, log})
+
+      assert_receive {:delivered,
+                      %Outbound{
+                        body: {:progress, [%Step{id: "msg_2", status: :running}]},
+                        progress: "progress-1.1"
+                      }}
+    end
+
+    test "starts a new progress for each run", context do
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
+      assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
+
+      Wardrik.Chat.answer_inbound(context.workspace, reply("More", "1.1", "1.2"))
+      assert_receive {:delivered, %Outbound{body: {:progress, _steps}, progress: nil}}
+    end
+
+    test "shows a call the agent runs as waiting, then the calls it waits on", context do
+      Wardrik.Chat.answer_inbound(context.workspace, mention("echo", "1.1"))
+
+      assert_receive {:delivered,
+                      %Outbound{
+                        body: {:progress, [%Step{title: "Running echo", status: :running}]}
+                      }}
+
+      assert_receive {:delivered,
+                      %Outbound{
+                        body: {:progress, [%Step{title: "Running echo", status: :waiting}]}
+                      }}
+
+      assert_receive {:delivered, %Outbound{body: {:waiting, _calls}, progress: "progress-1.1"}}
     end
 
     test "tries a post again that the chat app refused", context do
