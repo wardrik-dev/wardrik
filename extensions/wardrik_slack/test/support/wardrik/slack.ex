@@ -185,6 +185,11 @@ defmodule WardrikSlack.Test.Wardrik do
 
   defp reply("chat.postMessage", _params), do: %{ok: true, ts: "9.9"}
 
+  defp reply("chat.startStream", %{"thread_ts" => "3." <> _rest}),
+    do: %{ok: false, error: "not_allowed_token_type"}
+
+  defp reply("chat.startStream", _params), do: %{ok: true, ts: "9.8"}
+
   defp reply("apps.connections.open", _params), do: %{ok: false, error: "invalid_auth"}
   defp reply("auth.test", _params), do: %{ok: true, user: "wardrik", team: "Acme"}
 

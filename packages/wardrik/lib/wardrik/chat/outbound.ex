@@ -5,22 +5,30 @@ defmodule Wardrik.Chat.Outbound do
 
   `body` is one of:
 
+    * `{:progress, [%Wardrik.Chat.Step{}]}` - what the agent has done so far in a run, oldest
+      first, each time a step starts, changes or ends. Sent again while a step runs quietly, so
+      its time can be shown. Show it in one message: deliver returns `{:ok, progress}` with the
+      message's ID, and later posts of the run carry it in `:progress`.
     * `{:reply, text, answering}` - the agent's answer, and the IDs of the messages it answers.
-    * `{:status, label}` - what the agent is doing, in a few words. Shown until the next post.
     * `{:stopped, answering}` - a run stopped before answering those messages.
     * `{:waiting, [%Wardrik.Chat.Waiting{}]}` - calls the agent waits on a person for.
     * `{:failed, reason}` - why a run failed.
     * `{:said, text}` - a line about what happened, such as who decided a call.
     * `{:notice, %Wardrik.Notice{}}` - what an agent did while nobody watched. Posted in the room.
       Read its calls with `Wardrik.Chat.Waiting.from_notice/1`.
+
+  `:progress` is the ID the adapter returned for the run's progress, or `nil` before it returned
+  one. A reply, stop, wait or failure ends the run's progress, so the adapter can finish it.
+
+  `:asker` is the chat app's ID for the member whose message started the run, if known.
   """
 
   @enforce_keys [:installation, :room, :thread, :body]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [progress: nil, asker: nil]
 
   @type body() ::
-          {:reply, String.t(), [String.t()]}
-          | {:status, String.t()}
+          {:progress, [Wardrik.Chat.Step.t()]}
+          | {:reply, String.t(), [String.t()]}
           | {:stopped, [String.t()]}
           | {:waiting, [Wardrik.Chat.Waiting.t()]}
           | {:failed, String.t()}
@@ -31,6 +39,8 @@ defmodule Wardrik.Chat.Outbound do
           installation: Wardrik.Channel.Installation.t(),
           room: String.t(),
           thread: String.t() | nil,
-          body: body()
+          body: body(),
+          progress: String.t() | nil,
+          asker: String.t() | nil
         }
 end

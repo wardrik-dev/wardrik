@@ -1,6 +1,6 @@
 defmodule Wardrik.Chat.Replies do
   @moduledoc """
-  Posts agents' answers in each room's threads: replies, status, calls to decide, and failures.
+  Posts agents' answers in each room's threads: progress, replies, calls to decide, and failures.
 
     * Each room has one process in the cluster. It saves its place in Wardrik's store, so no
       answer is lost to a restart.
@@ -32,11 +32,21 @@ defmodule Wardrik.Chat.Replies do
       Wardrik.Chat.Replies.follow(workspace,
         room: "C024BE91L",
         agent: "agt_01JF8X5RQ2",
-        conversation: "slack.T0123.C024BE91L.1696.1234"
+        conversation: "slack.T0123.C024BE91L.1696.1234",
+        message: "1696.1234",
+        asker: "U0123"
       )
+
+  `:message` is the message about to be asked, and `:asker` the chat app's ID for the member who
+  sent it. The run that answers it shows its progress to them.
   """
-  @spec follow(Workspace.t(), room: String.t(), agent: String.t(), conversation: String.t()) ::
-          :ok
+  @spec follow(Workspace.t(),
+          room: String.t(),
+          agent: String.t(),
+          conversation: String.t(),
+          message: String.t(),
+          asker: String.t()
+        ) :: :ok
   def follow(%Workspace{channel: channel, installation: installation} = workspace, opts) do
     room = Keyword.fetch!(opts, :room)
 
@@ -46,7 +56,8 @@ defmodule Wardrik.Chat.Replies do
     supervisor = supervisor(channel)
     {:ok, {pid, _meta}} = DurableServer.Supervisor.ensure_started_child(supervisor, child)
 
-    GenServer.call(pid, {:follow, hold(opts)})
+    asked = {Keyword.fetch!(opts, :message), Keyword.fetch!(opts, :asker)}
+    GenServer.call(pid, {:follow, hold(opts), asked})
   end
 
   @doc """

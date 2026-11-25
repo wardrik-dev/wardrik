@@ -139,7 +139,9 @@ defmodule Wardrik.Channel.PackageTest do
       assert Wardrik.Chat.Replies.follow(context.workspace,
                room: "C1",
                agent: "acme/triage",
-               conversation: "chat.T1.C1.1.1"
+               conversation: "chat.T1.C1.1.1",
+               message: "1.2",
+               asker: "U1"
              ) == :ok
 
       assert_receive {:delivered, %Outbound{body: {:reply, "Again.", _answering}}}, 1_000
@@ -186,11 +188,20 @@ defmodule Wardrik.Channel.PackageTest do
                :ignored
     end
 
-    test "shows what the agent is doing while it works", context do
+    test "shows each model call while the agent works", context do
       answers(context, [answer("Hello.")])
       Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
 
-      assert_receive {:delivered, %Outbound{body: {:status, "is thinking…"}}}, 1_000
+      assert_receive {:delivered,
+                      %Outbound{
+                        body:
+                          {:progress, [%Wardrik.Chat.Step{title: "Thinking", status: :running}]}
+                      }},
+                     1_000
+
+      assert_receive {:delivered,
+                      %Outbound{body: {:progress, [%Wardrik.Chat.Step{status: :done}]}}},
+                     1_000
     end
   end
 

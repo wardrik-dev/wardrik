@@ -381,6 +381,7 @@ channels:
 | `members` | member ID to user; wins over `domains` |
 | `direct` | the agent, by name, that answers direct messages to the app, or `{agent: NAME, per: member}` for an agent per member made from it; none unless set |
 | `offering`, `deciding` | messages for a room with no agent, and for a member who can't approve |
+| `reasoning` | whether a thread shows the end of the model's reasoning while the agent works; `true` unless set |
 
 - The name is lower-case letters, digits and `-`. `shell`, `ssh`, `terminal` and `oauth` are reserved.
 - Members without a `domains` or `members` mapping receive an access-denied message.

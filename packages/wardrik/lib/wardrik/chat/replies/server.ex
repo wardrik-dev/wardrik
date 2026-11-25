@@ -1,44 +1,57 @@
 defmodule Wardrik.Chat.Replies.Server do
   @moduledoc false
 
-  use DurableServer, vsn: 2
+  use DurableServer, vsn: 3
 
   alias Wardrik.Chat.Outbound
   alias Wardrik.Chat.Replies.Follower
   alias Wardrik.Chat.Replies.State
+  alias Wardrik.Chat.Step
   alias Wardrik.Chat.Waiting
   alias Wardrik.Chat.Workspace
   alias Wardrik.EventLog.Cursor
 
   require Logger
 
-  @types ~w(wardrik.message.created wardrik.run.started wardrik.tool_call.started
+  @types ~w(wardrik.message.created wardrik.run.started wardrik.run.resumed
+            wardrik.message.started wardrik.message.delta wardrik.reasoning.delta
+            wardrik.message.retrying wardrik.message.completed
+            wardrik.tool_call.started wardrik.tool_call.retrying wardrik.tool_call.completed
+            wardrik.subagent.started wardrik.subagent.progress wardrik.subagent.completed
+            wardrik.subagent.failed
             wardrik.run.completed wardrik.run.interrupted wardrik.run.failed wardrik.run.cancelled
-            wardrik.interrupt.resolved)
+            wardrik.run.deadline_exceeded wardrik.interrupt.resolved)
 
   @first_backoff 1_000
   @max_backoff 60_000
   @attempts 8
   @throttle 2_000
+  @beat 15_000
 
   @impl DurableServer
   def dump_state(state), do: State.dump(state)
 
+  # A room's first state is loaded with no version.
   @impl DurableServer
-  def load_state(_vsn, dumped), do: State.load(dumped)
+  def load_state(nil, dumped), do: State.load(3, dumped)
+  def load_state(vsn, dumped), do: State.load(vsn, dumped)
 
   @impl DurableServer
   def init(%State{} = state, %{channel: channel}) do
     Process.flag(:trap_exit, true)
-    {:ok, listen(%{state | channel: channel})}
+    state = listen(%{state | channel: channel})
+    running = Map.keys(state.runs)
+    {:ok, Enum.reduce(running, state, &schedule_beat(&2, &1))}
   end
 
   @impl DurableServer
   def handle_call(:cursor, _from, state), do: {:reply, state.cursor, state}
 
-  def handle_call({:follow, conversation}, _from, state) do
+  def handle_call({:follow, conversation, {message, asker}}, _from, state) do
+    state = State.put_asker(state, message, asker)
+
     if conversation in state.conversations,
-      do: {:reply, :ok, state},
+      do: {:reply, :ok, state, sync: true},
       else: {:reply, :ok, follow(state, conversation), sync: true}
   end
 
@@ -49,7 +62,7 @@ defmodule Wardrik.Chat.Replies.Server do
   def handle_cast({:remind, conversation}, state) do
     post = {:waiting, :all, State.find_asker(state, conversation)}
 
-    with {:error, reason} <- post(state, conversation, post) do
+    with {:error, reason} <- post(state, state, conversation, post) do
       Logger.warning("#{state.channel.name} couldn't remind #{state.room}: #{inspect(reason)}")
     end
 
@@ -58,6 +71,11 @@ defmodule Wardrik.Chat.Replies.Server do
 
   @impl DurableServer
   def handle_info({:retry, held, attempt}, state), do: posting(state, held, attempt)
+
+  def handle_info({:beat, conversation}, state) do
+    {:ok, posted} = post_progress(state, conversation)
+    {:noreply, posted, sync: progress(posted, conversation) != progress(state, conversation)}
+  end
 
   def handle_info({:EXIT, follower, reason}, %State{follower: follower} = state),
     do: {:stop, reason, state}
@@ -122,12 +140,9 @@ defmodule Wardrik.Chat.Replies.Server do
     conversation = conversation(event)
     {post, next} = State.take(state, conversation, event)
 
-    case post(next, conversation, post) do
-      :ok ->
-        handle_posted(show(next, conversation, post), cursor, from)
-
-      {:skip, _why} ->
-        handle_posted(next, cursor, from)
+    case post(state, next, conversation, post) do
+      {:ok, posted} ->
+        handle_posted(posted, cursor, from)
 
       {:error, reason} when attempt >= @attempts ->
         Logger.warning(
@@ -142,9 +157,10 @@ defmodule Wardrik.Chat.Replies.Server do
     end
   end
 
+  # Live events, such as a model's text as it streams, leave the cursor where it was.
   defp handle_posted(state, cursor, from) do
     GenServer.reply(from, :ok)
-    {:noreply, %{state | cursor: cursor}, sync: true}
+    {:noreply, %{state | cursor: cursor}, sync: cursor != state.cursor}
   end
 
   defp backoff(attempt), do: min(@first_backoff * Integer.pow(2, attempt - 1), @max_backoff)
@@ -152,26 +168,134 @@ defmodule Wardrik.Chat.Replies.Server do
   defp conversation(%Wardrik.Event{agent: agent, conversation: conversation}),
     do: {agent, conversation}
 
-  defp post(_state, _conversation, :none), do: :ok
+  # `before` is the state before the event, which holds the run a reply or failure ends.
+  defp post(_before, state, _conversation, :none), do: {:ok, state}
 
-  defp post(state, conversation, {:status, label}) do
-    if due?(state, conversation), do: deliver(state, conversation, {:status, label})
-    :ok
+  defp post(_before, state, conversation, {:progress, :changed}),
+    do: post_progress(state, conversation)
+
+  defp post(_before, state, conversation, {:progress, :details}) do
+    if due?(state, conversation),
+      do: post_progress(state, conversation),
+      else: {:ok, state}
   end
 
-  defp post(state, conversation, {:stopped, answering}) do
-    _cleared = deliver(state, conversation, {:stopped, answering})
-    :ok
+  defp post(before, state, conversation, {:stopped, _answering} = body) do
+    _posted = post_ending(before, state, conversation, body, :failed)
+    {:ok, end_progress(state, conversation)}
   end
 
-  defp post(state, conversation, {:waiting, ids, asked_by}) do
+  defp post(before, state, conversation, {:waiting, ids, asked_by}) do
     case waiting(state, conversation, ids, asked_by) do
-      [] -> :ok
-      calls -> deliver(state, conversation, {:waiting, calls})
+      [] -> {:ok, state}
+      calls -> post_ending(before, state, conversation, {:waiting, calls}, :waiting)
     end
   end
 
-  defp post(state, conversation, body), do: deliver(state, conversation, body)
+  defp post(before, state, conversation, {:reply, _text, _answering} = body),
+    do: post_ending(before, state, conversation, body, :done)
+
+  defp post(before, state, conversation, {:failed, _reason} = body),
+    do: post_ending(before, state, conversation, body, :failed)
+
+  defp post(_before, state, conversation, {:said, _text} = body) do
+    case deliver(state, conversation, body, nil) do
+      {:error, reason} -> {:error, reason}
+      _posted -> {:ok, state}
+    end
+  end
+
+  # A step still running when its run ends is shown ended as `status`, then the run's last post.
+  defp post_ending(before, state, conversation, body, status) do
+    run = State.find_run(before, conversation)
+    :ok = end_running_steps(state, conversation, run, status)
+
+    case deliver(state, conversation, body, run) do
+      {:error, reason} -> {:error, reason}
+      _posted -> {:ok, end_progress(state, conversation)}
+    end
+  end
+
+  defp post_progress(state, conversation) do
+    case State.find_run(state, conversation) do
+      %{steps: [_ | _] = steps} = run ->
+        state
+        |> deliver(conversation, {:progress, steps}, run)
+        |> note_progress(state, conversation)
+        |> schedule_beat(conversation)
+        |> then(&{:ok, &1})
+
+      _no_steps ->
+        {:ok, state}
+    end
+  end
+
+  defp note_progress({:ok, progress}, state, conversation),
+    do:
+      state
+      |> State.put_progress(conversation, progress)
+      |> note_progress_shown(conversation)
+
+  defp note_progress(:ok, state, conversation), do: note_progress_shown(state, conversation)
+  defp note_progress({:skip, _why}, state, _conversation), do: state
+
+  # Progress is shown as it was, and the next post brings it up to date.
+  defp note_progress({:error, reason}, state, _conversation) do
+    Logger.debug(
+      "#{state.channel.name} couldn't post progress in #{state.room}: #{inspect(reason)}"
+    )
+
+    state
+  end
+
+  defp end_running_steps(state, conversation, %{progress: progress, steps: steps} = run, status)
+       when is_binary(progress) do
+    if Enum.any?(steps, &(&1.status == :running)) do
+      ended = Enum.map(steps, &end_running_step(&1, status))
+      _shown = deliver(state, conversation, {:progress, ended}, run)
+    end
+
+    :ok
+  end
+
+  defp end_running_steps(_state, _conversation, _run, _status), do: :ok
+
+  defp end_running_step(%Step{status: :running} = step, status), do: %{step | status: status}
+  defp end_running_step(step, _status), do: step
+
+  defp note_progress_shown(state, conversation) do
+    state
+    |> State.mark_details_shown(conversation)
+    |> mark_shown(conversation)
+  end
+
+  defp end_progress(state, conversation) do
+    cancel_beat(state, conversation)
+
+    %{
+      state
+      | shown: Map.delete(state.shown, conversation),
+        beats: Map.delete(state.beats, conversation)
+    }
+  end
+
+  defp schedule_beat(state, conversation) do
+    cancel_beat(state, conversation)
+
+    if State.running?(state, conversation) do
+      beat = Process.send_after(self(), {:beat, conversation}, @beat)
+      put_in(state.beats[conversation], beat)
+    else
+      %{state | beats: Map.delete(state.beats, conversation)}
+    end
+  end
+
+  defp cancel_beat(state, conversation) do
+    with {:ok, beat} <- Map.fetch(state.beats, conversation), do: Process.cancel_timer(beat)
+    :ok
+  end
+
+  defp progress(state, conversation), do: get_in(state.runs, [conversation, :progress])
 
   defp waiting(state, {agent, id}, ids, asked_by) do
     with {:ok, workspace} <- workspace(state),
@@ -198,23 +322,19 @@ defmodule Wardrik.Chat.Replies.Server do
     end
   end
 
-  defp show(state, conversation, {:status, _label}) do
-    if due?(state, conversation),
-      do: put_in(state.shown[conversation], System.monotonic_time(:millisecond)),
-      else: state
-  end
+  defp mark_shown(state, conversation),
+    do: put_in(state.shown[conversation], System.monotonic_time(:millisecond))
 
-  defp show(state, conversation, _posted),
-    do: %{state | shown: Map.delete(state.shown, conversation)}
-
-  defp deliver(state, {_agent, conversation}, body) do
+  defp deliver(state, {_agent, conversation}, body, run) do
     case workspace(state) do
       {:ok, %Workspace{channel: channel, installation: installation} = workspace} ->
         outbound = %Outbound{
           installation: installation,
           room: state.room,
           thread: Workspace.thread(workspace, room: state.room, conversation: conversation),
-          body: body
+          body: body,
+          progress: run[:progress],
+          asker: run[:asker]
         }
 
         channel.adapter.deliver(outbound, channel)

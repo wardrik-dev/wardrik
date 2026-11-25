@@ -142,13 +142,17 @@ defmodule Wardrik.Slack.PackageTest do
 
       assert_receive {:slack, "reactions.add", %{"name" => "eyes", "timestamp" => "1.1"}}, 1_000
 
-      assert_receive {:slack, "chat.postMessage",
+      assert_receive {:slack, "chat.startStream",
                       %{
                         "thread_ts" => "1.1",
-                        "text" => "Two cases, both 2019.",
-                        "blocks" => [%{"type" => "markdown"}]
+                        "recipient_user_id" => "U3",
+                        "chunks" => [%{"type" => "task_update", "title" => "Thinking"}]
                       }},
                      1_000
+
+      assert_receive {:slack, "chat.stopStream", %{"ts" => "9.8"}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Two cases, both 2019."}}, 1_000
 
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
@@ -199,7 +203,10 @@ defmodule Wardrik.Slack.PackageTest do
       assert_receive {:slack, "chat.postMessage", %{"text" => "Approved by maria: Go ahead."}},
                      1_000
 
+      assert_receive {:slack, "chat.stopStream", %{}}, 1_000
+
       assert_receive {:slack, "chat.postMessage", %{"text" => "Done."}}, 1_000
+
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
 
@@ -254,16 +261,16 @@ defmodule Wardrik.Slack.PackageTest do
       assert_receive {:slack, "reactions.remove", %{"name" => "eyes", "timestamp" => "1.1"}},
                      1_000
 
-      assert_receive {:slack, "assistant.threads.setStatus", %{"status" => ""}}, 1_000
-
       Mimic.stub(ReqLLM, :stream_text, fn _model, _messages, _opts ->
         {:error, %RuntimeError{message: "The model is down."}}
       end)
 
       event(context, message("<@UBOT> again", "2.1"))
 
+      assert_receive {:slack, "chat.stopStream", %{}}, 5_000
+
       assert_receive {:slack, "chat.postMessage",
-                      %{"text" => ":warning: It stopped with an error: " <> _reason}},
+                      %{"text" => ":warning: It stopped with an error: " <> _}},
                      5_000
     end
 

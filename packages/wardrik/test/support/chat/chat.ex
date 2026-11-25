@@ -24,6 +24,11 @@ defmodule Wardrik.Chat.Test.Chat do
     end
   end
 
+  def deliver(%{body: {:progress, _steps}} = outbound, channel) do
+    send(channel.options[:test], {:delivered, outbound})
+    {:ok, "progress-" <> outbound.thread}
+  end
+
   def deliver(outbound, channel), do: handle_deliver(channel, outbound)
 
   defp handle_deliver(channel, outbound) do

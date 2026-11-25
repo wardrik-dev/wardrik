@@ -297,10 +297,29 @@ defmodule Wardrik.CorpusTest do
       | cursor: "c-1",
         conversations: [{"acme/triage", "C1"}],
         senders: %{"msg_1" => "U1"},
-        runs: %{{"acme/triage", "C1"} => %{id: "run_1", answering: ["msg_1"], asked_by: "U1"}}
+        askers: %{"msg_2" => "U2"},
+        runs: %{
+          {"acme/triage", "C1"} => %{
+            id: "run_1",
+            answering: ["msg_1"],
+            asked_by: "U1",
+            asker: "U1",
+            progress: "1696.5678",
+            steps: [
+              %Wardrik.Chat.Step{
+                id: "msg_3",
+                title: "Thinking",
+                status: :running,
+                details: "Checking the calendar.",
+                shown: 9,
+                since: ~U[2026-11-25 10:00:00Z]
+              }
+            ]
+          }
+        }
     }
 
-    stored = %StoredState{vsn: 2, state: Replies.State.dump(room), meta: %Meta{}}
+    stored = %StoredState{vsn: 3, state: Replies.State.dump(room), meta: %Meta{}}
     {:ok, _put} = Durable.put_object(backend, "wardrik/replies/T1/C1", stored, [])
   end
 end

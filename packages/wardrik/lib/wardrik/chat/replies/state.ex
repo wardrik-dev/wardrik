@@ -1,6 +1,8 @@
 defmodule Wardrik.Chat.Replies.State do
   @moduledoc false
 
+  alias Wardrik.Chat.Step
+
   @enforce_keys [:workspace, :room]
   defstruct [
     :workspace,
@@ -10,11 +12,23 @@ defmodule Wardrik.Chat.Replies.State do
     :follower,
     conversations: [],
     senders: %{},
+    askers: %{},
     runs: %{},
-    shown: %{}
+    shown: %{},
+    beats: %{}
   ]
 
-  @type run() :: %{id: String.t(), answering: [String.t()], asked_by: String.t() | nil}
+  @reasoning_max 2_000
+  @steps 45
+
+  @type run() :: %{
+          id: String.t(),
+          answering: [String.t()],
+          asked_by: String.t() | nil,
+          asker: String.t() | nil,
+          progress: String.t() | nil,
+          steps: [Step.t()]
+        }
 
   @typedoc "A conversation, as the agent's ID and the conversation's."
   @type conversation() :: {agent :: String.t(), conversation :: String.t() | nil}
@@ -27,17 +41,20 @@ defmodule Wardrik.Chat.Replies.State do
           follower: pid() | nil,
           conversations: [conversation()],
           senders: %{String.t() => String.t()},
+          askers: %{String.t() => String.t()},
           runs: %{conversation() => run()},
-          shown: %{conversation() => integer()}
+          shown: %{conversation() => integer()},
+          beats: %{conversation() => reference()}
         }
 
   @typedoc """
-  What an event asks to post in its thread. `:none` posts nothing. The rest match
-  `t:Wardrik.Chat.Outbound.body/0`, except `{:waiting, interrupt_ids, asked_by}`.
+  What an event asks to post in its thread. `:none` posts nothing. `{:progress, :changed}` posts
+  the run's steps, and `{:progress, :details}` too unless it posted them a moment ago. The rest
+  match `t:Wardrik.Chat.Outbound.body/0`, except `{:waiting, interrupt_ids, asked_by}`.
   """
   @type post() ::
-          {:reply, String.t(), [String.t()]}
-          | {:status, String.t()}
+          {:progress, :changed | :details}
+          | {:reply, String.t(), [String.t()]}
           | {:waiting, [String.t()], String.t() | nil}
           | {:failed, String.t()}
           | {:stopped, [String.t()]}
@@ -57,6 +74,7 @@ defmodule Wardrik.Chat.Replies.State do
       "cursor" => state.cursor,
       "conversations" => Enum.map(state.conversations, &Tuple.to_list/1),
       "senders" => state.senders,
+      "askers" => state.askers,
       "runs" =>
         for {{agent, conversation}, run} <- state.runs do
           %{
@@ -64,78 +82,335 @@ defmodule Wardrik.Chat.Replies.State do
             "conversation" => conversation,
             "id" => run.id,
             "answering" => run.answering,
-            "asked_by" => run.asked_by
+            "asked_by" => run.asked_by,
+            "asker" => run.asker,
+            "progress" => run.progress,
+            "steps" => Enum.map(run.steps, &dump_step/1)
           }
         end
     }
   end
 
-  @doc "Restores the state from `dump/1`'s result."
-  @spec load(map()) :: t()
-  def load(dumped) do
+  @doc """
+  Restores the state from `dump/1`'s result, as version `vsn` saved it.
+
+  Version 2 kept no askers and no progress.
+  """
+  @spec load(pos_integer(), map()) :: t()
+  def load(2, dumped) do
+    runs =
+      Enum.map(
+        dumped["runs"],
+        &Map.merge(&1, %{"asker" => nil, "progress" => nil, "steps" => []})
+      )
+
+    upgraded = Map.merge(dumped, %{"runs" => runs, "askers" => %{}})
+    load(3, upgraded)
+  end
+
+  def load(3, dumped) do
     %__MODULE__{
       workspace: dumped["workspace"],
       room: dumped["room"],
       cursor: dumped["cursor"],
       conversations: Enum.map(dumped["conversations"], &List.to_tuple/1),
       senders: dumped["senders"],
+      askers: dumped["askers"],
       runs:
         Map.new(dumped["runs"], fn run ->
           {{run["agent"], run["conversation"]},
-           %{id: run["id"], answering: run["answering"], asked_by: run["asked_by"]}}
+           %{
+             id: run["id"],
+             answering: run["answering"],
+             asked_by: run["asked_by"],
+             asker: run["asker"],
+             progress: run["progress"],
+             steps: Enum.map(run["steps"], &load_step/1)
+           }}
         end)
     }
   end
 
+  defp dump_step(step) do
+    %{
+      "id" => step.id,
+      "title" => step.title,
+      "status" => Atom.to_string(step.status),
+      "details" => step.details,
+      "shown" => step.shown,
+      "since" => DateTime.to_iso8601(step.since)
+    }
+  end
+
+  defp load_step(dumped) do
+    {:ok, since, _offset} = DateTime.from_iso8601(dumped["since"])
+
+    %Step{
+      id: dumped["id"],
+      title: dumped["title"],
+      status: load_status(dumped["status"]),
+      details: dumped["details"],
+      shown: dumped["shown"],
+      since: since
+    }
+  end
+
+  defp load_status("running"), do: :running
+  defp load_status("waiting"), do: :waiting
+  defp load_status("done"), do: :done
+  defp load_status("failed"), do: :failed
+
+  @doc "Notes that the chat member `asker` sent the message `id`, for the run that answers it."
+  @spec put_asker(t(), String.t(), String.t()) :: t()
+  def put_asker(state, id, asker), do: put_in(state.askers[id], asker)
+
   @doc "Returns what `event` of `conversation` asks to post, and the updated state."
   @spec take(t(), conversation(), Wardrik.Event.t()) :: {post(), t()}
-  def take(state, conversation, %Wardrik.Event{type: "wardrik." <> type, data: data}),
-    do: handle_take(state, conversation, type, data)
+  def take(state, conversation, %Wardrik.Event{type: "wardrik." <> type} = event),
+    do: handle_take(state, conversation, type, event)
 
   @doc "Returns who asked for the run under way in `conversation`, or `nil` if unknown."
   @spec find_asker(t(), conversation()) :: String.t() | nil
   def find_asker(state, conversation), do: get_in(state.runs, [conversation, :asked_by])
 
-  defp handle_take(state, _conversation, "message.created", %{
-         "message" => %{"id" => id},
-         "sender" => %{"id" => sender}
-       }),
-       do: {:none, put_in(state.senders[id], sender)}
+  @doc "Returns the run under way in `conversation`, or `nil`."
+  @spec find_run(t(), conversation()) :: run() | nil
+  def find_run(state, conversation), do: Map.get(state.runs, conversation)
 
-  defp handle_take(state, conversation, "run.started", %{"run" => run}) do
-    answering = Map.get(run, "message_ids", [])
-    {asked, senders} = Map.split(state.senders, answering)
-    run = %{id: run["id"], answering: answering, asked_by: first_sender(asked, answering)}
-    state = %{state | senders: senders, runs: Map.put(state.runs, conversation, run)}
-    {{:status, "is thinking…"}, state}
+  @doc "Notes the ID the adapter returned for the progress of `conversation`'s run."
+  @spec put_progress(t(), conversation(), String.t()) :: t()
+  def put_progress(state, conversation, progress) do
+    if Map.has_key?(state.runs, conversation),
+      do: put_in(state.runs[conversation].progress, progress),
+      else: state
   end
 
-  defp handle_take(state, _conversation, "tool_call.started", %{"tool" => %{"name" => name}}),
-    do: {{:status, "is running #{name}…"}, state}
+  @doc "Notes that a post showed all the details of `conversation`'s steps."
+  @spec mark_details_shown(t(), conversation()) :: t()
+  def mark_details_shown(state, conversation) do
+    if Map.has_key?(state.runs, conversation),
+      do:
+        update_in(
+          state.runs[conversation].steps,
+          &Enum.map(&1, fn step -> %{step | shown: String.length(step.details)} end)
+        ),
+      else: state
+  end
 
-  defp handle_take(state, conversation, "run.completed", %{"messages" => messages}),
+  @doc "Returns whether a step of `conversation`'s run is running."
+  @spec running?(t(), conversation()) :: boolean()
+  def running?(state, conversation) do
+    case find_run(state, conversation) do
+      %{steps: steps} -> Enum.any?(steps, &(&1.status == :running))
+      nil -> false
+    end
+  end
+
+  defp handle_take(state, _conversation, "message.created", %{data: data}),
+    do: {:none, note_sender(state, data)}
+
+  defp handle_take(state, conversation, "run.started", %{data: %{"run" => run}}) do
+    answering = Map.get(run, "message_ids", [])
+    {asked, senders} = Map.split(state.senders, answering)
+    {askers, rest} = Map.split(state.askers, answering)
+
+    run = %{
+      id: run["id"],
+      answering: answering,
+      asked_by: first_found(asked, answering),
+      asker: first_found(askers, answering),
+      progress: nil,
+      steps: []
+    }
+
+    {:none,
+     %{state | senders: senders, askers: rest, runs: Map.put(state.runs, conversation, run)}}
+  end
+
+  defp handle_take(state, conversation, "message.started", %{data: data} = event),
+    do: start_step(state, conversation, data["message"]["id"], "Thinking", event)
+
+  defp handle_take(state, conversation, "reasoning.delta", %{data: data}) do
+    if state.channel.reasoning,
+      do: add_reasoning(state, conversation, data["message"]["id"], data["delta"]),
+      else: {:none, state}
+  end
+
+  defp handle_take(state, conversation, "message.delta", %{data: data}) do
+    id = data["message"]["id"]
+
+    case find_step(state, conversation, id) do
+      %Step{title: "Thinking"} -> change_step(state, conversation, id, &%{&1 | title: "Writing"})
+      _other -> {:none, state}
+    end
+  end
+
+  defp handle_take(state, conversation, "message.retrying", %{data: data}),
+    do: note_retry(state, conversation, data["message"]["id"], "The model", data)
+
+  defp handle_take(state, conversation, "message.completed", %{data: data}),
+    do: end_step(state, conversation, data["message"]["id"], data)
+
+  defp handle_take(state, conversation, "tool_call.started", %{data: %{"tool" => tool}} = event),
+    do: start_step(state, conversation, tool["call"]["id"], "Running #{tool["name"]}", event)
+
+  defp handle_take(state, conversation, "tool_call.retrying", %{data: %{"tool" => tool} = data}),
+    do: note_retry(state, conversation, tool["call"]["id"], tool["name"], data)
+
+  defp handle_take(state, conversation, "tool_call.completed", %{data: %{"tool" => tool} = data}),
+    do: end_step(state, conversation, tool["call"]["id"], data)
+
+  defp handle_take(state, conversation, "subagent.started", %{data: data} = event),
+    do:
+      start_step(
+        state,
+        conversation,
+        subagent_step_id(data),
+        "Asked #{data["agent"]["name"]}",
+        event
+      )
+
+  defp handle_take(state, conversation, "subagent.progress", %{data: data}) do
+    calls = data["tool_calls"]
+    counted = if calls == 1, do: "1 call", else: "#{calls} calls"
+    title = "Asked #{data["agent"]["name"]} · running #{data["tool"]["name"]} (#{counted})"
+    change_step(state, conversation, subagent_step_id(data), &%{&1 | title: title})
+  end
+
+  defp handle_take(state, conversation, "subagent.completed", %{data: data}),
+    do:
+      change_step(
+        state,
+        conversation,
+        subagent_step_id(data),
+        &%{&1 | status: :done, title: "Asked #{data["agent"]["name"]}"}
+      )
+
+  defp handle_take(state, conversation, "subagent.failed", %{data: data}),
+    do: end_step(state, conversation, subagent_step_id(data), Map.put(data, "status", "error"))
+
+  defp handle_take(state, conversation, "run.completed", %{data: %{"messages" => messages}}),
     do:
       {{:reply, last_said(messages), answering(state, conversation)}, finish(state, conversation)}
 
-  defp handle_take(state, conversation, "run.interrupted", %{"interrupts" => interrupts}),
-    do: {{:waiting, Enum.map(interrupts, & &1["id"]), find_asker(state, conversation)}, state}
+  defp handle_take(state, conversation, "run.interrupted", %{data: %{"interrupts" => interrupts}}),
+       do:
+         {{:waiting, Enum.map(interrupts, & &1["id"]), find_asker(state, conversation)},
+          restart(state, conversation)}
 
-  defp handle_take(state, conversation, "run.failed", %{"error" => error}),
+  defp handle_take(state, conversation, "run.resumed", _event),
+    do: {:none, restart(state, conversation)}
+
+  defp handle_take(state, conversation, "run.failed", %{data: %{"error" => error}}),
     do: {{:failed, error["message"]}, finish(state, conversation)}
 
-  defp handle_take(state, conversation, "run.cancelled", _data),
+  defp handle_take(state, conversation, "run.deadline_exceeded", _event),
+    do: {{:failed, "It ran out of time."}, finish(state, conversation)}
+
+  defp handle_take(state, conversation, "run.cancelled", _event),
     do: {{:stopped, answering(state, conversation)}, finish(state, conversation)}
 
-  defp handle_take(state, _conversation, "interrupt.resolved", data),
+  defp handle_take(state, _conversation, "interrupt.resolved", %{data: data}),
     do:
       {{:said,
         decide(data["decision"], decider(data["resolved_by"]), data["note"] || data["reason"])},
        state}
 
-  defp handle_take(state, _conversation, _type, _data), do: {:none, state}
+  defp handle_take(state, _conversation, _type, _event), do: {:none, state}
 
-  defp first_sender(asked, [first | _rest]), do: Map.get(asked, first)
-  defp first_sender(_asked, []), do: nil
+  defp note_sender(state, %{"message" => %{"id" => id}, "sender" => %{"id" => sender}}),
+    do: put_in(state.senders[id], sender)
+
+  defp note_sender(state, _data), do: state
+
+  defp first_found(found, [first | _rest]), do: Map.get(found, first)
+  defp first_found(_found, []), do: nil
+
+  # The events name a subagent alone, so one asked twice at once shares a step.
+  defp subagent_step_id(data), do: "subagent-" <> data["agent"]["name"]
+
+  defp start_step(state, conversation, id, title, %Wardrik.Event{time: time}) do
+    step = %Step{id: id, title: title, status: :running, since: time}
+
+    update_steps(state, conversation, fn steps ->
+      steps
+      |> Enum.reject(&(&1.id == id))
+      |> Kernel.++([step])
+      |> Enum.take(-@steps)
+    end)
+  end
+
+  defp add_reasoning(state, conversation, id, delta) do
+    case find_step(state, conversation, id) do
+      %Step{status: :running, details: details} ->
+        added = cap_reasoning(details, delta)
+        {_post, state} = change_step(state, conversation, id, &%{&1 | details: added})
+        {{:progress, :details}, state}
+
+      _other ->
+        {:none, state}
+    end
+  end
+
+  defp cap_reasoning(details, delta) do
+    joined = details <> delta
+    String.slice(joined, 0, @reasoning_max)
+  end
+
+  defp add_line(%Step{details: ""} = step, line), do: %{step | details: line}
+  defp add_line(step, line), do: %{step | details: step.details <> "\n\n" <> line}
+
+  defp note_retry(state, conversation, id, what, data) do
+    said =
+      "#{what} failed: #{data["error"]["message"]}. Trying again in " <>
+        "#{div(data["wait_ms"] + 999, 1000)}s (attempt #{data["attempt"]} of #{data["attempts"]})."
+
+    change_step(state, conversation, id, &add_line(&1, said))
+  end
+
+  defp end_step(state, conversation, id, %{"status" => "error", "error" => error}),
+    do:
+      change_step(state, conversation, id, fn step ->
+        step
+        |> add_line(error["message"])
+        |> Map.put(:status, :failed)
+      end)
+
+  defp end_step(state, conversation, id, _ok),
+    do: change_step(state, conversation, id, &%{&1 | status: :done})
+
+  defp find_step(state, conversation, id) do
+    case find_run(state, conversation) do
+      %{steps: steps} -> Enum.find(steps, &(&1.id == id))
+      nil -> nil
+    end
+  end
+
+  defp change_step(state, conversation, id, change) do
+    if find_step(state, conversation, id),
+      do:
+        update_steps(
+          state,
+          conversation,
+          &Enum.map(&1, fn step -> change_one(step, id, change) end)
+        ),
+      else: {:none, state}
+  end
+
+  defp change_one(%Step{id: id} = step, id, change), do: change.(step)
+  defp change_one(step, _id, _change), do: step
+
+  defp update_steps(state, conversation, update) do
+    if Map.has_key?(state.runs, conversation),
+      do: {{:progress, :changed}, update_in(state.runs[conversation].steps, update)},
+      else: {:none, state}
+  end
+
+  defp restart(state, conversation) do
+    if Map.has_key?(state.runs, conversation),
+      do: update_in(state.runs[conversation], &%{&1 | progress: nil, steps: []}),
+      else: state
+  end
 
   defp answering(state, conversation), do: get_in(state.runs, [conversation, :answering]) || []
 
