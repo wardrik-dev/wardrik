@@ -16,7 +16,7 @@ defmodule Wardrik.Notify do
   # The moduledoc lists the options from the schema above.
   # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
-  Tells people when an agent parks, fails or finishes while nobody watches.
+  Notifies people when an agent parks, fails or finishes a turn nobody asked for.
 
       # Wardrik's options
       notify: [
@@ -36,11 +36,11 @@ defmodule Wardrik.Notify do
       notify: [%{to: ["ops"], on: ["parked", "failed"]}, %{to: ["lead"], on: ["finished"]}]
 
     * A list of routes sends each route's events to its own targets. A target two routes name is
-      told once.
+      notified once.
     * `on` defaults to `["parked", "failed"]`.
-    * `finished` tells of turns nobody asked for: those a trigger or another agent's notice
-      started. A turn a person or agent asked for answered them, so it is told to no one.
-    * A finished turn that answers `NO_REPLY` is told to no one. See `Wardrik.Reply.quiet?/1`.
+    * `finished` notifies of turns nobody asked for: those a trigger or another agent's notice
+      started. A turn a person or agent asked for already answered them, so it notifies no one.
+    * A finished turn that answers `NO_REPLY` notifies no one. See `Wardrik.Reply.quiet?/1`.
     * `judge` asks `model` (default `"typesafe:jev-latest"`) the `question` about each finished
       turn's answer and the conversation's digest. The answer is sent if the probability of yes is
       at least `send` (default `0.5`). Otherwise it is held and `wardrik.notice.held` is recorded.
@@ -50,9 +50,9 @@ defmodule Wardrik.Notify do
       spending.
     * An agent reaches only the targets `Wardrik.Resolved`'s `:notify` gives it.
     * Your resolver can also give a target of its own, as `{module, opts}`, with secrets as values.
-    * The node an agent runs on tells of it, retrying as `:retries` says. A notice whose node stops
-      first is lost; `interrupts.list` still shows what waits. Tell repeats apart by agent, kind
-      and `at`.
+    * The node an agent runs on notifies of it, retrying as `:retries` says. A notice whose node
+      stops first is lost; `interrupts.list` still shows what waits. Notices that repeat differ by
+      agent, kind and `at`.
 
   ## Options
 

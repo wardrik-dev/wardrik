@@ -115,8 +115,8 @@ defmodule Wardrik.NotifyTest do
 
   defp model(answer), do: stub(ReqLLM, :stream_text, fn _model, _messages, _opts -> answer end)
 
-  # Asks as a trigger does, for no one: a turn someone asked for answers them, and is told of to
-  # no one else.
+  # Asks as a trigger does, for no one: a turn someone asked for answers them, and notifies no one
+  # else.
   defp trigger(scope, agent \\ "acme/triage") do
     wardrik = Wardrik.Instance.fetch!(scope.wardrik)
     {:ok, pid} = Wardrik.Operations.Running.ensure_awake(wardrik, agent)
@@ -277,7 +277,7 @@ defmodule Wardrik.NotifyTest do
       assert_receive {:told, "audit", %Notice{kind: :finished}}
     end
 
-    test "tells no one of an answer of NO_REPLY, and doesn't judge it", %{scope: scope} do
+    test "notifies no one of an answer of NO_REPLY, and doesn't judge it", %{scope: scope} do
       judging(yes(0.9))
       model({:ok, answer("`NO_REPLY`\n")})
       {:ok, _agent} = define(scope, @judged)
@@ -304,7 +304,7 @@ defmodule Wardrik.NotifyTest do
   end
 
   describe "notices" do
-    test "tells of a turn that waits on a person, with each call's arguments", %{scope: scope} do
+    test "notifies of a turn that waits on a person, with each call's arguments", %{scope: scope} do
       model({:ok, calling([call("call_1", "echo", %{text: "hi"})])})
       {:ok, _agent} = define(scope, "audit")
       trigger(scope)
@@ -324,7 +324,7 @@ defmodule Wardrik.NotifyTest do
       refute Enum.any?(asked, &(&1.principal.id == "wardrik:notify"))
     end
 
-    test "tells of a turn that failed", %{scope: scope} do
+    test "notifies of a turn that failed", %{scope: scope} do
       model({:error, :boom})
       {:ok, _agent} = define(scope, "audit")
       trigger(scope)
@@ -356,7 +356,7 @@ defmodule Wardrik.NotifyTest do
       assert_receive {:told, "audit", %Notice{name: "Everyone"}}
     end
 
-    test "sends each route's events to its own targets, telling a target once", %{
+    test "sends each route's events to its own targets, notifying a target once", %{
       scope: scope,
       wardrik: wardrik
     } do
@@ -378,7 +378,7 @@ defmodule Wardrik.NotifyTest do
       refute_received {:posted, _channel, _workspace, _room, _notice}
     end
 
-    test "tells another agent, as a message from the agent, and never the agent itself", %{
+    test "notifies another agent, as a message from the agent, and never the agent itself", %{
       scope: scope,
       wardrik: wardrik
     } do
@@ -411,7 +411,7 @@ defmodule Wardrik.NotifyTest do
       end
     end
 
-    test "tells what a turn answered only where on asks for it", %{scope: scope} do
+    test "notifies of what a turn answered only where on asks for it", %{scope: scope} do
       model({:ok, answer("All quiet.")})
       {:ok, _agent} = define(scope, "audit")
       trigger(scope)
@@ -424,7 +424,7 @@ defmodule Wardrik.NotifyTest do
       assert_receive {:told, "audit", %Notice{kind: :finished, text: "All quiet."}}
     end
 
-    test "tells no one a turn someone asked for finished, since it answered them", %{
+    test "notifies no one that a turn someone asked for finished, since it answered them", %{
       scope: scope
     } do
       model({:ok, answer("Done.")})

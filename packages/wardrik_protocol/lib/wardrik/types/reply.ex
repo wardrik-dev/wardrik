@@ -2,8 +2,8 @@ defmodule Wardrik.Reply do
   @moduledoc """
   An agent's answer: its `text`, the `message` it answers, and the `run` that wrote it.
 
-  An agent answers `NO_REPLY` when a run finds nothing worth telling. Its notify targets aren't
-  told of that answer.
+  An agent answers `NO_REPLY` when a run finds nothing worth a reply. It notifies none of its
+  notify targets.
   """
 
   @enforce_keys [:message, :run, :text]
