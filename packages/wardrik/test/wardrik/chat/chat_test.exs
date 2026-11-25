@@ -434,6 +434,32 @@ defmodule Wardrik.ChatTest do
     def identify(request, _opts), do: {:ok, %Wardrik.Principal{id: request.email}}
   end
 
+  describe "stopping" do
+    setup context do
+      Rooms.join(context.workspace, "C1")
+      :ok
+    end
+
+    test "cancels the thread's run, as the member, with who asked for it", context do
+      Wardrik.Chat.answer_inbound(context.workspace, mention("echo", "1.1"))
+      assert_receive {:delivered, %Outbound{body: {:waiting, _calls}}}
+
+      assert Wardrik.Chat.stop(context.workspace, @ana, room: "C1", thread: "1.1") == :ok
+      assert_receive {:delivered, %Outbound{body: {:stopped, ["1.1"]}}}
+    end
+
+    test "says when nothing is running in the thread", context do
+      Wardrik.Chat.answer_inbound(context.workspace, mention("Hi", "1.1"))
+      assert_receive {:delivered, %Outbound{body: {:reply, "Answered: Hi", _answering}}}
+
+      assert Wardrik.Chat.stop(context.workspace, @ana, room: "C1", thread: "1.1") ==
+               :not_running
+
+      assert Wardrik.Chat.stop(context.workspace, @ana, room: "C9", thread: "1.1") ==
+               :not_running
+    end
+  end
+
   describe "prompts" do
     defmodule Suggests do
       @behaviour Wardrik.Chat.Prompts

@@ -54,8 +54,8 @@ display_information:
   name: Wardrik
   description: Agents that answer in threads, and ask before they act.
 features:
-  assistant_view:
-    assistant_description: Agents that answer here, and ask before they act.
+  agent_view:
+    agent_description: Agents that answer here, and ask before they act.
   app_home:
     home_tab_enabled: false
     messages_tab_enabled: true
@@ -81,8 +81,9 @@ settings:
   event_subscriptions:
     request_url: https://agents.example.com/v1/channels/slack/events
     bot_events:
+      - agent_session_stopped
+      - app_home_opened
       - app_uninstalled
-      - assistant_thread_started
       - channel_left
       - group_left
       - member_joined_channel
@@ -197,24 +198,26 @@ channels:
 - The app needs the `im:history` scope and the `message.im` event, as in the manifest above. An app
   made from an older manifest needs both added, and installing again.
 
-### The agent pane
+### Slack's agent experience
 
-With the `assistant:write` scope, the `assistant_view` feature and the `assistant_thread_started`
-event, as in the manifest above, Slack labels the app as an agent and opens it from the top bar.
-Each conversation there is a direct-message thread, answered as above.
+With the `assistant:write` scope, the `agent_view` feature, and the `app_home_opened` and
+`agent_session_stopped` events, as in the manifest above, Slack labels the app as an agent and
+opens it from the top bar. Each conversation in its Messages tab is a direct-message thread,
+answered as above.
 
-When a conversation starts, Slack suggests up to four prompts. Wardrik suggests its own unless
-the channel names others, or `[]` for none:
+- Opening the Messages tab suggests up to four prompts. Wardrik suggests its own unless the
+  channel names others, or `[]` for none:
 
-```yaml
-    prompts: ["What's on my plate today?", "Summarize #support this week"]
-```
+  ```yaml
+      prompts: ["What's on my plate today?", "Summarize #support this week"]
+  ```
 
-An app that embeds Wardrik can pick prompts per member as each conversation starts, with a
-`Wardrik.Chat.Prompts` module as the channel's `prompts` option.
-
-An app made from an older manifest keeps working without these, and gains the pane once they're
-added and the app is installed again.
+- An app that embeds Wardrik picks prompts per member with a `Wardrik.Chat.Prompts` module as the
+  channel's `prompts` option.
+- Stop, shown while the agent works, stops the run for whoever asked for it. Anyone else is told
+  they may not, and the run carries on.
+- Switching an app to `agent_view` can't be undone. An app still on `assistant_view` keeps
+  working: subscribe it to `assistant_thread_started` for its prompts.
 
 ### An agent per member
 

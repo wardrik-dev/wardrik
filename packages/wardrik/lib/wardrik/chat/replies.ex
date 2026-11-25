@@ -84,6 +84,26 @@ defmodule Wardrik.Chat.Replies do
 
   defp hold(opts), do: {Keyword.fetch!(opts, :agent), Keyword.fetch!(opts, :conversation)}
 
+  @doc """
+  Returns the agent of the run under way in `:conversation`, in its thread of `:room`, and who
+  asked for it. `:error` if none is.
+
+      Wardrik.Chat.Replies.find_run(workspace, room: "C024BE91L", conversation: "slack.T0123...")
+      #=> {:ok, %{agent: "agt_01JF8X5RQ2", asked_by: "user_42"}}
+  """
+  @spec find_run(Workspace.t(), room: String.t(), conversation: String.t()) ::
+          {:ok, %{agent: String.t(), asked_by: String.t() | nil}} | :error
+  def find_run(%Workspace{channel: channel} = workspace, opts) do
+    room = Keyword.fetch!(opts, :room)
+
+    supervisor = supervisor(channel)
+
+    case DurableServer.Supervisor.lookup(supervisor, key(workspace, room)) do
+      {pid, _meta} -> GenServer.call(pid, {:find_run, Keyword.fetch!(opts, :conversation)})
+      nil -> :error
+    end
+  end
+
   @doc "Stops posting in `room` and deletes its saved position."
   @spec forget(Workspace.t(), String.t()) :: :ok
   def forget(%Workspace{channel: channel} = workspace, room) do

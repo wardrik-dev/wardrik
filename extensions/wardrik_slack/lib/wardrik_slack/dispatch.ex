@@ -5,7 +5,7 @@ defmodule WardrikSlack.Dispatch do
   | Slack sends                              | Handled by               |
   | ---------------------------------------- | ------------------------ |
   | a message                                | `WardrikSlack.Messages`  |
-  | a conversation started in the agent pane | `WardrikSlack.Assistant` |
+  | the Messages tab opened, or Stop pressed | `WardrikSlack.Assistant` |
   | the bot joining or leaving a channel     | `WardrikSlack.Rooms`     |
   | a room's button or menu                  | `WardrikSlack.Rooms`     |
   | a waiting call's button                  | `WardrikSlack.Answers`   |
@@ -51,7 +51,11 @@ defmodule WardrikSlack.Dispatch do
   def interactive(_channel, _payload), do: :ignored
 
   defp event_handler("message"), do: Messages
-  defp event_handler("assistant_thread_started"), do: Assistant
+
+  defp event_handler(type)
+       when type in ~w(app_home_opened agent_session_stopped assistant_thread_started),
+       do: Assistant
+
   defp event_handler(_room_event), do: Rooms
 
   defp press_handler("wardrik_room" <> _rest), do: Rooms

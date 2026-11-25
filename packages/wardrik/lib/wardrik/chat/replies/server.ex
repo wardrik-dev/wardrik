@@ -47,6 +47,16 @@ defmodule Wardrik.Chat.Replies.Server do
   @impl DurableServer
   def handle_call(:cursor, _from, state), do: {:reply, state.cursor, state}
 
+  def handle_call({:find_run, id}, _from, state) do
+    found =
+      Enum.find_value(state.runs, :error, fn
+        {{agent, ^id}, run} -> {:ok, %{agent: agent, asked_by: run.asked_by}}
+        _other -> nil
+      end)
+
+    {:reply, found, state}
+  end
+
   def handle_call({:follow, conversation, {message, asker}}, _from, state) do
     state = State.put_asker(state, message, asker)
 

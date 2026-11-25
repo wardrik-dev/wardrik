@@ -461,38 +461,39 @@ defmodule WardrikSlackTest do
     end
   end
 
-  describe "the agent pane" do
+  describe "the agent experience" do
+    setup context do
+      define(context.owner, "agt_triage", channels: ["slack"])
+      event(context, %{type: "member_joined_channel", user: "UBOT", channel: "C1", inviter: "U1"})
+      assert_receive {:slack, "chat.postMessage", %{"text" => ":wave:" <> _rest}}, 1_000
+      :ok
+    end
+
+    defp open_tab(tab), do: %{type: "app_home_opened", user: "U3", channel: "D1", tab: tab}
+
     @tag slack: [
            prompts:
              {Wardrik.Chat.Prompts.Fixed, prompts: ["Plan my week", "Summarize this channel"]}
          ]
-    test "suggests the channel's prompts when a conversation starts", context do
-      started = %{
-        type: "assistant_thread_started",
-        assistant_thread: %{user_id: "U3", channel_id: "D1", thread_ts: "5.1"}
-      }
+    test "suggests the channel's prompts when the Messages tab opens", context do
+      event(context, open_tab("messages"))
 
-      event(context, started)
+      assert_receive {:slack, "assistant.threads.setSuggestedPrompts", params}, 1_000
 
-      assert_receive {:slack, "assistant.threads.setSuggestedPrompts",
-                      %{
-                        "channel_id" => "D1",
-                        "thread_ts" => "5.1",
-                        "prompts" => [
-                          %{"title" => "Plan my week"},
-                          %{"message" => "Summarize this channel"}
-                        ]
-                      }},
-                     1_000
+      assert params == %{
+               "channel_id" => "D1",
+               "prompts" => [
+                 %{"title" => "Plan my week", "message" => "Plan my week"},
+                 %{"title" => "Summarize this channel", "message" => "Summarize this channel"}
+               ]
+             }
+
+      event(context, open_tab("home"))
+      refute_receive {:slack, "assistant.threads.setSuggestedPrompts", _params}, 200
     end
 
     test "suggests Wardrik's own prompts where the channel names none", context do
-      started = %{
-        type: "assistant_thread_started",
-        assistant_thread: %{user_id: "U3", channel_id: "D1", thread_ts: "5.1"}
-      }
-
-      event(context, started)
+      event(context, open_tab("messages"))
 
       assert_receive {:slack, "assistant.threads.setSuggestedPrompts", %{"prompts" => prompts}},
                      1_000
@@ -502,13 +503,40 @@ defmodule WardrikSlackTest do
 
     @tag slack: [prompts: {Wardrik.Chat.Prompts.Fixed, prompts: []}]
     test "suggests nothing where the channel's prompts are none", context do
+      event(context, open_tab("messages"))
+      refute_receive {:slack, "assistant.threads.setSuggestedPrompts", _params}, 200
+    end
+
+    test "suggests prompts in each thread for an app on the older assistant experience",
+         context do
       started = %{
         type: "assistant_thread_started",
         assistant_thread: %{user_id: "U3", channel_id: "D1", thread_ts: "5.1"}
       }
 
       event(context, started)
-      refute_receive {:slack, "assistant.threads.setSuggestedPrompts", _params}, 200
+
+      assert_receive {:slack, "assistant.threads.setSuggestedPrompts",
+                      %{"channel_id" => "D1", "thread_ts" => "5.1"}},
+                     1_000
+    end
+
+    test "stops the run when Stop is pressed", context do
+      event(context, message("<@UBOT> echo hi", "1.1"))
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Waiting" <> _}}, 1_000
+
+      event(context, %{type: "agent_session_stopped", channel: "C1", thread_ts: "1.1", user: "U3"})
+
+      assert_receive {:slack, "reactions.remove", %{"name" => "eyes", "timestamp" => "1.1"}},
+                     1_000
+    end
+
+    test "sets a session with nothing running back to active", context do
+      event(context, %{type: "agent_session_stopped", channel: "C1", thread_ts: "9.1", user: "U3"})
+
+      assert_receive {:slack, "agents.sessions.setStatus",
+                      %{"channel_id" => "C1", "thread_ts" => "9.1", "status" => "active"}},
+                     1_000
     end
   end
 
