@@ -13,8 +13,8 @@ defmodule WardrikDaemon.Config.Notify do
     * `notify` takes `Wardrik.Notify`'s options.
     * A target is a room (`Wardrik.Notify.Room`'s options, `channel` from `channels`), a
       `webhook` (`Wardrik.Notify.Webhook`'s options), or an `agent`, by name, in the notifying
-      agent's org (`WardrikDaemon.NotifyAgent`), asked in its main conversation or the one
-      `conversation` names.
+      agent's org (`WardrikDaemon.NotifyAgent`), notified in its main conversation or the
+      one `conversation` names.
     * A target's name can't hold `:`.
     * Targets serve the deployment's org unless `orgs` says otherwise.
     * Orgs and people add their own webhooks. See Wardrik's `notify_targets.*` operations.

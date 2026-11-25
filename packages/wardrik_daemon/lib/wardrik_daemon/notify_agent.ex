@@ -1,16 +1,16 @@
 defmodule WardrikDaemon.NotifyAgent do
   @options [
-    name: [type: :string, required: true, doc: "The name of the agent it tells."],
+    name: [type: :string, required: true, doc: "The name of the agent it notifies."],
     conversation: [
       type: :string,
-      doc: "The conversation of the agent it asks in. Its main conversation unless set."
+      doc: "The conversation it notifies the agent in. Its main conversation unless set."
     ]
   ]
 
   # The moduledoc lists the options from the schema above.
   # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
-  Tells the agent of a name in the notifying agent's org, as `Wardrik.Notify.Agent` does.
+  Notifies the agent of a name in the notifying agent's org, as `Wardrik.Notify.Agent` does.
 
       notify:
         targets:

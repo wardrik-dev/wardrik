@@ -1,21 +1,21 @@
 defmodule Wardrik.Notify.Agent do
   @options [
-    agent: [type: :string, required: true, doc: "The ID of the agent it tells."],
+    agent: [type: :string, required: true, doc: "The ID of the agent it notifies."],
     conversation: [
       type: :string,
-      doc: "The conversation of the agent it asks in. Its main conversation unless set."
+      doc: "The conversation it notifies the agent in. Its main conversation unless set."
     ]
   ]
 
   # The moduledoc lists the options from the schema above.
   # credo:disable-for-next-line Credo.Check.Readability.StrictModuleLayout
   @moduledoc """
-  Tells another agent: each notice reaches it as a message, which it answers as it sees fit.
+  Notifies another agent: each notice reaches it as a message, which it answers as it sees fit.
 
       lead: {Wardrik.Notify.Agent, agent: "agt_lead"}
 
   With a route to `lead` for finished turns, a worker's answers go to the lead agent, which
-  decides what people hear:
+  decides what people are notified of:
 
       notify: [%{to: ["ops"], on: ["parked", "failed"]}, %{to: ["lead"], on: ["finished"]}]
 
