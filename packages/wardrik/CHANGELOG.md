@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.0-rc.23 (2026-11-25)
+
+- While an agent works, a chat thread shows each step of the run: each model call with the end of
+  its reasoning, each tool call, and each retry. A step that runs quietly shows how long it has
+  run. Set a channel's `reasoning: false` to leave the reasoning out.
+- `Wardrik.Chat.rate/2` records a member's rating of a reply as `wardrik.run.rated` in the
+  conversation's log, for later review and evaluations. The agent isn't told.
+- A channel's `prompts` option names the prompts suggested when a member starts a conversation
+  with the app, as a `Wardrik.Chat.Prompts` module. Without it, the channel suggests
+  `Wardrik.Chat.Prompts.defaults/0`.
+- `Wardrik.Chat.stop/3` stops the run under way in a thread, as the member who asked for it.
+- A middleware can suggest questions the person might ask next with
+  `Wardrik.Chat.Prompts.suggest_next/2`. Each call is recorded as `wardrik.prompts.suggested`,
+  and the chat app shows the latest list with the reply.
+- `Wardrik.Chat.Workspace.locate/2` returns the room and thread a conversation belongs to.
+- `Wardrik.Testing.Server` lists the conversations that wait on a person.
+- Chat replies' stored state is at version 4. Older state is upgraded when it's loaded.
+- **Upgrading:** a chat adapter's `deliver/2` gets `{:progress, steps}` in place of
+  `{:status, label}`, and may return `{:ok, id}` so the next progress post can update it.
+- Requires `wardrik_protocol` 0.1.0-rc.16.
+
 ## 0.1.0-rc.22 (2026-11-25)
 
 - A finished turn someone asked for sends no notice, since it already answered them. Finished

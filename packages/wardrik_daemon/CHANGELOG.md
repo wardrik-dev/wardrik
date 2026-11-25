@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.0-rc.27 (2026-11-25)
+
+- Slack threads show each step of a run while the agent works. Set `reasoning: false` on a
+  channel to leave the model's reasoning out.
+- Slack replies have thumbs up and down buttons. Each press is recorded as `wardrik.run.rated`.
+- A channel's `prompts` lists the prompts suggested when a member starts a conversation with the
+  app. Wardrik's own are used unless it's set.
+- Whoever asked for a run may stop it, such as with Slack's Stop button.
+- Slack's Home tab shows a member's agents and the calls waiting for a decision. Update the app's
+  manifest from the Slack page of the docs to turn on the agent experience and the Home tab.
+- Requires `wardrik` 0.1.0-rc.23 and `wardrik_slack` 0.1.0-rc.9.
+
 ## 0.1.0-rc.26 (2026-11-25)
 
 - A finished turn someone asked for, in Slack, the web or the CLI, sends no notice. Finished

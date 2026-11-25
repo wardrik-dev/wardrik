@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc.16 (2026-11-25)
+
+- `wardrik.run.rated`: a person rated a run's reply `positive` or `negative`.
+- `wardrik.prompts.suggested`: a middleware suggested questions the person might ask next.
+
 ## 0.1.0-rc.15 (2026-11-24)
 
 - A definition's `triggers` refer to `trigger_definition`, so a webhook's `when` is taken in
