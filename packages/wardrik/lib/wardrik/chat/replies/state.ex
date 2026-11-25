@@ -18,7 +18,7 @@ defmodule Wardrik.Chat.Replies.State do
     beats: %{}
   ]
 
-  @reasoning_tail 300
+  @reasoning_max 2_000
   @steps 45
 
   @type run() :: %{
@@ -137,6 +137,7 @@ defmodule Wardrik.Chat.Replies.State do
       "title" => step.title,
       "status" => Atom.to_string(step.status),
       "details" => step.details,
+      "shown" => step.shown,
       "since" => DateTime.to_iso8601(step.since)
     }
   end
@@ -149,6 +150,7 @@ defmodule Wardrik.Chat.Replies.State do
       title: dumped["title"],
       status: load_status(dumped["status"]),
       details: dumped["details"],
+      shown: dumped["shown"],
       since: since
     }
   end
@@ -180,6 +182,18 @@ defmodule Wardrik.Chat.Replies.State do
   def put_progress(state, conversation, progress) do
     if Map.has_key?(state.runs, conversation),
       do: put_in(state.runs[conversation].progress, progress),
+      else: state
+  end
+
+  @doc "Notes that a post showed all the details of `conversation`'s steps."
+  @spec mark_details_shown(t(), conversation()) :: t()
+  def mark_details_shown(state, conversation) do
+    if Map.has_key?(state.runs, conversation),
+      do:
+        update_in(
+          state.runs[conversation].steps,
+          &Enum.map(&1, fn step -> %{step | shown: String.length(step.details)} end)
+        ),
       else: state
   end
 
@@ -258,8 +272,9 @@ defmodule Wardrik.Chat.Replies.State do
 
   defp handle_take(state, conversation, "subagent.progress", %{data: data}) do
     calls = data["tool_calls"]
-    said = "Running #{data["tool"]["name"]}, #{calls} #{if calls == 1, do: "call", else: "calls"}"
-    change_step(state, conversation, subagent_step_id(data), &%{&1 | details: said})
+    counted = if calls == 1, do: "1 call", else: "#{calls} calls"
+    title = "Asked #{data["agent"]["name"]} · running #{data["tool"]["name"]} (#{counted})"
+    change_step(state, conversation, subagent_step_id(data), &%{&1 | title: title})
   end
 
   defp handle_take(state, conversation, "subagent.completed", %{data: data}),
@@ -268,7 +283,7 @@ defmodule Wardrik.Chat.Replies.State do
         state,
         conversation,
         subagent_step_id(data),
-        &%{&1 | status: :done, details: nil}
+        &%{&1 | status: :done, title: "Asked #{data["agent"]["name"]}"}
       )
 
   defp handle_take(state, conversation, "subagent.failed", %{data: data}),
@@ -328,8 +343,8 @@ defmodule Wardrik.Chat.Replies.State do
   defp add_reasoning(state, conversation, id, delta) do
     case find_step(state, conversation, id) do
       %Step{status: :running, details: details} ->
-        tail = reasoning_tail(details, delta)
-        {_post, state} = change_step(state, conversation, id, &%{&1 | details: tail})
+        added = cap_reasoning(details, delta)
+        {_post, state} = change_step(state, conversation, id, &%{&1 | details: added})
         {{:progress, :details}, state}
 
       _other ->
@@ -337,26 +352,32 @@ defmodule Wardrik.Chat.Replies.State do
     end
   end
 
-  defp reasoning_tail(nil, delta), do: reasoning_tail("", delta)
-
-  defp reasoning_tail(details, delta) do
+  defp cap_reasoning(details, delta) do
     joined = details <> delta
-    String.slice(joined, -@reasoning_tail, @reasoning_tail)
+    String.slice(joined, 0, @reasoning_max)
   end
+
+  defp add_line(%Step{details: ""} = step, line), do: %{step | details: line}
+  defp add_line(step, line), do: %{step | details: step.details <> "\n\n" <> line}
 
   defp note_retry(state, conversation, id, what, data) do
     said =
       "#{what} failed: #{data["error"]["message"]}. Trying again in " <>
         "#{div(data["wait_ms"] + 999, 1000)}s (attempt #{data["attempt"]} of #{data["attempts"]})."
 
-    change_step(state, conversation, id, &%{&1 | details: said})
+    change_step(state, conversation, id, &add_line(&1, said))
   end
 
   defp end_step(state, conversation, id, %{"status" => "error", "error" => error}),
-    do: change_step(state, conversation, id, &%{&1 | status: :failed, details: error["message"]})
+    do:
+      change_step(state, conversation, id, fn step ->
+        step
+        |> add_line(error["message"])
+        |> Map.put(:status, :failed)
+      end)
 
   defp end_step(state, conversation, id, _ok),
-    do: change_step(state, conversation, id, &%{&1 | status: :done, details: nil})
+    do: change_step(state, conversation, id, &%{&1 | status: :done})
 
   defp find_step(state, conversation, id) do
     case find_run(state, conversation) do

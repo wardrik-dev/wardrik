@@ -153,17 +153,10 @@ defmodule WardrikSlackTest do
                       %{"channel" => "D1", "thread_ts" => "2.1", "recipient_user_id" => "U3"}},
                      1_000
 
-      assert_receive {:slack, "chat.stopStream",
-                      %{
-                        "channel" => "D1",
-                        "ts" => "9.8",
-                        "chunks" => [
-                          %{
-                            "type" => "markdown_text",
-                            "text" => "Answered: how much Barolo is left?"
-                          }
-                        ]
-                      }},
+      assert_receive {:slack, "chat.stopStream", %{"channel" => "D1", "ts" => "9.8"}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"text" => "Answered: how much Barolo is left?"}},
                      1_000
 
       assert_receive {:slack, "reactions.add",
@@ -251,16 +244,10 @@ defmodule WardrikSlackTest do
                       %{"ts" => "9.8", "chunks" => [%{"status" => "complete"}]}},
                      1_000
 
-      assert_receive {:slack, "chat.stopStream",
-                      %{
-                        "ts" => "9.8",
-                        "chunks" => [
-                          %{
-                            "type" => "markdown_text",
-                            "text" => "Answered: how much Barolo is left?"
-                          }
-                        ]
-                      }},
+      assert_receive {:slack, "chat.stopStream", %{"ts" => "9.8"}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"text" => "Answered: how much Barolo is left?"}},
                      1_000
 
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
@@ -340,9 +327,9 @@ defmodule WardrikSlackTest do
       assert_receive {:slack, "chat.postMessage", %{"text" => "Approved by maria: Go ahead."}},
                      1_000
 
-      assert_receive {:slack, "chat.stopStream",
-                      %{"chunks" => [%{"type" => "markdown_text", "text" => "Done."}]}},
-                     1_000
+      assert_receive {:slack, "chat.stopStream", %{}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Done."}}, 1_000
 
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
@@ -464,7 +451,8 @@ defmodule WardrikSlackTest do
           id: "s2",
           title: "Thinking",
           status: :running,
-          details: "Checking…",
+          details: "Checking the calendar.",
+          shown: 9,
           since: since
         }
       ]
@@ -479,11 +467,26 @@ defmodule WardrikSlackTest do
                           %{
                             "id" => "s2",
                             "title" => "Thinking · 1m 20s",
-                            "details" => "Checking…"
+                            "details" => "the calendar."
                           }
                         ]
                       }},
                      1_000
+    end
+
+    test "sends no more details once the message holds its share", context do
+      step = %Wardrik.Chat.Step{
+        id: "s1",
+        title: "Thinking",
+        status: :running,
+        details: String.duplicate("a", 8_000) <> "more",
+        shown: 8_000,
+        since: DateTime.utc_now()
+      }
+
+      assert progress(context.workspace, "stream:9.8", [step]) == :ok
+      assert_receive {:slack, "chat.appendStream", %{"chunks" => [task]}}, 1_000
+      refute Map.has_key?(task, "details")
     end
 
     test "moves to a message it edits once the stream has ended", context do

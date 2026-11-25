@@ -6,13 +6,15 @@ defmodule Wardrik.Chat.Step do
     * `:title` - what it does, as `"Thinking"` or `"Running search"`.
     * `:status` - `:running`, `:waiting` on a person, `:done` or `:failed`. A run that ends,
       stops or waits leaves no step running.
-    * `:details` - more about it, such as the end of the model's reasoning, a retry or an error.
-      `nil` if there is nothing more.
+    * `:details` - more about it: the model's reasoning, retries, an error. It only grows while
+      the step runs. `""` if there is nothing more.
+    * `:shown` - how many characters of `:details` an earlier post showed. A chat app whose
+      updates add to what it shows posts only `unshown/1`.
     * `:since` - when it started. Show a running step's time from it.
   """
 
   @enforce_keys [:id, :title, :status, :since]
-  defstruct [:id, :title, :status, :since, details: nil]
+  defstruct [:id, :title, :status, :since, details: "", shown: 0]
 
   @type status() :: :running | :waiting | :done | :failed
 
@@ -20,7 +22,8 @@ defmodule Wardrik.Chat.Step do
           id: String.t(),
           title: String.t(),
           status: status(),
-          details: String.t() | nil,
+          details: String.t(),
+          shown: non_neg_integer(),
           since: DateTime.t()
         }
 
@@ -39,4 +42,14 @@ defmodule Wardrik.Chat.Step do
       minutes -> "#{minutes}m #{rem(seconds, 60)}s"
     end
   end
+
+  @doc """
+  Returns the part of the step's details no earlier post showed.
+
+      Wardrik.Chat.Step.unshown(%{step | details: "Checking the calendar.", shown: 9})
+      #=> "the calendar."
+  """
+  @spec unshown(t()) :: String.t()
+  def unshown(%__MODULE__{details: details, shown: shown}),
+    do: String.slice(details, shown, String.length(details))
 end

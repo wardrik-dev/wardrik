@@ -157,12 +157,12 @@ Use a separate app per daemon. Slack spreads events across all of an app's conne
 - Every channel an agent answers in shares its files and digests. To keep a private channel's
   work out of a public one, give each its own agent.
 - :eyes: means the agent received the message. :white_check_mark: means it replied.
-- While the agent works, one message in the thread lists its steps: each model call, with the end
-  of its reasoning, each tool call, and each retry with its wait. A step that runs quietly shows
-  how long it has run. The reply ends the same message.
+- While the agent works, one message in the thread lists its steps: each model call, with its
+  reasoning under it, each tool call, and each retry with its wait. A step that runs quietly shows
+  how long it has run. The reply follows that message.
 - Set `reasoning: false` on the channel to leave the reasoning out.
 - Slack ends a streamed message after 10 minutes. A longer run, or one started by a trigger or
-  notice, lists its steps in a message it edits, and posts the reply on its own.
+  notice, lists its steps in a message it edits instead.
 - To post notices in a channel, set `notify: "slack:#updates"`. See [Send notifications](/build/notices/).
 
 ## Direct messages

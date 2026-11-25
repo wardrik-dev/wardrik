@@ -150,14 +150,9 @@ defmodule Wardrik.Slack.PackageTest do
                       }},
                      1_000
 
-      assert_receive {:slack, "chat.stopStream",
-                      %{
-                        "ts" => "9.8",
-                        "chunks" => [
-                          %{"type" => "markdown_text", "text" => "Two cases, both 2019."}
-                        ]
-                      }},
-                     1_000
+      assert_receive {:slack, "chat.stopStream", %{"ts" => "9.8"}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Two cases, both 2019."}}, 1_000
 
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
@@ -208,9 +203,9 @@ defmodule Wardrik.Slack.PackageTest do
       assert_receive {:slack, "chat.postMessage", %{"text" => "Approved by maria: Go ahead."}},
                      1_000
 
-      assert_receive {:slack, "chat.stopStream",
-                      %{"chunks" => [%{"type" => "markdown_text", "text" => "Done."}]}},
-                     1_000
+      assert_receive {:slack, "chat.stopStream", %{}}, 1_000
+
+      assert_receive {:slack, "chat.postMessage", %{"text" => "Done."}}, 1_000
 
       assert_receive {:slack, "reactions.add", %{"name" => "white_check_mark"}}, 1_000
     end
@@ -272,15 +267,10 @@ defmodule Wardrik.Slack.PackageTest do
 
       event(context, message("<@UBOT> again", "2.1"))
 
-      assert_receive {:slack, "chat.stopStream",
-                      %{
-                        "chunks" => [
-                          %{
-                            "type" => "markdown_text",
-                            "text" => ":warning: It stopped with an error: " <> _
-                          }
-                        ]
-                      }},
+      assert_receive {:slack, "chat.stopStream", %{}}, 5_000
+
+      assert_receive {:slack, "chat.postMessage",
+                      %{"text" => ":warning: It stopped with an error: " <> _}},
                      5_000
     end
 

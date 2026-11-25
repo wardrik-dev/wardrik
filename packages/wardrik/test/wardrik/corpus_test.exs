@@ -311,6 +311,7 @@ defmodule Wardrik.CorpusTest do
                 title: "Thinking",
                 status: :running,
                 details: "Checking the calendar.",
+                shown: 9,
                 since: ~U[2026-11-25 10:00:00Z]
               }
             ]

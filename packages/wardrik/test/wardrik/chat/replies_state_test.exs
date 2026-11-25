@@ -54,28 +54,50 @@ defmodule Wardrik.Chat.Replies.StateTest do
     assert [%Step{status: :done}] = steps(taken)
   end
 
-  test "shows the end of the model's reasoning, unless the channel hides it" do
-    delta = String.duplicate("a", 290) <> "Checking the calendar."
-    data = %{"message" => %{"id" => "msg_1"}, "delta" => delta}
+  test "adds the model's reasoning to its step, up to a cap, unless the channel hides it" do
+    delta = %{"message" => %{"id" => "msg_1"}, "delta" => "Checking "}
+    more = %{"message" => %{"id" => "msg_1"}, "delta" => "the calendar."}
 
     taken =
       new()
       |> thinking()
-      |> take("reasoning.delta", data)
+      |> take("reasoning.delta", delta)
+      |> take("reasoning.delta", more)
 
     assert {{:progress, :details}, _state} = taken
-    assert [%Step{details: details}] = steps(taken)
-    assert String.length(details) == 300
-    assert String.ends_with?(details, "Checking the calendar.")
+    assert [%Step{details: "Checking the calendar.", shown: 0}] = steps(taken)
+
+    long = %{"message" => %{"id" => "msg_1"}, "delta" => String.duplicate("a", 3_000)}
+    capped = take(taken, "reasoning.delta", long)
+    assert [%Step{details: details}] = steps(capped)
+    assert String.length(details) == 2_000
 
     hidden =
       false
       |> new()
       |> thinking()
-      |> take("reasoning.delta", data)
+      |> take("reasoning.delta", delta)
 
     assert {:none, _state} = hidden
-    assert [%Step{details: nil}] = steps(hidden)
+    assert [%Step{details: ""}] = steps(hidden)
+  end
+
+  test "notes what a post showed, so the next shows only what was added" do
+    {_post, state} =
+      new()
+      |> thinking()
+      |> take("reasoning.delta", %{"message" => %{"id" => "msg_1"}, "delta" => "Checking "})
+
+    state = State.mark_details_shown(state, @conversation)
+
+    taken =
+      take(state, "reasoning.delta", %{
+        "message" => %{"id" => "msg_1"},
+        "delta" => "the calendar."
+      })
+
+    assert [step] = steps(taken)
+    assert Step.unshown(step) == "the calendar."
   end
 
   test "says when the model failed and will be tried again" do
@@ -86,6 +108,10 @@ defmodule Wardrik.Chat.Replies.StateTest do
 
     assert [%Step{status: :running, details: details}] = steps(taken)
     assert details == "The model failed: Overloaded. Trying again in 8s (attempt 2 of 5)."
+
+    taken = take(taken, "message.retrying", retry_data(%{"message" => %{"id" => "msg_1"}}))
+    assert [%Step{details: "The model failed:" <> _rest = twice}] = steps(taken)
+    assert twice =~ "\n\nThe model failed:"
   end
 
   test "shows each tool call, and why one failed" do
@@ -101,7 +127,8 @@ defmodule Wardrik.Chat.Replies.StateTest do
 
     failed = %{"tool" => tool, "status" => "error", "error" => %{"message" => "Timed out."}}
     taken = take(taken, "tool_call.completed", failed)
-    assert [%Step{status: :failed, details: "Timed out."}] = steps(taken)
+    assert [%Step{status: :failed, details: details}] = steps(taken)
+    assert String.ends_with?(details, "\n\nTimed out.")
   end
 
   test "shows a subagent's calls, and its end" do
@@ -115,10 +142,10 @@ defmodule Wardrik.Chat.Replies.StateTest do
         Map.merge(agent, %{"tool" => %{"name" => "fetch"}, "tool_calls" => 2})
       )
 
-    assert [%Step{title: "Asked researcher", details: "Running fetch, 2 calls"}] = steps(taken)
+    assert [%Step{title: "Asked researcher · running fetch (2 calls)"}] = steps(taken)
 
     taken = take(taken, "subagent.completed", agent)
-    assert [%Step{status: :done, details: nil}] = steps(taken)
+    assert [%Step{status: :done, title: "Asked researcher"}] = steps(taken)
   end
 
   test "ends the progress when the run waits, and starts it again when it resumes" do

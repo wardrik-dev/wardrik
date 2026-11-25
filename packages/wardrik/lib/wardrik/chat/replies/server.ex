@@ -234,9 +234,9 @@ defmodule Wardrik.Chat.Replies.Server do
     do:
       state
       |> State.put_progress(conversation, progress)
-      |> mark_shown(conversation)
+      |> note_progress_shown(conversation)
 
-  defp note_progress(:ok, state, conversation), do: mark_shown(state, conversation)
+  defp note_progress(:ok, state, conversation), do: note_progress_shown(state, conversation)
   defp note_progress({:skip, _why}, state, _conversation), do: state
 
   # Progress is shown as it was, and the next post brings it up to date.
@@ -262,6 +262,12 @@ defmodule Wardrik.Chat.Replies.Server do
 
   defp end_running_step(%Step{status: :running} = step, status), do: %{step | status: status}
   defp end_running_step(step, _status), do: step
+
+  defp note_progress_shown(state, conversation) do
+    state
+    |> State.mark_details_shown(conversation)
+    |> mark_shown(conversation)
+  end
 
   defp end_progress(state, conversation) do
     cancel_beat(state, conversation)
