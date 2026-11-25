@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-rc.21 (2026-11-24)
+
+- A finished turn that answers `NO_REPLY` sends no notice.
+- `notify` takes a list of routes, each with its own targets and events.
+- `Wardrik.Notify.Agent` tells another agent: each notice reaches it as a message, with the
+  notifying conversation's labels.
+- An MCP connection stops its client as it terminates.
+- **Upgrading:** `Wardrik.Notify.route/1` is `routes/1`, and returns a list.
+  `Wardrik.Operations.Running.awake/2` is `ensure_awake/2`.
+- Requires `wardrik_protocol` 0.1.0-rc.15.
+
 ## 0.1.0-rc.20 (2026-11-19)
 
 - A notice carries the agent's `display_name` as `name`.
