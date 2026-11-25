@@ -30,15 +30,31 @@ defmodule Wardrik.Notify.Server do
   end
 
   @impl GenServer
-  def handle_cast({:event, %Wardrik.Event{} = event}, state),
-    do: {:noreply, take(state, agent(event), event)}
+  def handle_cast({:event, %Wardrik.Event{type: "wardrik.message.created"} = event}, state),
+    do: {:noreply, note_sender(state, event.data)}
 
-  defp take(state, _agent, %{type: "wardrik.message.created", data: %{"sender" => _who} = data}),
-    do: %{state | sent: MapSet.put(state.sent, data["message"]["id"])}
+  def handle_cast({:event, %Wardrik.Event{type: "wardrik.run.started"} = event}, state),
+    do: {:noreply, note_asked_run(state, event.data["run"])}
 
-  defp take(state, _agent, %{type: "wardrik.message.created"}), do: state
+  def handle_cast({:event, %Wardrik.Event{type: "wardrik.run.interrupted"} = event}, state),
+    do: {:noreply, tell_parked(state, event)}
 
-  defp take(state, _agent, %{type: "wardrik.run.started", data: %{"run" => run}}) do
+  def handle_cast({:event, %Wardrik.Event{type: "wardrik.run.failed"} = event}, state),
+    do: {:noreply, tell_failed(state, event)}
+
+  def handle_cast({:event, %Wardrik.Event{type: "wardrik.run.completed"} = event}, state),
+    do: {:noreply, tell_finished(state, event)}
+
+  def handle_cast({:event, %Wardrik.Event{type: type} = event}, state)
+      when type in ["wardrik.run.cancelled", "wardrik.run.deadline_exceeded"],
+      do: {:noreply, forget_run(state, event.data)}
+
+  defp note_sender(state, %{"sender" => _who, "message" => message}),
+    do: %{state | sent: MapSet.put(state.sent, message["id"])}
+
+  defp note_sender(state, _unsent), do: state
+
+  defp note_asked_run(state, run) do
     ids = Map.get(run, "message_ids", [])
     asked? = Enum.any?(ids, &MapSet.member?(state.sent, &1))
     state = %{state | sent: Enum.reduce(ids, state.sent, &MapSet.delete(&2, &1))}
@@ -46,35 +62,32 @@ defmodule Wardrik.Notify.Server do
     if asked?, do: %{state | asked: MapSet.put(state.asked, run["id"])}, else: state
   end
 
-  defp take(state, agent, %{type: "wardrik.run.interrupted", data: data} = event) do
+  defp tell_parked(state, %{data: data} = event) do
+    agent = agent(event)
     ids = Enum.map(data["interrupts"], & &1["id"])
 
     case waiting(state, agent, ids) do
       [] -> state
-      calls -> handle_tell(state, agent, notice(event, :parked, calls: calls))
+      calls -> tell_routes(state, agent, notice(event, :parked, calls: calls))
     end
   end
 
-  defp take(state, agent, %{type: "wardrik.run.failed", data: data} = event) do
+  defp tell_failed(state, %{data: data} = event) do
     state
     |> forget_run(data)
-    |> handle_tell(agent, notice(event, :failed, reason: data["error"]["message"]))
+    |> tell_routes(agent(event), notice(event, :failed, reason: data["error"]["message"]))
   end
 
-  defp take(state, agent, %{type: "wardrik.run.completed", data: data} = event) do
+  defp tell_finished(state, %{data: data} = event) do
     if MapSet.member?(state.asked, data["run"]["id"]),
       do: forget_run(state, data),
       else:
-        handle_tell(
+        tell_routes(
           state,
-          agent,
+          agent(event),
           notice(event, :finished, text: Wardrik.Reply.text(data["messages"]))
         )
   end
-
-  defp take(state, _agent, %{type: type, data: data})
-       when type in ["wardrik.run.cancelled", "wardrik.run.deadline_exceeded"],
-       do: forget_run(state, data)
 
   defp forget_run(state, %{"run" => run}),
     do: %{state | asked: MapSet.delete(state.asked, run["id"])}
@@ -107,7 +120,7 @@ defmodule Wardrik.Notify.Server do
     |> Enum.map(&Wardrik.Interrupt.from_json/1)
   end
 
-  defp handle_tell(state, {agent, _conversation}, notice) do
+  defp tell_routes(state, {agent, _conversation}, notice) do
     with {:ok, definition} <- Wardrik.Definitions.fetch(state.wardrik, agent),
          {:ok, resolved} <-
            Wardrik.Resolver.resolve(state.wardrik, %Wardrik.Resolver.Request{
