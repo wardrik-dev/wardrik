@@ -404,11 +404,11 @@ defmodule Wardrik.NotifyTest do
                        %{"type" => "wardrik.message.created"}}
     end
 
-    test "tells another agent in the conversation its target names", %{scope: scope} do
+    test "notifies another agent in the conversation its target names", %{scope: scope} do
       model({:ok, answer("The site is down.")})
       {:ok, _lead} = define(scope, "audit", %{}, "acme/lead")
       {:ok, _triage} = define(scope, %{"to" => "reports", "on" => ["finished"]})
-      ask(scope)
+      trigger(scope)
 
       assert_receive {Wardrik.EventLog, {"acme/lead", "reports"},
                       %{"type" => "wardrik.message.created"}},
