@@ -57,6 +57,8 @@ defmodule WardrikSlack do
     * While an agent works, the thread shows each step it takes: each model call, with the end of
       its reasoning, each tool call and each retry. A step that runs quietly shows how long it has
       run. The reply follows it. See `WardrikSlack.Progress`.
+    * A reply offers the next steps its run suggested: as the Messages tab's prompts in a direct
+      message, or as buttons in a channel. See `WardrikSlack.NextSteps`.
     * Each reply has thumbs up and down buttons. A press is recorded as `wardrik.run.rated` in
       the conversation's log. See `WardrikSlack.Feedback`.
     * A message the agent takes gets :eyes:, then :white_check_mark: once answered.
@@ -71,6 +73,7 @@ defmodule WardrikSlack do
   alias WardrikSlack.API
   alias WardrikSlack.Blocks
   alias WardrikSlack.Messages
+  alias WardrikSlack.NextSteps
   alias WardrikSlack.Progress
 
   @doc "Returns the options it takes beyond `Wardrik.Chat`'s, as a `NimbleOptions` schema."
@@ -197,8 +200,10 @@ defmodule WardrikSlack do
   defp post_status(workspace, %Outbound{room: room, body: {:reply, text, answering}} = outbound) do
     :ok = Progress.finish(workspace, outbound)
 
-    with :ok <- post_message(workspace, outbound, reply(outbound, text)),
-         do: Messages.mark_answered(workspace, room, answering)
+    with :ok <- post_message(workspace, outbound, reply(outbound, text)) do
+      :ok = NextSteps.suggest(workspace, outbound)
+      Messages.mark_answered(workspace, room, answering)
+    end
   end
 
   defp post_status(workspace, %Outbound{body: {:waiting, calls}} = outbound) do
@@ -224,7 +229,10 @@ defmodule WardrikSlack do
   defp reply(outbound, ""), do: reply(outbound, "_It answered nothing._")
 
   defp reply(outbound, text),
-    do: %{text: Blocks.clip(text, 3_000), blocks: [Blocks.markdown(text) | feedback(outbound)]}
+    do: %{
+      text: Blocks.clip(text, 3_000),
+      blocks: [Blocks.markdown(text)] ++ NextSteps.blocks(outbound) ++ feedback(outbound)
+    }
 
   # A reply carries its run, except one whose run the room's saved state no longer holds.
   defp feedback(%Outbound{run: nil}), do: []

@@ -10,6 +10,7 @@ defmodule WardrikSlack.Dispatch do
   | a room's button or menu                  | `WardrikSlack.Rooms`     |
   | a waiting call's button                  | `WardrikSlack.Answers`   |
   | a reply's feedback button                | `WardrikSlack.Feedback`  |
+  | a reply's next step                      | `WardrikSlack.NextSteps` |
   | `app_uninstalled` or `tokens_revoked`    | forgets the workspace    |
 
   Anything from a workspace the channel isn't added to is logged and ignored.
@@ -20,6 +21,7 @@ defmodule WardrikSlack.Dispatch do
   alias WardrikSlack.Assistant
   alias WardrikSlack.Feedback
   alias WardrikSlack.Messages
+  alias WardrikSlack.NextSteps
   alias WardrikSlack.Rooms
 
   require Logger
@@ -60,6 +62,7 @@ defmodule WardrikSlack.Dispatch do
 
   defp press_handler("wardrik_room" <> _rest), do: Rooms
   defp press_handler("wardrik_feedback"), do: Feedback
+  defp press_handler("wardrik_prompt:" <> _index), do: NextSteps
   defp press_handler(_call_button), do: Answers
 
   defp bot(%{"authorizations" => [%{"user_id" => bot} | _rest]}), do: bot

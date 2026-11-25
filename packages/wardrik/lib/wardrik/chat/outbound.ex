@@ -25,11 +25,14 @@ defmodule Wardrik.Chat.Outbound do
   `:agent` and `:conversation` name the conversation a post in a thread is about, and `:run` the
   run, if any. Put them on a reply's feedback buttons, and pass them back in a
   `Wardrik.Chat.Rating` to `Wardrik.Chat.rate/2`.
+
+  `:prompts` are next steps the run suggested, in the order to show them: what the member might
+  ask next. Show them with a reply. `[]` if none. See `Wardrik.Chat.Prompts.suggest_next/2`.
   """
 
   @enforce_keys [:installation, :room, :thread, :body]
   defstruct @enforce_keys ++
-              [progress: nil, asker: nil, agent: nil, conversation: nil, run: nil]
+              [progress: nil, asker: nil, agent: nil, conversation: nil, run: nil, prompts: []]
 
   @type body() ::
           {:progress, [Wardrik.Chat.Step.t()]}
@@ -49,6 +52,7 @@ defmodule Wardrik.Chat.Outbound do
           asker: String.t() | nil,
           agent: String.t() | nil,
           conversation: String.t() | nil,
-          run: String.t() | nil
+          run: String.t() | nil,
+          prompts: [String.t()]
         }
 end

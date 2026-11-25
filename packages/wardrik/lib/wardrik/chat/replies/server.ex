@@ -1,7 +1,7 @@
 defmodule Wardrik.Chat.Replies.Server do
   @moduledoc false
 
-  use DurableServer, vsn: 3
+  use DurableServer, vsn: 4
 
   alias Wardrik.Chat.Outbound
   alias Wardrik.Chat.Replies.Follower
@@ -20,7 +20,7 @@ defmodule Wardrik.Chat.Replies.Server do
             wardrik.subagent.started wardrik.subagent.progress wardrik.subagent.completed
             wardrik.subagent.failed
             wardrik.run.completed wardrik.run.interrupted wardrik.run.failed wardrik.run.cancelled
-            wardrik.run.deadline_exceeded wardrik.interrupt.resolved)
+            wardrik.run.deadline_exceeded wardrik.interrupt.resolved wardrik.prompts.suggested)
 
   @first_backoff 1_000
   @max_backoff 60_000
@@ -33,7 +33,7 @@ defmodule Wardrik.Chat.Replies.Server do
 
   # A room's first state is loaded with no version.
   @impl DurableServer
-  def load_state(nil, dumped), do: State.load(3, dumped)
+  def load_state(nil, dumped), do: State.load(4, dumped)
   def load_state(vsn, dumped), do: State.load(vsn, dumped)
 
   @impl DurableServer
@@ -347,7 +347,8 @@ defmodule Wardrik.Chat.Replies.Server do
           asker: run[:asker],
           agent: agent,
           conversation: conversation,
-          run: run[:id]
+          run: run[:id],
+          prompts: run_prompts(run)
         }
 
         channel.adapter.deliver(outbound, channel)
@@ -356,6 +357,10 @@ defmodule Wardrik.Chat.Replies.Server do
         :ok
     end
   end
+
+  # Posts about no run, such as who decided a call, suggest nothing.
+  defp run_prompts(%{prompts: prompts}), do: prompts
+  defp run_prompts(nil), do: []
 
   defp workspace(%State{channel: channel, workspace: id}), do: Workspace.new(channel, id)
 end

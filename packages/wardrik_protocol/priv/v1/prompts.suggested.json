@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:prompts.suggested",
+  "title": "wardrik.prompts.suggested",
+  "description": "Middleware suggested next steps for a run's reply, for a chat app to offer as prompts.",
+  "type": "object",
+  "properties": {
+    "prompts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the member might ask next, in the order to show them."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "prompts"
+  ]
+}

@@ -2249,6 +2249,15 @@ export interface NotifyTargetRemovedData {
   assumed_by?: AssumedBy;
 }
 /**
+ * Middleware suggested next steps for a run's reply, for a chat app to offer as prompts.
+ */
+export interface PromptsSuggestedData {
+  /**
+   * What the member might ask next, in the order to show them.
+   */
+  prompts: string[];
+}
+/**
  * Someone added an OAuth app for an owner's people to sign in with.
  */
 export interface ProviderAddedData {
@@ -2649,6 +2658,7 @@ export interface EventData {
   "wardrik.notice.held": NoticeHeldData;
   "wardrik.notify_target.added": NotifyTargetAddedData;
   "wardrik.notify_target.removed": NotifyTargetRemovedData;
+  "wardrik.prompts.suggested": PromptsSuggestedData;
   "wardrik.provider.added": ProviderAddedData;
   "wardrik.provider.removed": ProviderRemovedData;
   "wardrik.reasoning.delta": ReasoningDeltaData;

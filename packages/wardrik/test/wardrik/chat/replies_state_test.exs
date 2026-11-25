@@ -177,7 +177,7 @@ defmodule Wardrik.Chat.Replies.StateTest do
       |> State.dump()
       |> JSON.encode!()
       |> JSON.decode!()
-      |> then(&State.load(3, &1))
+      |> then(&State.load(4, &1))
 
     assert State.find_run(loaded, @conversation) == State.find_run(state, @conversation)
   end
@@ -210,7 +210,26 @@ defmodule Wardrik.Chat.Replies.StateTest do
              asked_by: "maria",
              asker: nil,
              progress: nil,
-             steps: []
+             steps: [],
+             prompts: []
            }
+  end
+
+  test "keeps the last next steps the run suggested" do
+    {_post, state} =
+      new()
+      |> take("prompts.suggested", %{"prompts" => ["Draft it"]})
+      |> take("prompts.suggested", %{"prompts" => ["Send it", "Not yet"]})
+
+    assert State.find_run(state, @conversation).prompts == ["Send it", "Not yet"]
+
+    loaded =
+      state
+      |> State.dump()
+      |> JSON.encode!()
+      |> JSON.decode!()
+      |> then(&State.load(4, &1))
+
+    assert State.find_run(loaded, @conversation).prompts == ["Send it", "Not yet"]
   end
 end
