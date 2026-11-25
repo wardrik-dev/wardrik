@@ -15,6 +15,8 @@ defmodule WardrikDaemon.Config.Channels do
       and `identities`.
     * `domains` maps email domains to orgs, and `members` member IDs to users. See
       `WardrikDaemon.ChannelMembers`.
+    * `prompts` lists the prompts suggested when a member starts a conversation with the app, as
+      in Slack's agent pane. Wardrik's own unless set.
     * `direct` names the agent that answers direct messages, or with `per: member` the agent each
       member's own is made from. See `WardrikDaemon.Direct` and `WardrikDaemon.Direct.Members`.
     * Without `token`, a token per workspace is kept in the vault.
@@ -24,7 +26,7 @@ defmodule WardrikDaemon.Config.Channels do
   alias WardrikDaemon.Config.Options
 
   @types %{"slack" => WardrikSlack}
-  @managed [:owner, :installations, :identities, :direct]
+  @managed [:owner, :installations, :identities, :direct, :prompts]
 
   @members [
     members: [
@@ -38,6 +40,11 @@ defmodule WardrikDaemon.Config.Channels do
          {:custom, WardrikDaemon.ChannelMembers, :org, []}},
       default: %{},
       doc: "The org each email domain's members are users in, as `ana@acme.com` is `acme/@ana`."
+    ],
+    prompts: [
+      type: {:list, :string},
+      doc:
+        "The prompts suggested when a member starts a conversation with the app. Wardrik's own unless set."
     ],
     direct: [
       type: {:custom, __MODULE__, :parse_direct, []},
@@ -70,7 +77,8 @@ defmodule WardrikDaemon.Config.Channels do
       {:ok,
        {adapter,
         build_installations(opts) ++
-          [owner: org, identities: identities] ++ place_direct(members[:direct]) ++ opts}}
+          [owner: org, identities: identities] ++
+          place_direct(members[:direct]) ++ place_prompts(members[:prompts]) ++ opts}}
     end
   end
 
@@ -97,6 +105,9 @@ defmodule WardrikDaemon.Config.Channels do
       do: {:ok, {module, name: name}},
       else: {:error, "is an agent's name: letters, digits, _, . and -, at most 64"}
   end
+
+  defp place_prompts(nil), do: []
+  defp place_prompts(prompts), do: [prompts: {Wardrik.Chat.Prompts.Fixed, prompts: prompts}]
 
   defp place_direct(nil), do: []
   defp place_direct(direct), do: [direct: direct]

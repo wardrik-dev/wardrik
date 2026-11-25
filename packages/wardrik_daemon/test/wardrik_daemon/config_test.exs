@@ -43,7 +43,7 @@ defmodule WardrikDaemon.ConfigTest do
         github: {issuer: https://github.com/login/oauth, client_id: "${GITHUB_CLIENT_ID}", scopes: [repo], flow: device}
     channels:
       slack: {type: slack, token: xoxb-1, app_token: xapp-1, members: {U1: user:acme/@maria}}
-      ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, domains: {Acme.com: acme}}
+      ops: {type: slack, signing_secret: s, client_id: "1.2", client_secret: c, domains: {Acme.com: acme}, prompts: [Plan my week]}
     brave: {api_key: "${KEY}"}
     models:
       prices:
@@ -95,7 +95,6 @@ defmodule WardrikDaemon.ConfigTest do
              owner: "acme",
              identities:
                {WardrikDaemon.ChannelMembers, members: %{"U1" => "acme/@maria"}, domains: %{}},
-             prompts: [],
              req_options: [],
              reasoning: true,
              app_token: "xapp-1",
@@ -103,6 +102,8 @@ defmodule WardrikDaemon.ConfigTest do
            ]
 
     assert ops[:installations] == :stored
+    assert ops[:prompts] == {Wardrik.Chat.Prompts.Fixed, prompts: ["Plan my week"]}
+    refute Keyword.has_key?(slack, :prompts)
 
     assert {WardrikDaemon.ChannelMembers, members: %{}, domains: %{"acme.com" => "acme"}} =
              ops[:identities]

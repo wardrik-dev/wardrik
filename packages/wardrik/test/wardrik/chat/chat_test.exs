@@ -434,6 +434,35 @@ defmodule Wardrik.ChatTest do
     def identify(request, _opts), do: {:ok, %Wardrik.Principal{id: request.email}}
   end
 
+  describe "prompts" do
+    defmodule Suggests do
+      @behaviour Wardrik.Chat.Prompts
+
+      @impl true
+      def suggest(request, test: test) do
+        send(test, {:suggesting, request})
+        ["Plan my week"]
+      end
+    end
+
+    test "are Wardrik's own unless the channel names others", context do
+      assert Wardrik.Chat.suggest_prompts(context.workspace, @ana) ==
+               Wardrik.Chat.Prompts.defaults()
+    end
+
+    test "are asked of the channel's prompts for the member starting a conversation", context do
+      channel = %{context.channel | prompts: {Suggests, test: self()}}
+      workspace = %{context.workspace | channel: channel}
+
+      assert Wardrik.Chat.suggest_prompts(workspace, @ana) == ["Plan my week"]
+
+      assert_received {:suggesting,
+                       %Wardrik.Chat.Prompts.Request{workspace: "T1", member: "U3", channel: name}}
+
+      assert name == channel.name
+    end
+  end
+
   describe "ratings" do
     setup context do
       Rooms.join(context.workspace, "C1")

@@ -203,11 +203,15 @@ With the `assistant:write` scope, the `assistant_view` feature and the `assistan
 event, as in the manifest above, Slack labels the app as an agent and opens it from the top bar.
 Each conversation there is a direct-message thread, answered as above.
 
-Suggest up to four prompts when a conversation starts:
+When a conversation starts, Slack suggests up to four prompts. Wardrik suggests its own unless
+the channel names others, or `[]` for none:
 
 ```yaml
     prompts: ["What's on my plate today?", "Summarize #support this week"]
 ```
+
+An app that embeds Wardrik can pick prompts per member as each conversation starts, with a
+`Wardrik.Chat.Prompts` module as the channel's `prompts` option.
 
 An app made from an older manifest keeps working without these, and gains the pane once they're
 added and the app is installed again.

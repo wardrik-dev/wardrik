@@ -28,14 +28,6 @@ defmodule WardrikSlack do
               type: :keyword_list,
               default: [],
               doc: "Merged into every request to Slack."
-            ],
-            prompts: [
-              type: {:list, :string},
-              default: [],
-              doc: """
-              Up to four prompts suggested when a member starts a conversation in the app's agent
-              pane. None unless set. See `WardrikSlack.Assistant`.
-              """
             ]
           )
 

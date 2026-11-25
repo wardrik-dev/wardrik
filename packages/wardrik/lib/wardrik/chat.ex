@@ -299,6 +299,26 @@ defmodule Wardrik.Chat do
   defp give(key, value), do: [{key, value}]
 
   @doc """
+  Returns the prompts to suggest to `member` as they start a conversation, from the channel's
+  `:prompts`.
+
+      Wardrik.Chat.suggest_prompts(workspace, %Wardrik.Chat.Member{id: "U024BE7LH"})
+      #=> ["What can you do?", "What did you work on today?", ...]
+  """
+  @spec suggest_prompts(Workspace.t(), Wardrik.Chat.Member.t()) :: [String.t()]
+  def suggest_prompts(%Workspace{channel: channel, installation: installation}, member) do
+    {module, opts} = channel.prompts
+
+    request = %Wardrik.Chat.Prompts.Request{
+      channel: channel.name,
+      workspace: installation.workspace,
+      member: member.id
+    }
+
+    module.suggest(request, opts)
+  end
+
+  @doc """
   Records a member's rating of a run's answer, as `wardrik.run.rated` in the conversation's log.
 
       Wardrik.Chat.rate(workspace, %Wardrik.Chat.Rating{

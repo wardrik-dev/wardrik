@@ -3,10 +3,11 @@ defmodule WardrikSlack.Assistant do
   Handles Slack's agent pane, which members open from the app's entry in Slack's top bar.
 
   Each conversation in the pane is a thread of the app's direct messages, answered as any direct
-  message is. When one starts, it offers the channel's `:prompts`, if any, as suggested prompts.
-  Needs the `assistant:write` scope.
+  message is. When one starts, it suggests the first four prompts of the channel's `:prompts`.
+  See `Wardrik.Chat.Prompts`. Needs the `assistant:write` scope.
   """
 
+  alias Wardrik.Chat.Member
   alias Wardrik.Chat.Workspace
   alias WardrikSlack.API
 
@@ -17,11 +18,13 @@ defmodule WardrikSlack.Assistant do
   @doc "Handles an `assistant_thread_started` event. Returns `:ignored` for any other."
   @spec event(Workspace.t(), map(), String.t() | nil) :: :ok | :ignored
   def event(
-        %Workspace{channel: channel} = workspace,
+        workspace,
         %{"type" => "assistant_thread_started", "assistant_thread" => thread},
         _bot
-      ),
-      do: suggest(workspace, thread, Keyword.get(channel.options, :prompts, []))
+      ) do
+    prompts = Wardrik.Chat.suggest_prompts(workspace, %Member{id: thread["user_id"]})
+    suggest(workspace, thread, prompts)
+  end
 
   def event(_workspace, _event, _bot), do: :ignored
 

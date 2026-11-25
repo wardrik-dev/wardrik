@@ -29,7 +29,7 @@ defmodule WardrikSlackTest do
   end
 
   test "gives the options it takes beyond Wardrik.Chat's" do
-    assert {:ok, [prompts: [], req_options: [], app_token: "xapp-1"]} =
+    assert {:ok, [req_options: [], app_token: "xapp-1"]} =
              NimbleOptions.validate([app_token: "xapp-1"], WardrikSlack.schema())
   end
 
@@ -462,7 +462,10 @@ defmodule WardrikSlackTest do
   end
 
   describe "the agent pane" do
-    @tag slack: [prompts: ["What's on my plate today?", "Summarize this channel"]]
+    @tag slack: [
+           prompts:
+             {Wardrik.Chat.Prompts.Fixed, prompts: ["Plan my week", "Summarize this channel"]}
+         ]
     test "suggests the channel's prompts when a conversation starts", context do
       started = %{
         type: "assistant_thread_started",
@@ -476,14 +479,29 @@ defmodule WardrikSlackTest do
                         "channel_id" => "D1",
                         "thread_ts" => "5.1",
                         "prompts" => [
-                          %{"title" => "What's on my plate today?"},
+                          %{"title" => "Plan my week"},
                           %{"message" => "Summarize this channel"}
                         ]
                       }},
                      1_000
     end
 
-    test "suggests nothing where the channel names no prompts", context do
+    test "suggests Wardrik's own prompts where the channel names none", context do
+      started = %{
+        type: "assistant_thread_started",
+        assistant_thread: %{user_id: "U3", channel_id: "D1", thread_ts: "5.1"}
+      }
+
+      event(context, started)
+
+      assert_receive {:slack, "assistant.threads.setSuggestedPrompts", %{"prompts" => prompts}},
+                     1_000
+
+      assert Enum.map(prompts, & &1["message"]) == Wardrik.Chat.Prompts.defaults()
+    end
+
+    @tag slack: [prompts: {Wardrik.Chat.Prompts.Fixed, prompts: []}]
+    test "suggests nothing where the channel's prompts are none", context do
       started = %{
         type: "assistant_thread_started",
         assistant_thread: %{user_id: "U3", channel_id: "D1", thread_ts: "5.1"}
